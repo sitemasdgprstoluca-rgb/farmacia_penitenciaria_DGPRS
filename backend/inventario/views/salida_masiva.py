@@ -226,8 +226,9 @@ def salida_masiva(request):
                         lote_destino.save(update_fields=['cantidad_actual', 'cantidad_inicial', 'activo', 'updated_at'])
                     
                     # Crear movimiento de ENTRADA en centro destino
+                    # HALLAZGO #1 FIX: Ya actualizamos stock manualmente, usar skip_stock_update
                     motivo_entrada = f'[CONFIRMADO][{grupo_salida}] Entrada por transferencia desde Almacén Central'
-                    Movimiento.objects.create(
+                    mov_entrada = Movimiento(
                         tipo='entrada',
                         producto=lote_destino.producto,
                         lote=lote_destino,
@@ -239,6 +240,7 @@ def salida_masiva(request):
                         subtipo_salida=None,
                         referencia=grupo_salida
                     )
+                    mov_entrada.save(skip_stock_update=True)
                     
                     # ===============================================================
                     # DISPENSACIÓN AUTOMÁTICA: Al confirmar, el centro dispensa
@@ -263,7 +265,8 @@ def salida_masiva(request):
                         referencia=grupo_salida
                     )
                     mov_dispensacion._stock_pre_movimiento = stock_antes_dispensacion
-                    mov_dispensacion.save()
+                    # HALLAZGO #1 FIX: Ya actualizamos stock abajo, usar skip_stock_update
+                    mov_dispensacion.save(skip_stock_update=True)
                     
                     # Ahora sí descontar del lote destino (queda en 0)
                     lote_destino.cantidad_actual = 0
@@ -286,7 +289,8 @@ def salida_masiva(request):
                     referencia=grupo_salida
                 )
                 movimiento._stock_pre_movimiento = stock_anterior
-                movimiento.save()
+                # HALLAZGO #1 FIX: Ya actualizamos stock arriba, usar skip_stock_update
+                movimiento.save(skip_stock_update=True)
                 
                 movimientos_creados.append({
                     'id': movimiento.id,

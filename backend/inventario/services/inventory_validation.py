@@ -517,7 +517,8 @@ class InventoryReconciliationService:
             motivo=f"ISS-026 Reconciliación: {motivo}. Stock anterior: {stock_anterior}"
         )
         movimiento._stock_pre_movimiento = stock_anterior
-        movimiento.save()
+        # HALLAZGO #1 FIX: Actualización de stock se hace manualmente abajo
+        movimiento.save(skip_stock_update=True)
         
         # Actualizar stock
         lote_locked.cantidad_actual = nuevo_stock

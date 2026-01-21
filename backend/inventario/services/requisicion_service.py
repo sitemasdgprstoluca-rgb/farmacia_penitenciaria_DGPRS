@@ -1749,7 +1749,9 @@ class RequisicionService:
         # Pasar stock previo para evitar re-validación (ya descontamos)
         if stock_previo is not None:
             movimiento._stock_pre_movimiento = stock_previo
-        movimiento.save()
+        # HALLAZGO #1 FIX: Usar skip_stock_update porque el stock ya fue descontado
+        # por _descontar_lote_atomico o ya está manejado externamente
+        movimiento.save(skip_stock_update=True)
         
         self._movimientos_creados.append(movimiento)
         

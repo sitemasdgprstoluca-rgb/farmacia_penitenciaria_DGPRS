@@ -90,6 +90,36 @@ const Requisiciones = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { permisos, user, getRolPrincipal, recargarUsuario } = usePermissions();
   
+  // ===========================================================================
+  // HALLAZGO #5 DOCUMENTACIÓN: Roles y Permisos
+  // ===========================================================================
+  // Los roles (user.rol) provienen del contexto usePermissions que los obtiene
+  // del endpoint /api/me y del token JWT validado por el backend.
+  // 
+  // SEGURIDAD: Aunque un usuario modifique localStorage para mostrar botones
+  // admin, el BACKEND valida permisos reales antes de ejecutar cualquier acción:
+  //   - crear/autorizar/cancelar requisiciones
+  //   - acceder a requisiciones de otros centros
+  //   - surtir/entregar medicamentos
+  //
+  // La UI usa roles solo para UX (mostrar/ocultar elementos apropiados).
+  // ===========================================================================
+  
+  // ===========================================================================
+  // HALLAZGO #3 DOCUMENTACIÓN: Validación de Cantidades
+  // ===========================================================================
+  // Aunque la UI permite a usuarios CENTRO solicitar cualquier cantidad,
+  // el BACKEND re-valida TODO antes de procesar:
+  //   - Cantidades positivas y enteras
+  //   - Producto existe y está activo
+  //   - Lote existe y tiene stock suficiente (si es admin surtiendo)
+  //   - Usuario tiene permisos para el centro de la requisición
+  //
+  // La función verificarStockActualizado() hace un refetch antes de enviar
+  // para mejorar UX (detectar cambios de stock temprano), pero el backend
+  // es la autoridad final de validación.
+  // ===========================================================================
+  
   // Calcular rol y si puede ver todos los centros
   const rolPrincipal = getRolPrincipal();
   const esAdminOFarmacia = rolPrincipal === 'ADMIN' || rolPrincipal === 'FARMACIA';

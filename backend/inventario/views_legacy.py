@@ -769,17 +769,18 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
         raise serializers.ValidationError({'cantidad': 'La cantidad debe ser un numero entero'})
 
     # =========================================================================
-    # ISS-003 FIX: Validación de observaciones para ajustes negativos
+    # HALLAZGO #3 FIX: La validación de justificación está CENTRALIZADA en Movimiento.clean()
+    # Aquí mantenemos validación adicional para mejor UX (mensaje específico para vistas)
+    # La validación definitiva está en el modelo para cubrir todas las vías de acceso
     # =========================================================================
-    # Los ajustes que reducen stock (negativos) requieren justificación obligatoria
-    # para prevenir robo hormiga y asegurar trazabilidad de pérdidas
-    LONGITUD_MINIMA_OBSERVACION = 10
+    from core.models import Movimiento
     es_ajuste_negativo = tipo_normalizado == 'ajuste' and cantidad_int < 0
     
     if es_ajuste_negativo:
-        if not observaciones or len(observaciones.strip()) < LONGITUD_MINIMA_OBSERVACION:
+        min_len = Movimiento.LONGITUD_MINIMA_JUSTIFICACION
+        if not observaciones or len(observaciones.strip()) < min_len:
             raise serializers.ValidationError({
-                'observaciones': f'Los ajustes negativos requieren una justificación de al menos {LONGITUD_MINIMA_OBSERVACION} caracteres. '
+                'observaciones': f'Los ajustes negativos requieren una justificación de al menos {min_len} caracteres. '
                                  f'Explique el motivo del ajuste (merma, caducidad, rotura, etc.)'
             })
 
@@ -874,7 +875,8 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
         )
         # Guardar stock previo para evitar fallos de validacion al crear el movimiento
         movimiento._stock_pre_movimiento = stock_disponible
-        movimiento.save()
+        # HALLAZGO #1 FIX: Usar skip_stock_update porque ya actualizamos stock arriba con F()
+        movimiento.save(skip_stock_update=True)
         
         # ISS-005: Invalidar caché del dashboard al registrar movimientos
         centro_afectado = centro.id if centro else (lote_ref.centro.id if lote_ref.centro else None)

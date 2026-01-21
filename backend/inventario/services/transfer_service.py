@@ -207,7 +207,9 @@ class TransferService:
             motivo=motivo_salida,
             referencia=referencia,
         )
-        movimiento_salida.save(skip_validation=True)  # Ya validamos arriba
+        # HALLAZGO #1/#2 FIX: Usar skip_stock_update porque actualizamos stock manualmente
+        # Esto evita doble conteo y mantiene el control explícito del stock
+        movimiento_salida.save(skip_stock_update=True)
         
         # 6. Decrementar stock en lote origen
         lote_bloqueado.cantidad_actual = F('cantidad_actual') - cantidad
@@ -230,7 +232,8 @@ class TransferService:
                 motivo=motivo_entrada,
                 referencia=referencia,
             )
-            movimiento_entrada.save(skip_validation=True)
+            # HALLAZGO #1/#2 FIX: Usar skip_stock_update porque actualizamos stock manualmente
+            movimiento_entrada.save(skip_stock_update=True)
             
             # Incrementar stock en lote destino
             lote_destino.cantidad_actual = F('cantidad_actual') + cantidad

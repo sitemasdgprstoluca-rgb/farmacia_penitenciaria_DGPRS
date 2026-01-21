@@ -1307,6 +1307,9 @@ class Movimiento(models.Model):
     # ISS-FIX: Agregar 'ajuste' genérico para compatibilidad con registrar_movimiento_stock
     TIPOS_VALIDOS = ['entrada', 'salida', 'ajuste', 'transferencia', 'ajuste_positivo', 'ajuste_negativo', 'devolucion', 'merma', 'caducidad']
     
+    # HALLAZGO #3: Longitud mínima de justificación para ajustes negativos (centralizado)
+    LONGITUD_MINIMA_JUSTIFICACION = 10
+    
     tipo = models.CharField(max_length=30)
     producto = models.ForeignKey(Producto, on_delete=models.PROTECT, related_name='movimientos', db_column='producto_id')
     lote = models.ForeignKey(Lote, on_delete=models.SET_NULL, null=True, blank=True, related_name='movimientos', db_column='lote_id')
@@ -1428,48 +1431,70 @@ class Movimiento(models.Model):
                             f'Lote en centro: {self.lote.centro_id}, Origen indicado: {self.centro_origen_id}'
                         )
         
+        # =====================================================================
+        # HALLAZGO #3 FIX: Validación centralizada de justificación
+        # Los ajustes negativos (mermas, pérdidas) REQUIEREN justificación
+        # Esta validación aplica a TODAS las vías de creación (API, shell, admin)
+        # =====================================================================
+        tipos_requieren_justificacion = ['ajuste', 'ajuste_negativo', 'merma', 'caducidad']
+        if tipo in tipos_requieren_justificacion:
+            motivo_texto = (self.motivo or '').strip()
+            if len(motivo_texto) < self.LONGITUD_MINIMA_JUSTIFICACION:
+                errors['motivo'] = (
+                    f'Los movimientos tipo "{tipo}" requieren una justificación de al menos '
+                    f'{self.LONGITUD_MINIMA_JUSTIFICACION} caracteres para auditoría. '
+                    f'Explique el motivo (merma, caducidad, rotura, etc.)'
+                )
+        
         if errors:
             raise ValidationError(errors)
     
     def save(self, *args, **kwargs):
         """
-        ISS-002 FIX (audit12): Ejecutar validaciones antes de guardar.
+        HALLAZGO #1 FIX: Acoplamiento atómico Movimiento-Stock.
         
-        NOTA: Para operaciones atómicas con actualización de stock,
-        usar RequisicionService que maneja transacciones completas.
+        Al guardar un movimiento, automáticamente se actualiza el stock del lote
+        asociado. Esto garantiza que:
+        - NO puede existir un movimiento sin afectar el stock
+        - NO puede modificarse el stock sin un movimiento
         
-        El parámetro skip_validation SOLO debe usarse en:
-        - Migraciones de datos controladas
-        - Scripts de mantenimiento con supervisión
-        - Tests con datos ficticios
+        Parámetros especiales (kwargs):
+            skip_validation: Omite full_clean() (solo migraciones/tests)
+            skip_stock_update: Omite actualización de stock (solo si ya se hizo externamente)
         
-        NUNCA en producción para operaciones regulares.
+        NOTA: Si el servicio que llama ya actualizó el stock (ej: TransferService),
+        debe pasar skip_stock_update=True para evitar doble conteo.
         """
         from django.conf import settings
+        from django.db import transaction
         
         skip_validation = kwargs.pop('skip_validation', False)
+        skip_stock_update = kwargs.pop('skip_stock_update', False)
         
-        # ISS-002 FIX (audit12): Restringir skip_validation a DEBUG o forzar log de alerta
+        # ISS-002 FIX: Log de alerta para skip_validation en producción
         if skip_validation:
-            if not getattr(settings, 'DEBUG', False):
-                # En producción: registrar alerta CRÍTICA pero permitir (para migraciones)
-                logger = logging.getLogger(__name__)
-                logger.critical(
-                    f"ISS-002 ALERTA: skip_validation usado en PRODUCCIÓN para Movimiento. "
-                    f"Lote: {self.lote_id}, Tipo: {self.tipo}, Cantidad: {self.cantidad}, "
-                    f"Centro: {self.centro_id}. Revisar trazabilidad."
-                )
-            else:
-                # En desarrollo: solo warning
-                logger = logging.getLogger(__name__)
-                logger.warning(
-                    f"ISS-002: skip_validation usado para Movimiento "
-                    f"(lote={self.lote_id}, tipo={self.tipo})"
-                )
+            log_level = logging.WARNING if getattr(settings, 'DEBUG', False) else logging.CRITICAL
+            logger = logging.getLogger(__name__)
+            logger.log(
+                log_level,
+                f"ISS-002: skip_validation usado para Movimiento "
+                f"(lote={self.lote_id}, tipo={self.tipo}, cantidad={self.cantidad})"
+            )
         
         if not skip_validation:
             self.full_clean()
-        super().save(*args, **kwargs)
+        
+        # Detectar si es un nuevo registro (no tiene PK aún)
+        is_new = self.pk is None
+        
+        # HALLAZGO #1 FIX: Todo dentro de transacción atómica
+        with transaction.atomic():
+            super().save(*args, **kwargs)
+            
+            # HALLAZGO #1 FIX: Aplicar movimiento al stock automáticamente
+            # Solo para registros NUEVOS y si no se pidió omitir
+            if is_new and not skip_stock_update and self.lote_id:
+                self.aplicar_movimiento_a_lote(revalidar_stock=not skip_validation)
     
     def aplicar_movimiento_a_lote(self, revalidar_stock=True):
         """

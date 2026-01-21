@@ -130,6 +130,22 @@ const Movimientos = () => {
   const highlightRef = useRef(null);
   const { user, permisos, getRolPrincipal } = usePermissions();
   
+  // ===========================================================================
+  // HALLAZGO #5 DOCUMENTACIÓN: Roles y Permisos
+  // ===========================================================================
+  // Los roles (user.rol, user.rol_efectivo) provienen del contexto usePermissions
+  // que los obtiene del endpoint /api/me y del token JWT validado por el backend.
+  // 
+  // SEGURIDAD: Aunque un usuario malicioso modifique localStorage o el estado
+  // de React para mostrar botones admin, el BACKEND valida:
+  //   1. Token JWT firmado con clave secreta del servidor
+  //   2. Rol del usuario en la base de datos
+  //   3. Permisos específicos para cada operación
+  // 
+  // La UI usa estos valores solo para UX (ocultar/mostrar elementos).
+  // Cualquier acción crítica es re-validada por el backend antes de ejecutarse.
+  // ===========================================================================
+  
   // Detectar si puede ver todos los centros o solo el suyo
   const rolPrincipal = getRolPrincipal();
   const puedeVerTodosCentros = ['ADMIN', 'FARMACIA', 'VISTA'].includes(rolPrincipal);
@@ -716,9 +732,40 @@ const Movimientos = () => {
       return;
     }
     
-    const loteSeleccionado = lotes.find(l => l.id === parseInt(formData.lote));
+    // =========================================================================
+    // HALLAZGO #1 FIX (RACE CONDITION): Verificar stock ACTUALIZADO antes de enviar
+    // El estado local 'lotes' puede estar desactualizado si otro usuario/pestaña
+    // modificó el stock. Hacemos un refetch del lote antes de validar.
+    // NOTA: El backend TAMBIÉN valida, esto es defensa en profundidad + mejor UX
+    // =========================================================================
+    let loteSeleccionado = lotes.find(l => l.id === parseInt(formData.lote));
     const esEntrada = formData.tipo === "entrada";
     const esSalida = formData.tipo === "salida";
+    
+    // Para salidas, verificar stock actualizado del backend antes de proceder
+    if (esSalida && loteSeleccionado) {
+      try {
+        const respLote = await lotesAPI.getById(parseInt(formData.lote));
+        const stockActual = respLote.data?.cantidad_actual ?? respLote.data?.stock_disponible;
+        
+        // Actualizar referencia local con dato fresco
+        loteSeleccionado = { ...loteSeleccionado, cantidad_actual: stockActual };
+        
+        // Validar con stock actualizado
+        if (Number(formData.cantidad) > stockActual) {
+          toast.error(
+            `⚠️ Stock actualizado insuficiente. Disponible ahora: ${stockActual} (antes: ${lotes.find(l => l.id === parseInt(formData.lote))?.cantidad_actual || '?'}). ` +
+            `Otro usuario/proceso pudo haber consumido stock. Recargando catálogo...`
+          );
+          // Refrescar catálogo para mostrar datos actualizados
+          cargarCatalogos();
+          return;
+        }
+      } catch (err) {
+        console.warn('Error verificando stock actualizado, continuando con validación de backend:', err);
+        // No bloquear - el backend también valida. Solo log de warning.
+      }
+    }
     
     // Validaciones específicas para SALIDA
     if (esSalida) {
@@ -816,6 +863,25 @@ const Movimientos = () => {
           return;
         }
       } else {
+        // =====================================================================
+        // HALLAZGO #2 DOCUMENTACIÓN: Lógica de Merma/Caducidad
+        // =====================================================================
+        // Las mermas y caducidades son operaciones contables especiales:
+        //   - NO tienen centro destino (el stock se "pierde", no se transfiere)
+        //   - Se descuentan del almacén central (centro=null en backend)
+        //   - Requieren justificación obligatoria (validada en backend también)
+        //
+        // La lógica de "si es merma NO enviar centro" está aquí por diseño:
+        //   - El backend (registrar_movimiento_stock) interpreta centro=null
+        //     como "operación sobre almacén central"
+        //   - Si enviáramos centro, se interpretaría como transferencia
+        //
+        // VALIDACIÓN BACKEND: El backend también valida:
+        //   - Longitud mínima de observaciones para ajustes/mermas
+        //   - Stock suficiente antes de descontar
+        //   - Tipo de movimiento válido
+        // =====================================================================
+        
         // CASO NORMAL: Merma/caducidad, entradas, dispensaciones, consumos
         const payload = {
           lote: parseInt(formData.lote),
@@ -827,8 +893,9 @@ const Movimientos = () => {
         
         // Campos adicionales para SALIDA (no transferencias)
         if (esSalida) {
-          // ISS-SEC FIX: Para merma/caducidad de Farmacia, NO enviar centro (se descuenta del almacén central)
-          // Solo MEDICO/CENTRO usan su propio centro
+          // LÓGICA DE NEGOCIO: Para merma/caducidad, NO enviar centro
+          // (se descuenta del almacén central, no es una transferencia)
+          // Solo MEDICO/CENTRO envían su centro para dispensaciones
           if (centroUsuario && !esMermaOCaducidad) {
             payload.centro = parseInt(centroUsuario);
           }
@@ -1080,9 +1147,26 @@ const Movimientos = () => {
     }
   };
 
+  // ===========================================================================
+  // HALLAZGO #4 DOCUMENTACIÓN: Filtros de Centro y Seguridad Multi-tenant
+  // ===========================================================================
+  // Aunque la UI bloquea cambios al filtro de centro para usuarios restringidos,
+  // la SEGURIDAD REAL está en el BACKEND:
+  //
+  // Backend (inventario/views_legacy.py - MovimientosViewSet.get_queryset):
+  //   - Usuarios con centro asignado: queryset.filter(centro_origen=user.centro)
+  //   - Ignora cualquier parámetro 'centro' enviado por el frontend
+  //   - Solo ADMIN/FARMACIA pueden ver movimientos de otros centros
+  //
+  // Este bloqueo en UI es solo para UX (evitar confusión), no para seguridad.
+  // Un usuario malicioso que modifique el estado de React seguirá viendo
+  // solo SUS movimientos porque el backend filtra por token/sesión real.
+  // ===========================================================================
+  
   // Actualiza solo el estado local de filtros (sin disparar recarga)
   const handleFiltro = (field, value) => {
-    // Protección: usuarios de centro no pueden cambiar el filtro de centro
+    // Protección UI: usuarios de centro no pueden cambiar el filtro de centro
+    // (La seguridad real está en el backend - ver documentación arriba)
     if (field === 'centro' && !puedeVerTodosCentros && centroUsuario) {
       return; // Ignorar cambios al filtro de centro para usuarios restringidos
     }
