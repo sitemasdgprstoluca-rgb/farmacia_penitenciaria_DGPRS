@@ -2358,9 +2358,44 @@ class RequisicionService:
                 tipo='entrada'
             ).select_related('lote')
             
+            # ISS-SEC-CRITICAL FIX: Primero validar que todos los lotes tienen stock suficiente
+            # antes de descontar cualquiera (para evitar reversión parcial)
+            lotes_sin_stock = []
             for mov in movimientos_entrada:
-                # Descontar del lote del centro
-                Lote.objects.filter(pk=mov.lote.pk).update(
+                lote = Lote.objects.select_for_update().get(pk=mov.lote.pk)
+                if lote.cantidad_actual < mov.cantidad:
+                    lotes_sin_stock.append({
+                        'lote': lote.numero_lote,
+                        'producto': str(lote.producto),
+                        'cantidad_actual': lote.cantidad_actual,
+                        'cantidad_requerida': mov.cantidad,
+                        'deficit': mov.cantidad - lote.cantidad_actual
+                    })
+            
+            # ISS-SEC-CRITICAL FIX: Si hay lotes sin stock suficiente, abortar reversión
+            if lotes_sin_stock:
+                raise ValidationError({
+                    'reversion': (
+                        f"No se puede completar la reversión: el centro ya consumió parte del stock recibido. "
+                        f"Lotes sin stock suficiente para revertir: {len(lotes_sin_stock)}. "
+                        f"Detalle: {lotes_sin_stock}. "
+                        f"Debe registrar un ajuste de inventario manual antes de cancelar."
+                    ),
+                    'lotes_afectados': lotes_sin_stock
+                })
+            
+            # ISS-SEC-CRITICAL FIX: Ahora sí descontar, sabiendo que todos tienen stock
+            for mov in movimientos_entrada:
+                lote = Lote.objects.select_for_update().get(pk=mov.lote.pk)
+                
+                # Validación redundante por seguridad
+                if lote.cantidad_actual < mov.cantidad:
+                    raise ValidationError({
+                        'reversion': f"Error de concurrencia: lote {lote.numero_lote} modificado durante operación"
+                    })
+                
+                # Descontar del lote del centro (ahora sabemos que tiene stock)
+                Lote.objects.filter(pk=lote.pk).update(
                     cantidad_actual=F('cantidad_actual') - mov.cantidad,
                     updated_at=timezone.now()
                 )

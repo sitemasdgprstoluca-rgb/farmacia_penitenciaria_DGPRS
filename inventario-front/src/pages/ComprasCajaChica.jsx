@@ -60,6 +60,7 @@ import {
 import PageHeader from '../components/PageHeader';
 import Pagination from '../components/Pagination';
 import ConfirmModal from '../components/ConfirmModal';
+import TwoStepConfirmModal from '../components/TwoStepConfirmModal';
 import { usePermissions } from '../hooks/usePermissions';
 import { esFarmaciaAdmin, esCentro } from '../utils/roles';
 
@@ -142,12 +143,15 @@ const ComprasCajaChica = () => {
   
   // Filtros
   const [searchTerm, setSearchTerm] = useState('');
-  const [centroFiltro, setCentroFiltro] = useState(centroUsuario || '');
+  const [centroFiltro, setCentroFiltro] = useState('');
   const [estadoFiltro, setEstadoFiltro] = useState('');
   const [fechaDesde, setFechaDesde] = useState('');
   const [fechaHasta, setFechaHasta] = useState('');
   // Mostrar filtros expandidos por defecto para Farmacia
   const [showFilters, setShowFilters] = useState(false);
+  
+  // ISS-SEC: Flag para controlar si el usuario está listo (hidratado)
+  const [usuarioListo, setUsuarioListo] = useState(false);
   
   // Listas auxiliares
   const [centros, setCentros] = useState([]);
@@ -192,6 +196,7 @@ const ComprasCajaChica = () => {
     detalles: []
   });
   const [recibirModal, setRecibirModal] = useState({ show: false, compra: null, detalles: [] });
+  const [confirmRecibirModal, setConfirmRecibirModal] = useState({ show: false }); // ISS-SEC: Confirmación de 2 pasos
   const [stockRechazoModal, setStockRechazoModal] = useState({ show: false, compra: null, observaciones: '' });
 
   // Expandir filtros automáticamente para farmacia
@@ -200,6 +205,17 @@ const ComprasCajaChica = () => {
       setShowFilters(true);
     }
   }, [esUsuarioFarmacia]);
+
+  // ISS-SEC: Sincronizar centroFiltro cuando centroUsuario se resuelva (hidratación)
+  useEffect(() => {
+    if (centroUsuario) {
+      setCentroFiltro(centroUsuario);
+      setUsuarioListo(true);
+    } else if (user && !centroUsuario) {
+      // Usuario sin centro (farmacia/admin) - listo para cargar sin filtro de centro
+      setUsuarioListo(true);
+    }
+  }, [centroUsuario, user]);
 
   // Cargar centros
   useEffect(() => {
@@ -235,6 +251,17 @@ const ComprasCajaChica = () => {
 
   // Cargar compras
   const fetchCompras = useCallback(async () => {
+    // ISS-SEC: No cargar hasta que el usuario esté hidratado
+    if (!usuarioListo) {
+      return;
+    }
+    
+    // ISS-SEC: Si es usuario de centro, DEBE tener centroFiltro
+    if (esUsuarioCentro && !centroFiltro) {
+      console.warn('Usuario de centro sin filtro de centro, esperando hidratación...');
+      return;
+    }
+    
     setLoading(true);
     try {
       const params = {
@@ -259,7 +286,7 @@ const ComprasCajaChica = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, searchTerm, centroFiltro, estadoFiltro, fechaDesde, fechaHasta]);
+  }, [currentPage, searchTerm, centroFiltro, estadoFiltro, fechaDesde, fechaHasta, usuarioListo, esUsuarioCentro]);
 
   useEffect(() => {
     fetchCompras();
@@ -416,6 +443,12 @@ const ComprasCajaChica = () => {
     // Validar motivo de compra (obligatorio)
     if (!formData.motivo_compra?.trim()) {
       toast.error('Debe ingresar el motivo de la compra');
+      return;
+    }
+    
+    // ISS-SEC: Validar que centro exista (obligatorio)
+    if (!formData.centro) {
+      toast.error('Debe seleccionar un centro. Si eres usuario de centro, espera a que se cargue tu perfil.');
       return;
     }
     
@@ -791,6 +824,25 @@ const ComprasCajaChica = () => {
     }
   };
 
+  // ISS-SEC: Iniciar confirmación de 2 pasos para recibir
+  const iniciarRecibir = () => {
+    if (!recibirModal.compra) return;
+    
+    // Validar que todas las cantidades recibidas sean > 0
+    const detallesInvalidos = recibirModal.detalles.filter(d => {
+      const cantidad = parseInt(d.cantidad_recibida);
+      return isNaN(cantidad) || cantidad <= 0;
+    });
+    
+    if (detallesInvalidos.length > 0) {
+      toast.error(`Todas las cantidades recibidas deben ser mayores a 0. ${detallesInvalidos.length} producto(s) con cantidad inválida.`);
+      return;
+    }
+    
+    // Mostrar modal de confirmación
+    setConfirmRecibirModal({ show: true });
+  };
+
   const handleRecibir = async () => {
     if (!recibirModal.compra) return;
     
@@ -804,6 +856,9 @@ const ComprasCajaChica = () => {
       toast.error(`Todas las cantidades recibidas deben ser mayores a 0. ${detallesInvalidos.length} producto(s) con cantidad inválida.`);
       return;
     }
+    
+    // Cerrar modal de confirmación
+    setConfirmRecibirModal({ show: false });
     
     try {
       await comprasCajaChicaAPI.recibir(recibirModal.compra.id, recibirModal.detalles.map(d => ({
@@ -1578,14 +1633,25 @@ const ComprasCajaChica = () => {
         </div>
       )}
 
-      {/* Modal de confirmación de eliminación */}
-      <ConfirmModal
+      {/* ISS-SEC: Modal de confirmación de 2 pasos para eliminar */}
+      <TwoStepConfirmModal
         open={deleteModal.show}
         onCancel={() => setDeleteModal({ show: false, compra: null })}
         onConfirm={handleDelete}
         title="Eliminar Solicitud de Compra"
-        message={`¿Está seguro de eliminar la solicitud ${deleteModal.compra?.folio}? Esta acción no se puede deshacer.`}
+        message={`¿Está seguro de eliminar la solicitud ${deleteModal.compra?.folio}?`}
+        warnings={[
+          'Se eliminará la solicitud y todos sus detalles',
+          'Esta acción no se puede deshacer',
+          'Quedará registrado en auditoría'
+        ]}
+        itemInfo={deleteModal.compra ? {
+          'Folio': deleteModal.compra.folio,
+          'Estado': deleteModal.compra.estado,
+          'Total': deleteModal.compra.total ? `$${deleteModal.compra.total}` : 'N/A'
+        } : null}
         confirmText="Eliminar"
+        cancelText="No, volver"
         tone="danger"
       />
 
@@ -1991,7 +2057,7 @@ const ComprasCajaChica = () => {
                 Cancelar
               </button>
               <button
-                onClick={handleRecibir}
+                onClick={iniciarRecibir}
                 className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
               >
                 <FaCheckCircle />
@@ -2001,6 +2067,28 @@ const ComprasCajaChica = () => {
           </div>
         </div>
       )}
+
+      {/* ISS-SEC: Modal de confirmación de 2 pasos para recibir productos */}
+      <TwoStepConfirmModal
+        open={confirmRecibirModal.show}
+        onCancel={() => setConfirmRecibirModal({ show: false })}
+        onConfirm={handleRecibir}
+        title="Confirmar Recepción de Productos"
+        message={`¿Confirma la recepción de productos para la compra ${recibirModal.compra?.folio}?`}
+        warnings={[
+          'Los productos se agregarán al inventario de caja chica',
+          `Se registrarán ${recibirModal.detalles?.length || 0} producto(s)`,
+          'Esta operación no se puede deshacer'
+        ]}
+        itemInfo={recibirModal.compra ? {
+          'Folio': recibirModal.compra.folio,
+          'Factura': recibirModal.compra.numero_factura || 'N/A',
+          'Total': recibirModal.compra.total ? `$${recibirModal.compra.total}` : 'N/A'
+        } : null}
+        confirmText="Sí, Confirmar Recepción"
+        cancelText="No, revisar"
+        tone="info"
+      />
 
       {/* Modal de rechazo por stock disponible (Farmacia) */}
       {stockRechazoModal.show && (

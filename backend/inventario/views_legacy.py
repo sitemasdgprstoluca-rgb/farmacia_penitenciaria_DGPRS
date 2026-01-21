@@ -5865,12 +5865,21 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def cancelar(self, request, pk=None):
         """
-        ISS-RES-002 FIX (audit-final): Cancelar requisición con transacción atómica.
+        ISS-RES-002 FIX (audit-critical): Cancelar requisición con reversión de movimientos.
         
-        Usa transaction.atomic() y select_for_update() para prevenir
-        modificaciones concurrentes durante la cancelación.
+        CORRECCION CRITICA: Ahora usa RequisicionService.cancelar_requisicion para
+        manejar correctamente la reversión de movimientos de inventario cuando existen.
+        
+        Si la requisición ya generó movimientos (salidas de farmacia, entradas a centro),
+        la cancelación verificará y revertirá el stock apropiadamente.
+        
+        Parámetros:
+        - motivo: Motivo de cancelación (obligatorio, mín 10 caracteres)
+        - forzar_reversion: Si True, revierte movimientos existentes (default: True para cancelación)
         """
         from django.db import transaction
+        from inventario.services.requisicion_service import RequisicionService
+        from core.models import Movimiento
         
         try:
             with transaction.atomic():
@@ -5880,7 +5889,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 estado_actual = (requisicion.estado or '').lower()
                 
                 # Verificar estado después del bloqueo (pudo cambiar)
-                if estado_actual in ['surtida', 'cancelada', 'rechazada', 'entregada']:
+                if estado_actual in ['cancelada', 'rechazada', 'entregada', 'vencida']:
                     return Response({
                         'error': f'No se puede cancelar una requisición en estado {requisicion.estado}',
                         'estado_actual': requisicion.estado
@@ -5905,7 +5914,6 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                             'error': 'Solo el solicitante o roles autorizados pueden cancelar esta requisición'
                         }, status=status.HTTP_403_FORBIDDEN)
                 
-                # ISS-RES-002: Usar cambiar_estado para validaciones
                 # ISS-FIX: Motivo obligatorio para cancelación (mínimo 10 caracteres)
                 motivo = request.data.get('motivo') or request.data.get('observaciones') or request.data.get('comentario') or ''
                 motivo = motivo.strip() if motivo else ''
@@ -5915,51 +5923,41 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                         'error': 'Debe proporcionar un motivo de cancelación (mínimo 10 caracteres)'
                     }, status=status.HTTP_400_BAD_REQUEST)
                 
-                estado_anterior = requisicion.estado
+                # ISS-CRITICAL FIX: Verificar si hay movimientos de inventario
+                tiene_movimientos = Movimiento.objects.filter(requisicion=requisicion).exists()
                 
+                # ISS-CRITICAL FIX: Usar servicio para manejar reversión de movimientos
+                # El servicio maneja correctamente la reversión de stock cuando hay movimientos
                 try:
-                    requisicion.cambiar_estado(
-                        'cancelada',
-                        usuario=request.user,
+                    service = RequisicionService(requisicion, request.user)
+                    # Forzar reversión automáticamente si hay movimientos
+                    forzar_reversion = request.data.get('forzar_reversion', tiene_movimientos)
+                    resultado = service.cancelar_requisicion(
                         motivo=motivo,
-                        validar=True
+                        forzar_reversion=forzar_reversion
                     )
-                    # Guardar motivo en notas
-                    requisicion.notas = f"[CANCELADA] {motivo}"
-                    requisicion.save(update_fields=['estado', 'notas', 'updated_at'])
                     
-                    # ISS-FIX: Registrar en historial con usuario y motivo
-                    from core.models import RequisicionHistorialEstados
-                    RequisicionHistorialEstados.objects.create(
-                        requisicion=requisicion,
-                        estado_anterior=estado_anterior,
-                        estado_nuevo='cancelada',
-                        usuario=request.user,
-                        accion='cancelar',
-                        motivo=motivo,
-                        observaciones=f'Cancelada por {request.user.get_full_name() or request.user.username}',
-                        ip_address=request.META.get('REMOTE_ADDR', ''),
-                        datos_adicionales={
-                            'cancelado_por_id': request.user.id,
-                            'cancelado_por_nombre': request.user.get_full_name() or request.user.username,
-                            'cancelado_por_rol': getattr(request.user, 'rol', 'N/A'),
-                        }
+                    # Log de auditoría
+                    logger.info(
+                        f"ISS-RES-002: Requisición {requisicion.numero} cancelada por "
+                        f"usuario {request.user.username}. Motivo: {motivo}. "
+                        f"Movimientos revertidos: {len(resultado.get('movimientos_revertidos', []))}"
                     )
-                except ValidationError as e:
+                    
                     return Response({
-                        'error': str(e.message_dict if hasattr(e, 'message_dict') else e)
+                        'mensaje': 'Requisición cancelada correctamente',
+                        'requisicion': RequisicionSerializer(requisicion).data,
+                        'movimientos_revertidos': resultado.get('movimientos_revertidos', []),
+                        'tenia_movimientos': tiene_movimientos
+                    })
+                    
+                except ValidationError as e:
+                    error_msg = str(e.message_dict if hasattr(e, 'message_dict') else e)
+                    return Response({
+                        'error': error_msg,
+                        'tiene_movimientos': tiene_movimientos,
+                        'sugerencia': 'Si hay movimientos, se requiere confirmar la reversión de stock'
                     }, status=status.HTTP_400_BAD_REQUEST)
-                
-                # Log de auditoría
-                logger.info(
-                    f"ISS-RES-002: Requisición {requisicion.numero} cancelada por "
-                    f"usuario {request.user.username}. Motivo: {motivo}"
-                )
-                
-                return Response({
-                    'mensaje': 'Requisición cancelada',
-                    'requisicion': RequisicionSerializer(requisicion).data
-                })
                 
         except Requisicion.DoesNotExist:
             return Response({

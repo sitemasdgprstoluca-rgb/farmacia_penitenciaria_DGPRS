@@ -28,6 +28,7 @@ import {
 import PageHeader from '../components/PageHeader';
 import Pagination from '../components/Pagination';
 import ConfirmModal from '../components/ConfirmModal';
+import TwoStepConfirmModal from '../components/TwoStepConfirmModal';
 import { usePermissions } from '../hooks/usePermissions';
 import { esFarmaciaAdmin } from '../utils/roles';
 
@@ -71,6 +72,12 @@ const Dispensaciones = () => {
   
   // Centro del usuario (para filtrado automático)
   const centroUsuario = user?.centro?.id || user?.centro_id;
+  
+  // ISS-SEC: Detectar si es usuario de centro (no farmacia, no admin)
+  const esUsuarioCentro = !!centroUsuario && !esUsuarioFarmacia;
+  
+  // ISS-SEC: Flag para controlar si el usuario está listo (hidratado)
+  const [usuarioListo, setUsuarioListo] = useState(false);
 
   // Estados principales
   const [dispensaciones, setDispensaciones] = useState([]);
@@ -80,13 +87,24 @@ const Dispensaciones = () => {
   
   // Filtros - Si es usuario de centro, filtrar por su centro automáticamente
   const [searchTerm, setSearchTerm] = useState('');
-  const [centroFiltro, setCentroFiltro] = useState(centroUsuario || '');
+  const [centroFiltro, setCentroFiltro] = useState('');
   const [estadoFiltro, setEstadoFiltro] = useState('');
   const [tipoFiltro, setTipoFiltro] = useState('');
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
   // Mostrar filtros expandidos por defecto para Farmacia
   const [showFilters, setShowFilters] = useState(!centroUsuario);
+  
+  // ISS-SEC: Sincronizar centroFiltro cuando centroUsuario se resuelva (hidratación)
+  useEffect(() => {
+    if (centroUsuario) {
+      setCentroFiltro(centroUsuario);
+      setUsuarioListo(true);
+    } else if (user && !centroUsuario) {
+      // Usuario sin centro (farmacia/admin) - listo para cargar sin filtro de centro
+      setUsuarioListo(true);
+    }
+  }, [centroUsuario, user]);
   
   // Listas auxiliares
   const [centros, setCentros] = useState([]);
@@ -178,6 +196,17 @@ const Dispensaciones = () => {
 
   // Cargar dispensaciones
   const fetchDispensaciones = useCallback(async () => {
+    // ISS-SEC: No cargar hasta que el usuario esté hidratado
+    if (!usuarioListo) {
+      return;
+    }
+    
+    // ISS-SEC: Si es usuario de centro, DEBE tener centroFiltro
+    if (esUsuarioCentro && !centroFiltro) {
+      console.warn('Usuario de centro sin filtro de centro, esperando hidratación...');
+      return;
+    }
+    
     setLoading(true);
     try {
       const params = {
@@ -203,7 +232,7 @@ const Dispensaciones = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, searchTerm, centroFiltro, estadoFiltro, tipoFiltro, fechaInicio, fechaFin]);
+  }, [currentPage, searchTerm, centroFiltro, estadoFiltro, tipoFiltro, fechaInicio, fechaFin, usuarioListo, esUsuarioCentro]);
 
   useEffect(() => {
     fetchDispensaciones();
@@ -362,7 +391,8 @@ const Dispensaciones = () => {
   const resetForm = () => {
     setFormData({
       paciente: '',
-      centro: user?.centro?.id || '',
+      // ISS-SEC: Usar centroUsuario para asegurar que usuarios de centro solo creen en su centro
+      centro: centroUsuario || '',
       tipo_dispensacion: 'normal',
       fecha_prescripcion: new Date().toISOString().split('T')[0],
       medico_prescriptor: '',
@@ -1027,14 +1057,18 @@ const Dispensaciones = () => {
                       name="centro"
                       value={formData.centro}
                       onChange={handleInputChange}
-                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-guinda"
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-guinda ${esUsuarioCentro ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                       required
+                      disabled={esUsuarioCentro}
                     >
                       <option value="">Seleccionar centro</option>
                       {centros.map(centro => (
                         <option key={centro.id} value={centro.id}>{centro.nombre}</option>
                       ))}
                     </select>
+                    {esUsuarioCentro && (
+                      <p className="text-xs text-gray-500 mt-1">Centro asignado automáticamente según tu perfil</p>
+                    )}
                   </div>
                   
                   <div>
@@ -1428,14 +1462,25 @@ const Dispensaciones = () => {
         </div>
       )}
 
-      {/* Modal de confirmar dispensación */}
-      <ConfirmModal
+      {/* ISS-SEC: Modal de confirmación de 2 pasos para dispensar */}
+      <TwoStepConfirmModal
         open={dispensarModal.show}
         onCancel={() => !dispensarModal.loading && setDispensarModal({ show: false, dispensacion: null, loading: false })}
         onConfirm={handleDispensar}
         title="Confirmar Dispensación"
-        message={`¿Está seguro de procesar la dispensación ${dispensarModal.dispensacion?.folio}? Esta acción descontará los medicamentos del inventario.`}
+        message={`¿Está seguro de procesar la dispensación ${dispensarModal.dispensacion?.folio}?`}
+        warnings={[
+          'Se descontarán los medicamentos del inventario',
+          'Se actualizará el registro del paciente',
+          'Esta operación no se puede deshacer'
+        ]}
+        itemInfo={dispensarModal.dispensacion ? {
+          'Folio': dispensarModal.dispensacion.folio,
+          'Paciente': dispensarModal.dispensacion.paciente_nombre || 'N/A',
+          'Tipo': dispensarModal.dispensacion.tipo || 'Normal'
+        } : null}
         confirmText={dispensarModal.loading ? "Procesando..." : "Dispensar"}
+        cancelText="No, volver"
         loading={dispensarModal.loading}
         tone="info"
       />

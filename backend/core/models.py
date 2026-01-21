@@ -3115,21 +3115,44 @@ class SalidaDonacion(models.Model):
         return 'entregado' if self.finalizado else 'pendiente'
     
     def save(self, *args, **kwargs):
-        # El stock se descuenta AL CREAR para reservarlo inmediatamente
-        # Esto evita que múltiples usuarios soliciten el mismo stock
+        """
+        ISS-SEC-CRITICAL FIX: Descuento atómico con bloqueo para evitar sobreconsumo.
+        
+        El stock se descuenta AL CREAR para reservarlo inmediatamente.
+        Esto evita que múltiples usuarios soliciten el mismo stock.
+        
+        Se usa select_for_update() para bloquear el registro del detalle
+        durante la validación y descuento, previniendo race conditions.
+        """
+        from django.db import transaction
+        from django.db.models import F
+        
         is_new = self.pk is None
         
         if is_new:  # Solo en creación
-            if self.cantidad > self.detalle_donacion.cantidad_disponible:
-                raise ValueError(
-                    f"Stock insuficiente. Disponible: {self.detalle_donacion.cantidad_disponible}, "
-                    f"Solicitado: {self.cantidad}"
+            # ISS-SEC-CRITICAL FIX: Usar transacción con bloqueo para evitar concurrencia
+            with transaction.atomic():
+                # Bloquear el detalle_donacion para evitar lecturas sucias
+                detalle = DetalleDonacion.objects.select_for_update().get(pk=self.detalle_donacion_id)
+                
+                # Validar stock disponible DESPUÉS del bloqueo
+                if self.cantidad > detalle.cantidad_disponible:
+                    raise ValueError(
+                        f"Stock insuficiente. Disponible: {detalle.cantidad_disponible}, "
+                        f"Solicitado: {self.cantidad}"
+                    )
+                
+                # Descontar inmediatamente al crear (reservar stock)
+                # Usar F() para actualización atómica en BD
+                DetalleDonacion.objects.filter(pk=detalle.pk).update(
+                    cantidad_disponible=F('cantidad_disponible') - self.cantidad
                 )
-            # Descontar inmediatamente al crear (reservar stock)
-            self.detalle_donacion.cantidad_disponible -= self.cantidad
-            self.detalle_donacion.save(update_fields=['cantidad_disponible'])
-        
-        super().save(*args, **kwargs)
+                
+                # Guardar la salida
+                super().save(*args, **kwargs)
+        else:
+            # En actualizaciones, solo guardar sin tocar stock
+            super().save(*args, **kwargs)
     
     def finalizar(self, usuario=None):
         """

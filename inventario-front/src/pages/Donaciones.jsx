@@ -41,6 +41,7 @@ import { COLORS } from '../constants/theme';
 import Pagination from '../components/Pagination';
 import { usePermissions } from '../hooks/usePermissions';
 import ConfirmModal from '../components/ConfirmModal';
+import TwoStepConfirmModal from '../components/TwoStepConfirmModal';
 import { esFarmaciaAdmin as checkEsFarmaciaAdmin } from '../utils/roles';
 import SalidaMasivaDonaciones from '../components/SalidaMasivaDonaciones';
 
@@ -4059,26 +4060,48 @@ const Donaciones = () => {
         onCancel={() => setConfirmDeleteProducto(null)}
       />
 
-      {/* Modal de confirmación finalizar entrega */}
-      <ConfirmModal
+      {/* ISS-SEC: Modal de confirmación de 2 pasos para finalizar entrega */}
+      <TwoStepConfirmModal
         open={!!confirmFinalizarEntrega}
-        title="Confirmar Entrega"
-        message={confirmFinalizarEntrega ? `¿Confirmas que la entrega de ${confirmFinalizarEntrega.cantidad} unidades a "${confirmFinalizarEntrega.destinatario}" ha sido completada?\n\nAl confirmar, el stock se descontará del inventario de donaciones y se generará el comprobante de entrega.` : ''}
+        title="Confirmar Entrega de Donación"
+        message={confirmFinalizarEntrega ? `¿Confirmas que la entrega de ${confirmFinalizarEntrega.cantidad} unidades a "${confirmFinalizarEntrega.destinatario}" ha sido completada?` : ''}
+        warnings={[
+          'Se descontará el stock del inventario de donaciones',
+          'Se generará el comprobante de entrega',
+          'Esta operación no se puede deshacer'
+        ]}
+        itemInfo={confirmFinalizarEntrega ? {
+          'Producto': confirmFinalizarEntrega.producto_nombre || 'N/A',
+          'Cantidad': `${confirmFinalizarEntrega.cantidad} unidades`,
+          'Destinatario': confirmFinalizarEntrega.destinatario
+        } : null}
         confirmText="Sí, Confirmar Entrega"
-        cancelText="Cancelar"
-        tone="primary"
+        cancelText="No, volver"
+        tone="warning"
         onConfirm={() => confirmFinalizarEntrega && handleFinalizarEntrega(confirmFinalizarEntrega)}
         onCancel={() => setConfirmFinalizarEntrega(null)}
       />
 
-      {/* Modal de confirmación finalizar GRUPO de entregas (salida masiva) */}
-      <ConfirmModal
+      {/* ISS-SEC: Modal de confirmación de 2 pasos para finalizar GRUPO de entregas */}
+      <TwoStepConfirmModal
         open={!!confirmFinalizarGrupo}
-        title="Confirmar Entrega Completa"
-        message={confirmFinalizarGrupo ? `¿Confirmas que TODA la entrega a "${confirmFinalizarGrupo.destinatario}" ha sido completada?\n\n• Productos: ${confirmFinalizarGrupo.entregas.length}\n• Cantidad total: ${confirmFinalizarGrupo.totalCantidad} unidades\n\nSe marcarán como entregados todos los productos pendientes de este grupo.` : ''}
+        title="Confirmar Entrega Completa (Grupo)"
+        message={confirmFinalizarGrupo ? `¿Confirmas que TODA la entrega a "${confirmFinalizarGrupo.destinatario}" ha sido completada?` : ''}
+        warnings={[
+          `Se marcarán ${confirmFinalizarGrupo?.entregas?.length || 0} productos como entregados`,
+          `Se descontarán ${confirmFinalizarGrupo?.totalCantidad || 0} unidades del inventario`,
+          'Esta operación afecta múltiples items',
+          'No se puede deshacer'
+        ]}
+        itemInfo={confirmFinalizarGrupo ? {
+          'Destinatario': confirmFinalizarGrupo.destinatario,
+          'Total Productos': confirmFinalizarGrupo.entregas?.length || 0,
+          'Total Unidades': confirmFinalizarGrupo.totalCantidad || 0
+        } : null}
         confirmText={finalizandoGrupo ? "Procesando..." : "Sí, Confirmar Todo"}
-        cancelText="Cancelar"
-        tone="primary"
+        cancelText="No, volver"
+        tone="warning"
+        loading={finalizandoGrupo}
         onConfirm={() => confirmFinalizarGrupo && handleFinalizarGrupo(confirmFinalizarGrupo)}
         onCancel={() => setConfirmFinalizarGrupo(null)}
       />
