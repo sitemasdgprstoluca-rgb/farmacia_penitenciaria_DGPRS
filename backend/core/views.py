@@ -7187,14 +7187,36 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                     errores_stock.append(f'{detalle.producto.nombre}: El lote ya no existe')
                     continue
                 
-                # VALIDACIÓN CRÍTICA: Verificar que el lote pertenezca al centro de la dispensación
-                # Esto asegura que NO se descuente del inventario de farmacia central
-                if lote.centro_id and dispensacion.centro_id:
+                # ISS-SEC FIX: VALIDACIÓN CRÍTICA de centro del lote
+                # Caso 1: Dispensación para un centro específico
+                if dispensacion.centro_id:
+                    # Si el lote NO tiene centro (es de Farmacia Central), BLOQUEAR
+                    # No se puede dispensar desde Farmacia Central hacia un centro
+                    if not lote.centro_id:
+                        errores_stock.append(
+                            f'{detalle.producto.nombre} (Lote: {lote.numero_lote}): '
+                            f'El lote pertenece a Farmacia Central y no puede usarse para '
+                            f'dispensaciones en {dispensacion.centro.nombre}. '
+                            f'Seleccione un lote del centro {dispensacion.centro.nombre}.'
+                        )
+                        continue
+                    # Si el lote tiene centro diferente al de la dispensación, BLOQUEAR
                     if lote.centro_id != dispensacion.centro_id:
                         errores_stock.append(
                             f'{detalle.producto.nombre} (Lote: {lote.numero_lote}): '
                             f'El lote no pertenece al centro de esta dispensación. '
-                            f'Seleccione un lote del centro {dispensacion.centro.nombre if dispensacion.centro else "correcto"}'
+                            f'Seleccione un lote del centro {dispensacion.centro.nombre}.'
+                        )
+                        continue
+                # Caso 2: Dispensación desde Farmacia Central (centro_id NULL)
+                # Solo puede usar lotes de Farmacia Central (lote.centro_id NULL)
+                else:
+                    if lote.centro_id:
+                        errores_stock.append(
+                            f'{detalle.producto.nombre} (Lote: {lote.numero_lote}): '
+                            f'El lote pertenece a un centro y no puede usarse para '
+                            f'dispensaciones de Farmacia Central. '
+                            f'Seleccione un lote de Farmacia Central.'
                         )
                         continue
                 
@@ -7288,18 +7310,29 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                     movimiento._stock_pre_movimiento = stock_antes
                     movimiento.save()
                     
-                    # Actualizar detalle
-                    detalle.cantidad_dispensada = cantidad
-                    detalle.estado = 'dispensado' if cantidad >= detalle.cantidad_prescrita else 'parcial'
+                    # ISS-SEC FIX: Actualizar detalle ACUMULANDO cantidad_dispensada
+                    # En dispensaciones parciales/reintentos, no sobrescribir
+                    cantidad_previa = detalle.cantidad_dispensada or 0
+                    detalle.cantidad_dispensada = cantidad_previa + cantidad
+                    # Determinar estado basado en TOTAL acumulado vs prescrito
+                    detalle.estado = 'dispensado' if detalle.cantidad_dispensada >= detalle.cantidad_prescrita else 'parcial'
                     detalle.save()
                     
                     total_dispensado += cantidad
                     total_prescrito += detalle.cantidad_prescrita
                 
-                # Actualizar estado de la dispensación
-                if total_dispensado >= total_prescrito:
+                # ISS-SEC FIX: Calcular estado con el TOTAL HISTÓRICO de todos los detalles
+                # No solo los procesados en esta transacción
+                total_dispensado_historico = sum(
+                    (d.cantidad_dispensada or 0) for d in dispensacion.detalles.all()
+                )
+                total_prescrito_global = sum(
+                    d.cantidad_prescrita for d in dispensacion.detalles.all()
+                )
+                
+                if total_dispensado_historico >= total_prescrito_global:
                     dispensacion.estado = 'dispensada'
-                elif total_dispensado > 0:
+                elif total_dispensado_historico > 0:
                     dispensacion.estado = 'parcial'
                 
                 dispensacion.dispensado_por = request.user

@@ -943,8 +943,15 @@ const TRANSICIONES_V2 = {
 const esTransicionValida = (estadoActual, accion) => {
   if (!estadoActual) return true; // Si no hay estado, dejar que backend valide
   const estadoNorm = estadoActual.toUpperCase().replace(/ /g, '_');
-  const permitidas = TRANSICIONES_V2[estadoNorm] || [];
-  return permitidas.length === 0 || permitidas.includes(accion);
+  const permitidas = TRANSICIONES_V2[estadoNorm];
+  
+  // ISS-SEC FIX: Si el estado no existe en el mapa o tiene array vacío, 
+  // es un estado final - NO permitir ninguna acción
+  if (!permitidas || permitidas.length === 0) {
+    return false;
+  }
+  
+  return permitidas.includes(accion);
 };
 
 /**

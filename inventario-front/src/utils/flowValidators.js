@@ -425,35 +425,49 @@ export const validarRequisicionEnvio = (requisicion, options = {}) => {
  * @returns {{ valido: boolean, error: string|null, accionRequerida: string|null }}
  */
 export const validarTransicionRequisicion = (estadoActual, nuevoEstado, rol) => {
-  // Usar validador V2 del API
-  const transicionValida = esTransicionValidaV2(estadoActual, nuevoEstado);
+  // ISS-SEC FIX: Mapear estado destino a acción correspondiente ANTES de validar
+  // esTransicionValidaV2 espera una ACCIÓN, no un estado destino
+  const MAPA_ESTADO_A_ACCION = {
+    'pendiente_admin': 'enviar',
+    'pendiente_director': 'autorizarAdmin',
+    'enviada': 'autorizarDirector',
+    'en_revision': 'recibirFarmacia',
+    'autorizada': 'autorizarFarmacia',
+    'en_surtido': 'surtir',
+    'surtida': 'surtir',
+    'entregada': 'confirmarEntrega',
+    'recibida': 'marcarRecibida',
+    'rechazada': 'rechazar',
+    'cancelada': 'cancelar',
+    'devuelta': 'devolver',
+  };
   
-  if (!transicionValida) {
-    validationMetrics.record('transition', false, { estadoActual, nuevoEstado, rol });
+  const accionRequerida = MAPA_ESTADO_A_ACCION[nuevoEstado?.toLowerCase()];
+  
+  // ISS-SEC FIX: Si no hay acción mapeada, la transición no es válida
+  if (!accionRequerida) {
+    validationMetrics.record('transition', false, { estadoActual, nuevoEstado, rol, error: 'estado_destino_desconocido' });
     return {
       valido: false,
-      error: `No se puede cambiar de "${estadoActual}" a "${nuevoEstado}"`,
+      error: `Estado destino "${nuevoEstado}" no es válido`,
       accionRequerida: null,
+    };
+  }
+  
+  // ISS-SEC FIX: Validar usando la ACCIÓN, no el estado destino
+  const transicionValida = esTransicionValidaV2(estadoActual, accionRequerida);
+  
+  if (!transicionValida) {
+    validationMetrics.record('transition', false, { estadoActual, nuevoEstado, rol, accionRequerida });
+    return {
+      valido: false,
+      error: `No se puede ejecutar "${accionRequerida}" desde estado "${estadoActual}"`,
+      accionRequerida,
     };
   }
   
   // Verificar permisos del rol
   const accionesPermitidas = ACCIONES_POR_ROL[rol?.toUpperCase()]?.[estadoActual] || [];
-  
-  // Mapear nuevoEstado a acción requerida
-  const mapaEstadoAccion = {
-    enviada: 'enviar',
-    pendiente_admin: 'enviar',
-    autorizada: 'aprobar',
-    rechazada: 'rechazar',
-    en_surtido: 'surtir',
-    surtida: 'completar_surtido',
-    entregada: 'entregar',
-    cancelada: 'cancelar',
-    devuelta: 'devolver',
-  };
-  
-  const accionRequerida = mapaEstadoAccion[nuevoEstado];
   
   if (accionRequerida && !accionesPermitidas.includes(accionRequerida)) {
     validationMetrics.record('transition', false, { estadoActual, nuevoEstado, rol, accionRequerida });

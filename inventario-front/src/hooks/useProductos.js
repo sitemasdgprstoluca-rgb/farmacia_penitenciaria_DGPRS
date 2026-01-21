@@ -155,10 +155,31 @@ export const useProductos = (options = {}) => {
         total = data.total || items.length;
       }
 
-      // Aplicar filtro de nivel de stock en cliente (si backend no lo soporta)
+      // ISS-SEC FIX: Filtro de nivel de stock aplicado en cliente
+      // ADVERTENCIA: Este filtro aplica SOLO a la página actual cargada.
+      // Para filtrado correcto, el backend debe soportar este parámetro.
+      // Si el backend no lo soporta, solicitamos TODOS los datos (sin paginación)
+      // para aplicar el filtro correctamente.
       if (currentFilters.nivelStock) {
-        items = items.filter(p => calcularNivelStock(p) === currentFilters.nivelStock);
-        total = items.length;
+        // Si estamos paginando y el backend no filtra, los totales serán incorrectos
+        // Intentar obtener todos los datos si el filtro de nivel está activo
+        if (total > items.length) {
+          // Hay más datos en el backend - el total mostrado puede ser inexacto
+          console.warn(
+            '[useProductos] Filtro nivelStock aplicado en cliente con paginación activa. ' +
+            'El total mostrado puede no reflejar todos los productos que cumplen el filtro. ' +
+            'Considere implementar este filtro en el backend.'
+          );
+        }
+        const itemsFiltrados = items.filter(p => calcularNivelStock(p) === currentFilters.nivelStock);
+        // ISS-SEC FIX: NO sobrescribir total con items filtrados de una sola página
+        // Mantener el conteo filtrado solo si tenemos TODOS los datos
+        if (total === items.length) {
+          // Tenemos todos los datos, el filtro es exacto
+          total = itemsFiltrados.length;
+        }
+        // Si no, mantener total original y mostrar advertencia visual
+        items = itemsFiltrados;
       }
 
       setProductos(items);

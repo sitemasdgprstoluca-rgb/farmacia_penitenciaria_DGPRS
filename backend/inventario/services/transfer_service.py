@@ -136,6 +136,19 @@ class TransferService:
                 errores=["lote inactivo"]
             )
         
+        # ISS-SEC FIX: Validar que el lote NO esté vencido antes de transferir
+        # Esto replica la validación de Movimiento.clean() que se bypasea con skip_validation=True
+        from django.utils import timezone
+        if lote_bloqueado.fecha_caducidad and lote_bloqueado.fecha_caducidad < timezone.now().date():
+            return TransferenciaResultado(
+                exitoso=False,
+                mensaje=(
+                    f"No se puede transferir del lote {lote_bloqueado.numero_lote} "
+                    f"porque está vencido (caducidad: {lote_bloqueado.fecha_caducidad})"
+                ),
+                errores=["lote vencido"]
+            )
+        
         if lote_bloqueado.cantidad_actual < cantidad:
             return TransferenciaResultado(
                 exitoso=False,

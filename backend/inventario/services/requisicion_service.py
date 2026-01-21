@@ -1698,10 +1698,13 @@ class RequisicionService:
         # ISS-FIX: Obtener rol del usuario para log de auditoría
         user_rol = (getattr(self.usuario, 'rol', '') or 'N/A').lower() if self.usuario else 'sistema'
         
-        # ISS-FIX: Determinar centro_origen/centro_destino correctamente
-        # Para SALIDAS de Farmacia Central (centro=None):
-        #   - centro_origen = None (Farmacia Central)
-        #   - centro_destino = centro de la requisición (a dónde van)
+        # ISS-FIX (audit-final): Determinar centro_origen/centro_destino correctamente
+        # IMPORTANTE: En el flujo de requisiciones:
+        #   - centro_origen = Centro que SOLICITA (centro médico/penitenciario)
+        #   - centro_destino = NULL (Farmacia Central de donde se surte)
+        # Por tanto, para SALIDAS de Farmacia Central:
+        #   - centro_origen = None (sale de Farmacia Central)
+        #   - centro_destino = centro_origen de la requisición (el centro SOLICITANTE)
         # Para SALIDAS desde un Centro (centro != None):
         #   - centro_origen = centro (de donde salen)
         #   - centro_destino = None
@@ -1710,9 +1713,10 @@ class RequisicionService:
         #   - centro_destino = centro (donde llegan)
         if tipo == 'salida':
             if centro is None:
-                # Salida desde Farmacia Central hacia centro de la requisición
+                # ISS-SEC FIX: Salida desde Farmacia Central hacia centro SOLICITANTE
+                # El centro solicitante está en centro_origen de la requisición, NO en centro_destino
                 centro_origen = None
-                centro_destino = self.requisicion.centro_destino if self.requisicion else None
+                centro_destino = self.requisicion.centro_origen if self.requisicion else None
             else:
                 # Salida desde un centro específico
                 centro_origen = centro
