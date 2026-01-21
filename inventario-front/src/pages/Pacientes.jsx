@@ -160,6 +160,10 @@ const Pacientes = () => {
   };
 
   const resetForm = () => {
+    // ISS-SEC FIX: Usar fecha LOCAL para evitar desfase de zona horaria UTC
+    const hoy = new Date();
+    const fechaLocal = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+    
     setFormData({
       numero_expediente: '',
       nombre: '',
@@ -176,7 +180,7 @@ const Pacientes = () => {
       enfermedades_cronicas: '',
       observaciones_medicas: '',
       activo: true,
-      fecha_ingreso: new Date().toISOString().split('T')[0],
+      fecha_ingreso: fechaLocal,
     });
     setEditingPaciente(null);
   };

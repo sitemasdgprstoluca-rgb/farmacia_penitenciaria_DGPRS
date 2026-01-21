@@ -5,7 +5,7 @@ import Pagination from "../components/Pagination";
 import SalidaMasiva from "../components/SalidaMasiva";
 import { movimientosAPI, productosAPI, centrosAPI, lotesAPI, salidaMasivaAPI, descargarArchivo } from "../services/api";
 import { usePermissions } from "../hooks/usePermissions";
-import { FaFilter, FaChevronDown, FaChevronRight, FaExchangeAlt, FaFileExcel, FaFilePdf, FaSpinner, FaInfoCircle, FaExclamationTriangle, FaTruck, FaLayerGroup, FaList, FaFileDownload, FaCheckCircle, FaClipboardCheck, FaTrash, FaBoxes, FaHistory } from "react-icons/fa";
+import { FaFilter, FaChevronDown, FaChevronRight, FaExchangeAlt, FaFileExcel, FaFilePdf, FaSpinner, FaInfoCircle, FaExclamationTriangle, FaTruck, FaLayerGroup, FaList, FaFileDownload, FaCheckCircle, FaClipboardCheck, FaTrash, FaBoxes, FaHistory, FaClock } from "react-icons/fa";
 import { COLORS } from "../constants/theme";
 
 // ISS-FIX: Constantes de paginación
@@ -1480,14 +1480,31 @@ const Movimientos = () => {
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-gray-700">Tipo de Movimiento <span className="text-red-500">*</span></label>
                 
-                {/* FARMACIA/ADMIN: pueden elegir entre entrada y salida */}
+                {/* FARMACIA/ADMIN: opciones completas incluyendo merma/caducidad */}
                 {puedeHacerEntradas ? (
                   <select
-                    value={formData.tipo}
-                    onChange={(e) => handleFormChange("tipo", e.target.value)}
+                    value={formData.subtipo_salida === 'merma' ? 'merma' : formData.subtipo_salida === 'caducidad' ? 'caducidad' : formData.tipo}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === 'merma') {
+                        handleFormChange("tipo", "salida");
+                        handleFormChange("subtipo_salida", "merma");
+                      } else if (val === 'caducidad') {
+                        handleFormChange("tipo", "salida");
+                        handleFormChange("subtipo_salida", "caducidad");
+                      } else if (val === 'entrada') {
+                        handleFormChange("tipo", "entrada");
+                        handleFormChange("subtipo_salida", "transferencia");
+                      } else {
+                        handleFormChange("tipo", "salida");
+                        handleFormChange("subtipo_salida", "transferencia");
+                      }
+                    }}
                     className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-800 font-medium transition-all duration-200"
                   >
                     <option value="salida">🚚 Salida / Transferencia a Centro</option>
+                    <option value="merma">📉 Baja por Merma / Pérdida</option>
+                    <option value="caducidad">⏰ Baja por Caducidad</option>
                     <option value="entrada">📦 Entrada a Almacén (Nueva compra, reabastecimiento)</option>
                   </select>
                 ) : (
@@ -1498,12 +1515,28 @@ const Movimientos = () => {
                 )}
                 
                 {/* Descripción según tipo y rol */}
-                {formData.tipo === "salida" ? (
+                {formData.subtipo_salida === 'merma' ? (
+                  <div className="p-3 bg-orange-50 border border-orange-300 rounded-lg">
+                    <p className="text-xs text-orange-700">
+                      <FaExclamationTriangle className="inline mr-1" />
+                      <strong>Merma:</strong> Registra pérdida de medicamentos por daño, robo, deterioro u otras causas. 
+                      El stock se descuenta permanentemente del inventario. <span className="font-bold">Esta operación es IRREVERSIBLE.</span>
+                    </p>
+                  </div>
+                ) : formData.subtipo_salida === 'caducidad' ? (
+                  <div className="p-3 bg-amber-50 border border-amber-300 rounded-lg">
+                    <p className="text-xs text-amber-700">
+                      <FaClock className="inline mr-1" />
+                      <strong>Caducidad:</strong> Registra baja de medicamentos por vencimiento. 
+                      El stock se descuenta permanentemente del inventario. <span className="font-bold">Esta operación es IRREVERSIBLE.</span>
+                    </p>
+                  </div>
+                ) : formData.tipo === "salida" ? (
                   <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg">
                     <p className="text-xs text-rose-700">
                       <FaTruck className="inline mr-1" />
                       {puedeHacerEntradas ? (
-                        <><strong>Salida:</strong> Transfiere medicamentos desde Almacén Central hacia un Centro Penitenciario. El stock se descuenta del lote seleccionado.</>
+                        <><strong>Transferencia:</strong> Envía medicamentos desde Almacén Central hacia un Centro Penitenciario. El stock se descuenta del lote seleccionado.</>
                       ) : esMedico ? (
                         <><strong>Dispensación:</strong> Registra la salida de medicamentos para atención médica. El stock se descuenta del inventario de tu centro.</>
                       ) : (
@@ -1545,25 +1578,6 @@ const Movimientos = () => {
                       <option value="caducidad">⏰ Caducidad</option>
                     </select>
                   )}
-                </div>
-              )}
-
-              {/* ISS-SEC FIX: Subtipo de salida para FARMACIA/ADMIN */}
-              {puedeHacerEntradas && formData.tipo === "salida" && (
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-gray-700">Tipo de salida <span className="text-red-500">*</span></label>
-                  <select
-                    value={formData.subtipo_salida}
-                    onChange={(e) => handleFormChange("subtipo_salida", e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                  >
-                    <option value="transferencia">🔄 Transferencia a centro</option>
-                    <option value="merma">📉 Merma / Pérdida</option>
-                    <option value="caducidad">⏰ Caducidad</option>
-                    <option value="consumo_interno">🏥 Consumo interno farmacia</option>
-                    <option value="receta">💊 Dispensación por receta</option>
-                  </select>
                 </div>
               )}
 
@@ -2174,6 +2188,7 @@ const Movimientos = () => {
                                                       <thead className="bg-slate-50 text-xs text-slate-600">
                                                         <tr>
                                                           <th className="px-4 py-2 text-left font-semibold">Producto</th>
+                                                          <th className="px-2 py-2 text-left font-semibold">Presentación</th>
                                                           <th className="px-3 py-2 text-left font-semibold">Lote</th>
                                                           <th className="px-3 py-2 text-center font-semibold">Cantidad</th>
                                                           <th className="px-3 py-2 text-right font-semibold">Fecha</th>
@@ -2184,6 +2199,9 @@ const Movimientos = () => {
                                                           <tr key={`ent-${mov.id}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
                                                             <td className="px-4 py-2.5">
                                                               <span className="font-medium text-slate-800 text-sm">{mov.producto_nombre || mov.producto || ""}</span>
+                                                            </td>
+                                                            <td className="px-2 py-2.5">
+                                                              <span className="text-xs text-slate-600">{mov.producto_presentacion || mov.presentacion || '-'}</span>
                                                             </td>
                                                             <td className="px-3 py-2.5">
                                                               <span className="text-xs font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-600">
@@ -2221,6 +2239,7 @@ const Movimientos = () => {
                                                       <thead className="bg-slate-50 text-xs text-slate-600">
                                                         <tr>
                                                           <th className="px-4 py-2 text-left font-semibold">Producto</th>
+                                                          <th className="px-2 py-2 text-left font-semibold">Presentación</th>
                                                           <th className="px-3 py-2 text-left font-semibold">Lote</th>
                                                           <th className="px-3 py-2 text-center font-semibold">Cantidad</th>
                                                           <th className="px-3 py-2 text-right font-semibold">Fecha</th>
@@ -2231,6 +2250,9 @@ const Movimientos = () => {
                                                           <tr key={`sal-${mov.id}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
                                                             <td className="px-4 py-2.5">
                                                               <span className="font-medium text-slate-800 text-sm">{mov.producto_nombre || mov.producto || ""}</span>
+                                                            </td>
+                                                            <td className="px-2 py-2.5">
+                                                              <span className="text-xs text-slate-600">{mov.producto_presentacion || mov.presentacion || '-'}</span>
                                                             </td>
                                                             <td className="px-3 py-2.5">
                                                               <span className="text-xs font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-600">

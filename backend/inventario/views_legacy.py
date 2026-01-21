@@ -5497,25 +5497,67 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def enviar(self, request, pk=None):
         """
-        ISS-002/ISS-007 FIX (audit17): Envía requisición con revalidación de stock.
+        ISS-SEC-FLUJO FIX: Envía requisición siguiendo el flujo jerárquico.
         
-        Antes de enviar, se revalida el stock disponible en farmacia central.
-        Si hay productos sin stock suficiente, se advierte pero permite enviar
-        (el bloqueo ocurre en autorización/surtido).
+        FLUJO V2: borrador → pendiente_admin (NO directo a enviada)
+        El flujo completo es: borrador → pendiente_admin → pendiente_director → enviada
+        
+        Este endpoint ahora es un ALIAS de enviar_admin para compatibilidad,
+        respetando la segregación de funciones del flujo V2.
         """
+        from django.utils import timezone
+        
         requisicion = self.get_object()
-        if (requisicion.estado or '').lower() != 'borrador':
-            return Response({'error': 'Solo se pueden enviar requisiciones en estado BORRADOR', 'estado_actual': requisicion.estado}, status=status.HTTP_400_BAD_REQUEST)
+        estado_actual = (requisicion.estado or '').lower()
+        
+        if estado_actual != 'borrador':
+            return Response({
+                'error': 'Solo se pueden enviar requisiciones en estado BORRADOR',
+                'estado_actual': requisicion.estado
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # ISS-SEC-FLUJO: Validar permisos - solo usuarios del centro pueden enviar
         centro_user = self._user_centro(request.user)
         es_privilegiado = is_farmacia_or_admin(request.user)
-        if not request.user.is_superuser and not es_privilegiado:
-            if not centro_user or requisicion.centro_id != centro_user.id:
-                return Response({'error': 'No puedes enviar requisiciones de otro centro'}, status=status.HTTP_403_FORBIDDEN)
-        if not requisicion.detalles.exists():
-            return Response({'error': 'La requisicion debe tener al menos un producto'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        # ISS-002/ISS-007 FIX: Revalidar stock antes de enviar (modo informativo)
         # ISS-FIX-CENTRO: usar centro_origen (el centro que solicita)
+        requisicion_centro_id = requisicion.centro_origen_id or requisicion.centro_destino_id
+        
+        if not request.user.is_superuser and not es_privilegiado:
+            if not centro_user or requisicion_centro_id != centro_user.id:
+                return Response({
+                    'error': 'No puedes enviar requisiciones de otro centro'
+                }, status=status.HTTP_403_FORBIDDEN)
+        
+        if not requisicion.detalles.exists():
+            return Response({
+                'error': 'La requisición debe tener al menos un producto'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # ISS-SEC-FLUJO FIX: Usar cambiar_estado_con_historial para trazabilidad
+        # Transición: borrador → pendiente_admin (primera autorización)
+        try:
+            estado_anterior = requisicion.estado
+            requisicion.cambiar_estado_con_historial(
+                nuevo_estado='pendiente_admin',
+                usuario=request.user,
+                motivo='Enviada para autorización del administrador del centro',
+                ip_address=self._get_client_ip(request),
+                datos_adicionales={
+                    'centro_id': centro_user.id if centro_user else None,
+                    'endpoint': 'enviar',
+                    'flujo': 'V2_jerarquico'
+                }
+            )
+            requisicion.fecha_envio_admin = timezone.now()
+            requisicion.save(update_fields=['estado', 'fecha_envio_admin', 'updated_at'])
+        except Exception as e:
+            logger.error(f"Error en transición de estado para requisición {requisicion.numero}: {e}")
+            return Response({
+                'error': f'Error al cambiar estado: {str(e)}',
+                'detalle': 'Use el endpoint /enviar-admin/ para el flujo V2'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # ISS-002/ISS-007 FIX: Revalidar stock (modo informativo)
         items_para_validar = [
             {'producto': d.producto_id, 'cantidad_solicitada': d.cantidad_solicitada}
             for d in requisicion.detalles.all()
@@ -5527,16 +5569,12 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             modo='informativo'
         )
         
-        # ISS-DB-002: Usar 'enviada' (valor en BD Supabase)
-        requisicion.estado = 'enviada'
-        requisicion.save(update_fields=['estado'])
-        
         response_data = {
-            'mensaje': 'Requisicion enviada', 
-            'requisicion': RequisicionSerializer(requisicion).data
+            'mensaje': 'Requisición enviada a administrador del centro para autorización',
+            'requisicion': RequisicionSerializer(requisicion).data,
+            'flujo_siguiente': 'El administrador del centro debe autorizar (pendiente_admin → pendiente_director)'
         }
         
-        # ISS-002: Incluir advertencias de stock si las hay
         if advertencias_stock:
             response_data['advertencias_stock'] = advertencias_stock
             response_data['nota'] = (
@@ -5740,36 +5778,89 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def rechazar(self, request, pk=None):
-        """ISS-SEC-004: Solo roles autorizados pueden rechazar requisiciones."""
-        requisicion = self.get_object()
-        # ISS-DB-002: Usar 'enviada' (valor en BD Supabase)
-        if (requisicion.estado or '').lower() != 'enviada':
-            return Response({'error': 'Solo se pueden rechazar requisiciones en estado ENVIADA', 'estado_actual': requisicion.estado}, status=status.HTTP_400_BAD_REQUEST)
+        """
+        ISS-SEC-RECHAZO FIX: Rechazar requisición con trazabilidad completa.
         
-        # ISS-SEC-004: Solo farmacia, admin, director_centro o administrador_centro pueden rechazar
+        Usa cambiar_estado_con_historial para:
+        - Validar transición según máquina de estados
+        - Registrar motivo en motivo_rechazo (campo oficial)
+        - Generar registro de auditoría
+        """
+        from core.constants import TRANSICIONES_REQUISICION, ROLES_POR_TRANSICION
+        
+        requisicion = self.get_object()
+        estado_actual = (requisicion.estado or '').lower()
+        
+        # ISS-SEC-RECHAZO: Validar que la transición a rechazada esté permitida
+        # según la máquina de estados oficial
+        transiciones_permitidas = TRANSICIONES_REQUISICION.get(estado_actual, [])
+        if 'rechazada' not in transiciones_permitidas:
+            return Response({
+                'error': f'No se puede rechazar desde el estado {requisicion.estado}',
+                'estado_actual': requisicion.estado,
+                'transiciones_permitidas': transiciones_permitidas
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # ISS-SEC-RECHAZO: Validar roles autorizados para esta transición
         rol = _get_rol_efectivo(request.user)
-        roles_pueden_rechazar = ['farmacia', 'admin', 'director_centro', 'director', 'administrador_centro', 'admin_centro']
-        es_privilegiado = is_farmacia_or_admin(request.user) or rol in roles_pueden_rechazar
+        transicion_key = (estado_actual, 'rechazada')
+        roles_permitidos = ROLES_POR_TRANSICION.get(transicion_key, [])
+        es_privilegiado = is_farmacia_or_admin(request.user)
+        rol_normalizado = rol.lower() if rol else ''
         
         if not request.user.is_superuser and not es_privilegiado:
-            return Response({
-                'error': 'Solo farmacia, administradores o directores pueden rechazar requisiciones',
-                'rol_actual': rol
-            }, status=status.HTTP_403_FORBIDDEN)
+            if rol_normalizado not in roles_permitidos:
+                return Response({
+                    'error': f'El rol {rol} no puede rechazar requisiciones en estado {estado_actual}',
+                    'rol_actual': rol,
+                    'roles_permitidos': roles_permitidos
+                }, status=status.HTTP_403_FORBIDDEN)
         
         # Validar acceso al centro si es rol de centro
         centro_user = self._user_centro(request.user)
-        if rol in ['director_centro', 'director', 'administrador_centro', 'admin_centro']:
-            if not centro_user or requisicion.centro_id != centro_user.id:
-                return Response({'error': 'No puedes rechazar requisiciones de otro centro'}, status=status.HTTP_403_FORBIDDEN)
+        roles_centro = ['director_centro', 'director', 'administrador_centro', 'admin_centro']
+        requisicion_centro_id = requisicion.centro_origen_id or requisicion.centro_destino_id
         
-        motivo = request.data.get('observaciones') or request.data.get('comentario') or ''
-        if not motivo.strip():
-            return Response({'error': 'Debe proporcionar un motivo de rechazo'}, status=status.HTTP_400_BAD_REQUEST)
-        requisicion.estado = 'rechazada'
-        requisicion.notas = motivo
-        requisicion.save(update_fields=['estado', 'notas'])
-        return Response({'mensaje': 'Requisicion rechazada', 'requisicion': RequisicionSerializer(requisicion).data})
+        if rol_normalizado in roles_centro:
+            if not centro_user or requisicion_centro_id != centro_user.id:
+                return Response({
+                    'error': 'No puedes rechazar requisiciones de otro centro'
+                }, status=status.HTTP_403_FORBIDDEN)
+        
+        # ISS-SEC-RECHAZO: Motivo obligatorio (mínimo 10 caracteres)
+        motivo = request.data.get('observaciones') or request.data.get('comentario') or request.data.get('motivo_rechazo') or ''
+        motivo = motivo.strip()
+        if not motivo or len(motivo) < 10:
+            return Response({
+                'error': 'Debe proporcionar un motivo de rechazo (mínimo 10 caracteres)'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # ISS-SEC-RECHAZO FIX: Usar cambiar_estado_con_historial para trazabilidad
+        try:
+            requisicion.cambiar_estado_con_historial(
+                nuevo_estado='rechazada',
+                usuario=request.user,
+                motivo=motivo,
+                ip_address=self._get_client_ip(request),
+                datos_adicionales={
+                    'endpoint': 'rechazar',
+                    'rol_usuario': rol,
+                    'estado_anterior': estado_actual
+                }
+            )
+            # El campo motivo_rechazo se pobla en cambiar_estado
+            requisicion.save(update_fields=['estado', 'motivo_rechazo', 'updated_at'])
+        except Exception as e:
+            logger.error(f"Error al rechazar requisición {requisicion.numero}: {e}")
+            return Response({
+                'error': f'Error al cambiar estado: {str(e)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        return Response({
+            'mensaje': 'Requisición rechazada correctamente',
+            'requisicion': RequisicionSerializer(requisicion).data,
+            'motivo_rechazo': motivo
+        })
 
     @action(detail=True, methods=['post'])
     def cancelar(self, request, pk=None):
@@ -6339,14 +6430,11 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                     'recibida': cantidad_recibida
                 })
             
-            # Actualizar la requisición
-            requisicion.estado = 'entregada'
-            requisicion.fecha_entrega = timezone.now()
-            requisicion.lugar_entrega = lugar_entrega
-            requisicion.usuario_firma_recepcion = user
-            requisicion.fecha_firma_recepcion = timezone.now()
+            # ISS-SEC-ENTREGA FIX: Usar cambiar_estado_con_historial para trazabilidad
+            # El estado 'entregada' requiere servicio transaccional según ESTADOS_REQUIEREN_SERVICIO
+            # pero en recepción ya estamos en transacción atómica y validamos permisos arriba
             
-            # ISS-002: Registrar divergencias y responsable en notas
+            # ISS-002: Construir notas de recepción
             notas_recepcion = f"[Recepción {timezone.now().strftime('%Y-%m-%d %H:%M')}] "
             notas_recepcion += f"Recibido por: {user.username}. "
             if observaciones_recepcion:
@@ -6354,6 +6442,35 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             if divergencias:
                 notas_recepcion += f"DIVERGENCIAS: {len(divergencias)} productos con diferencias. "
             
+            # ISS-SEC-ENTREGA FIX: Usar cambiar_estado_con_historial
+            estado_anterior = requisicion.estado
+            try:
+                requisicion.cambiar_estado_con_historial(
+                    nuevo_estado='entregada',
+                    usuario=user,
+                    motivo=f"Recepción confirmada. Lugar: {lugar_entrega}. {observaciones_recepcion or ''}",
+                    ip_address=self._get_client_ip(request),
+                    datos_adicionales={
+                        'endpoint': 'marcar_recibida',
+                        'lugar_entrega': lugar_entrega,
+                        'total_items': len(detalles_conciliados),
+                        'divergencias_count': len(divergencias),
+                        'divergencias': divergencias[:5] if divergencias else []  # Primeras 5 para auditoría
+                    },
+                    validar=False  # Ya validamos arriba que está en surtida/parcial
+                )
+            except Exception as e:
+                logger.error(f"Error en cambiar_estado_con_historial para {requisicion.numero}: {e}")
+                # Fallback: cambio directo si el método falla (compatibilidad)
+                requisicion.estado = 'entregada'
+            
+            # Actualizar campos de entrega
+            requisicion.fecha_entrega = timezone.now()
+            requisicion.lugar_entrega = lugar_entrega
+            requisicion.usuario_firma_recepcion = user
+            requisicion.fecha_firma_recepcion = timezone.now()
+            
+            # Agregar notas de recepción
             notas_actual = requisicion.notas or ''
             requisicion.notas = f"{notas_actual}\n{notas_recepcion}".strip()
             

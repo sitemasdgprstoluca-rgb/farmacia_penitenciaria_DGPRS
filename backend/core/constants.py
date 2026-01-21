@@ -284,21 +284,37 @@ TRANSICIONES_SURTIDO_EXTENDIDAS = {
     'parcial': ['en_surtido', 'surtida', 'cancelada'],
 }
 
-# ISS-TRANSICIONES FIX: Estados que NO permiten cancelación según especificación
-# La spec solo permite cancelar desde: borrador, autorizada, en_surtido, devuelta
-# Estos estados NO tienen cancelada en sus transiciones válidas:
-ESTADOS_SIN_CANCELACION = [
-    'pendiente_admin',      # Spec: solo pendiente_director, rechazada, devuelta
-    'pendiente_director',   # Spec: solo enviada, rechazada, devuelta
-    'enviada',              # Spec: solo en_revision, autorizada, rechazada
-    'en_revision',          # Spec: solo autorizada, rechazada, devuelta
-    'surtida',              # Spec: solo entregada, vencida (ya tiene movimientos)
-    'entregada',            # Estado final
-    'rechazada',            # Estado final
-    'vencida',              # Estado final
-    'cancelada',            # Estado final
-    'parcial',              # Estado interno de surtido
-]
+# =============================================================================
+# ISS-SEC-CANCELACION FIX: Estados cancelables DERIVADOS de TRANSICIONES_REQUISICION
+# =============================================================================
+# FUENTE ÚNICA DE VERDAD: TRANSICIONES_REQUISICION define qué estados pueden cancelarse.
+# Esta derivación garantiza consistencia entre validadores, servicios y endpoints.
+
+# ISS-SEC FIX: Calcular dinámicamente qué estados pueden ir a 'cancelada'
+# Un estado es cancelable SI Y SOLO SI 'cancelada' está en sus transiciones permitidas
+def _calcular_estados_cancelables():
+    """Deriva estados cancelables de TRANSICIONES_REQUISICION (fuente única de verdad)."""
+    cancelables = set()
+    no_cancelables = set()
+    for estado, transiciones in TRANSICIONES_REQUISICION.items():
+        if 'cancelada' in transiciones:
+            cancelables.add(estado)
+        else:
+            no_cancelables.add(estado)
+    return cancelables, no_cancelables
+
+ESTADOS_CANCELABLES, ESTADOS_SIN_CANCELACION_CALC = _calcular_estados_cancelables()
+
+# ISS-SEC FIX: Convertir a lista para compatibilidad con código existente
+# IMPORTANTE: Esta lista se deriva de TRANSICIONES_REQUISICION, NO es hardcodeada
+# Estados que NO permiten cancelación según la máquina de estados:
+ESTADOS_SIN_CANCELACION = list(ESTADOS_SIN_CANCELACION_CALC)
+
+# Documentación de la derivación (para auditoría):
+# Según TRANSICIONES_REQUISICION actual:
+# - CANCELABLES: borrador, pendiente_admin, pendiente_director, enviada, autorizada, en_surtido, devuelta
+# - NO CANCELABLES: en_revision (solo autorizada/rechazada/devuelta), surtida (solo entregada/vencida),
+#                   parcial (solo surtida/entregada/vencida), y estados finales (entregada, rechazada, vencida, cancelada)
 
 # =============================================================================
 # ISS-005 FIX: CONSTANTES DE STOCK Y ESTADOS - FUENTE ÚNICA DE VERDAD

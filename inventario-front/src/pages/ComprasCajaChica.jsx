@@ -697,7 +697,11 @@ const ComprasCajaChica = () => {
       setRegistrarCompraModal({
         show: true,
         compra: compraCompleta,
-        fecha_compra: new Date().toISOString().split('T')[0],
+        // ISS-SEC FIX: Usar fecha LOCAL para evitar desfase de zona horaria
+        fecha_compra: (() => {
+          const hoy = new Date();
+          return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+        })(),
         numero_factura: compraCompleta.numero_factura || '',
         proveedor_nombre: compraCompleta.proveedor_nombre || '',
         proveedor_contacto: compraCompleta.proveedor_contacto || '',
@@ -722,6 +726,17 @@ const ComprasCajaChica = () => {
       return;
     }
     
+    // ISS-SEC FIX: Validar que todas las cantidades compradas sean > 0
+    const detallesInvalidos = registrarCompraModal.detalles.filter(d => {
+      const cantidad = parseInt(d.cantidad_comprada);
+      return isNaN(cantidad) || cantidad <= 0;
+    });
+    
+    if (detallesInvalidos.length > 0) {
+      toast.error(`Todas las cantidades compradas deben ser mayores a 0. ${detallesInvalidos.length} producto(s) con cantidad inválida.`);
+      return;
+    }
+    
     try {
       await comprasCajaChicaAPI.registrarCompra(registrarCompraModal.compra.id, {
         fecha_compra: registrarCompraModal.fecha_compra,
@@ -738,10 +753,13 @@ const ComprasCajaChica = () => {
       });
       
       toast.success('Compra registrada correctamente');
+      // ISS-SEC FIX: Usar fecha LOCAL para evitar desfase de zona horaria
+      const hoy = new Date();
+      const fechaLocal = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
       setRegistrarCompraModal({ 
         show: false, 
         compra: null, 
-        fecha_compra: new Date().toISOString().split('T')[0],
+        fecha_compra: fechaLocal,
         numero_factura: '',
         proveedor_nombre: '',
         proveedor_contacto: '',
@@ -775,6 +793,17 @@ const ComprasCajaChica = () => {
 
   const handleRecibir = async () => {
     if (!recibirModal.compra) return;
+    
+    // ISS-SEC FIX: Validar que todas las cantidades recibidas sean > 0
+    const detallesInvalidos = recibirModal.detalles.filter(d => {
+      const cantidad = parseInt(d.cantidad_recibida);
+      return isNaN(cantidad) || cantidad <= 0;
+    });
+    
+    if (detallesInvalidos.length > 0) {
+      toast.error(`Todas las cantidades recibidas deben ser mayores a 0. ${detallesInvalidos.length} producto(s) con cantidad inválida.`);
+      return;
+    }
     
     try {
       await comprasCajaChicaAPI.recibir(recibirModal.compra.id, recibirModal.detalles.map(d => ({
@@ -1209,8 +1238,9 @@ const ComprasCajaChica = () => {
                             </button>
                           )}
                           
-                          {/* Cancelar (estados intermedios) */}
-                          {puedeCancelar && !['recibida', 'cancelada', 'rechazada'].includes(compra.estado) && (
+                          {/* Cancelar (solo estados anteriores a comprada) */}
+                          {/* ISS-SEC FIX: Después de 'comprada' el flujo es irreversible → solo RECIBIDA */}
+                          {puedeCancelar && !['comprada', 'recibida', 'cancelada', 'rechazada'].includes(compra.estado) && (
                             <button
                               onClick={() => setCancelModal({ show: true, compra, motivo: '' })}
                               className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"

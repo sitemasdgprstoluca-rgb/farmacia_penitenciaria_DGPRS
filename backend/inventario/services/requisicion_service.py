@@ -2280,11 +2280,16 @@ class RequisicionService:
         # Validar estado cancelable
         estado_actual = (requisicion.estado or '').lower()
         
-        # ISS-001 FIX: Estados finales NUNCA cancelables
-        if estado_actual in self.ESTADOS_SIN_CANCELACION:
+        # ISS-SEC-CANCELACION FIX: Usar ESTADOS_CANCELABLES de constants (fuente única de verdad)
+        # Importar la definición derivada de TRANSICIONES_REQUISICION
+        from core.constants import ESTADOS_CANCELABLES, ESTADOS_SIN_CANCELACION as ESTADOS_NO_CANCELABLES_CALC
+        
+        # ISS-SEC FIX: Verificar contra fuente única de verdad
+        if estado_actual not in ESTADOS_CANCELABLES:
             raise EstadoInvalidoError(
                 f"No se pueden cancelar requisiciones en estado '{estado_actual}'. "
-                f"Estados finales no cancelables: {self.ESTADOS_SIN_CANCELACION}",
+                f"Estados cancelables según máquina de estados: {sorted(ESTADOS_CANCELABLES)}. "
+                f"Estados NO cancelables: {sorted(ESTADOS_NO_CANCELABLES_CALC)}",
                 estado_actual=estado_actual
             )
         
@@ -2303,19 +2308,6 @@ class RequisicionService:
                     f"Esto restaurará el stock en farmacia y descontará del centro."
                 )
             })
-        
-        # ISS-003 FIX (audit5): Estados que permiten cancelación
-        # Agregado 'surtida' - cancelable con forzar_reversion=True
-        estados_cancelables = ['borrador', 'pendiente_admin', 'pendiente_director', 
-                              'enviada', 'en_revision', 'autorizada', 'en_surtido', 
-                              'parcial', 'surtida']
-        
-        if estado_actual not in estados_cancelables:
-            raise EstadoInvalidoError(
-                f"No se pueden cancelar requisiciones en estado: {estado_actual}. "
-                f"Estados cancelables: {estados_cancelables}",
-                estado_actual=estado_actual
-            )
         
         movimientos_revertidos = []
         

@@ -132,16 +132,18 @@ class RequisicionContractValidator:
     - Permisos de usuario
     
     ISS-005 FIX: Estados importados desde core.constants como FUENTE ÚNICA DE VERDAD.
+    ISS-SEC-CANCELACION FIX: Estados cancelables derivados de TRANSICIONES_REQUISICION.
     """
     
     # ISS-005 FIX: Importar estados desde constants.py para evitar divergencias
-    # Esto garantiza sincronización con el modelo y otros servicios
+    # ISS-SEC-CANCELACION FIX: Importar ESTADOS_CANCELABLES (derivado de TRANSICIONES)
     from core.constants import (
         ESTADOS_EDITABLES as _ESTADOS_EDITABLES,
         ESTADOS_SURTIBLES as _ESTADOS_SURTIBLES,
         ESTADOS_TERMINALES as _ESTADOS_TERMINALES,
         ESTADOS_SIN_CANCELACION as _ESTADOS_SIN_CANCELACION,
         ESTADOS_COMPROMETIDOS as _ESTADOS_COMPROMETIDOS,
+        ESTADOS_CANCELABLES as _ESTADOS_CANCELABLES,  # ISS-SEC FIX: Fuente única
     )
     
     ESTADOS_EDITABLES = set(_ESTADOS_EDITABLES)
@@ -149,14 +151,19 @@ class RequisicionContractValidator:
     # ISS-005 FIX: en_revision también es autorizable según flujo V2
     ESTADOS_AUTORIZABLES = {'enviada', 'en_revision'}
     ESTADOS_SURTIBLES = set(_ESTADOS_SURTIBLES)
-    # ISS-002 FIX (audit4): Estados cancelables SIN movimientos de inventario
-    # Estados con posibles movimientos requieren validación adicional
-    ESTADOS_CANCELABLES_SIN_MOVIMIENTOS = {'borrador', 'pendiente_admin', 'pendiente_director', 'enviada', 'en_revision'}
-    # ISS-002 FIX: Estados que PUEDEN cancelarse pero requieren verificación de movimientos
-    ESTADOS_CANCELABLES_CON_VERIFICACION = {'autorizada', 'en_surtido'}
-    # ISS-002 FIX: Estados NUNCA cancelables (finales o con entrega confirmada)
-    # ISS-005 FIX: Usar ESTADOS_SIN_CANCELACION + ESTADOS_TERMINALES
-    ESTADOS_NO_CANCELABLES = set(_ESTADOS_SIN_CANCELACION) | set(_ESTADOS_TERMINALES)
+    
+    # ISS-SEC-CANCELACION FIX: Usar estados cancelables de fuente única de verdad
+    # Esto garantiza consistencia con TRANSICIONES_REQUISICION
+    ESTADOS_CANCELABLES = set(_ESTADOS_CANCELABLES)
+    
+    # ISS-SEC FIX: Clasificar cancelables según si tienen movimientos posibles
+    # Estados cancelables que NO tienen movimientos de inventario (cancelación directa)
+    ESTADOS_CANCELABLES_SIN_MOVIMIENTOS = ESTADOS_CANCELABLES - {'autorizada', 'en_surtido'}
+    # Estados cancelables que PUEDEN tener movimientos (requieren verificación/reversión)
+    ESTADOS_CANCELABLES_CON_VERIFICACION = ESTADOS_CANCELABLES & {'autorizada', 'en_surtido'}
+    
+    # ISS-SEC FIX: Estados NO cancelables - derivados de TRANSICIONES_REQUISICION
+    ESTADOS_NO_CANCELABLES = set(_ESTADOS_SIN_CANCELACION)
     
     def __init__(self, requisicion):
         """

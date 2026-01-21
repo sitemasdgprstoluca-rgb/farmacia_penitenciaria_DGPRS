@@ -329,8 +329,9 @@ const Lotes = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // ISS-SEC FIX: Validar fecha_caducidad obligatoria (no se pueden crear lotes sin fecha)
-    if (!editingLote && !formData.fecha_caducidad) {
+    // ISS-SEC FIX: Validar fecha_caducidad obligatoria en CREACIÓN y EDICIÓN
+    // No se permiten lotes sin fecha de caducidad (usar 2099-12-31 para insumos sin vencimiento)
+    if (!formData.fecha_caducidad) {
       toast.error('La fecha de caducidad es obligatoria. Para insumos sin caducidad, usar 2099-12-31');
       return;
     }
@@ -393,8 +394,9 @@ const Lotes = () => {
       }
       
       // Limpiar campos vacíos para evitar enviar strings vacíos
+      // ISS-SEC FIX: EXCEPTO fecha_caducidad que es obligatoria
       Object.keys(dataToSend).forEach(key => {
-        if (dataToSend[key] === '') {
+        if (dataToSend[key] === '' && key !== 'fecha_caducidad') {
           dataToSend[key] = null;
         }
       });
