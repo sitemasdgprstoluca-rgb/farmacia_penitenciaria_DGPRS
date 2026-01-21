@@ -134,7 +134,10 @@ export const useProductos = (options = {}) => {
         params.activo = currentFilters.activo;
       }
 
-      const response = await productosAPI.getAll(params);
+      // ISS-SEC FIX: Pass AbortController signal to cancel stale requests
+      const response = await productosAPI.getAll(params, {
+        signal: abortControllerRef.current.signal
+      });
       
       let data = response.data;
       let items = [];

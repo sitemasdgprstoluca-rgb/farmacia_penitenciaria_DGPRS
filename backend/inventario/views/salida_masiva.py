@@ -40,6 +40,7 @@ from django.db import transaction
 from django.utils import timezone
 from django.http import HttpResponse
 import logging
+import uuid
 
 from core.models import Lote, Movimiento, Centro, Producto
 from core.permissions import IsFarmaciaRole, IsCentroRole
@@ -152,10 +153,12 @@ def salida_masiva(request):
                 'errores': errores
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Generar ID de grupo para esta salida masiva (formato corto: SAL-MMDD-HHMM-CentroID)
+        # Generar ID de grupo para esta salida masiva 
+        # ISS-SEC: Formato único SAL-MMDD-HHMM-CentroID-UUID para evitar colisiones
         now = timezone.now()
         timestamp = now.strftime('%m%d-%H%M')
-        grupo_salida = f'SAL-{timestamp}-{centro_destino.id}'
+        unique_suffix = uuid.uuid4().hex[:6].upper()
+        grupo_salida = f'SAL-{timestamp}-{centro_destino.id}-{unique_suffix}'
         
         movimientos_creados = []
         estado_tag = '[CONFIRMADO]' if auto_confirmar else '[PENDIENTE]'
@@ -479,13 +482,16 @@ def hoja_entrega_pdf(request, grupo_salida):
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, IsFarmaciaRole])
 def confirmar_entrega(request, grupo_salida):
     """
     Confirma la entrega física de una salida masiva.
     
     ISS-FIX FLUJO CORRECTO: AQUÍ es donde se descuenta el stock de los lotes.
     Cambia [PENDIENTE] por [CONFIRMADO] en el motivo.
+    
+    Permisos:
+        - Solo usuarios con rol farmacia o admin pueden confirmar entregas
     
     Args:
         grupo_salida: ID del grupo de salida (ej: SAL-1229-0917-1)
@@ -494,6 +500,7 @@ def confirmar_entrega(request, grupo_salida):
         - 200: Entrega confirmada exitosamente
         - 404: Grupo de salida no encontrado
         - 400: Ya estaba confirmado o no hay stock suficiente
+        - 403: Sin permisos suficientes
     """
     try:
         # Buscar movimientos de este grupo
@@ -669,17 +676,33 @@ def estado_entrega(request, grupo_salida):
     """
     Consulta el estado de una entrega (pendiente, confirmada, etc).
     
+    Permisos:
+        - Farmacia/Admin: Pueden consultar cualquier entrega
+        - Centro: Solo pueden consultar entregas destinadas a su centro
+    
     Args:
         grupo_salida: ID del grupo de salida
     
     Returns:
         - confirmada: boolean
         - fecha_confirmacion: datetime si está confirmada
+        - 403: Sin permisos para ver esta entrega
     """
     try:
+        user = request.user
+        rol = (getattr(user, 'rol_efectivo', None) or getattr(user, 'rol', '') or '').lower()
+        
+        # Normalizar aliases de roles
+        ROLE_ALIASES = {
+            'administrador_centro': 'centro',
+            'director_centro': 'centro',
+            'medico': 'centro',
+        }
+        rol_normalizado = ROLE_ALIASES.get(rol, rol)
+        
         movimientos = Movimiento.objects.filter(
             motivo__contains=f'[{grupo_salida}]'
-        )
+        ).select_related('centro_destino')
         
         if not movimientos.exists():
             return Response({
@@ -688,6 +711,23 @@ def estado_entrega(request, grupo_salida):
             }, status=status.HTTP_404_NOT_FOUND)
         
         primer_mov = movimientos.first()
+        centro_destino = primer_mov.centro_destino
+        
+        # Validar permisos según rol
+        if rol_normalizado == 'centro':
+            # Usuarios de centro solo pueden ver entregas a su propio centro
+            user_centro_id = getattr(user, 'centro_id', None)
+            if not user_centro_id or (centro_destino and centro_destino.id != user_centro_id):
+                return Response({
+                    'error': True,
+                    'message': 'No tienes permisos para ver esta entrega'
+                }, status=status.HTTP_403_FORBIDDEN)
+        elif rol_normalizado not in ['admin', 'farmacia', 'vista']:
+            return Response({
+                'error': True,
+                'message': 'No tienes permisos para esta acción'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
         confirmada = _es_movimiento_confirmado(primer_mov)
         pendiente = _es_movimiento_pendiente(primer_mov)
         
@@ -695,7 +735,8 @@ def estado_entrega(request, grupo_salida):
             'grupo_salida': grupo_salida,
             'pendiente': pendiente,
             'confirmada': confirmada,
-            'total_items': movimientos.count()
+            'total_items': movimientos.count(),
+            'centro_destino': centro_destino.nombre if centro_destino else None
         })
         
     except Exception as e:

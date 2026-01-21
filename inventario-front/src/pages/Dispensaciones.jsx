@@ -216,15 +216,8 @@ const Dispensaciones = () => {
       return;
     }
     try {
-      const params = { 
-        centro: formData.centro,
-        page_size: 20 
-      };
-      // Si hay término de búsqueda, filtramos
-      if (term && term.length >= 1) {
-        params.search = term;
-      }
-      const response = await pacientesAPI.autocomplete(params);
+      // ISS-SEC FIX: Usar firma correcta del API (query, centroId, limit)
+      const response = await pacientesAPI.autocomplete(term, formData.centro, 20);
       setPacientes(response.data?.results || response.data || []);
     } catch (error) {
       console.error('Error al buscar pacientes:', error);
@@ -518,6 +511,8 @@ const Dispensaciones = () => {
         paciente: formData.paciente,
         centro: formData.centro,
         tipo_dispensacion: formData.tipo_dispensacion,
+        // ISS-SEC FIX: Incluir fecha_prescripcion en payload (campo obligatorio)
+        fecha_prescripcion: formData.fecha_prescripcion,
         medico_prescriptor: formData.medico_prescriptor.trim(),
         diagnostico: formData.diagnostico || null,
         indicaciones: formData.indicaciones_medicas || null,

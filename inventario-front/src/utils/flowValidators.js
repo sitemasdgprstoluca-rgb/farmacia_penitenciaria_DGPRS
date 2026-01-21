@@ -12,7 +12,9 @@
  */
 
 import { getStockProducto, getContractMetrics } from './dtoContracts';
-import { esTransicionValida as esTransicionValidaV2, TRANSICIONES_V2 } from '../services/api';
+// ISS-SEC FIX: Importar desde el objeto requisicionesValidacion exportado
+import { requisicionesValidacion } from '../services/api';
+const { esTransicionValida: esTransicionValidaV2, TRANSICIONES_V2 } = requisicionesValidacion;
 
 // ============================================================================
 // CONFIGURACIÓN

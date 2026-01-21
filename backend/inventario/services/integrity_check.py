@@ -199,7 +199,7 @@ class VerificadorIntegridad:
         
         if lotes_negativos.exists():
             ejemplos = list(lotes_negativos.values(
-                'id', 'codigo_lote', 'cantidad_actual',
+                'id', 'numero_lote', 'cantidad_actual',
                 'medicamento__nombre'
             )[:10])
             
@@ -221,7 +221,7 @@ class VerificadorIntegridad:
                 ),
                 sql_correccion="""
                 -- Identificar lotes negativos para revisión manual
-                SELECT l.id, l.codigo_lote, l.cantidad_actual, m.nombre
+                SELECT l.id, l.numero_lote, l.cantidad_actual, m.nombre
                 FROM core_lote l
                 JOIN core_medicamento m ON l.medicamento_id = m.id
                 WHERE l.cantidad_actual < 0;
@@ -240,7 +240,7 @@ class VerificadorIntegridad:
         
         if lotes_excedidos.exists():
             ejemplos = list(lotes_excedidos.values(
-                'id', 'codigo_lote', 'cantidad_actual', 
+                'id', 'numero_lote', 'cantidad_actual', 
                 'cantidad_inicial', 'medicamento__nombre'
             )[:10])
             
@@ -308,7 +308,7 @@ class VerificadorIntegridad:
         # Movimientos con lote nulo (si no está permitido)
         movimientos_sin_lote = Movimiento.objects.filter(
             lote__isnull=True,
-            tipo__in=['ENTRADA', 'SALIDA', 'AJUSTE']
+            tipo__in=['entrada', 'salida', 'ajuste']
         )
         
         if movimientos_sin_lote.exists():
@@ -334,9 +334,9 @@ class VerificadorIntegridad:
         discrepancias = []
         
         lotes_con_movimientos = Lote.objects.annotate(
-            entradas=Sum('movimientos__cantidad', filter=Q(movimientos__tipo='ENTRADA')),
-            salidas=Sum('movimientos__cantidad', filter=Q(movimientos__tipo='SALIDA')),
-            ajustes=Sum('movimientos__cantidad', filter=Q(movimientos__tipo='AJUSTE'))
+            entradas=Sum('movimientos__cantidad', filter=Q(movimientos__tipo='entrada')),
+            salidas=Sum('movimientos__cantidad', filter=Q(movimientos__tipo='salida')),
+            ajustes=Sum('movimientos__cantidad', filter=Q(movimientos__tipo='ajuste'))
         ).filter(
             Q(entradas__isnull=False) | Q(salidas__isnull=False)
         )[:100]  # Limitar para rendimiento
@@ -352,7 +352,7 @@ class VerificadorIntegridad:
             if abs(stock_esperado - lote.cantidad_actual) > 0.01:
                 discrepancias.append({
                     'lote_id': lote.id,
-                    'codigo': lote.codigo_lote,
+                    'numero_lote': lote.numero_lote,
                     'stock_actual': float(lote.cantidad_actual),
                     'stock_esperado': float(stock_esperado),
                     'diferencia': float(lote.cantidad_actual - stock_esperado)

@@ -325,11 +325,17 @@ function Perfil() {
   const navigate = useNavigate();
 
   // Limpiar sesión completamente y redirigir
+  // ISS-SEC FIX: También limpiar sessionStorage para evitar rehidratación involuntaria
   const limpiarSesionYRedirigir = useCallback(() => {
     clearTokens();
+    // Limpiar localStorage legacy
     localStorage.removeItem("token");
     localStorage.removeItem("refresh_token");
     localStorage.removeItem("user");
+    // ISS-SEC FIX: Limpiar sessionStorage de claves de sesión
+    sessionStorage.removeItem("session_uid");
+    sessionStorage.removeItem("session_role");
+    sessionStorage.removeItem("session_hash");
     navigate("/login");
   }, [navigate]);
 

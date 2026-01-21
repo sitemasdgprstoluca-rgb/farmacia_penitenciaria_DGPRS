@@ -611,8 +611,9 @@ class UserSerializer(serializers.ModelSerializer):
         # Extraer centro_id y asignarlo al campo centro
         centro_id = validated_data.pop('centro_id', None)
         
-        logger.info(f"UserSerializer.create - validated_data: {validated_data}, centro_id: {centro_id}")
-        logger.info(f"UserSerializer.create - password received: {'YES (length=' + str(len(password)) + ')' if password else 'NO'}")
+        # ISS-SEC: No loguear validated_data ya que contiene PII (nombre, email, etc.)
+        logger.info(f"UserSerializer.create - Creating user with centro_id: {centro_id}")
+        logger.info(f"UserSerializer.create - password received: {'YES' if password else 'NO'}")
         
         # ISS-PASSWORD FIX: Usar transacción para asegurar integridad
         with transaction.atomic():
@@ -657,7 +658,8 @@ class UserSerializer(serializers.ModelSerializer):
         # Extraer centro_id
         centro_id = validated_data.pop('centro_id', None)
         
-        logger.info(f"UserSerializer.update - validated_data: {validated_data}, centro_id: {centro_id}")
+        # ISS-SEC: No loguear validated_data ya que contiene PII (nombre, email, etc.)
+        logger.info(f"UserSerializer.update - Updating user id={instance.id}, centro_id: {centro_id}")
         
         # ISS-PASSWORD FIX: Usar transacción para asegurar integridad
         with transaction.atomic():

@@ -806,7 +806,8 @@ export const exportarConManejo = async (peticion, nombreArchivo, options = {}) =
 
 // Productos
 export const productosAPI = {
-  getAll: (params) => apiClient.get('/productos/', { params }),
+  // ISS-SEC FIX: Accept config for AbortController signal
+  getAll: (params, config = {}) => apiClient.get('/productos/', { params, ...config }),
   getById: (id) => apiClient.get(`/productos/${id}/`),
   create: (data, isFormData = false) => {
     const config = isFormData ? { headers: { 'Content-Type': 'multipart/form-data' } } : {};
@@ -986,7 +987,8 @@ export const requisicionesValidacion = {
 
 // Requisiciones -  COMPLETO CON FLUJO V2
 export const requisicionesAPI = {
-  getAll: (params) => apiClient.get('/requisiciones/', { params }),
+  // ISS-SEC FIX: Accept config for AbortController signal
+  getAll: (params, config = {}) => apiClient.get('/requisiciones/', { params, ...config }),
   getById: (id) => apiClient.get(`/requisiciones/${id}/`),
   create: (data) => apiClient.post('/requisiciones/', data),
   update: (id, data) => apiClient.put(`/requisiciones/${id}/`, data),

@@ -786,14 +786,18 @@ class Producto(models.Model):
         Ordenados por fecha de caducidad (FEFO - First Expired, First Out).
         
         SOLO retorna lotes con estado 'disponible', activos y no vencidos.
+        ISS-FIX: Lotes sin fecha de caducidad se consideran vigentes.
         """
         from django.utils import timezone
+        from django.db.models import Q
         
         return self.lotes.filter(
             activo=True,
             centro__isnull=True,
             cantidad_actual__gt=0,
-            fecha_caducidad__gte=timezone.now().date(),
+            # ISS-FIX: Lotes sin caducidad (NULL) se consideran vigentes
+        ).filter(
+            Q(fecha_caducidad__gte=timezone.now().date()) | Q(fecha_caducidad__isnull=True)
             # ISS-004 FIX (audit14): No usar estado__in, campo no existe en BD
         ).order_by('fecha_caducidad')
     
@@ -811,8 +815,10 @@ class Producto(models.Model):
             
         Returns:
             int: Stock total disponible
+            
+        ISS-FIX: Lotes sin fecha de caducidad se consideran vigentes.
         """
-        from django.db.models import Sum
+        from django.db.models import Sum, Q
         from django.utils import timezone
         from django.core.cache import cache
         
@@ -827,12 +833,17 @@ class Producto(models.Model):
             'cantidad_actual__gt': 0,
         }
         
+        # ISS-FIX: Lotes sin fecha de caducidad (NULL) se consideran vigentes
         if solo_vigentes:
-            filtros['fecha_caducidad__gte'] = timezone.now().date()
-        
-        result = self.lotes.filter(**filtros).aggregate(
-            total=Sum('cantidad_actual')
-        )['total'] or 0
+            result = self.lotes.filter(**filtros).filter(
+                Q(fecha_caducidad__gte=timezone.now().date()) | Q(fecha_caducidad__isnull=True)
+            ).aggregate(
+                total=Sum('cantidad_actual')
+            )['total'] or 0
+        else:
+            result = self.lotes.filter(**filtros).aggregate(
+                total=Sum('cantidad_actual')
+            )['total'] or 0
         
         if use_cache:
             cache.set(cache_key, result, cache_timeout)

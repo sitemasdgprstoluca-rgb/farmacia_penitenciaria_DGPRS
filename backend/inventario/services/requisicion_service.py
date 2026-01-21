@@ -2133,16 +2133,16 @@ class RequisicionService:
                 if LoteQueryHelper.esta_expirado(lote):
                     discrepancias.append(
                         f"Lote {lote.numero_lote} usado en surtido ahora está EXPIRADO "
-                        f"(vencimiento: {lote.fecha_vencimiento})"
+                        f"(caducidad: {lote.fecha_caducidad})"
                     )
                 
                 # ISS-002: Verificar que la cantidad movida no exceda el stock + movimientos
                 # El stock actual + la cantidad movida debe ser >= 0
-                stock_teorico = (lote.cantidad_disponible or 0) + cantidad_movida
+                stock_teorico = (lote.cantidad_actual or 0) + cantidad_movida
                 if stock_teorico < 0:
                     discrepancias.append(
                         f"Lote {lote.numero_lote}: inconsistencia de stock. "
-                        f"Stock actual: {lote.cantidad_disponible}, movido: {cantidad_movida}"
+                        f"Stock actual: {lote.cantidad_actual}, movido: {cantidad_movida}"
                     )
                     
             except Lote.DoesNotExist:

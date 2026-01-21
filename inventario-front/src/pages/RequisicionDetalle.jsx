@@ -96,6 +96,11 @@ const RequisicionDetalle = () => {
   const esAdminOFarmacia = user?.is_superuser || 
     ['admin', 'admin_farmacia', 'admin_sistema', 'superusuario', 'farmacia'].includes(rolActualGlobal);
 
+  // ISS-SEC FIX: Calcular flags de rol fuera del callback para incluirlas en deps
+  const esFarmaciaRol = user?.is_superuser || 
+    ['farmacia', 'admin_farmacia', 'admin_sistema', 'superusuario'].includes(rolActualGlobal);
+  const esCentroRol = ['medico', 'centro', 'usuario_centro'].includes(rolActualGlobal);
+
   const cargarRequisicion = useCallback(async () => {
     try {
       setLoading(true);
@@ -116,11 +121,7 @@ const RequisicionDetalle = () => {
       // ISS-DB-002: Estados que permiten ver hoja de recolección
       // ISS-HOJA-V2: Médico puede ver hoja en 'autorizada' para llevarla a firmar
       // Después de surtida, centro ve versión simplificada con sello
-      const rolActual = (user?.rol_efectivo || user?.rol || '').toLowerCase();
-      const esFarmaciaRol = user?.is_superuser || 
-        ['farmacia', 'admin_farmacia', 'admin_sistema', 'superusuario'].includes(rolActual);
-      // ISS-HOJA-FIX: Solo médico y centro pueden ver hoja de recolección (NO admin ni director)
-      const esCentroRol = ['medico', 'centro', 'usuario_centro'].includes(rolActual);
+      // ISS-SEC FIX: Usar flags de rol calculadas fuera del callback para evitar stale closure
       
       // Farmacia: siempre puede ver hoja en estos estados
       // Centro: puede ver hoja en 'autorizada' (para firmas) y 'surtida' (consulta con sello)
@@ -138,8 +139,8 @@ const RequisicionDetalle = () => {
     } finally {
       setLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, navigate]);
+  // ISS-SEC FIX: Incluir flags de rol en deps para recargar cuando user cambie
+  }, [id, navigate, esFarmaciaRol, esCentroRol]);
 
   const cargarHojaRecoleccion = async () => {
     try {

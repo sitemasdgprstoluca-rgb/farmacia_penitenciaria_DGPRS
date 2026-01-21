@@ -862,6 +862,16 @@ export function PermissionProvider({ children }) {
       sessionStorage.removeItem(SESSION_KEYS.USER_ROLE);
       sessionStorage.removeItem(SESSION_KEYS.SESSION_HASH);
       localStorage.removeItem('user'); // Limpiar legacy
+      // ISS-SEC: Resetear estado completo para evitar spinner infinito en PermissionsGuard
+      setUser(null);
+      setPermisos({
+        _source: 'error',
+        _loadError: true,
+        _errorMessage: error?.response?.status === 401 
+          ? 'Sesión expirada' 
+          : 'Error al cargar permisos',
+      });
+      setGrupos([]);
       setPermisosValidados(false);
     } finally {
       setLoading(false);

@@ -93,7 +93,10 @@ export const useRequisiciones = (options = {}) => {
       if (currentFilters.solicitante) params.solicitante = currentFilters.solicitante;
       if (currentFilters.centro) params.centro = currentFilters.centro;
 
-      const response = await requisicionesAPI.getAll(params);
+      // ISS-SEC FIX: Pass AbortController signal to cancel stale requests
+      const response = await requisicionesAPI.getAll(params, {
+        signal: abortControllerRef.current.signal
+      });
       
       let data = response.data;
       let items = [];
@@ -176,7 +179,8 @@ export const useRequisiciones = (options = {}) => {
           response = await requisicionesAPI.enviar(requisicionId);
           break;
         case ACCIONES_REQUISICION.APROBAR:
-          response = await requisicionesAPI.aprobar(requisicionId, datos);
+          // ISS-SEC FIX: El método correcto es 'autorizar', no 'aprobar'
+          response = await requisicionesAPI.autorizar(requisicionId, datos);
           break;
         case ACCIONES_REQUISICION.RECHAZAR:
           response = await requisicionesAPI.rechazar(requisicionId, datos);
@@ -185,7 +189,8 @@ export const useRequisiciones = (options = {}) => {
           response = await requisicionesAPI.surtir(requisicionId, datos);
           break;
         case ACCIONES_REQUISICION.SURTIR_PARCIAL:
-          response = await requisicionesAPI.surtirParcial(requisicionId, datos);
+          // ISS-SEC FIX: surtirParcial no existe, usar surtir con parámetro parcial
+          response = await requisicionesAPI.surtir(requisicionId, { ...datos, parcial: true });
           break;
         case ACCIONES_REQUISICION.CANCELAR:
           response = await requisicionesAPI.cancelar(requisicionId, datos);

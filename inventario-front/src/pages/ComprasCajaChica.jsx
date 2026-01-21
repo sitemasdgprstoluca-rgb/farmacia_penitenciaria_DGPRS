@@ -391,8 +391,27 @@ const ComprasCajaChica = () => {
   };
 
   // Guardar compra
+  // ISS-SEC FIX: Validar permisos antes de enviar a API (defensa en profundidad)
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // ISS-SEC FIX: Validación de permisos en handler (no solo en UI)
+    if (editingCompra) {
+      if (!puedeEditar) {
+        toast.error('No tienes permisos para editar compras');
+        return;
+      }
+      // Verificar que el estado permite edición
+      if (!['pendiente', 'rechazada', 'devuelta', 'rechazada_farmacia'].includes(editingCompra.estado)) {
+        toast.error('Esta compra no puede ser editada en su estado actual');
+        return;
+      }
+    } else {
+      if (!puedeCrear) {
+        toast.error('No tienes permisos para crear compras');
+        return;
+      }
+    }
     
     // Validar motivo de compra (obligatorio)
     if (!formData.motivo_compra?.trim()) {

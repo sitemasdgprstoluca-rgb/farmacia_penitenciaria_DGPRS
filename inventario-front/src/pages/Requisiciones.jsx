@@ -699,28 +699,48 @@ const Requisiciones = () => {
 
   // ISS-004 FIX: Validar permiso fino y transición válida de enviar
   // ISS-004 FIX (audit33): Usar transiciones del backend si están disponibles
-  const esTransicionPermitida = useCallback((estadoActual, accion) => {
+  // ISS-SEC FIX: Mapear estados destino a acciones para comparación correcta
+  const ESTADO_A_ACCION = {
+    'enviada': 'enviar',
+    'enviada_admin': 'enviarAdmin',
+    'autorizada': 'autorizar',
+    'autorizada_admin': 'autorizarAdmin',
+    'autorizada_director': 'autorizarDirector',
+    'recibida_farmacia': 'recibirFarmacia',
+    'autorizada_farmacia': 'autorizarFarmacia',
+    'surtida': 'surtir',
+    'entregada': 'confirmarEntrega',
+    'recibida': 'marcarRecibida',
+    'rechazada': 'rechazar',
+    'cancelada': 'cancelar',
+    'devuelta': 'devolver',
+  };
+  
+  const esTransicionPermitida = useCallback((estadoActual, estadoOAccion) => {
+    // Convertir estado destino a acción si es necesario
+    const accion = ESTADO_A_ACCION[estadoOAccion?.toLowerCase()] || estadoOAccion;
+    
     // Si tenemos transiciones del backend, usarlas
     if (transicionesBackend && transicionesBackend[estadoActual?.toUpperCase()]) {
       const permitidas = transicionesBackend[estadoActual.toUpperCase()];
       return Array.isArray(permitidas) && permitidas.includes(accion);
     }
-    // Fallback a validador local
+    // Fallback a validador local (que también espera acciones)
     return esTransicionValida(estadoActual, accion);
   }, [transicionesBackend]);
   
   const puedeEnviar = (req) => {
     const estadoNormalizado = req.estado?.toLowerCase();
-    // Usar validador de transiciones (backend primero, fallback local)
-    if (!esTransicionPermitida(estadoNormalizado, 'enviada')) return false;
+    // ISS-SEC FIX: Usar acción 'enviar' en lugar de estado 'enviada'
+    if (!esTransicionPermitida(estadoNormalizado, 'enviar')) return false;
     return permisos.enviarRequisicion && puedeEditar(req);
   };
 
   // ISS-004 FIX: Validar si puede cancelar usando transiciones válidas
   const puedeCancelar = (requisicion) => {
     const estadoNormalizado = requisicion.estado?.toLowerCase();
-    // Usar validador de transiciones (backend primero, fallback local)
-    if (!esTransicionPermitida(estadoNormalizado, 'cancelada')) return false;
+    // ISS-SEC FIX: Usar acción 'cancelar' en lugar de estado 'cancelada'
+    if (!esTransicionPermitida(estadoNormalizado, 'cancelar')) return false;
     // Validar permiso fino
     if (!permisos.cancelarRequisicion) return false;
     // Admin/Farmacia pueden cancelar cualquiera
