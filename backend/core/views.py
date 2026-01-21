@@ -7168,117 +7168,156 @@ class DispensacionViewSet(viewsets.ModelViewSet):
         forzar_parcial = request.data.get('forzar_parcial', False)
         
         try:
-            # PASO 1: Validar stock disponible ANTES de procesar
-            errores_stock = []
-            detalles_a_procesar = []
-            
-            for detalle in detalles_existentes:
-                if not detalle.lote:
-                    errores_stock.append(f'{detalle.producto.nombre}: No tiene lote asignado')
-                    continue
+            # ISS-SEC FIX (audit6): TODO dentro de transaction.atomic con select_for_update
+            # para evitar race conditions en detalles y lotes
+            with transaction.atomic():
+                # PASO 1: Bloquear dispensación y detalles para evitar concurrencia
+                dispensacion = Dispensacion.objects.select_for_update().get(pk=dispensacion.pk)
                 
-                if detalle.cantidad_prescrita <= 0:
-                    continue
-                
-                # Obtener stock actual del lote
-                try:
-                    lote = Lote.objects.get(id=detalle.lote.id)
-                except Lote.DoesNotExist:
-                    errores_stock.append(f'{detalle.producto.nombre}: El lote ya no existe')
-                    continue
-                
-                # ISS-SEC FIX: VALIDACIÓN CRÍTICA de centro del lote
-                # Caso 1: Dispensación para un centro específico
-                if dispensacion.centro_id:
-                    # Si el lote NO tiene centro (es de Farmacia Central), BLOQUEAR
-                    # No se puede dispensar desde Farmacia Central hacia un centro
-                    if not lote.centro_id:
-                        errores_stock.append(
-                            f'{detalle.producto.nombre} (Lote: {lote.numero_lote}): '
-                            f'El lote pertenece a Farmacia Central y no puede usarse para '
-                            f'dispensaciones en {dispensacion.centro.nombre}. '
-                            f'Seleccione un lote del centro {dispensacion.centro.nombre}.'
-                        )
-                        continue
-                    # Si el lote tiene centro diferente al de la dispensación, BLOQUEAR
-                    if lote.centro_id != dispensacion.centro_id:
-                        errores_stock.append(
-                            f'{detalle.producto.nombre} (Lote: {lote.numero_lote}): '
-                            f'El lote no pertenece al centro de esta dispensación. '
-                            f'Seleccione un lote del centro {dispensacion.centro.nombre}.'
-                        )
-                        continue
-                # Caso 2: Dispensación desde Farmacia Central (centro_id NULL)
-                # Solo puede usar lotes de Farmacia Central (lote.centro_id NULL)
-                else:
-                    if lote.centro_id:
-                        errores_stock.append(
-                            f'{detalle.producto.nombre} (Lote: {lote.numero_lote}): '
-                            f'El lote pertenece a un centro y no puede usarse para '
-                            f'dispensaciones de Farmacia Central. '
-                            f'Seleccione un lote de Farmacia Central.'
-                        )
-                        continue
-                
-                stock_disponible = lote.cantidad_actual
-                cantidad_solicitada = detalle.cantidad_prescrita
-                
-                if stock_disponible <= 0:
-                    errores_stock.append(
-                        f'{detalle.producto.nombre} (Lote: {lote.numero_lote}): Sin stock disponible'
+                # Re-verificar estado después del bloqueo
+                if dispensacion.estado in ['dispensada', 'cancelada']:
+                    return Response(
+                        {'error': f'La dispensación ya está {dispensacion.estado}'},
+                        status=status.HTTP_400_BAD_REQUEST
                     )
-                elif stock_disponible < cantidad_solicitada:
-                    if not forzar_parcial:
-                        errores_stock.append(
-                            f'{detalle.producto.nombre} (Lote: {lote.numero_lote}): '
-                            f'Stock insuficiente. Disponible: {stock_disponible}, Solicitado: {cantidad_solicitada}'
-                        )
+                
+                # Bloquear todos los detalles con select_for_update
+                detalles_bloqueados = list(
+                    dispensacion.detalles.select_for_update().select_related('producto', 'lote')
+                )
+                
+                if not detalles_bloqueados:
+                    return Response(
+                        {'error': 'La dispensación no tiene medicamentos registrados'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                errores_stock = []
+                detalles_a_procesar = []
+                
+                for detalle in detalles_bloqueados:
+                    if not detalle.lote:
+                        errores_stock.append(f'{detalle.producto.nombre}: No tiene lote asignado')
+                        continue
+                    
+                    if detalle.cantidad_prescrita <= 0:
+                        continue
+                    
+                    # ISS-SEC FIX (audit6): Calcular REMANENTE = prescrita - ya_dispensada
+                    # Esto evita sobre-dispensación en reintentos/parciales
+                    cantidad_ya_dispensada = detalle.cantidad_dispensada or 0
+                    remanente = detalle.cantidad_prescrita - cantidad_ya_dispensada
+                    
+                    if remanente <= 0:
+                        # Ya se dispensó todo lo prescrito, saltear
+                        continue
+                    
+                    # Obtener y bloquear el lote
+                    try:
+                        lote = Lote.objects.select_for_update().get(id=detalle.lote.id)
+                    except Lote.DoesNotExist:
+                        errores_stock.append(f'{detalle.producto.nombre}: El lote ya no existe')
+                        continue
+                    
+                    # ISS-SEC FIX: VALIDACIÓN CRÍTICA de centro del lote
+                    # Caso 1: Dispensación para un centro específico
+                    if dispensacion.centro_id:
+                        # Si el lote NO tiene centro (es de Farmacia Central), BLOQUEAR
+                        if not lote.centro_id:
+                            errores_stock.append(
+                                f'{detalle.producto.nombre} (Lote: {lote.numero_lote}): '
+                                f'El lote pertenece a Farmacia Central y no puede usarse para '
+                                f'dispensaciones en {dispensacion.centro.nombre}. '
+                                f'Seleccione un lote del centro {dispensacion.centro.nombre}.'
+                            )
+                            continue
+                        # Si el lote tiene centro diferente al de la dispensación, BLOQUEAR
+                        if lote.centro_id != dispensacion.centro_id:
+                            errores_stock.append(
+                                f'{detalle.producto.nombre} (Lote: {lote.numero_lote}): '
+                                f'El lote no pertenece al centro de esta dispensación. '
+                                f'Seleccione un lote del centro {dispensacion.centro.nombre}.'
+                            )
+                            continue
+                    # Caso 2: Dispensación desde Farmacia Central (centro_id NULL)
                     else:
-                        # Si forzar_parcial, agregar con la cantidad disponible
+                        if lote.centro_id:
+                            errores_stock.append(
+                                f'{detalle.producto.nombre} (Lote: {lote.numero_lote}): '
+                                f'El lote pertenece a un centro y no puede usarse para '
+                                f'dispensaciones de Farmacia Central. '
+                                f'Seleccione un lote de Farmacia Central.'
+                            )
+                            continue
+                    
+                    stock_disponible = lote.cantidad_actual
+                    # ISS-SEC FIX (audit6): Usar remanente, NO cantidad_prescrita completa
+                    cantidad_solicitada = remanente
+                    
+                    if stock_disponible <= 0:
+                        errores_stock.append(
+                            f'{detalle.producto.nombre} (Lote: {lote.numero_lote}): Sin stock disponible'
+                        )
+                    elif stock_disponible < cantidad_solicitada:
+                        if not forzar_parcial:
+                            errores_stock.append(
+                                f'{detalle.producto.nombre} (Lote: {lote.numero_lote}): '
+                                f'Stock insuficiente. Disponible: {stock_disponible}, Remanente a dispensar: {cantidad_solicitada}'
+                            )
+                        else:
+                            # Si forzar_parcial, agregar con la cantidad disponible
+                            detalles_a_procesar.append({
+                                'detalle': detalle,
+                                'lote': lote,
+                                'cantidad': stock_disponible,
+                                'parcial': True
+                            })
+                    else:
+                        # Stock suficiente para el remanente
                         detalles_a_procesar.append({
                             'detalle': detalle,
                             'lote': lote,
-                            'cantidad': stock_disponible,
-                            'parcial': True
+                            'cantidad': cantidad_solicitada,
+                            'parcial': False
                         })
-                else:
-                    # Stock suficiente
-                    detalles_a_procesar.append({
-                        'detalle': detalle,
-                        'lote': lote,
-                        'cantidad': cantidad_solicitada,
-                        'parcial': False
-                    })
-            
-            # Si hay errores de stock y no se fuerza parcial, devolver error 400
-            if errores_stock and not forzar_parcial:
-                return Response(
-                    {
-                        'error': 'Stock insuficiente para completar la dispensación',
-                        'detalles_error': errores_stock,
-                        'sugerencia': 'Puede editar las cantidades o usar la opción de dispensación parcial'
-                    },
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Si no hay nada que procesar
-            if not detalles_a_procesar:
-                return Response(
-                    {'error': 'No hay medicamentos con stock disponible para dispensar'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # PASO 2: Procesar la dispensación dentro de una transacción
-            with transaction.atomic():
+                
+                # Si hay errores de stock y no se fuerza parcial, devolver error 400
+                if errores_stock and not forzar_parcial:
+                    return Response(
+                        {
+                            'error': 'Stock insuficiente para completar la dispensación',
+                            'detalles_error': errores_stock,
+                            'sugerencia': 'Puede editar las cantidades o usar la opción de dispensación parcial'
+                        },
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # Si no hay nada que procesar
+                if not detalles_a_procesar:
+                    # ISS-SEC FIX (audit6): Verificar si ya está todo dispensado
+                    total_ya_dispensado = sum((d.cantidad_dispensada or 0) for d in detalles_bloqueados)
+                    total_prescrito = sum(d.cantidad_prescrita for d in detalles_bloqueados)
+                    if total_ya_dispensado >= total_prescrito:
+                        return Response(
+                            {'error': 'Esta dispensación ya fue completada. No hay remanente por dispensar.'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    return Response(
+                        {'error': 'No hay medicamentos con stock disponible para dispensar'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # PASO 2: Procesar la dispensación (ya dentro de transaction.atomic)
                 total_dispensado = 0
                 total_prescrito = 0
                 
                 for item in detalles_a_procesar:
                     detalle = item['detalle']
-                    lote = Lote.objects.select_for_update().get(id=item['lote'].id)
+                    # ISS-SEC FIX (audit6): El lote ya está bloqueado desde PASO 1
+                    lote = item['lote']
                     cantidad = item['cantidad']
                     
-                    # Verificar de nuevo el stock (puede haber cambiado)
+                    # Verificar de nuevo el stock (verificación redundante por seguridad)
                     if lote.cantidad_actual < cantidad:
                         cantidad = lote.cantidad_actual
                     

@@ -458,12 +458,45 @@ const ComprasCajaChica = () => {
       return;
     }
     
-    // Validar que todos los detalles tengan descripción y cantidad válida
-    const detallesInvalidos = formData.detalles.filter(
-      d => !d.descripcion_producto?.trim() || !d.cantidad_solicitada || parseInt(d.cantidad_solicitada) <= 0
-    );
+    // ISS-SEC FIX (audit6): Validar que cantidad sea entero positivo
+    // Rechazar decimales para evitar truncamiento silencioso
+    const detallesInvalidos = [];
+    const detallesDecimales = [];
+    
+    formData.detalles.forEach((d, index) => {
+      if (!d.descripcion_producto?.trim()) {
+        detallesInvalidos.push(`Producto ${index + 1}: falta descripción`);
+        return;
+      }
+      
+      const cantidadStr = String(d.cantidad_solicitada || '').trim();
+      const cantidadNum = Number(cantidadStr);
+      
+      // Verificar si es un número válido
+      if (!cantidadStr || isNaN(cantidadNum)) {
+        detallesInvalidos.push(`${d.descripcion_producto}: cantidad inválida`);
+        return;
+      }
+      
+      // ISS-SEC FIX (audit6): Verificar si es decimal (tiene parte fraccionaria)
+      if (!Number.isInteger(cantidadNum)) {
+        detallesDecimales.push(`${d.descripcion_producto}: ${cantidadStr} no es entero`);
+        return;
+      }
+      
+      // Verificar que sea positivo
+      if (cantidadNum <= 0) {
+        detallesInvalidos.push(`${d.descripcion_producto}: cantidad debe ser mayor a 0`);
+      }
+    });
+    
+    if (detallesDecimales.length > 0) {
+      toast.error(`Las cantidades deben ser números enteros: ${detallesDecimales.join(', ')}`);
+      return;
+    }
+    
     if (detallesInvalidos.length > 0) {
-      toast.error('Todos los productos deben tener descripción y cantidad válida');
+      toast.error(`Datos inválidos: ${detallesInvalidos.join(', ')}`);
       return;
     }
     

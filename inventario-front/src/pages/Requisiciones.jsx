@@ -699,34 +699,53 @@ const Requisiciones = () => {
 
   // ISS-004 FIX: Validar permiso fino y transición válida de enviar
   // ISS-004 FIX (audit33): Usar transiciones del backend si están disponibles
-  // ISS-SEC FIX: Mapear estados destino a acciones para comparación correcta
+  // ISS-SEC FIX (audit6): Mapear ACCIONES a ESTADOS DESTINO para el validador local
+  // El validador local (esTransicionValida) espera estados destino, no acciones
+  const ACCION_A_ESTADO = {
+    'enviar': 'pendiente_admin',      // borrador → pendiente_admin
+    'enviarAdmin': 'pendiente_director',
+    'enviarDirector': 'enviada',
+    'autorizar': 'autorizada',
+    'autorizarAdmin': 'autorizada_admin',
+    'autorizarDirector': 'autorizada_director',
+    'recibirFarmacia': 'en_revision',
+    'autorizarFarmacia': 'autorizada',
+    'surtir': 'entregada',            // autorizada → entregada (flujo V2 directo)
+    'confirmarEntrega': 'entregada',
+    'marcarRecibida': 'recibida',
+    'rechazar': 'rechazada',
+    'cancelar': 'cancelada',
+    'devolver': 'devuelta',
+  };
+
+  // Mapeo inverso para cuando el backend envía acciones
   const ESTADO_A_ACCION = {
-    'enviada': 'enviar',
-    'enviada_admin': 'enviarAdmin',
+    'pendiente_admin': 'enviar',
+    'pendiente_director': 'enviarAdmin',
+    'enviada': 'enviarDirector',
     'autorizada': 'autorizar',
-    'autorizada_admin': 'autorizarAdmin',
-    'autorizada_director': 'autorizarDirector',
-    'recibida_farmacia': 'recibirFarmacia',
-    'autorizada_farmacia': 'autorizarFarmacia',
+    'en_surtido': 'surtir',
     'surtida': 'surtir',
     'entregada': 'confirmarEntrega',
-    'recibida': 'marcarRecibida',
     'rechazada': 'rechazar',
     'cancelada': 'cancelar',
     'devuelta': 'devolver',
   };
   
-  const esTransicionPermitida = useCallback((estadoActual, estadoOAccion) => {
-    // Convertir estado destino a acción si es necesario
-    const accion = ESTADO_A_ACCION[estadoOAccion?.toLowerCase()] || estadoOAccion;
+  const esTransicionPermitida = useCallback((estadoActual, accionOEstado) => {
+    // ISS-SEC FIX (audit6): El backend envía acciones, el validador local espera estados
+    // Determinar si es una acción o un estado y normalizar
+    const accion = accionOEstado?.toLowerCase();
     
-    // Si tenemos transiciones del backend, usarlas
+    // Si tenemos transiciones del backend, usarlas directamente (el backend envía acciones)
     if (transicionesBackend && transicionesBackend[estadoActual?.toUpperCase()]) {
       const permitidas = transicionesBackend[estadoActual.toUpperCase()];
       return Array.isArray(permitidas) && permitidas.includes(accion);
     }
-    // Fallback a validador local (que también espera acciones)
-    return esTransicionValida(estadoActual, accion);
+    
+    // Fallback a validador local: convertir acción a estado destino
+    const estadoDestino = ACCION_A_ESTADO[accion] || accion;
+    return esTransicionValida(estadoActual, estadoDestino);
   }, [transicionesBackend]);
   
   const puedeEnviar = (req) => {
@@ -753,11 +772,16 @@ const Requisiciones = () => {
     return false;
   };
 
-  // ISS-FIX-SURTIR: Verificar si puede surtir - simplificado, solo desde 'autorizada'
+  // ISS-FIX-SURTIR (audit6): Verificar si puede surtir
+  // Ahora incluye en_surtido y parcial para permitir completar surtido en progreso
   const puedeSurtir = (requisicion) => {
     const estadoNormalizado = requisicion.estado?.toLowerCase();
-    // Solo se puede surtir desde 'autorizada' - va directo a 'entregada'
-    if (estadoNormalizado !== 'autorizada') return false;
+    // ISS-SEC FIX (audit6): Se puede surtir desde autorizada, en_surtido y parcial
+    // - autorizada: inicio de surtido
+    // - en_surtido: continuar surtido en progreso
+    // - parcial: completar surtido parcial
+    const estadosSurtibles = ['autorizada', 'en_surtido', 'parcial'];
+    if (!estadosSurtibles.includes(estadoNormalizado)) return false;
     // Solo admin/farmacia pueden surtir
     return permisos.isFarmaciaAdmin && permisos.surtirRequisicion;
   };
@@ -765,8 +789,8 @@ const Requisiciones = () => {
   // ISS-004 FIX: Verificar si puede rechazar usando transiciones válidas
   const puedeRechazar = (requisicion) => {
     const estadoNormalizado = requisicion.estado?.toLowerCase();
-    // ISS-SEC FIX: Usar acción 'rechazar' en lugar de estado 'rechazada'
-    if (!esTransicionValida(estadoNormalizado, 'rechazar')) return false;
+    // ISS-SEC FIX (audit6): Usar esTransicionPermitida que maneja el mapeo acción→estado
+    if (!esTransicionPermitida(estadoNormalizado, 'rechazar')) return false;
     // Solo admin/farmacia pueden rechazar
     return permisos.isFarmaciaAdmin && permisos.rechazarRequisicion;
   };
@@ -774,8 +798,8 @@ const Requisiciones = () => {
   // ISS-004 FIX: Verificar si puede autorizar usando transiciones válidas  
   const puedeAutorizar = (requisicion) => {
     const estadoNormalizado = requisicion.estado?.toLowerCase();
-    // ISS-SEC FIX: Usar acción 'autorizar' en lugar de estado 'autorizada'
-    if (!esTransicionValida(estadoNormalizado, 'autorizar')) return false;
+    // ISS-SEC FIX (audit6): Usar esTransicionPermitida que maneja el mapeo acción→estado
+    if (!esTransicionPermitida(estadoNormalizado, 'autorizar')) return false;
     // Solo admin/farmacia pueden autorizar
     return permisos.isFarmaciaAdmin && permisos.autorizarRequisicion;
   };

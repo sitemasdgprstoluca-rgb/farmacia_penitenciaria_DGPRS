@@ -3881,11 +3881,35 @@ class CompraCajaChica(models.Model):
         return f"{self.folio} - {self.centro.nombre if self.centro else 'Sin centro'}"
     
     def calcular_totales(self):
-        """Recalcula subtotal, IVA y total basado en los detalles"""
+        """
+        ISS-SEC FIX (audit6): Recalcula subtotal, IVA y total basado en los detalles.
+        
+        Usa la cantidad apropiada según el estado de la compra:
+        - Estados iniciales (borrador, enviada, autorizada): cantidad_solicitada
+        - Estados de compra (en_compra, comprada): cantidad_comprada
+        - Estados finales (recibida, cerrada): cantidad_recibida
+        
+        Esto asegura que los totales reflejen los montos reales gastados.
+        """
         from decimal import Decimal
         subtotal = Decimal('0')
+        
+        # Determinar qué campo de cantidad usar según el estado
+        estados_usar_comprada = {'en_compra', 'comprada'}
+        estados_usar_recibida = {'recibida', 'cerrada'}
+        
         for detalle in self.detalles.all():
-            subtotal += detalle.precio_unitario * detalle.cantidad_solicitada
+            # Elegir cantidad según estado de la compra
+            if self.estado in estados_usar_recibida and detalle.cantidad_recibida > 0:
+                cantidad = detalle.cantidad_recibida
+            elif self.estado in estados_usar_comprada and detalle.cantidad_comprada > 0:
+                cantidad = detalle.cantidad_comprada
+            else:
+                # Estados iniciales o sin cantidad real registrada
+                cantidad = detalle.cantidad_solicitada
+            
+            subtotal += detalle.precio_unitario * cantidad
+        
         self.subtotal = subtotal
         self.iva = subtotal * Decimal('0.16')  # IVA 16%
         self.total = self.subtotal + self.iva
