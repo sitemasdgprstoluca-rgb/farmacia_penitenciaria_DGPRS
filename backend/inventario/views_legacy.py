@@ -8733,9 +8733,25 @@ def trazabilidad_lote(request, codigo):
         
         movimientos = movimientos.order_by('fecha')
         historial = []
-        saldo = 0
+        
+        # ISS-SEC FIX (audit6): Calcular saldo correctamente
+        # - Empezar desde cantidad_inicial del lote
+        # - Sumar para entradas, restar para salidas
+        # TIPOS_SUMA_STOCK = ['entrada', 'ajuste_positivo', 'devolucion']
+        TIPOS_SUMA = {'entrada', 'ajuste_positivo', 'devolucion'}
+        
+        # ISS-FIX: El saldo inicial es la cantidad_inicial del lote principal
+        saldo = lote_principal.cantidad_inicial or 0
+        
         for mov in movimientos:
-            saldo += mov.cantidad
+            # Determinar si el movimiento suma o resta al saldo
+            tipo_mov = (mov.tipo or '').lower()
+            if tipo_mov in TIPOS_SUMA:
+                saldo += mov.cantidad
+            else:
+                # Salida, ajuste, merma, caducidad, transferencia, etc. restan
+                saldo -= mov.cantidad
+            
             # Determinar el centro del movimiento de forma más precisa
             if mov.centro_destino:
                 centro_mov = mov.centro_destino.nombre
@@ -12650,11 +12666,22 @@ def trazabilidad_lote_exportar(request, codigo):
         
         movimientos = movimientos.order_by('fecha')
         
-        # Preparar datos con saldo
+        # ISS-SEC FIX (audit6): Preparar datos con saldo calculado correctamente
+        # - Empezar desde cantidad_inicial del lote principal
+        # - Sumar para entradas, restar para salidas
+        TIPOS_SUMA = {'entrada', 'ajuste_positivo', 'devolucion'}
+        
         trazabilidad_data = []
-        saldo = 0
+        saldo = lote_principal.cantidad_inicial or 0
+        
         for mov in movimientos:
-            saldo += mov.cantidad
+            # Determinar si el movimiento suma o resta al saldo
+            tipo_mov = (mov.tipo or '').lower()
+            if tipo_mov in TIPOS_SUMA:
+                saldo += mov.cantidad
+            else:
+                saldo -= mov.cantidad
+            
             # Determinar el centro del movimiento de forma más precisa
             if mov.centro_destino:
                 centro_mov = mov.centro_destino.nombre
