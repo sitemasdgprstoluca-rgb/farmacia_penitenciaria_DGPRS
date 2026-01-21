@@ -133,6 +133,11 @@ export const clearTokens = () => {
   logoutInProgress = true; // Bloquear refresh hasta nuevo login
   notifySessionChange(false);
 };
+
+/**
+ * Registra un callback para cambios de sesión
+ * @param {Function} callback - Función a llamar cuando cambie el estado de sesión
+ * @returns {Function} Función para desregistrar el callback
  */
 export const onSessionChange = (callback) => {
   onSessionChangeCallbacks.push(callback);
