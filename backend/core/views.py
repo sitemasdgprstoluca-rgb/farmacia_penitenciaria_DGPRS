@@ -5869,8 +5869,9 @@ class AdminLimpiarDatosView(APIView):
                     
                     # ISS-FIX: Recalcular cantidad_inicial de lotes restantes
                     # Sin movimientos, cantidad_inicial debe ser igual a cantidad_actual
+                    # NOTA: Usar GREATEST(1, cantidad_actual) para respetar CHECK constraint cantidad_inicial > 0
                     with connection.cursor() as cursor:
-                        cursor.execute("UPDATE lotes SET cantidad_inicial = cantidad_actual WHERE centro_id IS NULL")
+                        cursor.execute("UPDATE lotes SET cantidad_inicial = GREATEST(1, cantidad_actual) WHERE centro_id IS NULL")
                         eliminados['lotes_recalculados'] = cursor.rowcount
                 
                 elif categoria == 'donaciones':
