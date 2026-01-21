@@ -7579,11 +7579,35 @@ class DispensacionViewSet(viewsets.ModelViewSet):
             
             productos_data = []
             for lote in lotes_base:
-                # CORRECCIÓN: El stock actual ya incluye TODOS los movimientos
-                # Para calcular existencia_anterior, restamos los movimientos del periodo actual
-                # del stock actual
+                # ISS-FIX: Cálculo correcto de existencia anterior
+                # 1. Sumar TODOS los movimientos ANTES del periodo para obtener existencia_anterior
+                # 2. Sumar movimientos DEL periodo para entradas/salidas
+                # 3. Existencia final = existencia_anterior + entradas - salidas
                 
-                # Obtener movimientos del periodo actual (con requisición relacionada)
+                # Movimientos ANTES del periodo (para calcular existencia anterior)
+                movimientos_antes = Movimiento.objects.filter(
+                    lote=lote,
+                    fecha__lt=fecha_inicio
+                )
+                
+                existencia_anterior = 0
+                for mov in movimientos_antes:
+                    tipo = (mov.tipo or '').lower()
+                    if tipo in ['entrada', 'ajuste_positivo', 'devolucion']:
+                        existencia_anterior += abs(mov.cantidad)
+                    elif tipo in ['salida', 'ajuste', 'ajuste_negativo', 'merma', 'caducidad', 'transferencia']:
+                        existencia_anterior -= abs(mov.cantidad)
+                
+                # Si no hay movimientos antes, usar cantidad_inicial del lote como base
+                # Solo si el lote fue creado antes del periodo
+                if not movimientos_antes.exists():
+                    # Verificar si el lote existía antes del periodo
+                    if lote.created_at and lote.created_at.date() < fecha_inicio.date():
+                        existencia_anterior = lote.cantidad_inicial or 0
+                    else:
+                        existencia_anterior = 0
+                
+                # Obtener movimientos del periodo actual
                 movimientos_periodo = Movimiento.objects.filter(
                     lote=lote,
                     fecha__gte=fecha_inicio,
@@ -7596,34 +7620,36 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                 doc_entrada = ''
                 
                 for mov in movimientos_periodo:
-                    if mov.tipo and mov.tipo.lower() == 'entrada':
-                        entradas += mov.cantidad
+                    tipo = (mov.tipo or '').lower()
+                    if tipo in ['entrada', 'ajuste_positivo', 'devolucion']:
+                        entradas += abs(mov.cantidad)
                         # Obtener número de requisición directamente
                         if not doc_entrada and mov.requisicion:
-                            # Formato: REQ-20260116-6914 -> abreviar a fecha-num
                             req_num = mov.requisicion.numero
-                            # Extraer solo la parte de fecha y número (quitar prefijo REQ-)
                             if req_num.startswith('REQ-'):
-                                doc_entrada = req_num[4:]  # Ej: "20260116-6914"
+                                doc_entrada = req_num[4:]
                             else:
                                 doc_entrada = req_num
                         elif not doc_entrada:
-                            # Fallback: extraer de referencia o motivo
                             ref = mov.referencia or mov.motivo or ''
-                            # Buscar patrón REQ-YYYYMMDD-XXXX
                             import re
                             match = re.search(r'REQ-(\d{8}-\d+)', ref)
                             if match:
-                                doc_entrada = match.group(1)  # Solo la parte numérica
-                    else:
+                                doc_entrada = match.group(1)
+                    elif tipo in ['salida', 'ajuste', 'ajuste_negativo', 'merma', 'caducidad', 'transferencia']:
                         salidas += abs(mov.cantidad)
                 
-                # Existencia final = stock actual del lote
-                existencia_final = lote.cantidad_actual or 0
+                # Existencia final calculada correctamente
+                existencia_final = existencia_anterior + entradas - salidas
                 
-                # Existencia anterior = existencia_final - entradas + salidas
-                # (invirtiendo la fórmula: existencia_final = existencia_anterior + entradas - salidas)
-                existencia_anterior = existencia_final - entradas + salidas
+                # Validar que no sea negativo (indica error en datos)
+                if existencia_final < 0:
+                    logger.warning(
+                        f"Existencia negativa detectada para lote {lote.numero_lote}: "
+                        f"anterior={existencia_anterior}, entradas={entradas}, salidas={salidas}, final={existencia_final}"
+                    )
+                    # Ajustar a 0 mínimo para el reporte (el stock real del lote)
+                    existencia_final = max(0, lote.cantidad_actual or 0)
                 
                 # Solo incluir si hay movimientos o stock
                 if existencia_anterior > 0 or entradas > 0 or salidas > 0 or existencia_final > 0:
@@ -7633,8 +7659,8 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                         'numero_lote': lote.numero_lote or '',
                         'presentacion': lote.producto.presentacion if lote.producto else 'N/A',
                         'fecha_caducidad': lote.fecha_caducidad,
-                        'existencia_anterior': existencia_anterior,
-                        'documento_entrada': doc_entrada,  # Ahora es el número de requisición limpio
+                        'existencia_anterior': max(0, existencia_anterior),  # Nunca mostrar negativos
+                        'documento_entrada': doc_entrada,
                         'entradas': entradas,
                         'salidas': salidas,
                         'existencia_final': existencia_final,

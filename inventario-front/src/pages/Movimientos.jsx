@@ -1807,23 +1807,24 @@ const Movimientos = () => {
                     ))}
                   </select>
                 </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold text-gray-700">Centro</label>
-                  <select
-                    value={filtros.centro}
-                    onChange={(e) => handleFiltro("centro", e.target.value)}
-                    className="border rounded-lg px-3 py-2 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                    disabled={!puedeVerTodosCentros}
-                    title={!puedeVerTodosCentros ? "Solo puedes ver movimientos de tu centro" : ""}
-                  >
-                    {puedeVerTodosCentros && <option value="">Todos</option>}
-                    {centros.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.nombre}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {/* ISS-SEC FIX: Ocultar filtro de centro para usuarios que solo ven su centro */}
+                {puedeVerTodosCentros && (
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-semibold text-gray-700">Centro</label>
+                    <select
+                      value={filtros.centro}
+                      onChange={(e) => handleFiltro("centro", e.target.value)}
+                      className="border rounded-lg px-3 py-2"
+                    >
+                      <option value="">Todos</option>
+                      {centros.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.nombre}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 {/* ISS-FIX (lotes-centro): Mejorar filtro de lote con select y búsqueda por texto */}
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-semibold text-gray-700">Lote</label>
@@ -1904,7 +1905,10 @@ const Movimientos = () => {
                       <th className="w-36 px-2 py-3 text-left text-xs font-bold uppercase tracking-wider text-white/90 hidden sm:table-cell">Destino</th>
                     )}
                     <th className="w-28 px-2 py-3 text-left text-xs font-bold uppercase tracking-wider text-white/90">Fecha</th>
-                    <th className="w-24 px-2 py-3 text-center text-xs font-bold uppercase tracking-wider text-white/90">Acciones</th>
+                    {/* ISS-SEC FIX: Ocultar columna Acciones para Centro (solo pueden ver) */}
+                    {esFarmacia && (
+                      <th className="w-24 px-2 py-3 text-center text-xs font-bold uppercase tracking-wider text-white/90">Acciones</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-50">
@@ -1919,7 +1923,7 @@ const Movimientos = () => {
                       {(!movimientosAgrupados.grupos || movimientosAgrupados.grupos.length === 0) && 
                        (!movimientosAgrupados.sinGrupo || movimientosAgrupados.sinGrupo.length === 0) ? (
                         <tr>
-                          <td colSpan={esCentroUser ? 5 : esCentroUser ? 5 : 6} className="px-4 py-16 text-center">
+                          <td colSpan={esFarmacia ? 6 : esCentroUser ? 4 : 5} className="px-4 py-16 text-center">
                             <div className="flex flex-col items-center justify-center">
                               <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full flex items-center justify-center mb-4 shadow-inner">
                                 <FaHistory className="text-3xl text-gray-400" />
@@ -2081,69 +2085,71 @@ const Movimientos = () => {
                                     </div>
                                   </td>
                                   
-                                  {/* Columna: Acciones */}
-                                  <td className="px-2 py-2.5">
-                                    <div className="flex items-center justify-center gap-1 flex-wrap">
-                                      {esRequisicion ? (
-                                        <a 
-                                          href={`/requisiciones?folio=${grupo.id}`}
-                                          onClick={(e) => e.stopPropagation()}
-                                          className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 hover:text-blue-800 transition-all duration-200 border border-blue-200"
-                                        >
-                                          <FaClipboardCheck className="text-[10px]" />
-                                          Ver Req.
-                                        </a>
-                                      ) : grupo.pendiente ? (
-                                        <div className="flex gap-1">
-                                          {/* Botón Hoja de Recolección (Formato B) */}
-                                          <button
-                                            onClick={(e) => { e.stopPropagation(); descargarHojaEntregaGrupo(grupo.id); }}
-                                            className="p-1.5 bg-gradient-to-b from-blue-500 to-blue-600 text-white rounded hover:from-blue-600 hover:to-blue-700 transition-all duration-200 shadow-sm hover:shadow-md"
-                                            title="Hoja de Recolección (Formato B)"
+                                  {/* Columna: Acciones - Solo para Farmacia/Admin */}
+                                  {esFarmacia && (
+                                    <td className="px-2 py-2.5">
+                                      <div className="flex items-center justify-center gap-1 flex-wrap">
+                                        {esRequisicion ? (
+                                          <a 
+                                            href={`/requisiciones?folio=${grupo.id}`}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 hover:text-blue-800 transition-all duration-200 border border-blue-200"
                                           >
-                                            <FaClipboardCheck className="text-xs" />
-                                          </button>
-                                          {/* Botón Confirmar Entrega - Abre modal de confirmación */}
+                                            <FaClipboardCheck className="text-[10px]" />
+                                            Ver Req.
+                                          </a>
+                                        ) : grupo.pendiente ? (
+                                          <div className="flex gap-1">
+                                            {/* Botón Hoja de Recolección (Formato B) */}
+                                            <button
+                                              onClick={(e) => { e.stopPropagation(); descargarHojaEntregaGrupo(grupo.id); }}
+                                              className="p-1.5 bg-gradient-to-b from-blue-500 to-blue-600 text-white rounded hover:from-blue-600 hover:to-blue-700 transition-all duration-200 shadow-sm hover:shadow-md"
+                                              title="Hoja de Recolección (Formato B)"
+                                            >
+                                              <FaClipboardCheck className="text-xs" />
+                                            </button>
+                                            {/* Botón Confirmar Entrega - Abre modal de confirmación */}
+                                            <button
+                                              onClick={(e) => { 
+                                                e.stopPropagation(); 
+                                                setConfirmConfirmarGrupo({
+                                                  id: grupo.id,
+                                                  centro_nombre: grupo.centro_nombre,
+                                                  items: grupo.items || [],
+                                                  total_cantidad: grupo.total_cantidad,
+                                                  num_items: (grupo.items || []).length
+                                                });
+                                              }}
+                                              disabled={confirmandoGrupo === grupo.id}
+                                              className="p-1.5 bg-gradient-to-b from-green-500 to-green-600 text-white rounded hover:from-green-600 hover:to-green-700 transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                                              title="Confirmar Entrega (Descuenta Inventario)"
+                                            >
+                                              {confirmandoGrupo === grupo.id ? <FaSpinner className="text-xs animate-spin" /> : <FaCheckCircle className="text-xs" />}
+                                            </button>
+                                            {/* Botón Cancelar */}
+                                            <button
+                                              onClick={(e) => { e.stopPropagation(); setConfirmCancelarGrupo(grupo.id); }}
+                                              disabled={cancelandoGrupo === grupo.id}
+                                              className="p-1.5 bg-gradient-to-b from-red-500 to-red-600 text-white rounded hover:from-red-600 hover:to-red-700 transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                                              title="Cancelar salida"
+                                            >
+                                              {cancelandoGrupo === grupo.id ? <FaSpinner className="text-xs animate-spin" /> : <FaTrash className="text-xs" />}
+                                            </button>
+                                          </div>
+                                        ) : grupo.confirmado ? (
                                           <button
-                                            onClick={(e) => { 
-                                              e.stopPropagation(); 
-                                              setConfirmConfirmarGrupo({
-                                                id: grupo.id,
-                                                centro_nombre: grupo.centro_nombre,
-                                                items: grupo.items || [],
-                                                total_cantidad: grupo.total_cantidad,
-                                                num_items: (grupo.items || []).length
-                                              });
-                                            }}
-                                            disabled={confirmandoGrupo === grupo.id}
-                                            className="p-1.5 bg-gradient-to-b from-green-500 to-green-600 text-white rounded hover:from-green-600 hover:to-green-700 transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
-                                            title="Confirmar Entrega (Descuenta Inventario)"
+                                            onClick={(e) => { e.stopPropagation(); descargarComprobanteGrupo(grupo.id); }}
+                                            className="p-1.5 bg-gradient-to-b from-emerald-500 to-emerald-600 text-white rounded hover:from-emerald-600 hover:to-emerald-700 transition-all duration-200 shadow-sm hover:shadow-md"
+                                            title="Descargar comprobante"
                                           >
-                                            {confirmandoGrupo === grupo.id ? <FaSpinner className="text-xs animate-spin" /> : <FaCheckCircle className="text-xs" />}
+                                            <FaFileDownload className="text-xs" />
                                           </button>
-                                          {/* Botón Cancelar */}
-                                          <button
-                                            onClick={(e) => { e.stopPropagation(); setConfirmCancelarGrupo(grupo.id); }}
-                                            disabled={cancelandoGrupo === grupo.id}
-                                            className="p-1.5 bg-gradient-to-b from-red-500 to-red-600 text-white rounded hover:from-red-600 hover:to-red-700 transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
-                                            title="Cancelar salida"
-                                          >
-                                            {cancelandoGrupo === grupo.id ? <FaSpinner className="text-xs animate-spin" /> : <FaTrash className="text-xs" />}
-                                          </button>
-                                        </div>
-                                      ) : (grupo.confirmado && !esMedico) ? (
-                                        <button
-                                          onClick={(e) => { e.stopPropagation(); descargarComprobanteGrupo(grupo.id); }}
-                                          className="p-1.5 bg-gradient-to-b from-emerald-500 to-emerald-600 text-white rounded hover:from-emerald-600 hover:to-emerald-700 transition-all duration-200 shadow-sm hover:shadow-md"
-                                          title="Descargar comprobante"
-                                        >
-                                          <FaFileDownload className="text-xs" />
-                                        </button>
-                                      ) : (
-                                        <span className="text-[10px] text-gray-400">Sin acciones</span>
-                                      )}
-                                    </div>
-                                  </td>
+                                        ) : (
+                                          <span className="text-[10px] text-gray-400">Sin acciones</span>
+                                        )}
+                                      </div>
+                                    </td>
+                                  )}
                                 </tr>
                                 
                                 {/* ═══════════════════════════════════════════════════════════════════
@@ -2475,7 +2481,7 @@ const Movimientos = () => {
                                     
                                     {/* Espaciador visual entre grupos */}
                                     <tr className="bg-gray-100/50">
-                                      <td colSpan={esCentroUser ? 5 : 6} className="h-2"></td>
+                                      <td colSpan={esFarmacia ? 6 : esCentroUser ? 4 : 5} className="h-2"></td>
                                     </tr>
                                   </>
                                 )}
@@ -2570,7 +2576,7 @@ const Movimientos = () => {
                           {/* 📋 PANEL EXPANDIDO - Detalles del movimiento individual */}
                           {expandedId === mov.id && (
                             <tr className="bg-gradient-to-b from-gray-50 to-white">
-                              <td colSpan={esCentroUser ? 5 : 6} className="px-4 py-4">
+                              <td colSpan={esFarmacia ? 6 : esCentroUser ? 4 : 5} className="px-4 py-4">
                                 <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                                   {/* Header del panel */}
                                   <div className="bg-gradient-to-r from-slate-100 to-gray-100 px-4 py-2 border-b border-gray-200">
@@ -2612,8 +2618,8 @@ const Movimientos = () => {
                                       </div>
                                     )}
                                     
-                                    {/* Acciones para movimientos de salida */}
-                                    {mov.tipo === 'salida' && (
+                                    {/* ISS-SEC FIX: Acciones solo para Farmacia/Admin */}
+                                    {esFarmacia && mov.tipo === 'salida' && (
                                       <div className="mt-5 pt-4 border-t border-gray-200">
                                         <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-3">Acciones</span>
                                         <div className="flex flex-wrap gap-3">
@@ -2689,7 +2695,7 @@ const Movimientos = () => {
                     /* 📋 VISTA INDIVIDUAL (sin agrupar) */
                     !movimientos.length ? (
                       <tr>
-                        <td colSpan={esCentroUser ? 5 : 6} className="px-4 py-16 text-center">
+                        <td colSpan={esFarmacia ? 6 : esCentroUser ? 4 : 5} className="px-4 py-16 text-center">
                           <div className="flex flex-col items-center justify-center">
                             <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full flex items-center justify-center mb-4 shadow-inner">
                               <FaHistory className="text-3xl text-gray-400" />
@@ -2781,7 +2787,7 @@ const Movimientos = () => {
                         {/* 📋 PANEL EXPANDIDO Premium */}
                         {expandedId === mov.id && (
                           <tr className="bg-gradient-to-b from-gray-50 to-white">
-                            <td colSpan={esCentroUser ? 5 : 6} className="px-4 py-4">
+                            <td colSpan={esFarmacia ? 6 : esCentroUser ? 4 : 5} className="px-4 py-4">
                               <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                                 <div className="bg-gradient-to-r from-slate-100 to-gray-100 px-4 py-2 border-b border-gray-200">
                                   <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">
@@ -2850,8 +2856,8 @@ const Movimientos = () => {
                                     </div>
                                   )}
                                   
-                                  {/* Acciones para movimientos de salida */}
-                                  {mov.tipo === 'salida' && (
+                                  {/* ISS-SEC FIX: Acciones solo para Farmacia/Admin */}
+                                  {esFarmacia && mov.tipo === 'salida' && (
                                     <div className="mt-5 pt-4 border-t border-gray-200">
                                       <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-3">Acciones</span>
                                       <div className="flex flex-wrap gap-3">

@@ -1738,67 +1738,79 @@ const Productos = () => {
 
           )}
 
+          {/* ISS-SEC FIX: Ocultar completamente botones de gestión para roles sin permisos */}
+          {/* CENTRO solo ve productos en modo lectura - no debe ver botones que no puede usar */}
           <div className="flex flex-wrap gap-2 sm:gap-3 w-full sm:w-auto justify-end">
-              <ProtectedButton
-                permission="exportarProductos"
-                type="button"
-                onClick={handleExportar}
-                disabled={exportLoading}
-                className="flex items-center gap-1 sm:gap-2 rounded-full px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed bg-theme-gradient"
-              >
-                {exportLoading ? (
-                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent inline-block" />
-                ) : (
+              {/* Exportar - Solo si tiene permiso (Farmacia, Admin, Vista) */}
+              {puede.exportar && (
+                <button
+                  type="button"
+                  onClick={handleExportar}
+                  disabled={exportLoading}
+                  className="flex items-center gap-1 sm:gap-2 rounded-full px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed bg-theme-gradient"
+                >
+                  {exportLoading ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent inline-block" />
+                  ) : (
+                    <FaDownload />
+                  )}
+                  <span className="hidden sm:inline">{exportLoading ? 'Exportando...' : 'Exportar'}</span>
+                </button>
+              )}
+
+              {/* Importar - Solo Farmacia/Admin */}
+              {puede.importar && (
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={importLoading}
+                  className="flex items-center gap-1 sm:gap-2 rounded-full px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed bg-theme-gradient"
+                >
+                  {importLoading ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent inline-block" />
+                  ) : (
+                    <FaFileUpload />
+                  )}
+                  <span className="hidden sm:inline">{importLoading ? 'Importando...' : 'Importar'}</span>
+                </button>
+              )}
+              
+              {/* Botón de descarga de plantilla - Solo si puede importar */}
+              {puede.importar && (
+                <button
+                  type="button"
+                  onClick={handleDescargarPlantilla}
+                  className="flex items-center gap-1 sm:gap-2 rounded-full px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-theme-primary bg-white/90 hover:bg-white transition"
+                  title="Descargar plantilla Excel para importación"
+                >
                   <FaDownload />
-                )}
-                <span className="hidden sm:inline">{exportLoading ? 'Exportando...' : 'Exportar'}</span>
-              </ProtectedButton>
-
-              <ProtectedButton
-                permission="importarProductos"
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={importLoading}
-                className="flex items-center gap-1 sm:gap-2 rounded-full px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed bg-theme-gradient"
-              >
-                {importLoading ? (
-                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent inline-block" />
-                ) : (
-                  <FaFileUpload />
-                )}
-                <span className="hidden sm:inline">{importLoading ? 'Importando...' : 'Importar'}</span>
-              </ProtectedButton>
+                  <span className="hidden sm:inline">Plantilla</span>
+                </button>
+              )}
               
-              {/* Botón de descarga de plantilla */}
-              <ProtectedButton
-                permission="importarProductos"
-                type="button"
-                onClick={handleDescargarPlantilla}
-                className="flex items-center gap-1 sm:gap-2 rounded-full px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-theme-primary bg-white/90 hover:bg-white transition"
-                title="Descargar plantilla Excel para importación"
-              >
-                <FaDownload />
-                <span className="hidden sm:inline">Plantilla</span>
-              </ProtectedButton>
-              
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".xlsx,.xls"
-                className="hidden"
-                style={{ display: 'none' }}
-                onChange={handleImportar}
-              />
+              {/* Input file oculto - Solo si puede importar */}
+              {puede.importar && (
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  className="hidden"
+                  style={{ display: 'none' }}
+                  onChange={handleImportar}
+                />
+              )}
 
-              <ProtectedButton
-                permission="crearProducto"
-                type="button"
-                onClick={() => openModal()}
-                className="flex items-center gap-1 sm:gap-2 rounded-full bg-white/90 px-3 sm:px-4 py-2 text-xs sm:text-sm font-bold hover:bg-white text-theme-primary"
-              >
-                <FaPlus />
-                <span className="hidden sm:inline">Nuevo Producto</span>
-              </ProtectedButton>
+              {/* Nuevo Producto - Solo Farmacia/Admin */}
+              {puede.crear && (
+                <button
+                  type="button"
+                  onClick={() => openModal()}
+                  className="flex items-center gap-1 sm:gap-2 rounded-full bg-white/90 px-3 sm:px-4 py-2 text-xs sm:text-sm font-bold hover:bg-white text-theme-primary"
+                >
+                  <FaPlus />
+                  <span className="hidden sm:inline">Nuevo Producto</span>
+                </button>
+              )}
               
               {/* Botón de limpieza de inventario - SOLO SUPERUSUARIOS */}
               {permisos?.isSuperuser && (
