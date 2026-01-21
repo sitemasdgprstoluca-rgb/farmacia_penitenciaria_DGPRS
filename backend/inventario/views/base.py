@@ -741,10 +741,9 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
             'updated_at': timezone.now()
         }
         
-        # ISS-FIX: Para entradas (reabastecimiento), SUMAR a cantidad_inicial
+        # Para entradas (reabastecimiento), SUMAR a cantidad_inicial
         # Esto refleja que se recibió más mercancía del mismo contrato/lote
         # Ej: ci=125, ca=115, entrada=+5 → ci=130, ca=120
-        # FIX: Usar abs(cantidad_int) para asegurar valor entero positivo
         if tipo_normalizado == 'entrada':
             update_dict['cantidad_inicial'] = F('cantidad_inicial') + abs(cantidad_int)
         
