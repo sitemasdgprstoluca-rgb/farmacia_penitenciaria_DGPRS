@@ -5851,6 +5851,20 @@ class AdminLimpiarDatosView(APIView):
                 eliminados = {}
                 
                 # ============================================================
+                # PRE-FIX: Corregir lotes corruptos antes de cualquier operación
+                # Lotes con cantidad_inicial=0 o NULL violan CHECK constraint
+                # ============================================================
+                with connection.cursor() as cursor:
+                    cursor.execute("""
+                        UPDATE lotes 
+                        SET cantidad_inicial = GREATEST(1, cantidad_actual) 
+                        WHERE cantidad_inicial IS NULL OR cantidad_inicial < 1
+                    """)
+                    lotes_corregidos = cursor.rowcount
+                    if lotes_corregidos > 0:
+                        eliminados['lotes_corregidos_pre'] = lotes_corregidos
+                
+                # ============================================================
                 # ELIMINACIÓN SELECTIVA - Usar SQL directo para evitar 
                 # problemas con modelos managed=False (Supabase)
                 # ============================================================
@@ -5993,21 +6007,13 @@ class AdminLimpiarDatosView(APIView):
                         eliminados['lotes_centros'] = cursor.rowcount
                     
                     # ISS-FIX: Recalcular cantidad_inicial de lotes restantes
-                    # Después de eliminar movimientos de requisiciones, recalcular
+                    # Después de eliminar movimientos de requisiciones, cantidad_inicial = cantidad_actual
+                    # Usar GREATEST(1, ...) para respetar CHECK constraint cantidad_inicial > 0
                     with connection.cursor() as cursor:
                         cursor.execute("""
-                            UPDATE lotes l SET cantidad_inicial = (
-                                SELECT COALESCE(l.cantidad_actual - COALESCE(SUM(
-                                    CASE WHEN m.tipo = 'entrada' THEN m.cantidad 
-                                         WHEN m.tipo = 'salida' THEN -m.cantidad 
-                                         ELSE 0 END
-                                ), 0), l.cantidad_actual)
-                                FROM lotes l2 
-                                LEFT JOIN movimientos m ON m.lote_id = l2.id
-                                WHERE l2.id = l.id
-                                GROUP BY l2.id
-                            )
-                            WHERE l.centro_id IS NULL
+                            UPDATE lotes 
+                            SET cantidad_inicial = GREATEST(1, cantidad_actual)
+                            WHERE centro_id IS NULL
                         """)
                         eliminados['lotes_recalculados'] = cursor.rowcount
                     
