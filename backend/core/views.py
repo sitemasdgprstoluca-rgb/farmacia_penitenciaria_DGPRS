@@ -6047,10 +6047,30 @@ class AdminLimpiarDatosView(APIView):
                     with connection.cursor() as cursor:
                         cursor.execute("UPDATE detalles_requisicion SET lote_id = NULL")
                     
-                    # 6. Lotes
+                    # 5.1 Eliminar detalle_dispensaciones que referencian lotes
                     with connection.cursor() as cursor:
+                        cursor.execute("UPDATE detalle_dispensaciones SET lote_id = NULL WHERE lote_id IS NOT NULL")
+                        eliminados['detalle_dispensaciones_limpios'] = cursor.rowcount
+                    
+                    # 6. Lotes - DELETE con CASCADE en mente
+                    with connection.cursor() as cursor:
+                        # Primero contar cuántos hay
+                        cursor.execute("SELECT COUNT(*) FROM lotes")
+                        lotes_antes = cursor.fetchone()[0]
+                        
+                        # Ejecutar DELETE
                         cursor.execute("DELETE FROM lotes")
                         eliminados['lotes'] = cursor.rowcount
+                        
+                        # Verificar que realmente se eliminaron
+                        cursor.execute("SELECT COUNT(*) FROM lotes")
+                        lotes_despues = cursor.fetchone()[0]
+                        
+                        if lotes_despues > 0:
+                            logger.warning(f"⚠️ LOTES NO ELIMINADOS COMPLETAMENTE: {lotes_despues} permanecen en BD")
+                            eliminados['lotes_restantes_advertencia'] = lotes_despues
+                        else:
+                            logger.info(f"✅ Todos los lotes eliminados correctamente ({lotes_antes} -> {lotes_despues})")
                     
                     # 7. Actualizar stock de productos a 0
                     with connection.cursor() as cursor:
@@ -6122,6 +6142,11 @@ class AdminLimpiarDatosView(APIView):
                 else:  # categoria == 'todos'
                     # LIMPIEZA COMPLETA - Usar SQL directo para evitar problemas con modelos unmanaged
                     
+                    # 0. Limpiar FKs que referencian lotes antes de eliminarlos
+                    with connection.cursor() as cursor:
+                        cursor.execute("UPDATE detalle_dispensaciones SET lote_id = NULL WHERE lote_id IS NOT NULL")
+                        cursor.execute("UPDATE detalles_requisicion SET lote_id = NULL WHERE lote_id IS NOT NULL")
+                    
                     # 1. Detalles de hojas de recolección
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM detalle_hojas_recoleccion")
@@ -6162,10 +6187,22 @@ class AdminLimpiarDatosView(APIView):
                         cursor.execute("DELETE FROM lote_documentos")
                         eliminados['lote_documentos'] = cursor.rowcount
                     
-                    # 9. Lotes
+                    # 9. Lotes - con verificación para 'todos'
                     with connection.cursor() as cursor:
+                        cursor.execute("SELECT COUNT(*) FROM lotes")
+                        lotes_antes = cursor.fetchone()[0]
+                        
                         cursor.execute("DELETE FROM lotes")
                         eliminados['lotes'] = cursor.rowcount
+                        
+                        cursor.execute("SELECT COUNT(*) FROM lotes")
+                        lotes_despues = cursor.fetchone()[0]
+                        
+                        if lotes_despues > 0:
+                            logger.error(f"❌ {lotes_despues} LOTES NO ELIMINADOS")
+                            eliminados['lotes_restantes_advertencia'] = lotes_despues
+                        else:
+                            logger.info(f"✅ Lotes eliminados: {lotes_antes}")
                     
                     # 10. Imágenes de productos
                     with connection.cursor() as cursor:

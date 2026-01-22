@@ -561,19 +561,36 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                         'Producto y numero de lote son obligatorios')
                     continue
                 
-                # Verificar duplicado
-                lote_query = Lote.objects.filter(
+                # Verificar duplicado - Buscar TODOS los lotes (activos e inactivos)
+                # para dar mejor diagnóstico al usuario
+                lote_existente_activo = Lote.objects.filter(
                     producto=producto, 
                     numero_lote__iexact=numero_lote,
                     activo=True
                 )
-                if centro:
-                    lote_query = lote_query.filter(centro=centro)
+                lote_existente_inactivo = Lote.objects.filter(
+                    producto=producto, 
+                    numero_lote__iexact=numero_lote,
+                    activo=False
+                )
                 
-                if lote_query.exists():
+                if centro:
+                    lote_existente_activo = lote_existente_activo.filter(centro=centro)
+                    lote_existente_inactivo = lote_existente_inactivo.filter(centro=centro)
+                
+                if lote_existente_activo.exists():
+                    lote = lote_existente_activo.first()
                     resultado.agregar_error(fila_num, 'lote', 
-                        f'Lote {numero_lote} ya existe para producto {clave_producto}')
+                        f'Lote {numero_lote} ya existe para producto {clave_producto} '
+                        f'(ID: {lote.id}, centro: {lote.centro_id or "Farmacia Central"}, '
+                        f'cantidad: {lote.cantidad_actual})')
                     continue
+                
+                # Si existe inactivo, ofrecer información pero permitir crear nuevo
+                if lote_existente_inactivo.exists():
+                    lote_inact = lote_existente_inactivo.first()
+                    logger.info(f"Fila {fila_num}: Lote {numero_lote} existía inactivo (ID: {lote_inact.id}), "
+                               f"se creará nuevo registro activo")
                 
                 # ========== CANTIDAD INICIAL (requerido) ==========
                 cant_raw = get_val('cantidad_inicial', '0')
