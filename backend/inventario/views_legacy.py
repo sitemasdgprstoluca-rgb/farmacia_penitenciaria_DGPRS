@@ -7190,7 +7190,6 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         })
 
     @action(detail=True, methods=['post'], url_path='autorizar-farmacia')
-    @transaction.atomic
     def autorizar_farmacia(self, request, pk=None):
         """
         FLUJO V2: Farmacia Central autoriza la requisición y asigna fecha límite de recolección.
@@ -7201,15 +7200,9 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         FLUJO CORRECTO: enviada → recibir → en_revision → autorizar
         
         IMPORTANTE: Debe incluir 'fecha_recoleccion_limite' en el request.
-        
-        ISS-AUDIT-002 FIX: Usa select_for_update() para prevenir race conditions
-        en autorizaciones concurrentes que compiten por el mismo stock.
         """
         try:
-            # ISS-AUDIT-002 FIX: Bloquear requisición PRIMERO para evitar race conditions
-            # Esto previene sobre-autorización de stock cuando múltiples admins autorizan
-            # requisiciones simultáneamente que compiten por los mismos lotes.
-            requisicion = Requisicion.objects.select_for_update(nowait=False).get(pk=pk)
+            requisicion = Requisicion.objects.get(pk=pk)
         except Requisicion.DoesNotExist:
             return Response({
                 'error': f'No se encontró la requisición con ID {pk}'
@@ -7306,122 +7299,79 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         
         # Procesar ajustes de cantidades si se envían
         items_data = request.data.get('items') or request.data.get('detalles') or []
-        items_procesados = set()
         
-        logger.info(f"autorizar_farmacia: Procesando {len(items_data)} items para requisición {requisicion.folio}")
-        
+        # Primero validar todos los items antes de hacer cambios
+        items_a_actualizar = []
         for item_data in items_data:
             item_id = item_data.get('id')
             cant_autorizada = item_data.get('cantidad_autorizada')
             
-            logger.info(f"  Procesando item_id={item_id}, cantidad_autorizada={cant_autorizada}")
-            
             if item_id is None or cant_autorizada is None:
-                logger.info(f"  Saltando item: id={item_id}, cantidad={cant_autorizada}")
                 continue
             
             try:
                 item = requisicion.detalles.select_related('producto').get(id=item_id)
+                producto_clave = item.producto.clave if item.producto else f'Producto #{item_id}'
                 
-                # Obtener info del producto de forma segura
-                producto_clave = 'N/A'
-                if item.producto:
-                    producto_clave = item.producto.clave or f'Producto #{item.producto.id}'
-                
-                logger.info(f"  Item encontrado: detalle_id={item.id}, producto={producto_clave}")
-                
-                # ISS-FIX: Convertir cantidad con manejo robusto de tipos
+                # Convertir cantidad
                 try:
                     cant_int = int(float(cant_autorizada))
                 except (ValueError, TypeError):
-                    logger.warning(f"  Cantidad inválida para {producto_clave}: {cant_autorizada}")
-                    continue
-                    
-                item.cantidad_autorizada = max(0, cant_int)
-                motivo_ajuste = item_data.get('motivo_ajuste') or ''
+                    return Response({
+                        'error': f'Cantidad inválida para {producto_clave}: {cant_autorizada}'
+                    }, status=status.HTTP_400_BAD_REQUEST)
                 
-                logger.info(f"  Autorizando {cant_int} de {item.cantidad_solicitada} para {producto_clave}")
+                cant_int = max(0, cant_int)
+                motivo_ajuste = (item_data.get('motivo_ajuste') or '').strip()
                 
-                # Validar motivo de ajuste si cantidad reducida
-                if item.cantidad_autorizada < item.cantidad_solicitada:
-                    if not motivo_ajuste or len(motivo_ajuste.strip()) < 3:
-                        return Response({
-                            'error': f'Debe indicar motivo de ajuste para {producto_clave} (cantidad autorizada {item.cantidad_autorizada} es menor que solicitada {item.cantidad_solicitada})',
-                            'producto': producto_clave,
-                            'item_id': item_id
-                        }, status=status.HTTP_400_BAD_REQUEST)
-                    item.motivo_ajuste = motivo_ajuste.strip()
-                else:
-                    item.motivo_ajuste = motivo_ajuste.strip() if motivo_ajuste else None
+                # Validar motivo si cantidad reducida
+                if cant_int < item.cantidad_solicitada and len(motivo_ajuste) < 3:
+                    return Response({
+                        'error': f'Debe indicar motivo de ajuste para {producto_clave} (autorizado {cant_int} de {item.cantidad_solicitada} solicitados)'
+                    }, status=status.HTTP_400_BAD_REQUEST)
                 
-                # Guardar - usar update directo para evitar cualquier problema con save()
-                DetalleRequisicion.objects.filter(pk=item.pk).update(
-                    cantidad_autorizada=item.cantidad_autorizada,
-                    motivo_ajuste=item.motivo_ajuste
-                )
-                items_procesados.add(item_id)
-                logger.info(f"  Item {producto_clave} actualizado correctamente")
+                items_a_actualizar.append({
+                    'pk': item.pk,
+                    'cantidad_autorizada': cant_int,
+                    'motivo_ajuste': motivo_ajuste if motivo_ajuste else None
+                })
                 
             except DetalleRequisicion.DoesNotExist:
-                logger.warning(f"  Item {item_id} no encontrado en requisición {requisicion.folio}")
                 continue
-            except Exception as e:
-                logger.error(f"  Error procesando item {item_id}: {e}", exc_info=True)
-                return Response({
-                    'error': f'Error procesando item {item_id}: {str(e)}',
-                    'item_id': item_id
-                }, status=status.HTTP_400_BAD_REQUEST)
         
-        # ISS-SURTIR-FIX: Si NO se enviaron items explícitos, autorizar TODOS los detalles
-        # con cantidad_autorizada = cantidad_solicitada (aprobación total)
-        # FIX: Solo auto-asignar cuando es NULL, NO cuando es 0 (0 es válido)
-        if not items_procesados:
-            logger.info(f"autorizar_farmacia: No se enviaron items, autorizando todos los detalles con cantidad solicitada")
-            for detalle in requisicion.detalles.select_related('producto').all():
-                if detalle.cantidad_autorizada is None:
-                    # Usar update directo para evitar problemas con save()
-                    DetalleRequisicion.objects.filter(pk=detalle.pk).update(
-                        cantidad_autorizada=detalle.cantidad_solicitada
-                    )
-                    producto_clave = detalle.producto.clave if detalle.producto else f'Detalle #{detalle.id}'
-                    logger.info(f"  - Detalle {detalle.id}: autorizado {detalle.cantidad_solicitada} unidades de {producto_clave}")
+        # Ahora actualizar todos los items (ya validados)
+        for item_update in items_a_actualizar:
+            DetalleRequisicion.objects.filter(pk=item_update['pk']).update(
+                cantidad_autorizada=item_update['cantidad_autorizada'],
+                motivo_ajuste=item_update['motivo_ajuste']
+            )
+        
+        # Si no se enviaron items, autorizar todos con cantidad solicitada
+        if not items_a_actualizar:
+            requisicion.detalles.filter(cantidad_autorizada__isnull=True).update(
+                cantidad_autorizada=F('cantidad_solicitada')
+            )
         
         estado_anterior = requisicion.estado
-        requisicion.estado = 'autorizada'
         
-        # ISS-FIX: Asignar campos directamente sin try/except individual
-        # Los campos existen en el modelo y en la BD según el schema
-        requisicion.fecha_autorizacion_farmacia = timezone.now()
-        requisicion.fecha_autorizacion = timezone.now()  # Campo legacy
-        requisicion.fecha_recoleccion_limite = fecha_recoleccion
-        requisicion.autorizador_farmacia = request.user
-        requisicion.autorizador = request.user  # Campo legacy
+        # Actualizar requisición usando update() directo para evitar problemas
+        Requisicion.objects.filter(pk=requisicion.pk).update(
+            estado='autorizada',
+            fecha_autorizacion=timezone.now(),
+            fecha_autorizacion_farmacia=timezone.now(),
+            fecha_recoleccion_limite=fecha_recoleccion,
+            autorizador_farmacia=request.user,
+            autorizador=request.user
+        )
         
+        # Actualizar observaciones si hay
         if observaciones:
-            requisicion.observaciones_farmacia = f"{requisicion.observaciones_farmacia or ''}\n{observaciones}".strip()
+            obs_actual = requisicion.observaciones_farmacia or ''
+            nueva_obs = f"{obs_actual}\n{observaciones}".strip()
+            Requisicion.objects.filter(pk=requisicion.pk).update(observaciones_farmacia=nueva_obs)
         
-        # ISS-FIX: Guardar SIN update_fields para evitar problemas con managed=False
-        # Django manejará qué campos actualizar basándose en los cambios detectados
-        try:
-            requisicion.save()
-            logger.info(f"Requisición {requisicion.folio} guardada exitosamente con fecha_recoleccion_limite={fecha_recoleccion}")
-        except Exception as save_error:
-            logger.error(f"Error al guardar requisición autorizada: {save_error}")
-            # Si falla, intentar guardar con update() directo incluyendo TODOS los campos importantes
-            try:
-                Requisicion.objects.filter(pk=requisicion.pk).update(
-                    estado='autorizada',
-                    fecha_autorizacion=timezone.now(),
-                    fecha_autorizacion_farmacia=timezone.now(),
-                    fecha_recoleccion_limite=fecha_recoleccion,
-                    autorizador_farmacia=request.user,
-                    autorizador=request.user
-                )
-                requisicion.refresh_from_db()
-                logger.info(f"Guardado exitoso via update() directo con fecha_recoleccion_limite={fecha_recoleccion}")
-            except Exception as fallback_error:
-                logger.error(f"Error en fallback update: {fallback_error}")
-                raise
+        # Recargar para obtener datos actualizados
+        requisicion.refresh_from_db()
         
         self._registrar_historial(
             requisicion, estado_anterior, 'autorizada',
