@@ -19,7 +19,7 @@ import {
   // ISS-001 FIX: Importar métricas de contrato
   getContractMetrics,
   resetContractMetrics,
-} from '../../utils/dtoContracts';
+} from '../utils/dtoContracts';
 
 describe('dtoContracts', () => {
   // ISS-001 FIX: Limpiar métricas antes de cada test
@@ -55,7 +55,8 @@ describe('dtoContracts', () => {
 
     it('lanza error en modo strict sin stock', () => {
       const producto = { id: 1 };
-      expect(() => getStockProducto(producto, { strict: true })).toThrow('Contrato violado');
+      // ISS-003 FIX: En modo strict, lanza error si falta el campo canónico
+      expect(() => getStockProducto(producto, { strict: true })).toThrow('[CONTRACT ERROR]');
     });
 
     it('prioriza stock_actual sobre campos legacy', () => {

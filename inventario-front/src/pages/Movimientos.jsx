@@ -248,15 +248,46 @@ const Movimientos = () => {
     []
   );
 
-  // Filtrar productos según texto de búsqueda
+  // Función auxiliar para verificar si un lote está vencido
+  const estaVencido = useCallback((lote) => {
+    if (!lote.fecha_caducidad) return false;
+    const fechaCad = new Date(lote.fecha_caducidad);
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    return fechaCad < hoy;
+  }, []);
+
+  // IDs de productos que tienen lotes vencidos (para filtrar cuando es baja por caducidad)
+  const productosConLotesVencidos = useMemo(() => {
+    const ids = new Set();
+    lotes.forEach(l => {
+      if (l.cantidad_actual > 0 && estaVencido(l)) {
+        ids.add(l.producto);
+      }
+    });
+    return ids;
+  }, [lotes, estaVencido]);
+
+  // Filtrar productos según texto de búsqueda Y tipo de movimiento
   const productosFiltrados = useMemo(() => {
-    if (!productoBusqueda.trim()) return productos;
-    const busqueda = productoBusqueda.toLowerCase().trim();
-    return productos.filter(p => 
-      p.clave?.toLowerCase().includes(busqueda) ||
-      p.nombre?.toLowerCase().includes(busqueda)
-    );
-  }, [productos, productoBusqueda]);
+    let filtrados = productos;
+    
+    // Si es baja por caducidad, mostrar solo productos con lotes vencidos
+    if (formData.subtipo_salida === 'caducidad') {
+      filtrados = filtrados.filter(p => productosConLotesVencidos.has(p.id));
+    }
+    
+    // Aplicar filtro de búsqueda por texto
+    if (productoBusqueda.trim()) {
+      const busqueda = productoBusqueda.toLowerCase().trim();
+      filtrados = filtrados.filter(p => 
+        p.clave?.toLowerCase().includes(busqueda) ||
+        p.nombre?.toLowerCase().includes(busqueda)
+      );
+    }
+    
+    return filtrados;
+  }, [productos, productoBusqueda, formData.subtipo_salida, productosConLotesVencidos]);
 
   // Cerrar dropdown al hacer click fuera
   useEffect(() => {
@@ -649,6 +680,20 @@ const Movimientos = () => {
     }
   }, [cargarMovimientos, centroResuelto]);
 
+  // Escuchar evento de limpieza de inventario para refrescar Movimientos
+  useEffect(() => {
+    const handleInventarioLimpiado = (event) => {
+      console.log('🧹 Inventario limpiado, refrescando Movimientos...', event.detail);
+      cargarMovimientos();
+    };
+    
+    window.addEventListener('inventarioLimpiado', handleInventarioLimpiado);
+    
+    return () => {
+      window.removeEventListener('inventarioLimpiado', handleInventarioLimpiado);
+    };
+  }, [cargarMovimientos]);
+
   // Scroll al movimiento resaltado cuando viene del dashboard
   useEffect(() => {
     if (highlightId && highlightRef.current && !loading) {
@@ -661,35 +706,58 @@ const Movimientos = () => {
   // Filtrar lotes cuando cambia el producto o el tipo de movimiento
   // FARMACIA/ADMIN pueden ver lotes sin stock si van a hacer una ENTRADA
   // CENTRO solo ve lotes con stock > 0 (solo pueden hacer salidas)
+  // FILTRO ESPECIAL: Caducidad = solo lotes vencidos, Merma = lotes con stock
   useEffect(() => {
     const esEntrada = formData.tipo === 'entrada';
+    const esCaducidad = formData.subtipo_salida === 'caducidad';
+    const esMerma = formData.subtipo_salida === 'merma';
     // FARMACIA/ADMIN: mostrar lotes sin stock cuando están en modo ENTRADA
     const mostrarSinStock = esFarmacia && esEntrada;
+    
+    // Función para verificar si un lote está vencido
+    const estaVencido = (lote) => {
+      if (!lote.fecha_caducidad) return false;
+      const fechaCad = new Date(lote.fecha_caducidad);
+      const hoy = new Date();
+      hoy.setHours(0, 0, 0, 0);
+      return fechaCad < hoy;
+    };
+    
+    // Función para filtrar según tipo de movimiento
+    const filtrarLote = (l) => {
+      const tieneStock = l.cantidad_actual > 0;
+      
+      // Para CADUCIDAD: solo lotes vencidos con stock
+      if (esCaducidad) {
+        return tieneStock && estaVencido(l);
+      }
+      
+      // Para MERMA: lotes con stock (no necesariamente vencidos)
+      if (esMerma) {
+        return tieneStock;
+      }
+      
+      // Para ENTRADA: incluir sin stock (para reabastecer)
+      if (mostrarSinStock) {
+        return true;
+      }
+      
+      // Salida normal (transferencia): solo con stock
+      return tieneStock;
+    };
     
     if (productoFiltro) {
       const lotesFiltrados = lotes.filter(l => {
         const esDelProducto = l.producto === parseInt(productoFiltro);
-        const tieneStock = l.cantidad_actual > 0;
-        // Farmacia/Admin en modo entrada: mostrar todos los del producto (incluido sin stock)
-        // Otros casos: solo con stock > 0
-        return esDelProducto && (mostrarSinStock || tieneStock);
+        return esDelProducto && filtrarLote(l);
       });
       setLotesDisponibles(lotesFiltrados);
       setFormData(prev => ({ ...prev, lote: "" }));
     } else {
-      // Sin filtro de producto
-      if (mostrarSinStock) {
-        // Farmacia/Admin en modo entrada: todos los lotes (incluidos sin stock)
-        setLotesDisponibles(lotes);
-      } else if (esFarmacia) {
-        // Farmacia/Admin en modo salida: solo lotes con stock > 0 (no puede transferir lo que no tiene)
-        setLotesDisponibles(lotes.filter(l => l.cantidad_actual > 0));
-      } else {
-        // CENTRO/MEDICO: siempre solo lotes con stock > 0
-        setLotesDisponibles(lotes.filter(l => l.cantidad_actual > 0));
-      }
+      // Sin filtro de producto - aplicar filtros según tipo
+      setLotesDisponibles(lotes.filter(filtrarLote));
     }
-  }, [productoFiltro, lotes, formData.tipo, esFarmacia]);
+  }, [productoFiltro, lotes, formData.tipo, formData.subtipo_salida, esFarmacia]);
 
   const handleFormChange = (field, value) => {
     setFormData(prev => {
@@ -706,6 +774,13 @@ const Movimientos = () => {
           // Para salidas: establecer subtipo por defecto
           newState.subtipo_salida = "transferencia";
         }
+        // Limpiar lote al cambiar tipo (el filtro de lotes cambia)
+        newState.lote = "";
+      }
+      
+      // ISS-FIX: Limpiar lote y producto al cambiar subtipo (merma/caducidad filtran diferente)
+      if (field === "subtipo_salida") {
+        newState.lote = "";
       }
       
       return newState;
@@ -1394,13 +1469,104 @@ const Movimientos = () => {
               </h2>
             </div>
             <div className="p-6 space-y-4">
+              {/* 🔄 Tipo de Movimiento - PRIMERO para que el usuario elija la acción */}
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-700">Tipo de Movimiento <span className="text-red-500">*</span></label>
+                
+                {/* FARMACIA/ADMIN: opciones completas incluyendo merma/caducidad */}
+                {puedeHacerEntradas ? (
+                  <select
+                    value={formData.subtipo_salida === 'merma' ? 'merma' : formData.subtipo_salida === 'caducidad' ? 'caducidad' : formData.tipo}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      // Limpiar producto y lote al cambiar tipo (los filtros cambian)
+                      setProductoFiltro('');
+                      setProductoBusqueda('');
+                      if (val === 'merma') {
+                        handleFormChange("tipo", "salida");
+                        handleFormChange("subtipo_salida", "merma");
+                      } else if (val === 'caducidad') {
+                        handleFormChange("tipo", "salida");
+                        handleFormChange("subtipo_salida", "caducidad");
+                      } else if (val === 'entrada') {
+                        handleFormChange("tipo", "entrada");
+                        handleFormChange("subtipo_salida", "transferencia");
+                      } else {
+                        handleFormChange("tipo", "salida");
+                        handleFormChange("subtipo_salida", "transferencia");
+                      }
+                    }}
+                    className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-800 font-medium transition-all duration-200"
+                  >
+                    <option value="salida">🚚 Salida / Transferencia a Centro</option>
+                    <option value="merma">📉 Baja por Merma</option>
+                    <option value="caducidad">⏰ Baja por Caducidad</option>
+                    <option value="entrada">📦 Entrada a Almacén (Nueva compra, reabastecimiento)</option>
+                  </select>
+                ) : (
+                  /* MEDICO/CENTRO: solo pueden hacer salidas */
+                  <div className="w-full rounded-xl border-2 border-rose-200 bg-rose-50 px-4 py-3 text-rose-800 font-medium">
+                    🏥 Salida / Dispensación de inventario
+                  </div>
+                )}
+                
+                {/* Descripción según tipo y rol */}
+                {formData.subtipo_salida === 'merma' ? (
+                  <div className="p-3 bg-orange-50 border border-orange-300 rounded-lg">
+                    <p className="text-xs text-orange-700">
+                      <FaExclamationTriangle className="inline mr-1" />
+                      <strong>Merma:</strong> Registra pérdida de medicamentos por daño, robo, deterioro u otras causas. 
+                      El stock se descuenta permanentemente del inventario. <span className="font-bold">Esta operación es IRREVERSIBLE.</span>
+                    </p>
+                  </div>
+                ) : formData.subtipo_salida === 'caducidad' ? (
+                  <div className="p-3 bg-amber-50 border border-amber-300 rounded-lg">
+                    <p className="text-xs text-amber-700">
+                      <FaClock className="inline mr-1" />
+                      <strong>Caducidad:</strong> Registra baja de medicamentos vencidos. Solo se mostrarán lotes con fecha de caducidad expirada.
+                      <span className="font-bold"> Esta operación es IRREVERSIBLE.</span>
+                    </p>
+                  </div>
+                ) : formData.tipo === "salida" ? (
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg">
+                    <p className="text-xs text-rose-700">
+                      <FaTruck className="inline mr-1" />
+                      {puedeHacerEntradas ? (
+                        <><strong>Transferencia:</strong> Envía medicamentos desde Almacén Central hacia un Centro Penitenciario. El stock se descuenta del lote seleccionado.</>
+                      ) : esMedico ? (
+                        <><strong>Dispensación:</strong> Registra la salida de medicamentos para atención médica. El stock se descuenta del inventario de tu centro.</>
+                      ) : (
+                        <><strong>Consumo:</strong> Registra la salida de medicamentos de tu centro. El stock se descuenta del inventario asignado.</>
+                      )}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                    <p className="text-xs text-emerald-700">
+                      <FaBoxes className="inline mr-1" />
+                      <strong>Entrada:</strong> Agrega stock a un lote existente (nueva compra, reabastecimiento, devolución). 
+                      El stock se suma al lote seleccionado.
+                    </p>
+                  </div>
+                )}
+              </div>
+
               {/* Filtro por producto con búsqueda mejorada */}
               <div className="space-y-2">
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Producto (filtro)</label>
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                  Producto (filtro)
+                  {formData.subtipo_salida === 'caducidad' && (
+                    <span className="ml-2 text-amber-600 normal-case font-normal">- Solo productos con lotes vencidos</span>
+                  )}
+                </label>
                 <div className="relative" ref={productoDropdownRef}>
                   <input
                     type="text"
-                    placeholder="Buscar producto por clave o nombre..."
+                    placeholder={
+                      formData.subtipo_salida === 'caducidad' 
+                        ? "Buscar productos con lotes vencidos..." 
+                        : "Buscar producto por clave o nombre..."
+                    }
                     value={productoBusqueda}
                     onChange={(e) => {
                       setProductoBusqueda(e.target.value);
@@ -1487,7 +1653,12 @@ const Movimientos = () => {
 
               {/* Selección de lote */}
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-700">Lote *</label>
+                <label className="text-sm font-semibold text-gray-700">
+                  Lote *
+                  {formData.subtipo_salida === 'caducidad' && (
+                    <span className="ml-2 text-amber-600 text-xs font-normal">- Solo lotes vencidos</span>
+                  )}
+                </label>
                 <select
                   value={formData.lote}
                   onChange={(e) => handleFormChange("lote", e.target.value)}
@@ -1503,8 +1674,17 @@ const Movimientos = () => {
                 </select>
                 {lotesDisponibles.length === 0 && (
                   <div className="text-xs p-2 bg-orange-50 border border-orange-200 rounded">
-                    <p className="text-orange-700 font-medium">No hay lotes disponibles</p>
-                    {!puedeVerTodosCentros && (
+                    <p className="text-orange-700 font-medium">
+                      {formData.subtipo_salida === 'caducidad' 
+                        ? "No hay lotes vencidos disponibles" 
+                        : "No hay lotes disponibles"}
+                    </p>
+                    {formData.subtipo_salida === 'caducidad' && (
+                      <p className="text-orange-600 mt-1">
+                        No existen lotes con fecha de caducidad expirada en el inventario.
+                      </p>
+                    )}
+                    {!puedeVerTodosCentros && formData.subtipo_salida !== 'caducidad' && (
                       <p className="text-orange-600 mt-1">
                         El inventario de tu centro está vacío. Contacta a Farmacia Central para solicitar surtimiento.
                       </p>
@@ -1519,20 +1699,25 @@ const Movimientos = () => {
                   
                   const sinStock = loteInfo.cantidad_actual === 0;
                   const esEntrada = formData.tipo === 'entrada';
+                  const estaVencido = loteInfo.fecha_caducidad && new Date(loteInfo.fecha_caducidad) < new Date();
                   
                   return (
                     <div className={`mt-2 p-3 rounded-lg border ${
                       sinStock 
                         ? 'bg-amber-50 border-amber-300' 
-                        : 'bg-blue-50 border-blue-200'
+                        : estaVencido 
+                          ? 'bg-red-50 border-red-300'
+                          : 'bg-blue-50 border-blue-200'
                     }`}>
-                      <div className={`flex items-center gap-2 ${sinStock ? 'text-amber-800' : 'text-blue-800'}`}>
+                      <div className={`flex items-center gap-2 ${
+                        sinStock ? 'text-amber-800' : estaVencido ? 'text-red-800' : 'text-blue-800'
+                      }`}>
                         <FaInfoCircle />
                         <span className="font-semibold">
-                          {sinStock ? '⚠️ Lote sin existencias' : 'Stock disponible'}
+                          {sinStock ? '⚠️ Lote sin existencias' : estaVencido ? '⚠️ Lote VENCIDO' : 'Stock disponible'}
                         </span>
                       </div>
-                      <div className={`mt-1 text-sm ${sinStock ? 'text-amber-700' : 'text-blue-700'}`}>
+                      <div className={`mt-1 text-sm ${sinStock ? 'text-amber-700' : estaVencido ? 'text-red-700' : 'text-blue-700'}`}>
                         <div><strong>Producto:</strong> {productoInfo?.nombre || 'N/A'}</div>
                         <div><strong>Lote:</strong> {loteInfo.numero_lote}</div>
                         <div>
@@ -1542,7 +1727,10 @@ const Movimientos = () => {
                           </span> unidades
                         </div>
                         {loteInfo.fecha_caducidad && (
-                          <div><strong>Caducidad:</strong> {new Date(loteInfo.fecha_caducidad).toLocaleDateString()}</div>
+                          <div className={estaVencido ? 'text-red-700 font-semibold' : ''}>
+                            <strong>Caducidad:</strong> {new Date(loteInfo.fecha_caducidad).toLocaleDateString()}
+                            {estaVencido && ' ⚠️ VENCIDO'}
+                          </div>
                         )}
                         {sinStock && esEntrada && (
                           <div className="mt-2 p-2 bg-emerald-100 border border-emerald-300 rounded text-emerald-700 text-xs">
@@ -1558,85 +1746,6 @@ const Movimientos = () => {
                     </div>
                   );
                 })()}
-              </div>
-
-              {/* Tipo de Movimiento - Diferente según el rol */}
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-700">Tipo de Movimiento <span className="text-red-500">*</span></label>
-                
-                {/* FARMACIA/ADMIN: opciones completas incluyendo merma/caducidad */}
-                {puedeHacerEntradas ? (
-                  <select
-                    value={formData.subtipo_salida === 'merma' ? 'merma' : formData.subtipo_salida === 'caducidad' ? 'caducidad' : formData.tipo}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === 'merma') {
-                        handleFormChange("tipo", "salida");
-                        handleFormChange("subtipo_salida", "merma");
-                      } else if (val === 'caducidad') {
-                        handleFormChange("tipo", "salida");
-                        handleFormChange("subtipo_salida", "caducidad");
-                      } else if (val === 'entrada') {
-                        handleFormChange("tipo", "entrada");
-                        handleFormChange("subtipo_salida", "transferencia");
-                      } else {
-                        handleFormChange("tipo", "salida");
-                        handleFormChange("subtipo_salida", "transferencia");
-                      }
-                    }}
-                    className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-800 font-medium transition-all duration-200"
-                  >
-                    <option value="salida">🚚 Salida / Transferencia a Centro</option>
-                    <option value="merma">📉 Baja por Merma / Pérdida</option>
-                    <option value="caducidad">⏰ Baja por Caducidad</option>
-                    <option value="entrada">📦 Entrada a Almacén (Nueva compra, reabastecimiento)</option>
-                  </select>
-                ) : (
-                  /* MEDICO/CENTRO: solo pueden hacer salidas */
-                  <div className="w-full rounded-xl border-2 border-rose-200 bg-rose-50 px-4 py-3 text-rose-800 font-medium">
-                    🏥 Salida / Dispensación de inventario
-                  </div>
-                )}
-                
-                {/* Descripción según tipo y rol */}
-                {formData.subtipo_salida === 'merma' ? (
-                  <div className="p-3 bg-orange-50 border border-orange-300 rounded-lg">
-                    <p className="text-xs text-orange-700">
-                      <FaExclamationTriangle className="inline mr-1" />
-                      <strong>Merma:</strong> Registra pérdida de medicamentos por daño, robo, deterioro u otras causas. 
-                      El stock se descuenta permanentemente del inventario. <span className="font-bold">Esta operación es IRREVERSIBLE.</span>
-                    </p>
-                  </div>
-                ) : formData.subtipo_salida === 'caducidad' ? (
-                  <div className="p-3 bg-amber-50 border border-amber-300 rounded-lg">
-                    <p className="text-xs text-amber-700">
-                      <FaClock className="inline mr-1" />
-                      <strong>Caducidad:</strong> Registra baja de medicamentos por vencimiento. 
-                      El stock se descuenta permanentemente del inventario. <span className="font-bold">Esta operación es IRREVERSIBLE.</span>
-                    </p>
-                  </div>
-                ) : formData.tipo === "salida" ? (
-                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg">
-                    <p className="text-xs text-rose-700">
-                      <FaTruck className="inline mr-1" />
-                      {puedeHacerEntradas ? (
-                        <><strong>Transferencia:</strong> Envía medicamentos desde Almacén Central hacia un Centro Penitenciario. El stock se descuenta del lote seleccionado.</>
-                      ) : esMedico ? (
-                        <><strong>Dispensación:</strong> Registra la salida de medicamentos para atención médica. El stock se descuenta del inventario de tu centro.</>
-                      ) : (
-                        <><strong>Consumo:</strong> Registra la salida de medicamentos de tu centro. El stock se descuenta del inventario asignado.</>
-                      )}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
-                    <p className="text-xs text-emerald-700">
-                      <FaBoxes className="inline mr-1" />
-                      <strong>Entrada:</strong> Agrega stock a un lote existente (nueva compra, reabastecimiento, devolución). 
-                      El stock se suma al lote seleccionado.
-                    </p>
-                  </div>
-                )}
               </div>
 
               {/* Subtipo de salida para MEDICO/CENTRO */}
@@ -1658,7 +1767,7 @@ const Movimientos = () => {
                     >
                       <option value="consumo_interno">🏥 Consumo interno</option>
                       <option value="receta">💊 Dispensación por receta</option>
-                      <option value="merma">📉 Merma / Pérdida</option>
+                      <option value="merma">📉 Merma</option>
                       <option value="caducidad">⏰ Caducidad</option>
                     </select>
                   )}

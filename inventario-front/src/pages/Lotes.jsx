@@ -326,6 +326,20 @@ const Lotes = () => {
     return () => clearTimeout(delayDebounceFn);
   }, [cargarLotes]);
 
+  // Escuchar evento de limpieza de inventario para refrescar Lotes
+  useEffect(() => {
+    const handleInventarioLimpiado = (event) => {
+      console.log('🧹 Inventario limpiado, refrescando Lotes...', event.detail);
+      cargarLotes();
+    };
+    
+    window.addEventListener('inventarioLimpiado', handleInventarioLimpiado);
+    
+    return () => {
+      window.removeEventListener('inventarioLimpiado', handleInventarioLimpiado);
+    };
+  }, [cargarLotes]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     

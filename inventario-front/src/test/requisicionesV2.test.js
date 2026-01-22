@@ -34,8 +34,11 @@ const TRANSICIONES_V2 = {
 const esTransicionValida = (estadoActual, accion) => {
   if (!estadoActual) return true;
   const estadoNorm = estadoActual.toUpperCase().replace(/ /g, '_');
-  const permitidas = TRANSICIONES_V2[estadoNorm] || [];
-  return permitidas.length === 0 || permitidas.includes(accion);
+  const permitidas = TRANSICIONES_V2[estadoNorm];
+  // ISS-FIX: Si el estado no existe en las transiciones, rechazar
+  if (permitidas === undefined) return false;
+  // ISS-FIX: Si es un array vacío (estado terminal), no permitir ninguna acción
+  return permitidas.includes(accion);
 };
 
 const getAccionesPermitidas = (estado) => 

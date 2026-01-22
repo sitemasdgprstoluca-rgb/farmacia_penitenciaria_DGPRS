@@ -200,7 +200,8 @@ describe('useRequisicionEstadoV2', () => {
       expect(obtenerSiguienteEstado('pendiente_admin', 'autorizar_admin')).toBe('pendiente_director');
       expect(obtenerSiguienteEstado('pendiente_director', 'autorizar_director')).toBe('enviada');
       expect(obtenerSiguienteEstado('enviada', 'recibir_farmacia')).toBe('en_revision');
-      expect(obtenerSiguienteEstado('surtida', 'confirmar_entrega')).toBe('entregada');
+      // FLUJO V2 ACTUALIZADO: en_surtido → surtir → entregada (entrega automática)
+      expect(obtenerSiguienteEstado('en_surtido', 'surtir')).toBe('entregada');
     });
 
     it('debe devolver null para acciones sin transición', () => {
@@ -221,11 +222,13 @@ describe('useRequisicionEstadoV2', () => {
 
   describe('obtenerAccionesPermitidas', () => {
     it('debe devolver acciones para borrador', () => {
+      // Nota: 'editar' requiere editarRequisicion + esCreador o editarCualquierRequisicion
       const acciones = obtenerAccionesPermitidas('borrador', {
         crearRequisicion: true,
+        editarRequisicion: true,
         eliminarRequisicion: true,
         verRequisiciones: true,
-      });
+      }, { esCreador: true });
       
       expect(acciones).toContain('editar');
       expect(acciones).toContain('enviar_admin');
@@ -371,6 +374,7 @@ describe('useRequisicionEstadoV2', () => {
 
 describe('Flujo completo V2', () => {
   it('debe permitir el flujo completo de requisición', () => {
+    // FLUJO V2 ACTUALIZADO: al surtir se entrega automáticamente (sin confirmación del centro)
     const flujo = [
       { estado: 'borrador', accion: 'enviar_admin', siguiente: 'pendiente_admin' },
       { estado: 'pendiente_admin', accion: 'autorizar_admin', siguiente: 'pendiente_director' },
@@ -378,8 +382,8 @@ describe('Flujo completo V2', () => {
       { estado: 'enviada', accion: 'recibir_farmacia', siguiente: 'en_revision' },
       { estado: 'en_revision', accion: 'autorizar_farmacia', siguiente: 'autorizada' },
       { estado: 'autorizada', accion: 'iniciar_surtido', siguiente: 'en_surtido' },
-      { estado: 'en_surtido', accion: 'surtir', siguiente: 'surtida' },
-      { estado: 'surtida', accion: 'confirmar_entrega', siguiente: 'entregada' },
+      // CAMBIO V2: en_surtido → surtir → entregada (entrega automática)
+      { estado: 'en_surtido', accion: 'surtir', siguiente: 'entregada' },
     ];
 
     flujo.forEach(({ estado, accion, siguiente }) => {
@@ -398,20 +402,15 @@ describe('Flujo completo V2', () => {
     expect(obtenerSiguienteEstado('devuelta', 'reenviar')).toBe('borrador');
   });
 
-  it('debe permitir cancelación en estados intermedios', () => {
-    const estadosCancelables = [
-      'pendiente_admin', 
-      'pendiente_director',
-      'devuelta',
-    ];
-    
-    estadosCancelables.forEach(estado => {
-      expect(esTransicionValida(estado, 'cancelar')).toBe(true);
-      expect(obtenerSiguienteEstado(estado, 'cancelar')).toBe('cancelada');
-    });
+  it('debe permitir cancelación desde devuelta', () => {
+    // FLUJO V2: Solo devuelta permite cancelar directamente
+    // pendiente_admin y pendiente_director usan rechazar/devolver
+    expect(esTransicionValida('devuelta', 'cancelar')).toBe(true);
+    expect(obtenerSiguienteEstado('devuelta', 'cancelar')).toBe('cancelada');
   });
 
   it('debe permitir marcar vencida desde surtida', () => {
+    // FLUJO V2: Estado surtida es legacy, pero sigue permitiendo marcar_vencida
     expect(esTransicionValida('surtida', 'marcar_vencida')).toBe(true);
     expect(obtenerSiguienteEstado('surtida', 'marcar_vencida')).toBe('vencida');
   });

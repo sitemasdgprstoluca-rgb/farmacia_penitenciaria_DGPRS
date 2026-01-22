@@ -3,11 +3,12 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.exceptions import PermissionDenied
 from django.core.paginator import InvalidPage
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.http import HttpResponse
-from django.db import transaction
+from django.db import transaction, OperationalError
 from django.db.models import Q, Sum, Count, F, IntegerField, Subquery, OuterRef
 from django.db.models.functions import Coalesce
 from django.utils import timezone
@@ -4218,6 +4219,24 @@ class MovimientoViewSet(
         if subtipo_salida:
             queryset = queryset.filter(subtipo_salida__iexact=subtipo_salida)
         
+        # =====================================================================
+        # ISS-FIX: FILTRO DE ESTADO DE CONFIRMACIÓN
+        # =====================================================================
+        # Los movimientos de salida masiva/transferencia tienen en su motivo:
+        # - [CONFIRMADO] = Stock ya descontado, entrega confirmada
+        # - [PENDIENTE] = Stock reservado, pendiente de confirmación
+        # En la vista de Movimientos, mostramos TODOS por defecto para que el
+        # usuario vea los pendientes y pueda confirmarlos.
+        # En reportes, por defecto solo confirmados.
+        estado_confirmacion = self.request.query_params.get('estado_confirmacion', 'todos')
+        if estado_confirmacion == 'confirmado':
+            # Excluir movimientos pendientes
+            queryset = queryset.exclude(motivo__icontains='[PENDIENTE]')
+        elif estado_confirmacion == 'pendiente':
+            # Solo movimientos pendientes
+            queryset = queryset.filter(motivo__icontains='[PENDIENTE]')
+        # Si 'todos', no filtrar por estado
+        
         # Filtro por rango de fechas
         fecha_inicio = self.request.query_params.get('fecha_inicio')
         if fecha_inicio:
@@ -4879,18 +4898,26 @@ class MovimientoViewSet(
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=True, methods=['post'], url_path='confirmar-entrega')
+    @transaction.atomic
     def confirmar_entrega(self, request, pk=None):
         """
-        Confirma la entrega física de un movimiento de salida individual.
-        Marca el movimiento como confirmado agregando [CONFIRMADO] al motivo.
+        ISS-CONCURRENCY FIX: Confirma la entrega física de un movimiento de salida.
+        
+        SEGURIDAD:
+        - Usa select_for_update para bloqueo pesimista (previene race conditions)
+        - Operación idempotente: si ya está confirmado, retorna éxito sin modificar
+        - Transacción atómica para garantizar consistencia
         
         Returns:
-            - 200: Entrega confirmada exitosamente
+            - 200: Entrega confirmada exitosamente (o ya estaba confirmada)
             - 404: Movimiento no encontrado
-            - 400: No es movimiento de salida o ya está confirmado
+            - 400: No es movimiento de salida
+            - 409: Conflicto de concurrencia (reintento necesario)
         """
         try:
-            movimiento = self.get_object()
+            # ISS-CONCURRENCY FIX: Bloqueo pesimista con select_for_update
+            # Esto previene que dos peticiones simultáneas confirmen el mismo movimiento
+            movimiento = Movimiento.objects.select_for_update(nowait=False).get(pk=pk)
             
             # Verificar que es un movimiento de salida
             if movimiento.tipo != 'salida':
@@ -4910,13 +4937,20 @@ class MovimientoViewSet(
                             'message': 'No tienes permiso para confirmar esta entrega'
                         }, status=status.HTTP_403_FORBIDDEN)
             
-            # Verificar si ya está confirmado
+            # ISS-CONCURRENCY FIX: Operación idempotente
+            # Si ya está confirmado, retornar éxito sin modificar (idempotencia)
             motivo_actual = movimiento.motivo or ''
             if '[CONFIRMADO]' in motivo_actual:
+                logger.info(
+                    f'Entrega de movimiento {movimiento.id} ya estaba confirmada '
+                    f'(solicitud idempotente de {request.user.username})'
+                )
                 return Response({
-                    'error': True,
-                    'message': 'Esta entrega ya fue confirmada anteriormente'
-                }, status=status.HTTP_400_BAD_REQUEST)
+                    'success': True,
+                    'message': 'Entrega confirmada exitosamente',
+                    'movimiento_id': movimiento.id,
+                    'idempotente': True  # Indica que ya estaba confirmada
+                })
             
             # Marcar como confirmado
             movimiento.motivo = f'[CONFIRMADO] {motivo_actual}'.strip()
@@ -4929,7 +4963,8 @@ class MovimientoViewSet(
             return Response({
                 'success': True,
                 'message': 'Entrega confirmada exitosamente',
-                'movimiento_id': movimiento.id
+                'movimiento_id': movimiento.id,
+                'idempotente': False  # Indica que se confirmó en esta solicitud
             })
             
         except Movimiento.DoesNotExist:
@@ -4937,6 +4972,14 @@ class MovimientoViewSet(
                 'error': True,
                 'message': 'Movimiento no encontrado'
             }, status=status.HTTP_404_NOT_FOUND)
+        except OperationalError as e:
+            # Error de bloqueo (base de datos ocupada, deadlock, etc.)
+            logger.warning(f'Conflicto de concurrencia confirmando movimiento {pk}: {str(e)}')
+            return Response({
+                'error': True,
+                'message': 'Conflicto de concurrencia. Por favor reintente la operación.',
+                'retry': True
+            }, status=status.HTTP_409_CONFLICT)
         except Exception as e:
             logger.error(f'Error confirmando entrega individual: {str(e)}')
             return Response({
@@ -4968,6 +5011,59 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         if self.action == 'list':
             return RequisicionListSerializer
         return RequisicionSerializer
+
+    def get_object(self):
+        """
+        ISS-SEC-IDOR FIX: Override de get_object para validar ownership por centro.
+        
+        Previene IDOR (Insecure Direct Object Reference) asegurando que usuarios
+        de centro solo puedan acceder a requisiciones de su propio centro.
+        
+        Los roles globales (admin, farmacia, vista) pueden acceder a cualquier requisición.
+        """
+        # Obtener el objeto usando el queryset filtrado (aplica get_queryset)
+        obj = super().get_object()
+        
+        user = self.request.user
+        if not user or not user.is_authenticated:
+            raise PermissionDenied("Autenticación requerida")
+        
+        # Superusuario siempre tiene acceso
+        if user.is_superuser:
+            return obj
+        
+        # ISS-SEC: Verificar contra catálogo de roles con acceso global
+        user_rol = (getattr(user, 'rol', '') or '').lower()
+        ROLES_ACCESO_GLOBAL = {
+            'admin_sistema', 'superusuario', 'administrador', 'admin',
+            'farmacia', 'admin_farmacia', 'farmaceutico', 'usuario_farmacia',
+            'vista', 'usuario_vista',
+        }
+        
+        if user_rol in ROLES_ACCESO_GLOBAL:
+            return obj
+        
+        # Usuario de centro: validar ownership
+        user_centro = self._user_centro(user)
+        if not user_centro:
+            logger.warning(
+                f"ISS-SEC-IDOR: Usuario {user.username} sin centro intentó acceder a requisición {obj.id}"
+            )
+            raise PermissionDenied("Usuario sin centro asignado no puede acceder a requisiciones")
+        
+        # Validar que la requisición pertenezca al centro del usuario
+        req_centro_origen = getattr(obj, 'centro_origen_id', None)
+        req_centro_destino = getattr(obj, 'centro_destino_id', None)
+        
+        if user_centro.id not in [req_centro_origen, req_centro_destino]:
+            logger.warning(
+                f"ISS-SEC-IDOR: Usuario {user.username} (centro={user_centro.id}) "
+                f"intentó acceder a requisición {obj.id} de otro centro "
+                f"(origen={req_centro_origen}, destino={req_centro_destino})"
+            )
+            raise PermissionDenied("No tiene permiso para acceder a esta requisición")
+        
+        return obj
 
     def _user_centro(self, user):
         return getattr(user, 'centro', None) or getattr(getattr(user, 'profile', None), 'centro', None)
@@ -8034,11 +8130,15 @@ def dashboard_resumen(request):
                     Q(lote__centro=user_centro) | Q(centro_origen=user_centro)
                 )
             
-            # Contar movimientos del mes actual
-            movimientos_mes = movimientos_base.filter(fecha__gte=inicio_mes).count()
+            # ISS-FIX: Excluir movimientos PENDIENTES (salidas masivas no confirmadas)
+            # Solo contar movimientos CONFIRMADOS o sin marca de estado
+            movimientos_confirmados = movimientos_base.exclude(motivo__icontains='[PENDIENTE]')
+            
+            # Contar movimientos del mes actual (solo confirmados)
+            movimientos_mes = movimientos_confirmados.filter(fecha__gte=inicio_mes).count()
             
             # Si no hay movimientos este mes, mostrar total general como referencia
-            total_movimientos = movimientos_base.count() if movimientos_mes == 0 else movimientos_mes
+            total_movimientos = movimientos_confirmados.count() if movimientos_mes == 0 else movimientos_mes
             
             cached_kpi = {
                 'total_productos': total_productos,
@@ -8206,11 +8306,15 @@ def dashboard_graficas(request):
                 )
             
             # Calcular entradas y salidas
-            entradas = mov_mes.filter(tipo='entrada').aggregate(
+            # ISS-FIX: Excluir movimientos PENDIENTES (salidas masivas no confirmadas)
+            # Solo contar movimientos CONFIRMADOS o sin marca de estado
+            mov_mes_confirmados = mov_mes.exclude(motivo__icontains='[PENDIENTE]')
+            
+            entradas = mov_mes_confirmados.filter(tipo='entrada').aggregate(
                 total=Coalesce(Sum('cantidad'), 0, output_field=IntegerField())
             )['total']
             
-            salidas = mov_mes.filter(tipo='salida').aggregate(
+            salidas = mov_mes_confirmados.filter(tipo='salida').aggregate(
                 total=Coalesce(Sum('cantidad'), 0, output_field=IntegerField())
             )['total']
             
@@ -8457,7 +8561,8 @@ def trazabilidad_producto(request, clave):
                 estado_caducidad = 'NORMAL'
 
             # Calcular totales de movimientos para todos los lotes con este numero_lote
-            movimientos_lote = Movimiento.objects.filter(lote_id__in=data['lotes_ids'])
+            # ISS-FIX: Excluir movimientos pendientes (no confirmados) del cálculo
+            movimientos_lote = Movimiento.objects.filter(lote_id__in=data['lotes_ids']).exclude(motivo__icontains='[PENDIENTE]')
             total_entradas = movimientos_lote.filter(tipo='entrada').aggregate(total=Sum('cantidad'))['total'] or 0
             total_salidas = movimientos_lote.filter(tipo='salida').aggregate(total=Sum('cantidad'))['total'] or 0
 
@@ -8517,6 +8622,15 @@ def trazabilidad_producto(request, clave):
         if tipo_movimiento:
             movimientos = movimientos.filter(tipo=tipo_movimiento.lower())
         
+        # ISS-FIX: Excluir movimientos pendientes (no confirmados) por defecto
+        # Los movimientos con [PENDIENTE] en motivo son de salidas masivas no confirmadas
+        estado_confirmacion = request.query_params.get('estado_confirmacion', 'confirmado')
+        if estado_confirmacion == 'confirmado':
+            movimientos = movimientos.exclude(motivo__icontains='[PENDIENTE]')
+        elif estado_confirmacion == 'pendiente':
+            movimientos = movimientos.filter(motivo__icontains='[PENDIENTE]')
+        # Si es 'todos', no filtramos
+        
         movimientos = movimientos.order_by('-fecha')[:100]
         movimientos_data = []
         for mov in movimientos:
@@ -8549,7 +8663,8 @@ def trazabilidad_producto(request, clave):
         total_lotes = len(lotes_consolidados)  # Lotes únicos, no registros duplicados
         
         # Totales de entradas/salidas filtrados por centro si aplica
-        mov_query = Movimiento.objects.filter(lote__producto=producto)
+        # ISS-FIX: Excluir movimientos pendientes del cálculo
+        mov_query = Movimiento.objects.filter(lote__producto=producto).exclude(motivo__icontains='[PENDIENTE]')
         if filtrar_por_centro and user_centro:
             mov_query = mov_query.filter(lote__centro=user_centro)
         total_entradas_prod = mov_query.filter(tipo='entrada').aggregate(total=Sum('cantidad'))['total'] or 0
@@ -8711,6 +8826,15 @@ def trazabilidad_lote(request, codigo):
         movimientos = Movimiento.objects.select_related(
             'centro_origen', 'centro_destino', 'usuario', 'lote', 'lote__centro'
         ).filter(lote_id__in=lotes_ids)
+        
+        # ISS-FIX: Excluir movimientos pendientes (no confirmados) por defecto
+        # Los movimientos con [PENDIENTE] en motivo son de salidas masivas no confirmadas
+        estado_confirmacion = request.query_params.get('estado_confirmacion', 'confirmado')
+        if estado_confirmacion == 'confirmado':
+            movimientos = movimientos.exclude(motivo__icontains='[PENDIENTE]')
+        elif estado_confirmacion == 'pendiente':
+            movimientos = movimientos.filter(motivo__icontains='[PENDIENTE]')
+        # Si es 'todos', no filtramos
         
         # Aplicar filtros de fecha
         if fecha_inicio:
@@ -9566,6 +9690,9 @@ def reporte_movimientos(request):
         fecha_fin = request.query_params.get('fecha_fin')
         tipo = request.query_params.get('tipo')
         formato = request.query_params.get('formato', 'excel')
+        # ISS-FIX: Filtro de estado de confirmación para salidas masivas
+        # Valores: 'confirmado', 'pendiente', 'todos' (default: 'confirmado')
+        estado_confirmacion = request.query_params.get('estado_confirmacion', 'confirmado')
         
         # Filtrar movimientos
         movimientos = Movimiento.objects.select_related('lote__producto', 'centro_origen', 'centro_destino').all()
@@ -9577,6 +9704,22 @@ def reporte_movimientos(request):
             movimientos = movimientos.filter(fecha__date__lte=fecha_fin)
         if tipo:
             movimientos = movimientos.filter(tipo=tipo.lower())
+        
+        # =====================================================================
+        # ISS-FIX: FILTRO DE ESTADO DE CONFIRMACIÓN
+        # =====================================================================
+        # Los movimientos de salida masiva/transferencia tienen en su motivo:
+        # - [CONFIRMADO] = Stock ya descontado, entrega confirmada
+        # - [PENDIENTE] = Stock reservado, pendiente de confirmación
+        # Por defecto, el reporte solo muestra movimientos CONFIRMADOS para evitar
+        # contabilizar movimientos que aún no se han materializado.
+        if estado_confirmacion == 'confirmado':
+            # Excluir movimientos pendientes (motivo contiene [PENDIENTE])
+            movimientos = movimientos.exclude(motivo__icontains='[PENDIENTE]')
+        elif estado_confirmacion == 'pendiente':
+            # Solo movimientos pendientes
+            movimientos = movimientos.filter(motivo__icontains='[PENDIENTE]')
+        # Si estado_confirmacion == 'todos', no filtrar por estado
         
         # =====================================================================
         # FILTRO DE CENTRO - LÓGICA CORREGIDA
@@ -10835,7 +10978,11 @@ def reporte_contratos(request):
                 contrato['numero_contrato'] = lote.numero_contrato
             
             # Obtener movimientos del lote para trazabilidad completa
-            movimientos_lote = Movimiento.objects.filter(lote=lote).order_by('fecha')
+            # ISS-FIX: Excluir movimientos pendientes (no confirmados) del conteo
+            # Los movimientos pendientes tienen [PENDIENTE] en el motivo
+            movimientos_lote = Movimiento.objects.filter(lote=lote).exclude(
+                motivo__icontains='[PENDIENTE]'
+            ).order_by('fecha')
             
             # Calcular estadísticas de movimientos
             mov_entradas = movimientos_lote.filter(tipo__in=['entrada', 'ajuste_positivo'])
@@ -11951,6 +12098,15 @@ def trazabilidad_global(request):
                     Q(lote__producto__clave__icontains=producto_param) |
                     Q(lote__producto__nombre__icontains=producto_param)
                 )
+        
+        # ISS-FIX: Excluir movimientos pendientes (no confirmados) por defecto
+        # Los movimientos con [PENDIENTE] en motivo son de salidas masivas no confirmadas
+        estado_confirmacion = request.query_params.get('estado_confirmacion', 'confirmado')
+        if estado_confirmacion == 'confirmado':
+            movimientos_query = movimientos_query.exclude(motivo__icontains='[PENDIENTE]')
+        elif estado_confirmacion == 'pendiente':
+            movimientos_query = movimientos_query.filter(motivo__icontains='[PENDIENTE]')
+        # Si es 'todos', no filtramos
         
         movimientos_query = movimientos_query.order_by('-fecha')
         

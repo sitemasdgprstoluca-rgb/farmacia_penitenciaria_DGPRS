@@ -768,6 +768,21 @@ const Dashboard = () => {
     loadDashboard(selectedCentro);
   }, [loadDashboard, selectedCentro, permisos?.verDashboard, permisos?._isValidating, cargandoPermisos]);
 
+  // Escuchar evento de limpieza de inventario para refrescar Dashboard
+  useEffect(() => {
+    const handleInventarioLimpiado = (event) => {
+      console.log('🧹 Inventario limpiado, refrescando Dashboard...', event.detail);
+      // Forzar refresh con parámetro true para invalidar caché
+      loadDashboard(selectedCentro, true);
+    };
+    
+    window.addEventListener('inventarioLimpiado', handleInventarioLimpiado);
+    
+    return () => {
+      window.removeEventListener('inventarioLimpiado', handleInventarioLimpiado);
+    };
+  }, [loadDashboard, selectedCentro]);
+
   const handleCentroChange = (centroId, nombreCentro = '') => {
     if (esCentroRestringido) return;
     setSelectedCentro(centroId);

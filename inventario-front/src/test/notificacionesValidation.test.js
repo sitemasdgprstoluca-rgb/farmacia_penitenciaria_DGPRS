@@ -7,7 +7,7 @@ import {
   validarNotificacionesListResponse,
   validarNotificacionesCountResponse,
   normalizarNotificacion,
-} from '../../utils/notificacionesValidation';
+} from '../utils/notificacionesValidation';
 
 describe('notificacionesValidation', () => {
   describe('validarNotificacion', () => {

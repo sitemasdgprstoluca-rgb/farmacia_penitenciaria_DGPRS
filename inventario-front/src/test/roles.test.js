@@ -168,8 +168,9 @@ describe('Módulo de Roles', () => {
       expect(getRolPrincipal({ is_staff: true })).toBe('FARMACIA');
     });
 
-    it('debe retornar SIN_ROL para usuario sin rol', () => {
-      expect(getRolPrincipal({})).toBe('SIN_ROL');
+    it('debe retornar VISTA para usuario sin rol (default seguro)', () => {
+      // ISS-PERMS FIX: Default a VISTA en lugar de SIN_ROL (más seguro y usable)
+      expect(getRolPrincipal({})).toBe('VISTA');
       expect(getRolPrincipal(null)).toBe('SIN_ROL');
     });
 
@@ -208,10 +209,11 @@ describe('Módulo de Roles', () => {
   // ISS-009 FIX: Tests para puedeEjecutarAccionFlujo
   describe('puedeEjecutarAccionFlujo (ISS-009)', () => {
     describe('Roles de Centro', () => {
-      it('médico puede enviar_admin y confirmar_entrega', () => {
+      it('médico puede enviar_admin y reenviar', () => {
         const medico = { rol: 'medico' };
         expect(puedeEjecutarAccionFlujo(medico, 'enviar_admin')).toBe(true);
-        expect(puedeEjecutarAccionFlujo(medico, 'confirmar_entrega')).toBe(true);
+        // FLUJO V2: confirmar_entrega es automático por farmacia, no por médico
+        expect(puedeEjecutarAccionFlujo(medico, 'confirmar_entrega')).toBe(false);
         expect(puedeEjecutarAccionFlujo(medico, 'reenviar')).toBe(true);
       });
 

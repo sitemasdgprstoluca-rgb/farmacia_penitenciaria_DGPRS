@@ -242,8 +242,9 @@ describe('normalizarProducto', () => {
 // ============================================
 
 describe('esTransicionValida', () => {
-  it('debe permitir transiciones válidas desde borrador', () => {
-    expect(esTransicionValida('borrador', 'enviada')).toBe(true);
+  it('debe permitir transiciones válidas desde borrador (V2)', () => {
+    // FLUJO V2: borrador → pendiente_admin (no directamente a enviada)
+    expect(esTransicionValida('borrador', 'pendiente_admin')).toBe(true);
     expect(esTransicionValida('borrador', 'cancelada')).toBe(true);
   });
 
@@ -253,16 +254,18 @@ describe('esTransicionValida', () => {
     expect(esTransicionValida('borrador', 'autorizada')).toBe(false);
   });
 
-  it('debe permitir transiciones válidas desde enviada', () => {
-    expect(esTransicionValida('enviada', 'aceptada_parcial')).toBe(true);
+  it('debe permitir transiciones válidas desde enviada (V2)', () => {
+    // FLUJO V2: enviada → en_revision, autorizada, rechazada
+    expect(esTransicionValida('enviada', 'en_revision')).toBe(true);
     expect(esTransicionValida('enviada', 'autorizada')).toBe(true);
     expect(esTransicionValida('enviada', 'rechazada')).toBe(true);
   });
 
-  it('debe permitir transiciones válidas desde autorizada', () => {
+  it('debe permitir transiciones válidas desde autorizada (V2)', () => {
+    // FLUJO V2: autorizada → en_surtido, surtida, entregada
+    expect(esTransicionValida('autorizada', 'en_surtido')).toBe(true);
     expect(esTransicionValida('autorizada', 'surtida')).toBe(true);
-    expect(esTransicionValida('autorizada', 'surtida_parcial')).toBe(true);
-    expect(esTransicionValida('autorizada', 'rechazada')).toBe(true);
+    expect(esTransicionValida('autorizada', 'entregada')).toBe(true);
   });
 
   it('debe bloquear transiciones desde estados finales', () => {
@@ -278,8 +281,9 @@ describe('esTransicionValida', () => {
   });
 
   it('debe ser case-insensitive', () => {
-    expect(esTransicionValida('BORRADOR', 'ENVIADA')).toBe(true);
-    expect(esTransicionValida('Borrador', 'Enviada')).toBe(true);
+    // FLUJO V2: borrador → pendiente_admin
+    expect(esTransicionValida('BORRADOR', 'PENDIENTE_ADMIN')).toBe(true);
+    expect(esTransicionValida('Borrador', 'pendiente_admin')).toBe(true);
   });
 });
 
@@ -393,7 +397,7 @@ describe('validarItemsRequisicion', () => {
     const { valido, errores } = validarItemsRequisicion([]);
     
     expect(valido).toBe(false);
-    expect(errores).toContain('al menos un item');
+    expect(errores.some(e => e.includes('al menos un item'))).toBe(true);
   });
 
   it('debe validar requisición con items válidos', () => {
@@ -433,10 +437,11 @@ describe('validarItemsRequisicion', () => {
 describe('TRANSICIONES_REQUISICION constante', () => {
   it('debe tener todos los estados FLUJO V2 definidos', () => {
     // ISS-001: Estados alineados con backend/core/constants.py
+    // Nota: 'parcial' está en TRANSICIONES_SURTIDO_INTERNO, no en TRANSICIONES_REQUISICION
     const estadosEsperados = [
       'borrador', 'pendiente_admin', 'pendiente_director',
       'enviada', 'en_revision', 'autorizada', 'en_surtido',
-      'parcial', 'surtida', 'devuelta', 
+      'surtida', 'devuelta', 
       'entregada', 'rechazada', 'vencida', 'cancelada'
     ];
     

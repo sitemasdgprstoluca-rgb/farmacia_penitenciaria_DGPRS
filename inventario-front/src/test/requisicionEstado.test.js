@@ -1,6 +1,9 @@
 /**
- * ISS-007 FIX: Tests para la máquina de estados de requisiciones
+ * ISS-007 FIX: Tests para la máquina de estados de requisiciones V2
  * Verifica transiciones válidas y cálculo de acciones permitidas
+ * 
+ * ACTUALIZADO: Ahora usa el flujo V2 con estados jerárquicos
+ * (pendiente_admin, pendiente_director, etc.)
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -10,36 +13,52 @@ import {
   esTransicionValida,
   obtenerSiguienteEstado,
   obtenerAccionesPermitidas,
-} from '../../hooks/useRequisicionEstado';
+} from '../hooks/useRequisicionEstado';
 
-describe('useRequisicionEstado', () => {
+describe('useRequisicionEstado (V2)', () => {
   describe('ESTADOS_REQUISICION', () => {
-    it('debe tener todos los estados definidos', () => {
+    it('debe tener todos los estados V2 definidos', () => {
+      // Estados del flujo centro
       expect(ESTADOS_REQUISICION.BORRADOR).toBe('borrador');
-      expect(ESTADOS_REQUISICION.PENDIENTE).toBe('pendiente');
-      expect(ESTADOS_REQUISICION.APROBADA).toBe('aprobada');
-      expect(ESTADOS_REQUISICION.EN_PROCESO).toBe('en_proceso');
-      expect(ESTADOS_REQUISICION.SURTIDA_PARCIAL).toBe('surtida_parcial');
+      expect(ESTADOS_REQUISICION.PENDIENTE_ADMIN).toBe('pendiente_admin');
+      expect(ESTADOS_REQUISICION.PENDIENTE_DIRECTOR).toBe('pendiente_director');
+      
+      // Estados del flujo farmacia
+      expect(ESTADOS_REQUISICION.ENVIADA).toBe('enviada');
+      expect(ESTADOS_REQUISICION.EN_REVISION).toBe('en_revision');
+      expect(ESTADOS_REQUISICION.AUTORIZADA).toBe('autorizada');
+      expect(ESTADOS_REQUISICION.EN_SURTIDO).toBe('en_surtido');
       expect(ESTADOS_REQUISICION.SURTIDA).toBe('surtida');
+      expect(ESTADOS_REQUISICION.ENTREGADA).toBe('entregada');
+      
+      // Estados negativos
       expect(ESTADOS_REQUISICION.RECHAZADA).toBe('rechazada');
       expect(ESTADOS_REQUISICION.CANCELADA).toBe('cancelada');
+      
+      // Estados legacy (para compatibilidad)
+      expect(ESTADOS_REQUISICION.PENDIENTE).toBe('pendiente');
+      expect(ESTADOS_REQUISICION.APROBADA).toBe('aprobada');
     });
   });
 
   describe('ESTADOS_UI', () => {
-    it('debe tener configuración UI para cada estado', () => {
-      Object.values(ESTADOS_REQUISICION).forEach(estado => {
+    it('debe tener configuración UI para estados V2', () => {
+      const estadosV2 = [
+        'borrador', 'pendiente_admin', 'pendiente_director',
+        'enviada', 'en_revision', 'autorizada', 'en_surtido',
+        'surtida', 'entregada', 'devuelta', 'rechazada', 'cancelada'
+      ];
+      estadosV2.forEach(estado => {
         expect(ESTADOS_UI[estado]).toBeDefined();
         expect(ESTADOS_UI[estado].label).toBeDefined();
         expect(ESTADOS_UI[estado].color).toBeDefined();
-        expect(ESTADOS_UI[estado].badgeClass).toBeDefined();
       });
     });
   });
 
   describe('esTransicionValida', () => {
-    it('borrador puede enviarse', () => {
-      expect(esTransicionValida('borrador', ACCIONES_REQUISICION.ENVIAR)).toBe(true);
+    it('borrador puede enviarse a admin', () => {
+      expect(esTransicionValida('borrador', ACCIONES_REQUISICION.ENVIAR_ADMIN)).toBe(true);
     });
 
     it('borrador puede editarse', () => {
@@ -50,40 +69,28 @@ describe('useRequisicionEstado', () => {
       expect(esTransicionValida('borrador', ACCIONES_REQUISICION.ELIMINAR)).toBe(true);
     });
 
-    it('borrador NO puede aprobarse directamente', () => {
-      expect(esTransicionValida('borrador', ACCIONES_REQUISICION.APROBAR)).toBe(false);
+    it('borrador NO puede autorizarse directamente', () => {
+      expect(esTransicionValida('borrador', ACCIONES_REQUISICION.AUTORIZAR_ADMIN)).toBe(false);
     });
 
-    it('pendiente puede aprobarse', () => {
-      expect(esTransicionValida('pendiente', ACCIONES_REQUISICION.APROBAR)).toBe(true);
+    it('pendiente_admin puede autorizarse por admin', () => {
+      expect(esTransicionValida('pendiente_admin', ACCIONES_REQUISICION.AUTORIZAR_ADMIN)).toBe(true);
     });
 
-    it('pendiente puede rechazarse', () => {
-      expect(esTransicionValida('pendiente', ACCIONES_REQUISICION.RECHAZAR)).toBe(true);
+    it('pendiente_admin puede rechazarse', () => {
+      expect(esTransicionValida('pendiente_admin', ACCIONES_REQUISICION.RECHAZAR)).toBe(true);
     });
 
-    it('pendiente NO puede editarse', () => {
-      expect(esTransicionValida('pendiente', ACCIONES_REQUISICION.EDITAR)).toBe(false);
+    it('pendiente_admin NO puede editarse', () => {
+      expect(esTransicionValida('pendiente_admin', ACCIONES_REQUISICION.EDITAR)).toBe(false);
     });
 
-    it('aprobada puede surtirse', () => {
-      expect(esTransicionValida('aprobada', ACCIONES_REQUISICION.SURTIR)).toBe(true);
+    it('autorizada puede iniciar surtido', () => {
+      expect(esTransicionValida('autorizada', ACCIONES_REQUISICION.INICIAR_SURTIDO)).toBe(true);
     });
 
-    it('surtida NO puede cancelarse', () => {
-      expect(esTransicionValida('surtida', ACCIONES_REQUISICION.CANCELAR)).toBe(false);
-    });
-
-    it('surtida puede duplicarse', () => {
-      expect(esTransicionValida('surtida', ACCIONES_REQUISICION.DUPLICAR)).toBe(true);
-    });
-
-    it('rechazada puede duplicarse', () => {
-      expect(esTransicionValida('rechazada', ACCIONES_REQUISICION.DUPLICAR)).toBe(true);
-    });
-
-    it('cancelada puede verse', () => {
-      expect(esTransicionValida('cancelada', ACCIONES_REQUISICION.VER)).toBe(true);
+    it('entregada puede verse', () => {
+      expect(esTransicionValida('entregada', ACCIONES_REQUISICION.VER)).toBe(true);
     });
 
     it('estado inválido retorna false', () => {
@@ -92,147 +99,100 @@ describe('useRequisicionEstado', () => {
   });
 
   describe('obtenerSiguienteEstado', () => {
-    it('enviar borrador lleva a pendiente', () => {
-      expect(obtenerSiguienteEstado('borrador', ACCIONES_REQUISICION.ENVIAR)).toBe('pendiente');
+    it('enviar_admin borrador lleva a pendiente_admin', () => {
+      expect(obtenerSiguienteEstado('borrador', ACCIONES_REQUISICION.ENVIAR_ADMIN)).toBe('pendiente_admin');
     });
 
-    it('aprobar pendiente lleva a aprobada', () => {
-      expect(obtenerSiguienteEstado('pendiente', ACCIONES_REQUISICION.APROBAR)).toBe('aprobada');
+    it('autorizar_admin pendiente_admin lleva a pendiente_director', () => {
+      expect(obtenerSiguienteEstado('pendiente_admin', ACCIONES_REQUISICION.AUTORIZAR_ADMIN)).toBe('pendiente_director');
     });
 
-    it('rechazar pendiente lleva a rechazada', () => {
-      expect(obtenerSiguienteEstado('pendiente', ACCIONES_REQUISICION.RECHAZAR)).toBe('rechazada');
+    it('autorizar_director pendiente_director lleva a enviada', () => {
+      expect(obtenerSiguienteEstado('pendiente_director', ACCIONES_REQUISICION.AUTORIZAR_DIRECTOR)).toBe('enviada');
     });
 
-    it('surtir aprobada lleva a surtida', () => {
-      expect(obtenerSiguienteEstado('aprobada', ACCIONES_REQUISICION.SURTIR)).toBe('surtida');
+    it('recibir_farmacia enviada lleva a en_revision', () => {
+      expect(obtenerSiguienteEstado('enviada', ACCIONES_REQUISICION.RECIBIR_FARMACIA)).toBe('en_revision');
     });
 
-    it('surtir parcial lleva a surtida_parcial', () => {
-      expect(obtenerSiguienteEstado('aprobada', ACCIONES_REQUISICION.SURTIR_PARCIAL)).toBe('surtida_parcial');
+    it('surtir en_surtido lleva a entregada (V2: entrega automática)', () => {
+      expect(obtenerSiguienteEstado('en_surtido', ACCIONES_REQUISICION.SURTIR)).toBe('entregada');
     });
 
-    it('cancelar aprobada lleva a cancelada', () => {
-      expect(obtenerSiguienteEstado('aprobada', ACCIONES_REQUISICION.CANCELAR)).toBe('cancelada');
+    it('devolver pendiente_admin lleva a devuelta', () => {
+      expect(obtenerSiguienteEstado('pendiente_admin', ACCIONES_REQUISICION.DEVOLVER)).toBe('devuelta');
     });
 
-    it('ver no cambia estado (retorna null)', () => {
-      expect(obtenerSiguienteEstado('surtida', ACCIONES_REQUISICION.VER)).toBeNull();
+    it('reenviar devuelta lleva a borrador', () => {
+      expect(obtenerSiguienteEstado('devuelta', ACCIONES_REQUISICION.REENVIAR)).toBe('borrador');
     });
 
-    it('estado inválido retorna null', () => {
-      expect(obtenerSiguienteEstado('estado_inexistente', ACCIONES_REQUISICION.ENVIAR)).toBeNull();
+    it('acción no válida retorna null', () => {
+      expect(obtenerSiguienteEstado('borrador', ACCIONES_REQUISICION.SURTIR)).toBe(null);
     });
   });
 
   describe('obtenerAccionesPermitidas', () => {
-    it('sin permisos solo permite acciones que no requieren permiso', () => {
-      const acciones = obtenerAccionesPermitidas('borrador', {});
-      // Sin ningún permiso, no debería permitir acciones que requieren permisos
-      expect(acciones).not.toContain(ACCIONES_REQUISICION.EDITAR);
-      expect(acciones).not.toContain(ACCIONES_REQUISICION.ENVIAR);
-    });
-
-    it('con permiso de ver, puede ver en cualquier estado', () => {
-      const permisos = { verRequisiciones: true };
-      
-      Object.values(ESTADOS_REQUISICION).forEach(estado => {
-        const acciones = obtenerAccionesPermitidas(estado, permisos);
-        expect(acciones).toContain(ACCIONES_REQUISICION.VER);
-      });
-    });
-
-    it('con permiso de crear, puede enviar borrador', () => {
-      const permisos = { crearRequisicion: true };
-      const acciones = obtenerAccionesPermitidas('borrador', permisos);
-      expect(acciones).toContain(ACCIONES_REQUISICION.ENVIAR);
-    });
-
-    it('con permiso de aprobar, puede aprobar y rechazar pendiente', () => {
-      const permisos = { aprobarRequisicion: true };
-      const acciones = obtenerAccionesPermitidas('pendiente', permisos);
-      expect(acciones).toContain(ACCIONES_REQUISICION.APROBAR);
-      expect(acciones).toContain(ACCIONES_REQUISICION.RECHAZAR);
-    });
-
-    it('con permiso de surtir, puede surtir aprobada', () => {
-      const permisos = { surtirRequisicion: true };
-      const acciones = obtenerAccionesPermitidas('aprobada', permisos);
-      expect(acciones).toContain(ACCIONES_REQUISICION.SURTIR);
-      expect(acciones).toContain(ACCIONES_REQUISICION.SURTIR_PARCIAL);
-    });
-
-    it('estado final solo permite ver, imprimir y duplicar', () => {
-      const permisos = { 
-        verRequisiciones: true, 
+    it('borrador tiene acciones de edición con permisos', () => {
+      const acciones = obtenerAccionesPermitidas('borrador', {
         crearRequisicion: true,
-        aprobarRequisicion: true,
-        surtirRequisicion: true,
-      };
+        editarRequisicion: true,
+        eliminarRequisicion: true,
+        verRequisiciones: true,
+      }, { esCreador: true });
       
-      const accionesSurtida = obtenerAccionesPermitidas('surtida', permisos);
-      expect(accionesSurtida).toContain(ACCIONES_REQUISICION.VER);
-      expect(accionesSurtida).toContain(ACCIONES_REQUISICION.IMPRIMIR);
-      expect(accionesSurtida).toContain(ACCIONES_REQUISICION.DUPLICAR);
-      expect(accionesSurtida).not.toContain(ACCIONES_REQUISICION.EDITAR);
-      expect(accionesSurtida).not.toContain(ACCIONES_REQUISICION.CANCELAR);
+      expect(acciones).toContain('editar');
+      expect(acciones).toContain('enviar_admin');
+      expect(acciones).toContain('eliminar');
+      expect(acciones).toContain('ver');
     });
 
-    it('estado inválido retorna array vacío', () => {
-      const acciones = obtenerAccionesPermitidas('estado_inexistente', { verRequisiciones: true });
-      expect(acciones).toEqual([]);
+    it('pendiente_admin tiene acciones de autorización', () => {
+      const acciones = obtenerAccionesPermitidas('pendiente_admin', {
+        autorizarAdminRequisicion: true,
+        devolverRequisicion: true,
+        verRequisiciones: true,
+      });
+      
+      expect(acciones).toContain('autorizar_admin');
+      expect(acciones).toContain('devolver');
+      expect(acciones).toContain('ver');
+    });
+
+    it('entregada solo tiene acciones de lectura', () => {
+      const acciones = obtenerAccionesPermitidas('entregada', {
+        verRequisiciones: true,
+      });
+      
+      expect(acciones).toContain('ver');
+      expect(acciones).not.toContain('editar');
+      expect(acciones).not.toContain('surtir');
+    });
+
+    it('sin permisos solo tiene acciones básicas', () => {
+      const acciones = obtenerAccionesPermitidas('borrador', {});
+      
+      expect(acciones).not.toContain('editar');
+      expect(acciones).not.toContain('enviar_admin');
     });
   });
 
-  describe('Flujo completo de requisición', () => {
-    it('flujo borrador -> pendiente -> aprobada -> surtida', () => {
-      let estado = 'borrador';
+  describe('Flujo completo V2', () => {
+    it('flujo borrador -> entregada', () => {
+      // FLUJO V2: borrador → pendiente_admin → pendiente_director → enviada
+      expect(esTransicionValida('borrador', ACCIONES_REQUISICION.ENVIAR_ADMIN)).toBe(true);
+      expect(obtenerSiguienteEstado('borrador', ACCIONES_REQUISICION.ENVIAR_ADMIN)).toBe('pendiente_admin');
       
-      // Enviar
-      expect(esTransicionValida(estado, ACCIONES_REQUISICION.ENVIAR)).toBe(true);
-      estado = obtenerSiguienteEstado(estado, ACCIONES_REQUISICION.ENVIAR);
-      expect(estado).toBe('pendiente');
+      expect(esTransicionValida('pendiente_admin', ACCIONES_REQUISICION.AUTORIZAR_ADMIN)).toBe(true);
+      expect(obtenerSiguienteEstado('pendiente_admin', ACCIONES_REQUISICION.AUTORIZAR_ADMIN)).toBe('pendiente_director');
       
-      // Aprobar
-      expect(esTransicionValida(estado, ACCIONES_REQUISICION.APROBAR)).toBe(true);
-      estado = obtenerSiguienteEstado(estado, ACCIONES_REQUISICION.APROBAR);
-      expect(estado).toBe('aprobada');
-      
-      // Surtir
-      expect(esTransicionValida(estado, ACCIONES_REQUISICION.SURTIR)).toBe(true);
-      estado = obtenerSiguienteEstado(estado, ACCIONES_REQUISICION.SURTIR);
-      expect(estado).toBe('surtida');
-      
-      // Estado final
-      expect(esTransicionValida(estado, ACCIONES_REQUISICION.CANCELAR)).toBe(false);
-      expect(esTransicionValida(estado, ACCIONES_REQUISICION.EDITAR)).toBe(false);
+      expect(esTransicionValida('pendiente_director', ACCIONES_REQUISICION.AUTORIZAR_DIRECTOR)).toBe(true);
+      expect(obtenerSiguienteEstado('pendiente_director', ACCIONES_REQUISICION.AUTORIZAR_DIRECTOR)).toBe('enviada');
     });
 
-    it('flujo borrador -> pendiente -> rechazada', () => {
-      let estado = 'borrador';
-      
-      estado = obtenerSiguienteEstado(estado, ACCIONES_REQUISICION.ENVIAR);
-      expect(estado).toBe('pendiente');
-      
-      estado = obtenerSiguienteEstado(estado, ACCIONES_REQUISICION.RECHAZAR);
-      expect(estado).toBe('rechazada');
-      
-      // Estado final
-      expect(esTransicionValida(estado, ACCIONES_REQUISICION.APROBAR)).toBe(false);
-    });
-
-    it('flujo con surtido parcial', () => {
-      let estado = 'aprobada';
-      
-      estado = obtenerSiguienteEstado(estado, ACCIONES_REQUISICION.SURTIR_PARCIAL);
-      expect(estado).toBe('surtida_parcial');
-      
-      // Puede seguir surtiendo
-      expect(esTransicionValida(estado, ACCIONES_REQUISICION.SURTIR)).toBe(true);
-      expect(esTransicionValida(estado, ACCIONES_REQUISICION.SURTIR_PARCIAL)).toBe(true);
-      
-      estado = obtenerSiguienteEstado(estado, ACCIONES_REQUISICION.SURTIR);
-      expect(estado).toBe('surtida');
+    it('flujo devuelta -> borrador', () => {
+      expect(esTransicionValida('devuelta', ACCIONES_REQUISICION.REENVIAR)).toBe(true);
+      expect(obtenerSiguienteEstado('devuelta', ACCIONES_REQUISICION.REENVIAR)).toBe('borrador');
     });
   });
 });

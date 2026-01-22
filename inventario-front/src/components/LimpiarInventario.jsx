@@ -192,6 +192,11 @@ const LimpiarInventario = ({ onLimpiezaCompletada }) => {
       if (onLimpiezaCompletada) {
         onLimpiezaCompletada(resp.data);
       }
+      
+      // IMPORTANTE: Emitir evento global para que Dashboard y otros componentes se refresquen
+      window.dispatchEvent(new CustomEvent('inventarioLimpiado', {
+        detail: { categoria: categoriaSeleccionada, resultado: resp.data }
+      }));
     } catch (err) {
       console.error('Error limpiando datos:', err);
       toast.error(err.response?.data?.error || 'Error al limpiar datos');

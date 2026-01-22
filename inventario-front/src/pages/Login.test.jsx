@@ -59,16 +59,17 @@ describe('Login - Renderizado', () => {
     it('debe renderizar el formulario de login', () => {
         render(<Login />, { wrapper: TestWrapper });
         
-        expect(screen.getByPlaceholderText(/usuario/i)).toBeInTheDocument();
-        expect(screen.getByPlaceholderText(/contraseña/i)).toBeInTheDocument();
+        // El formulario usa PremiumInput con placeholders específicos
+        expect(screen.getByPlaceholderText(/ejemplo@correo.com/i)).toBeInTheDocument();
+        expect(screen.getByPlaceholderText(/••••••••••/i)).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /iniciar sesión/i })).toBeInTheDocument();
     });
 
     it('debe mostrar campos vacíos inicialmente', () => {
         render(<Login />, { wrapper: TestWrapper });
         
-        const usernameInput = screen.getByPlaceholderText(/usuario/i);
-        const passwordInput = screen.getByPlaceholderText(/contraseña/i);
+        const usernameInput = screen.getByPlaceholderText(/ejemplo@correo.com/i);
+        const passwordInput = screen.getByPlaceholderText(/••••••••••/i);
         
         expect(usernameInput.value).toBe('');
         expect(passwordInput.value).toBe('');
@@ -90,8 +91,8 @@ describe('Login - Interacción', () => {
         const user = userEvent.setup();
         render(<Login />, { wrapper: TestWrapper });
         
-        const usernameInput = screen.getByPlaceholderText(/usuario/i);
-        const passwordInput = screen.getByPlaceholderText(/contraseña/i);
+        const usernameInput = screen.getByPlaceholderText(/ejemplo@correo.com/i);
+        const passwordInput = screen.getByPlaceholderText(/••••••••••/i);
         
         await user.type(usernameInput, 'admin');
         await user.type(passwordInput, 'password123');
@@ -113,8 +114,8 @@ describe('Login - Interacción', () => {
         
         render(<Login />, { wrapper: TestWrapper });
         
-        await user.type(screen.getByPlaceholderText(/usuario/i), 'admin');
-        await user.type(screen.getByPlaceholderText(/contraseña/i), 'password123');
+        await user.type(screen.getByPlaceholderText(/ejemplo@correo.com/i), 'admin');
+        await user.type(screen.getByPlaceholderText(/••••••••••/i), 'password123');
         await user.click(screen.getByRole('button', { name: /iniciar sesión/i }));
         
         await waitFor(() => {
@@ -138,8 +139,8 @@ describe('Login - Interacción', () => {
         
         render(<Login />, { wrapper: TestWrapper });
         
-        await user.type(screen.getByPlaceholderText(/usuario/i), 'admin');
-        await user.type(screen.getByPlaceholderText(/contraseña/i), 'password123');
+        await user.type(screen.getByPlaceholderText(/ejemplo@correo.com/i), 'admin');
+        await user.type(screen.getByPlaceholderText(/••••••••••/i), 'password123');
         await user.click(screen.getByRole('button', { name: /iniciar sesión/i }));
         
         await waitFor(() => {
@@ -156,8 +157,8 @@ describe('Login - Interacción', () => {
         
         render(<Login />, { wrapper: TestWrapper });
         
-        await user.type(screen.getByPlaceholderText(/usuario/i), 'admin');
-        await user.type(screen.getByPlaceholderText(/contraseña/i), 'wrongpassword');
+        await user.type(screen.getByPlaceholderText(/ejemplo@correo.com/i), 'admin');
+        await user.type(screen.getByPlaceholderText(/••••••••••/i), 'wrongpassword');
         await user.click(screen.getByRole('button', { name: /iniciar sesión/i }));
         
         await waitFor(() => {

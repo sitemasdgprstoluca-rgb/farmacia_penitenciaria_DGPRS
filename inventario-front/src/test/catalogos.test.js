@@ -2,10 +2,10 @@
  * ISS-007 FIX: Tests para el hook useCatalogos
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getCatalogosSync, invalidarCacheCatalogos } from '../../hooks/useCatalogos';
+import { getCatalogosSync, invalidarCacheCatalogos } from '../hooks/useCatalogos';
 
 // Mock del API
-vi.mock('../../services/api', () => ({
+vi.mock('../services/api', () => ({
   catalogosAPI: {
     getAll: vi.fn(),
     unidadesMedida: vi.fn(),
@@ -51,8 +51,9 @@ describe('useCatalogos utilities', () => {
     it('fallback de categorías tiene valores esperados', () => {
       const { catalogos } = getCatalogosSync();
       
+      // Categorías actuales según useCatalogos.js
       const categoriasEsperadas = [
-        'medicamento', 'material_curacion', 'equipo_medico', 'insumo'
+        'medicamento', 'material_curacion', 'insumo', 'equipo', 'otro'
       ];
       
       categoriasEsperadas.forEach(cat => {
@@ -63,9 +64,11 @@ describe('useCatalogos utilities', () => {
     it('fallback de estados requisición tiene valores esperados', () => {
       const { catalogos } = getCatalogosSync();
       
+      // Estados V2 según useCatalogos.js (flujo jerárquico)
       const estadosEsperados = [
-        'borrador', 'pendiente', 'aprobada', 'en_proceso',
-        'surtida_parcial', 'surtida', 'rechazada', 'cancelada'
+        'borrador', 'pendiente_admin', 'pendiente_director', 
+        'enviada', 'en_revision', 'autorizada', 'en_surtido',
+        'surtida', 'entregada', 'rechazada', 'cancelada', 'devuelta'
       ];
       
       estadosEsperados.forEach(estado => {

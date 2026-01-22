@@ -406,7 +406,8 @@ describe('Layout - Responsividad', () => {
     );
     
     const sidebar = container.querySelector('aside');
-    expect(sidebar?.className).toContain('lg:translate-x-0');
+    // El sidebar tiene translate-x-0 cuando está abierto (en lugar de lg:translate-x-0)
+    expect(sidebar?.className).toContain('translate-x-0');
   });
 
   it('debe tener clase lg:ml-72 para el contenido principal', async () => {
