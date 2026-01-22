@@ -1499,7 +1499,6 @@ const Movimientos = () => {
                     className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-800 font-medium transition-all duration-200"
                   >
                     <option value="salida">🚚 Salida / Transferencia a Centro</option>
-                    <option value="merma">📉 Baja por Merma</option>
                     <option value="caducidad">⏰ Baja por Caducidad</option>
                     <option value="entrada">📦 Entrada a Almacén (Nueva compra, reabastecimiento)</option>
                   </select>
