@@ -7308,54 +7308,67 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         items_data = request.data.get('items') or request.data.get('detalles') or []
         items_procesados = set()
         
+        logger.info(f"autorizar_farmacia: Procesando {len(items_data)} items para requisición {requisicion.folio}")
+        
         for item_data in items_data:
             item_id = item_data.get('id')
             cant_autorizada = item_data.get('cantidad_autorizada')
+            
+            logger.info(f"  Procesando item_id={item_id}, cantidad_autorizada={cant_autorizada}")
+            
             if item_id is None or cant_autorizada is None:
+                logger.info(f"  Saltando item: id={item_id}, cantidad={cant_autorizada}")
                 continue
+            
             try:
                 item = requisicion.detalles.select_related('producto').get(id=item_id)
+                
+                # Obtener info del producto de forma segura
+                producto_clave = 'N/A'
+                if item.producto:
+                    producto_clave = item.producto.clave or f'Producto #{item.producto.id}'
+                
+                logger.info(f"  Item encontrado: detalle_id={item.id}, producto={producto_clave}")
+                
                 # ISS-FIX: Convertir cantidad con manejo robusto de tipos
                 try:
-                    # Primero intentar como float por si viene con decimales, luego truncar
                     cant_int = int(float(cant_autorizada))
                 except (ValueError, TypeError):
-                    logger.warning(f"Cantidad inválida para item {item_id}: {cant_autorizada}")
+                    logger.warning(f"  Cantidad inválida para {producto_clave}: {cant_autorizada}")
                     continue
+                    
                 item.cantidad_autorizada = max(0, cant_int)
                 motivo_ajuste = item_data.get('motivo_ajuste') or ''
+                
+                logger.info(f"  Autorizando {cant_int} de {item.cantidad_solicitada} para {producto_clave}")
                 
                 # Validar motivo de ajuste si cantidad reducida
                 if item.cantidad_autorizada < item.cantidad_solicitada:
                     if not motivo_ajuste or len(motivo_ajuste.strip()) < 3:
-                        producto_info = item.producto.clave if item.producto else f'item {item_id}'
                         return Response({
-                            'error': f'Debe indicar motivo de ajuste para {producto_info} (cantidad autorizada {item.cantidad_autorizada} es menor que solicitada {item.cantidad_solicitada})',
-                            'producto': producto_info,
+                            'error': f'Debe indicar motivo de ajuste para {producto_clave} (cantidad autorizada {item.cantidad_autorizada} es menor que solicitada {item.cantidad_solicitada})',
+                            'producto': producto_clave,
                             'item_id': item_id
                         }, status=status.HTTP_400_BAD_REQUEST)
                     item.motivo_ajuste = motivo_ajuste.strip()
                 else:
                     item.motivo_ajuste = motivo_ajuste.strip() if motivo_ajuste else None
                 
-                # ISS-FIX: Guardar sin validación del modelo (ya validamos arriba)
-                # Esto evita doble validación y errores de clean()
-                item.save(skip_validation=True)
+                # Guardar - usar update directo para evitar cualquier problema con save()
+                DetalleRequisicion.objects.filter(pk=item.pk).update(
+                    cantidad_autorizada=item.cantidad_autorizada,
+                    motivo_ajuste=item.motivo_ajuste
+                )
                 items_procesados.add(item_id)
+                logger.info(f"  Item {producto_clave} actualizado correctamente")
                 
             except DetalleRequisicion.DoesNotExist:
-                logger.warning(f"Item {item_id} no encontrado en requisición {requisicion.folio}")
+                logger.warning(f"  Item {item_id} no encontrado en requisición {requisicion.folio}")
                 continue
             except Exception as e:
-                logger.error(f"Error procesando item {item_id}: {e}", exc_info=True)
-                producto_info = 'desconocido'
-                try:
-                    producto_info = item.producto.clave if item and item.producto else f'item {item_id}'
-                except:
-                    pass
+                logger.error(f"  Error procesando item {item_id}: {e}", exc_info=True)
                 return Response({
-                    'error': f'Error procesando cantidad para {producto_info}',
-                    'detalle': str(e),
+                    'error': f'Error procesando item {item_id}: {str(e)}',
                     'item_id': item_id
                 }, status=status.HTTP_400_BAD_REQUEST)
         
@@ -7366,9 +7379,12 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             logger.info(f"autorizar_farmacia: No se enviaron items, autorizando todos los detalles con cantidad solicitada")
             for detalle in requisicion.detalles.select_related('producto').all():
                 if detalle.cantidad_autorizada is None:
-                    detalle.cantidad_autorizada = detalle.cantidad_solicitada
-                    detalle.save(skip_validation=True)
-                    logger.info(f"  - Detalle {detalle.id}: autorizado {detalle.cantidad_autorizada} unidades de {detalle.producto.clave if detalle.producto else 'N/A'}")
+                    # Usar update directo para evitar problemas con save()
+                    DetalleRequisicion.objects.filter(pk=detalle.pk).update(
+                        cantidad_autorizada=detalle.cantidad_solicitada
+                    )
+                    producto_clave = detalle.producto.clave if detalle.producto else f'Detalle #{detalle.id}'
+                    logger.info(f"  - Detalle {detalle.id}: autorizado {detalle.cantidad_solicitada} unidades de {producto_clave}")
         
         estado_anterior = requisicion.estado
         requisicion.estado = 'autorizada'
