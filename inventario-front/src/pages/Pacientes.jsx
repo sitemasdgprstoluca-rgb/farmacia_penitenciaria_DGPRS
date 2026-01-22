@@ -1057,6 +1057,20 @@ const Pacientes = () => {
                     {detailModal.paciente.activo ? 'Activo' : 'Inactivo'}
                   </span>
                 </div>
+                
+                {/* Trazabilidad: quién registró este paciente */}
+                <div className="col-span-2 pt-3 mt-3 border-t border-gray-200">
+                  <div className="flex items-center gap-2">
+                    <FaUserShield className="text-guinda" />
+                    <span className="font-semibold text-guinda">Registrado por:</span>
+                    <span className="text-gray-700">{detailModal.paciente.created_by_nombre || '-'}</span>
+                    {detailModal.paciente.created_at && (
+                      <span className="text-gray-400 text-xs ml-2">
+                        ({new Date(detailModal.paciente.created_at).toLocaleDateString()})
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </div>

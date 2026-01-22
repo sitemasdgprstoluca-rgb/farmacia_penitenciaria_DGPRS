@@ -24,6 +24,7 @@ import {
   FaInfoCircle,
   FaFileAlt,
   FaSpinner,
+  FaUserShield,
 } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import Pagination from '../components/Pagination';
@@ -895,6 +896,7 @@ const Dispensaciones = () => {
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Folio</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Paciente</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Centro</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Creado por</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Tipo</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Fecha</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Items</th>
@@ -919,6 +921,12 @@ const Dispensaciones = () => {
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-500">
                       {disp.centro_nombre}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center">
+                        <FaUserShield className="text-guinda mr-2" />
+                        <span className="text-sm text-gray-700">{disp.created_by_nombre || disp.medico_prescriptor || '-'}</span>
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">
@@ -1411,11 +1419,17 @@ const Dispensaciones = () => {
                 <div><span className="font-semibold">Expediente:</span> {detailModal.dispensacion.paciente_expediente}</div>
                 <div><span className="font-semibold">Centro:</span> {detailModal.dispensacion.centro_nombre}</div>
                 <div><span className="font-semibold">Tipo:</span> {detailModal.dispensacion.tipo_dispensacion}</div>
-                <div><span className="font-semibold">Médico:</span> {detailModal.dispensacion.medico_prescriptor || '-'}</div>
+                <div><span className="font-semibold">Médico Prescriptor:</span> {detailModal.dispensacion.medico_prescriptor || '-'}</div>
                 <div><span className="font-semibold">Diagnóstico:</span> {detailModal.dispensacion.diagnostico || '-'}</div>
                 {detailModal.dispensacion.indicaciones_medicas && (
                   <div className="col-span-2"><span className="font-semibold">Indicaciones:</span> {detailModal.dispensacion.indicaciones_medicas}</div>
                 )}
+                <div className="col-span-2 pt-2 border-t border-gray-200 mt-2">
+                  <span className="font-semibold text-guinda">👤 Registrado por:</span> {detailModal.dispensacion.created_by_nombre || '-'}
+                  <span className="text-gray-400 text-xs ml-2">
+                    ({detailModal.dispensacion.created_at ? new Date(detailModal.dispensacion.created_at).toLocaleString() : '-'})
+                  </span>
+                </div>
               </div>
 
               <h4 className="font-semibold mb-3">Medicamentos</h4>

@@ -1623,9 +1623,41 @@ const ComprasCajaChica = () => {
                 </div>
                 <div>
                   <span className="text-xs text-gray-500">Solicitante</span>
-                  <p className="font-medium">{detailModal.compra.solicitante?.username || '-'}</p>
+                  <p className="font-medium">
+                    {detailModal.compra.solicitante_nombre || 
+                     (detailModal.compra.solicitante?.first_name && detailModal.compra.solicitante?.last_name 
+                       ? `${detailModal.compra.solicitante.first_name} ${detailModal.compra.solicitante.last_name}` 
+                       : detailModal.compra.solicitante?.username || '-')}
+                  </p>
                 </div>
               </div>
+
+              {/* Trazabilidad de aprobaciones */}
+              {(detailModal.compra.administrador_centro_nombre || detailModal.compra.director_centro_nombre || detailModal.compra.verificado_por_farmacia_nombre) && (
+                <div className="bg-blue-50 p-3 rounded-lg">
+                  <h3 className="font-medium text-blue-800 mb-2 text-sm">📋 Trazabilidad de Aprobaciones</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
+                    {detailModal.compra.administrador_centro_nombre && (
+                      <div>
+                        <span className="text-xs text-blue-600">Admin Centro:</span>
+                        <p className="font-medium text-blue-900">{detailModal.compra.administrador_centro_nombre}</p>
+                      </div>
+                    )}
+                    {detailModal.compra.director_centro_nombre && (
+                      <div>
+                        <span className="text-xs text-blue-600">Director:</span>
+                        <p className="font-medium text-blue-900">{detailModal.compra.director_centro_nombre}</p>
+                      </div>
+                    )}
+                    {detailModal.compra.verificado_por_farmacia_nombre && (
+                      <div>
+                        <span className="text-xs text-blue-600">Verificado Farmacia:</span>
+                        <p className="font-medium text-blue-900">{detailModal.compra.verificado_por_farmacia_nombre}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
               
               {/* Motivo */}
               <div>
