@@ -561,38 +561,7 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                         'Producto y numero de lote son obligatorios')
                     continue
                 
-                # Verificar duplicado - Buscar TODOS los lotes (activos e inactivos)
-                # para dar mejor diagnóstico al usuario
-                lote_existente_activo = Lote.objects.filter(
-                    producto=producto, 
-                    numero_lote__iexact=numero_lote,
-                    activo=True
-                )
-                lote_existente_inactivo = Lote.objects.filter(
-                    producto=producto, 
-                    numero_lote__iexact=numero_lote,
-                    activo=False
-                )
-                
-                if centro:
-                    lote_existente_activo = lote_existente_activo.filter(centro=centro)
-                    lote_existente_inactivo = lote_existente_inactivo.filter(centro=centro)
-                
-                if lote_existente_activo.exists():
-                    lote = lote_existente_activo.first()
-                    resultado.agregar_error(fila_num, 'lote', 
-                        f'Lote {numero_lote} ya existe para producto {clave_producto} '
-                        f'(ID: {lote.id}, centro: {lote.centro_id or "Farmacia Central"}, '
-                        f'cantidad: {lote.cantidad_actual})')
-                    continue
-                
-                # Si existe inactivo, ofrecer información pero permitir crear nuevo
-                if lote_existente_inactivo.exists():
-                    lote_inact = lote_existente_inactivo.first()
-                    logger.info(f"Fila {fila_num}: Lote {numero_lote} existía inactivo (ID: {lote_inact.id}), "
-                               f"se creará nuevo registro activo")
-                
-                # ========== CANTIDAD INICIAL (requerido) ==========
+                # ========== CANTIDAD INICIAL (requerido) - Leer primero ==========
                 cant_raw = get_val('cantidad_inicial', '0')
                 try:
                     cantidad_inicial = max(1, int(float(cant_raw)))
@@ -600,10 +569,7 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                     resultado.agregar_error(fila_num, 'cantidad', f'Cantidad inválida: {cant_raw}')
                     continue
                 
-                # Nota: cantidad_actual se ignora del archivo y se iguala a cantidad_inicial
-                # según lógica de negocio
-                
-                # ========== FECHA CADUCIDAD (requerido) ==========
+                # ========== FECHA CADUCIDAD (requerido) - Leer primero ==========
                 idx_cad = col_map['caducidad']
                 fecha_cad_raw = fila[idx_cad].value if idx_cad < len(fila) else None
                 
@@ -626,6 +592,94 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                 except Exception as e:
                     resultado.agregar_error(fila_num, 'caducidad', f'Fecha inválida: {e}')
                     continue
+                
+                # ========== CAMPOS OPCIONALES - Leer antes de verificar duplicados ==========
+                numero_contrato = get_val('contrato')
+                marca = get_val('marca')
+                
+                # ========== VERIFICAR DUPLICADO Y CONSOLIDAR ==========
+                # Buscar lote existente con los mismos datos clave
+                lote_existente_activo = Lote.objects.filter(
+                    producto=producto, 
+                    numero_lote__iexact=numero_lote,
+                    activo=True
+                )
+                
+                if centro:
+                    lote_existente_activo = lote_existente_activo.filter(centro=centro)
+                else:
+                    lote_existente_activo = lote_existente_activo.filter(centro__isnull=True)
+                
+                if lote_existente_activo.exists():
+                    lote = lote_existente_activo.first()
+                    
+                    # Verificar si los datos clave coinciden para consolidar
+                    # Normalizar valores para comparación
+                    contrato_igual = (
+                        (not numero_contrato and not lote.numero_contrato) or
+                        (numero_contrato and lote.numero_contrato and 
+                         str(numero_contrato).strip().upper() == str(lote.numero_contrato).strip().upper())
+                    )
+                    marca_igual = (
+                        (not marca and not lote.marca) or
+                        (marca and lote.marca and 
+                         str(marca).strip().upper() == str(lote.marca).strip().upper())
+                    )
+                    fecha_igual = (lote.fecha_caducidad == fecha_caducidad)
+                    
+                    if contrato_igual and marca_igual and fecha_igual:
+                        # ========== CONSOLIDAR: Sumar cantidades al lote existente ==========
+                        cantidad_anterior = lote.cantidad_actual
+                        cantidad_inicial_anterior = lote.cantidad_inicial
+                        
+                        # Actualizar lote existente
+                        lote.cantidad_actual += cantidad_inicial
+                        lote.cantidad_inicial += cantidad_inicial
+                        lote.save(update_fields=['cantidad_actual', 'cantidad_inicial', 'updated_at'])
+                        
+                        # Actualizar stock del producto
+                        Producto.objects.filter(pk=producto.pk).update(
+                            stock_actual=F('stock_actual') + cantidad_inicial
+                        )
+                        
+                        logger.info(
+                            f"Fila {fila_num}: CONSOLIDADO lote {numero_lote} producto {clave_producto} - "
+                            f"cantidad anterior: {cantidad_anterior}, sumado: +{cantidad_inicial}, "
+                            f"nueva cantidad: {lote.cantidad_actual}"
+                        )
+                        
+                        creados += 1  # Contar como éxito (consolidación)
+                        resultado.agregar_exito()
+                        continue
+                    else:
+                        # Los datos NO coinciden - dar error descriptivo
+                        diferencias = []
+                        if not fecha_igual:
+                            diferencias.append(f"caducidad BD:{lote.fecha_caducidad} vs Excel:{fecha_caducidad}")
+                        if not contrato_igual:
+                            diferencias.append(f"contrato BD:'{lote.numero_contrato}' vs Excel:'{numero_contrato}'")
+                        if not marca_igual:
+                            diferencias.append(f"marca BD:'{lote.marca}' vs Excel:'{marca}'")
+                        
+                        resultado.agregar_error(fila_num, 'lote', 
+                            f'Lote {numero_lote} ya existe para producto {clave_producto} '
+                            f'pero con datos diferentes: {", ".join(diferencias)}. '
+                            f'Corrija el Excel o use otro número de lote.')
+                        continue
+                
+                # Si existe inactivo, permitir crear nuevo
+                lote_existente_inactivo = Lote.objects.filter(
+                    producto=producto, 
+                    numero_lote__iexact=numero_lote,
+                    activo=False
+                )
+                if centro:
+                    lote_existente_inactivo = lote_existente_inactivo.filter(centro=centro)
+                    
+                if lote_existente_inactivo.exists():
+                    lote_inact = lote_existente_inactivo.first()
+                    logger.info(f"Fila {fila_num}: Lote {numero_lote} existía inactivo (ID: {lote_inact.id}), "
+                               f"se creará nuevo registro activo")
                 
                 # ========== FECHA FABRICACION (opcional) ==========
                 fecha_fabricacion = None
@@ -654,9 +708,7 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                 except:
                     precio_unitario = Decimal('0')
                 
-                # ========== CAMPOS OPCIONALES ==========
-                numero_contrato = get_val('contrato')
-                marca = get_val('marca')
+                # numero_contrato y marca ya se leyeron arriba para verificar duplicados
                 
                 # Centro ya está asignado automáticamente a FARMACIA
                 centro_lote = centro
