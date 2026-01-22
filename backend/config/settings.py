@@ -412,8 +412,34 @@ elif DATABASE_URL:
         })
 else:
     # Solo desarrollo local - NUNCA en producción
-    if not DEBUG:
-        raise ValueError('ERROR: DATABASE_URL requerido en producción')
+    # ISS-FIX: Detectar entorno Render explícitamente para fallar temprano
+    _is_render = config('RENDER', default=False, cast=bool)
+    _is_production = not DEBUG or _is_render
+    
+    if _is_production:
+        import sys
+        print(
+            "\n" + "=" * 70 + "\n"
+            "❌ ERROR CRÍTICO: DATABASE_URL no configurada\n"
+            "=" * 70 + "\n"
+            "Este servidor está en modo producción (DEBUG=False o RENDER=True)\n"
+            "pero no se encontró DATABASE_URL.\n\n"
+            "SOLUCIÓN:\n"
+            "1. Ve al Dashboard de Render\n"
+            "2. Selecciona el servicio 'farmacia-api'\n"
+            "3. Ve a 'Environment' > 'Environment Variables'\n"
+            "4. Agrega DATABASE_URL con tu URL de Supabase PostgreSQL:\n"
+            "   postgresql://postgres.[PROJECT-REF]:[PASSWORD]@aws-0-us-west-1.pooler.supabase.com:6543/postgres\n\n"
+            "5. Haz clic en 'Save Changes' y espera el redeploy\n"
+            "=" * 70 + "\n",
+            file=sys.stderr
+        )
+        raise ValueError(
+            'ERROR: DATABASE_URL requerido en producción. '
+            'Configura esta variable en el Dashboard de Render.'
+        )
+    
+    # Desarrollo local con SQLite
     DATABASES = {
         'default': {
             'ENGINE': config('DB_ENGINE', default='django.db.backends.sqlite3'),

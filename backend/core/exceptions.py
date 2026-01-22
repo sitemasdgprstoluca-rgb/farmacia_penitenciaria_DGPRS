@@ -146,6 +146,26 @@ def custom_exception_handler(exc, context):
     if isinstance(exc, ValidationError):
         custom_response['message'] = 'Error de validación'
         custom_response['errors'] = response.data
+        # Formatear errores para mensaje legible
+        errores_formateados = []
+        for campo, mensajes in response.data.items():
+            if isinstance(mensajes, list):
+                for msg in mensajes:
+                    if campo == 'non_field_errors':
+                        errores_formateados.append(str(msg))
+                    else:
+                        errores_formateados.append(f"{campo}: {msg}")
+            elif isinstance(mensajes, dict):
+                # Errores anidados (ej: detalles[0].cantidad_solicitada)
+                for subcampo, submensajes in mensajes.items():
+                    if isinstance(submensajes, list):
+                        for msg in submensajes:
+                            errores_formateados.append(f"{campo}.{subcampo}: {msg}")
+                    else:
+                        errores_formateados.append(f"{campo}.{subcampo}: {submensajes}")
+            else:
+                errores_formateados.append(f"{campo}: {mensajes}")
+        custom_response['detail'] = '; '.join(errores_formateados) if errores_formateados else 'Datos inválidos'
     
     # PermissionDenied (403)
     elif isinstance(exc, PermissionDenied):

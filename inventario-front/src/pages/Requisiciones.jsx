@@ -1167,6 +1167,9 @@ const Requisiciones = () => {
     
     const item = form.items[idx];
     
+    // Convertir a entero (sin decimales)
+    const valorEntero = Math.floor(Number(value) || 1);
+    
     // USUARIOS DE CENTRO: Pueden solicitar cualquier cantidad (Farmacia ajustará)
     // ADMIN/FARMACIA: Limitado al stock disponible
     if (esAdminOFarmacia) {
@@ -1176,7 +1179,7 @@ const Requisiciones = () => {
         toast.error('Stock no disponible. Recargue el catálogo.');
         return;
       }
-      const cantidad = Math.min(Math.max(1, Number(value) || 1), maxCantidad);
+      const cantidad = Math.min(Math.max(1, valorEntero), maxCantidad);
       setForm((prev) => {
         const items = [...prev.items];
         items[idx] = { ...items[idx], cantidad_solicitada: cantidad };
@@ -1184,7 +1187,7 @@ const Requisiciones = () => {
       });
     } else {
       // USUARIOS DE CENTRO: Sin límite, Farmacia verificará disponibilidad
-      const cantidad = Math.max(1, Number(value) || 1);
+      const cantidad = Math.max(1, valorEntero);
       setForm((prev) => {
         const items = [...prev.items];
         items[idx] = { ...items[idx], cantidad_solicitada: cantidad };
@@ -1376,12 +1379,48 @@ const Requisiciones = () => {
     } catch (error) {
       console.error('Error guardando requisición:', error);
       // Mostrar mensaje de error detallado del servidor
-      const errorMsg = error.response?.data?.mensaje 
+      let errorMsg = error.response?.data?.mensaje 
         || error.response?.data?.error 
         || error.response?.data?.detail
-        || JSON.stringify(error.response?.data?.detalles || {})
-        || error.message 
-        || 'Error desconocido';
+        || error.response?.data?.message;
+      
+      // Si hay errores de validación, formatearlos
+      if (!errorMsg && error.response?.data?.errors) {
+        const errores = error.response.data.errors;
+        if (typeof errores === 'object') {
+          const mensajes = [];
+          Object.entries(errores).forEach(([campo, msgs]) => {
+            if (Array.isArray(msgs)) {
+              msgs.forEach(msg => {
+                if (campo === 'non_field_errors') {
+                  mensajes.push(String(msg));
+                } else {
+                  mensajes.push(`${campo}: ${msg}`);
+                }
+              });
+            } else if (typeof msgs === 'object') {
+              // Errores anidados (detalles de items)
+              Object.entries(msgs).forEach(([idx, submsgs]) => {
+                if (typeof submsgs === 'object') {
+                  Object.entries(submsgs).forEach(([subcampo, submsg]) => {
+                    mensajes.push(`Item ${Number(idx) + 1} - ${subcampo}: ${submsg}`);
+                  });
+                }
+              });
+            } else {
+              mensajes.push(`${campo}: ${msgs}`);
+            }
+          });
+          errorMsg = mensajes.join('. ') || JSON.stringify(errores);
+        } else {
+          errorMsg = JSON.stringify(errores);
+        }
+      }
+      
+      if (!errorMsg) {
+        errorMsg = error.message || 'Error desconocido';
+      }
+      
       toast.error(`No se pudo guardar: ${errorMsg}`, { duration: 8000 });
     } finally {
       setIsSubmitting(false);
@@ -2513,8 +2552,15 @@ const Requisiciones = () => {
                                     <input
                                       type="number"
                                       min="1"
+                                      step="1"
                                       value={item.cantidad_solicitada}
                                       onChange={(e) => actualizarCantidad(idx, e.target.value)}
+                                      onKeyDown={(e) => {
+                                        // Bloquear punto y coma (decimales)
+                                        if (e.key === '.' || e.key === ',') {
+                                          e.preventDefault();
+                                        }
+                                      }}
                                       disabled={isSubmitting}
                                       className="w-16 border rounded px-2 py-1 text-center font-bold disabled:opacity-50 disabled:cursor-not-allowed"
                                     />

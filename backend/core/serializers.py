@@ -1362,7 +1362,13 @@ class DetalleRequisicionSerializer(serializers.ModelSerializer):
     def validate_cantidad_solicitada(self, value):
         if value <= 0:
             raise serializers.ValidationError('La cantidad debe ser mayor a 0')
-        return value
+        # Validar que sea número entero (sin decimales)
+        if not isinstance(value, int) or value != int(value):
+            raise serializers.ValidationError(
+                'La cantidad debe ser un número entero (sin decimales). '
+                f'Valor recibido: {value}'
+            )
+        return int(value)
     
     def get_stock_disponible(self, obj):
         """
