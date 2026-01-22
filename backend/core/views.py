@@ -7004,23 +7004,38 @@ class DispensacionViewSet(viewsets.ModelViewSet):
     ordering = ['-fecha_dispensacion']
     
     def get_queryset(self):
-        """Filtra dispensaciones según centro y parámetros"""
+        """
+        Filtra dispensaciones según rol y centro del usuario.
+        
+        ISS-SEC-FIX: Aislamiento de datos entre médicos del mismo centro
+        - Superusuario/Admin/Farmacia: Ven TODO (modo auditoría global)
+        - Director/Admin de Centro: Ven todas las de su centro
+        - Médico: SOLO ve las que él mismo creó (aislamiento por usuario)
+        - Centro genérico: Ve las de su centro (lectura)
+        - Sin centro: No ve nada
+        """
         queryset = super().get_queryset().select_related(
             'paciente', 'centro', 'dispensado_por', 'autorizado_por', 'created_by'
         ).prefetch_related('detalles', 'detalles__producto', 'detalles__lote')
         
         user = self.request.user
         
-        # SEGURIDAD: Filtrar por centro del usuario
-        # - Superusuario y farmacia ven todo
-        # - Centro solo ve lo suyo
-        # - Sin centro = sin datos
+        # SEGURIDAD: Filtrar por centro y rol del usuario
         if user.is_superuser or user.rol in ['admin', 'admin_sistema', 'farmacia']:
-            # Admin y farmacia pueden ver todo (para auditoría)
+            # Admin y farmacia pueden ver todo (modo auditoría global)
             pass
         elif user.centro:
-            # Usuario de centro: SOLO ve dispensaciones de su centro
-            queryset = queryset.filter(centro=user.centro)
+            # Usuario de centro: filtrar según su rol específico
+            if user.rol == 'medico':
+                # ISS-SEC-FIX: Médico SOLO ve sus propias dispensaciones
+                # Esto evita que médicos del mismo centro vean datos de otros
+                queryset = queryset.filter(centro=user.centro, created_by=user)
+            elif user.rol in ['director_centro', 'administrador_centro']:
+                # Director/Admin del centro: ven todas las de su centro (supervisión)
+                queryset = queryset.filter(centro=user.centro)
+            else:
+                # Usuario de centro genérico: ve las de su centro
+                queryset = queryset.filter(centro=user.centro)
         else:
             # Sin centro asignado = no ve nada (seguridad)
             return queryset.none()
