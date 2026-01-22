@@ -2910,7 +2910,7 @@ class ProductoDonacion(models.Model):
     nombre = models.CharField(max_length=255)
     descripcion = models.TextField(blank=True, null=True)
     unidad_medida = models.CharField(max_length=50, default='PIEZA')
-    presentacion = models.CharField(max_length=100, blank=True, null=True)
+    presentacion = models.CharField(max_length=255, blank=True, null=True)  # ISS-FIX: Aumentado de 100 a 255
     activo = models.BooleanField(default=True)
     notas = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)

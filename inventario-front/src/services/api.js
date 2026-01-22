@@ -509,11 +509,26 @@ apiClient.interceptors.response.use(
     // SEGURIDAD: Solo reintentar métodos idempotentes para evitar duplicación de operaciones
     const httpMethod = (originalRequest.method || 'get').toUpperCase();
     const isIdempotentMethod = ['GET', 'HEAD', 'OPTIONS'].includes(httpMethod);
+    // ISS-FIX: El endpoint de token/refresh es seguro de reintentar aunque sea POST
+    const isAuthEndpoint = originalRequest.url?.includes('/token/') || originalRequest.url?.includes('/refresh/');
     const isRetryableError = isNetworkError || !status || RETRY_CONFIG.retryableStatusCodes.includes(status);
     const retryCount = originalRequest._retryCount || 0;
     
-    // Solo reintentar si: es error recuperable, no excede límite, no deshabilitado, Y es método idempotente
-    if (isRetryableError && retryCount < RETRY_CONFIG.maxRetries && !originalRequest._noRetry && isIdempotentMethod) {
+    // ISS-FIX: Manejar 429 (rate limit) con respeto al header Retry-After
+    if (status === 429) {
+      const retryAfter = error.response?.headers?.['retry-after'];
+      const waitTime = retryAfter ? parseInt(retryAfter, 10) * 1000 : 5000; // Default 5 segundos
+      
+      if (retryCount < RETRY_CONFIG.maxRetries) {
+        originalRequest._retryCount = retryCount + 1;
+        console.warn(`[API] Rate limit (429) - Esperando ${waitTime/1000}s antes de reintentar (${retryCount + 1}/${RETRY_CONFIG.maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        return apiClient(originalRequest);
+      }
+    }
+    
+    // Solo reintentar si: es error recuperable, no excede límite, no deshabilitado, Y (es método idempotente O es endpoint de auth)
+    if (isRetryableError && retryCount < RETRY_CONFIG.maxRetries && !originalRequest._noRetry && (isIdempotentMethod || isAuthEndpoint)) {
       originalRequest._retryCount = retryCount + 1;
       
       // Calcular delay con backoff exponencial si está habilitado
@@ -1101,10 +1116,57 @@ export const auditoriaAPI = {
 
 // Auth -  SEGURO CON COOKIES HttpOnly
 // ISS-003 FIX (audit33): Configuración parametrizable de endpoints
+
+// ISS-FIX: Configuración de reintentos específicos para login (cold starts)
+const LOGIN_RETRY_CONFIG = {
+  maxRetries: 3,           // Máximo 3 reintentos para login
+  retryDelay: 2000,        // 2 segundos entre reintentos
+  retryableCodes: [0, 408, 502, 503, 504], // Códigos que indican cold start o servidor no disponible
+};
+
+/**
+ * ISS-FIX: Helper para reintentar login en cold starts de Render
+ * El login es un POST y no se reintenta automáticamente por el interceptor
+ * Esta función maneja reintentos específicos para cuando el servidor está iniciando
+ */
+const loginWithRetry = async (credentials, retryCount = 0) => {
+  try {
+    return await apiClient.post(AUTH_CONFIG.tokenEndpoint, credentials);
+  } catch (error) {
+    const isNetworkError = !error.response && (
+      error.code === 'ECONNABORTED' || 
+      error.code === 'ERR_NETWORK' || 
+      error.code === 'ECONNREFUSED' ||
+      error.message?.includes('timeout') ||
+      error.message?.includes('Network Error')
+    );
+    const status = error.response?.status;
+    const isRetryableStatus = LOGIN_RETRY_CONFIG.retryableCodes.includes(status || 0);
+    
+    // Solo reintentar si es error de red/timeout y no excedemos el límite
+    if ((isNetworkError || isRetryableStatus) && retryCount < LOGIN_RETRY_CONFIG.maxRetries) {
+      if (isDev) {
+        console.debug(`[AUTH] Login reintento ${retryCount + 1}/${LOGIN_RETRY_CONFIG.maxRetries}...`);
+      }
+      // Esperar antes de reintentar (backoff simple)
+      await sleep(LOGIN_RETRY_CONFIG.retryDelay * (retryCount + 1));
+      return loginWithRetry(credentials, retryCount + 1);
+    }
+    
+    // Marcar el error con información adicional para el frontend
+    if (isNetworkError || isRetryableStatus) {
+      error.isServerStarting = true;
+      error.retriesExhausted = retryCount >= LOGIN_RETRY_CONFIG.maxRetries;
+    }
+    
+    throw error;
+  }
+};
+
 export const authAPI = {
-  // ISS-003: Login con validación de respuesta
+  // ISS-003: Login con validación de respuesta y reintentos para cold starts
   login: async (credentials) => {
-    const response = await apiClient.post(AUTH_CONFIG.tokenEndpoint, credentials);
+    const response = await loginWithRetry(credentials);
     
     // ISS-003: Validar que la respuesta contiene el token esperado
     const accessToken = response.data?.[AUTH_CONFIG.accessTokenField]
@@ -1507,9 +1569,12 @@ export const salidasDonacionesAPI = {
   delete: (id) => apiClient.delete(`/salidas-donaciones/${id}/`),
   // Finalizar entrega (marcar como entregado)
   finalizar: (id) => apiClient.post(`/salidas-donaciones/${id}/finalizar/`),
-  // Descargar recibo PDF
-  getReciboPdf: (id, finalizado = false) => apiClient.get(`/salidas-donaciones/${id}/recibo-pdf/`, { 
-    params: { finalizado: finalizado ? 'true' : 'false' },
+  // Descargar recibo PDF - soporta múltiples IDs para entregas agrupadas
+  getReciboPdf: (id, finalizado = false, ids = []) => apiClient.get(`/salidas-donaciones/${id}/recibo-pdf/`, { 
+    params: { 
+      finalizado: finalizado ? 'true' : 'false',
+      ids: ids.length > 0 ? ids.join(',') : undefined
+    },
     responseType: 'blob' 
   }),
   // Exportación e importación Excel

@@ -5302,9 +5302,10 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 # - pendiente_director: para autorizar
                 # - enviada, autorizada, parcial, surtida, entregada: ya autorizados
                 # - rechazada, cancelada, vencida: finalizados
-                # NO ve: borrador, pendiente_admin (aún no llegó a su etapa)
-                queryset = queryset.exclude(estado__in=['borrador', 'pendiente_admin'])
-                queryset = queryset.exclude(estado__in=['borrador', 'pendiente_admin'])
+                # NO ve: borrador, pendiente_admin, devuelta (aún no llegó a su etapa)
+                # ISS-FIX: Agregar 'devuelta' a la exclusión - el director no debe ver
+                # requisiciones que fueron devueltas al médico para corrección
+                queryset = queryset.exclude(estado__in=['borrador', 'pendiente_admin', 'devuelta'])
             
             # 3.4 Centro genérico: Solo ve sus propias requisiciones (seguridad RBAC)
             # ISS-SEC-001: Usuarios de centro sin rol específico solo ven lo que crearon

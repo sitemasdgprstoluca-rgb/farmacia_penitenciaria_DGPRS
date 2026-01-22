@@ -612,11 +612,14 @@ BEGIN
     END IF;
 END $$;
 
-DROP TRIGGER IF EXISTS trigger_historial_estado_requisicion ON requisiciones;
-CREATE TRIGGER trigger_historial_estado_requisicion
-    AFTER UPDATE ON requisiciones
-    FOR EACH ROW
-    EXECUTE FUNCTION registrar_cambio_estado_requisicion();
+-- ISS-FIX: Trigger de historial DESHABILITADO - causa duplicados
+-- El historial de cambios de estado se registra desde Python con más contexto
+-- (usuario, motivo, IP, user_agent). El trigger solo registra estado anterior/nuevo.
+-- DROP TRIGGER IF EXISTS trigger_historial_estado_requisicion ON requisiciones;
+-- CREATE TRIGGER trigger_historial_estado_requisicion
+--     AFTER UPDATE ON requisiciones
+--     FOR EACH ROW
+--     EXECUTE FUNCTION registrar_cambio_estado_requisicion();
 
 DROP TRIGGER IF EXISTS trigger_validar_transicion_requisicion ON requisiciones;
 CREATE TRIGGER trigger_validar_transicion_requisicion

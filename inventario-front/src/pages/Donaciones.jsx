@@ -1116,21 +1116,26 @@ const Donaciones = () => {
   };
 
   // Descargar recibo de salida como PDF
-  const handleDescargarReciboSalida = async (salida, finalizado = false) => {
+  // ISS-FIX: Soporta entregas agrupadas pasando todos los IDs del grupo
+  const handleDescargarReciboSalida = async (salida, finalizado = false, grupo = null) => {
     try {
-      const response = await salidasDonacionesAPI.getReciboPdf(salida.id, finalizado);
+      // Obtener todos los IDs del grupo si está disponible
+      const ids = grupo?.entregas?.map(e => e.id) || [];
+      const response = await salidasDonacionesAPI.getReciboPdf(salida.id, finalizado, ids);
       
       const blob = new Blob([response.data], { type: 'application/pdf' });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `recibo_salida_donacion_${salida.id}.pdf`;
+      // Usar folio con rango si hay múltiples productos
+      const folio = ids.length > 1 ? `DON-${Math.min(...ids)}-${Math.max(...ids)}` : `${salida.id}`;
+      link.download = `recibo_salida_donacion_${folio}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
       
-      toast.success('Recibo descargado');
+      toast.success(`Recibo descargado (${ids.length || 1} producto${ids.length > 1 ? 's' : ''})`);
     } catch (err) {
       console.error('Error descargando recibo:', err);
       toast.error('Error al descargar recibo');
@@ -2766,7 +2771,7 @@ const Donaciones = () => {
                                     {/* Botón Hoja de Entrega para grupos pendientes */}
                                     {!grupo.todosFinalizados && (
                                       <button
-                                        onClick={() => handleDescargarReciboSalida(grupo.entregas[0], false)}
+                                        onClick={() => handleDescargarReciboSalida(grupo.entregas[0], false, grupo)}
                                         className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                                         title="Hoja de Entrega"
                                       >
@@ -2801,7 +2806,7 @@ const Donaciones = () => {
                                     {/* Comprobante si ya está entregado */}
                                     {grupo.todosFinalizados && (
                                       <button
-                                        onClick={() => handleDescargarReciboSalida(grupo.entregas[0], true)}
+                                        onClick={() => handleDescargarReciboSalida(grupo.entregas[0], true, grupo)}
                                         className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                                         title="Comprobante"
                                       >
@@ -2822,7 +2827,7 @@ const Donaciones = () => {
                                     </button>
                                     {!grupo.todosFinalizados && (
                                       <button
-                                        onClick={() => handleDescargarReciboSalida(grupo.entregas[0], false)}
+                                        onClick={() => handleDescargarReciboSalida(grupo.entregas[0], false, grupo)}
                                         className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                                         title="Hoja de Entrega"
                                       >
@@ -2850,7 +2855,7 @@ const Donaciones = () => {
                                     )}
                                     {grupo.todosFinalizados && (
                                       <button
-                                        onClick={() => handleDescargarReciboSalida(grupo.entregas[0], true)}
+                                        onClick={() => handleDescargarReciboSalida(grupo.entregas[0], true, grupo)}
                                         className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                                         title="Comprobante"
                                       >

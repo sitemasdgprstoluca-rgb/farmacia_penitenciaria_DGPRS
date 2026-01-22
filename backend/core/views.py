@@ -3975,9 +3975,15 @@ class ProductoDonacionViewSet(viewsets.ModelViewSet):
                     errores.append(f'Fila {row_idx}: nombre es requerido')
                     continue
                 
+                # ISS-FIX: Truncar campos largos para evitar errores de BD
                 descripcion = str(row[col_map.get('descripcion', 2)] or '').strip() if col_map.get('descripcion') is not None else ''
-                unidad = str(row[col_map.get('unidad_medida', 3)] or 'PIEZA').strip().upper() if col_map.get('unidad_medida') is not None else 'PIEZA'
-                presentacion = str(row[col_map.get('presentacion', 4)] or '').strip() if col_map.get('presentacion') is not None else ''
+                unidad = str(row[col_map.get('unidad_medida', 3)] or 'PIEZA').strip().upper()[:50] if col_map.get('unidad_medida') is not None else 'PIEZA'
+                presentacion = str(row[col_map.get('presentacion', 4)] or '').strip()[:255] if col_map.get('presentacion') is not None else ''
+                
+                # Advertir si se truncó
+                presentacion_original = str(row[col_map.get('presentacion', 4)] or '').strip() if col_map.get('presentacion') is not None else ''
+                if len(presentacion_original) > 255:
+                    errores.append(f'Fila {row_idx}: presentación truncada (excedía 255 caracteres)')
                 
                 activo_val = str(row[col_map.get('activo', 5)] or 'SI').strip().upper() if col_map.get('activo') is not None else 'SI'
                 activo = activo_val in ['SI', 'S', 'YES', 'Y', '1', 'TRUE', 'ACTIVO']
@@ -5356,15 +5362,55 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
         
         Parámetros:
         - finalizado: si es 'true', muestra sello de ENTREGADO en lugar de campos de firma
+        - ids: lista de IDs separados por coma para incluir múltiples items (entregas agrupadas)
         
         ISS-DB-ALIGN: Ahora usa el campo 'finalizado' del modelo
+        ISS-FIX: Soporta agrupación de entregas para mostrar todos los productos
         """
         from django.http import HttpResponse
         from django.utils import timezone
         from core.utils.pdf_generator import generar_hoja_entrega
+        from datetime import timedelta
         
         try:
             salida = self.get_object()
+            
+            # ISS-FIX: Obtener IDs adicionales del query param o buscar entregas relacionadas
+            ids_param = request.query_params.get('ids', '')
+            salidas_ids = [int(i.strip()) for i in ids_param.split(',') if i.strip().isdigit()] if ids_param else []
+            
+            # Si no se pasaron IDs, buscar entregas del mismo grupo (mismo destinatario y minuto)
+            if not salidas_ids:
+                # Obtener el rango de tiempo (mismo minuto)
+                fecha_base = salida.fecha_entrega
+                if fecha_base:
+                    # Crear rango de 1 minuto centrado en la fecha de entrega
+                    fecha_inicio = fecha_base.replace(second=0, microsecond=0)
+                    fecha_fin = fecha_inicio + timedelta(minutes=1)
+                    
+                    # Buscar otras salidas del mismo grupo
+                    from core.models import SalidaDonacion
+                    salidas_relacionadas = SalidaDonacion.objects.filter(
+                        destinatario=salida.destinatario,
+                        fecha_entrega__gte=fecha_inicio,
+                        fecha_entrega__lt=fecha_fin
+                    ).order_by('id')
+                    salidas_ids = list(salidas_relacionadas.values_list('id', flat=True))
+            
+            # Asegurar que la salida actual esté en la lista
+            if salida.id not in salidas_ids:
+                salidas_ids = [salida.id] + salidas_ids
+            
+            # Obtener todas las salidas del grupo
+            from core.models import SalidaDonacion
+            salidas = SalidaDonacion.objects.filter(id__in=salidas_ids).select_related(
+                'detalle_donacion__producto_donacion',
+                'detalle_donacion__producto',
+                'centro_destino'
+            ).order_by('id')
+            
+            if not salidas.exists():
+                salidas = [salida]  # Fallback a solo la salida actual
             
             # ISS-DB-ALIGN: Priorizar el campo real del modelo
             finalizado = salida.finalizado or request.query_params.get('finalizado', 'false').lower() == 'true'
@@ -5378,31 +5424,51 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
             if salida.centro_destino:
                 centro_destino_nombre = salida.centro_destino.nombre
             
-            # FIX: Obtener datos del producto usando las propiedades del modelo DetalleDonacion
-            # que manejan tanto producto_donacion como producto legacy
-            detalle = salida.detalle_donacion
-            producto_nombre = 'N/A'
-            producto_clave = 'N/A'
-            numero_lote = 'N/A'
+            # ISS-FIX: Construir lista de items con TODAS las salidas del grupo
+            items = []
+            for s in salidas:
+                detalle = s.detalle_donacion
+                producto_nombre = 'N/A'
+                producto_clave = 'N/A'
+                numero_lote = 'N/A'
+                presentacion = 'N/A'
+                
+                if detalle:
+                    # Usar las propiedades del modelo que manejan ambos casos
+                    nombre = detalle.nombre_producto
+                    if nombre and nombre != 'Sin producto':
+                        producto_nombre = nombre
+                    
+                    # Obtener clave del producto
+                    if detalle.producto_donacion:
+                        producto_clave = detalle.producto_donacion.clave or 'N/A'
+                    elif detalle.producto:
+                        producto_clave = detalle.producto.clave or 'N/A'
+                    
+                    # numero_lote es un campo directo del modelo
+                    if detalle.numero_lote:
+                        numero_lote = detalle.numero_lote
+                    
+                    # Obtener presentación
+                    if detalle.producto_donacion and detalle.producto_donacion.presentacion:
+                        presentacion = detalle.producto_donacion.presentacion
+                    elif detalle.producto_donacion and detalle.producto_donacion.unidad_medida:
+                        presentacion = detalle.producto_donacion.unidad_medida
+                    elif detalle.producto and detalle.producto.presentacion:
+                        presentacion = detalle.producto.presentacion
+                    elif detalle.producto and detalle.producto.unidad_medida:
+                        presentacion = detalle.producto.unidad_medida
+                
+                items.append({
+                    'clave': producto_clave,
+                    'nombre': producto_nombre,
+                    'descripcion': producto_nombre,
+                    'presentacion': presentacion,
+                    'lote': numero_lote,
+                    'cantidad': s.cantidad,
+                })
             
-            if detalle:
-                # Usar las propiedades del modelo que manejan ambos casos
-                nombre = detalle.nombre_producto
-                if nombre and nombre != 'Sin producto':
-                    producto_nombre = nombre
-                
-                # Obtener clave del producto
-                if detalle.producto_donacion:
-                    producto_clave = detalle.producto_donacion.clave or 'N/A'
-                elif detalle.producto:
-                    producto_clave = detalle.producto.clave or 'N/A'
-                
-                # numero_lote es un campo directo del modelo
-                if detalle.numero_lote:
-                    numero_lote = detalle.numero_lote
-                
-                # DEBUG: Log para diagnóstico
-                logger.debug(f"PDF Donación - Detalle ID: {detalle.id}, Producto: {producto_nombre}, Clave: {producto_clave}, Lote: {numero_lote}")
+            logger.debug(f"PDF Donación - Generando con {len(items)} items para grupo de salidas: {salidas_ids}")
             
             # Preparar datos para generar_hoja_entrega con formato oficial
             fecha_obj = salida.fecha_entrega or timezone.now()
@@ -5410,30 +5476,17 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
                 from datetime import datetime
                 fecha_obj = datetime.fromisoformat(fecha_obj.replace('Z', '+00:00'))
             
-            # Obtener presentación del producto
-            presentacion = 'N/A'
-            if detalle:
-                if detalle.producto_donacion and detalle.producto_donacion.presentacion:
-                    presentacion = detalle.producto_donacion.presentacion
-                elif detalle.producto_donacion and detalle.producto_donacion.unidad_medida:
-                    presentacion = detalle.producto_donacion.unidad_medida
-                elif detalle.producto and detalle.producto.presentacion:
-                    presentacion = detalle.producto.presentacion
-                elif detalle.producto and detalle.producto.unidad_medida:
-                    presentacion = detalle.producto.unidad_medida
+            # Usar rango de IDs para el folio si hay múltiples
+            if len(salidas_ids) > 1:
+                folio = f"DON-{min(salidas_ids)}-{max(salidas_ids)}"
+            else:
+                folio = f"DON-{salida.id}"
             
             datos_entrega = {
-                'grupo_salida': f"DON-{salida.id}",  # Folio con prefijo DON
+                'grupo_salida': folio,
                 'fecha': fecha_obj,
                 'centro_destino': centro_destino_nombre,
-                'items': [{
-                    'clave': producto_clave,
-                    'nombre': producto_nombre,
-                    'descripcion': producto_nombre,
-                    'presentacion': presentacion,
-                    'lote': numero_lote,
-                    'cantidad': salida.cantidad,
-                }],
+                'items': items,
                 # Datos de firma para el PDF
                 'nombre_encargada': 'Q.F.B. MARILENE JUÁREZ DÍAZ',
                 'cargo_encargada': 'ENCARGADA DEL ALMACÉN MÉDICO',
@@ -5462,9 +5515,9 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
                 content_type='application/pdf'
             )
             estado = 'Entregado' if finalizado else 'Pendiente'
-            response['Content-Disposition'] = f'attachment; filename="Recibo_Donacion_{salida.id}_{estado}_{timezone.now().strftime("%Y%m%d")}.pdf"'
+            response['Content-Disposition'] = f'attachment; filename="Recibo_Donacion_{folio}_{estado}_{timezone.now().strftime("%Y%m%d")}.pdf"'
             
-            logger.info(f"Recibo de donación generado para salida {salida.id} por {request.user.username}")
+            logger.info(f"Recibo de donación generado para {len(items)} items (IDs: {salidas_ids}) por {request.user.username}")
             return response
             
         except Exception as e:

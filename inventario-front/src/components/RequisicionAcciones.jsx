@@ -270,13 +270,18 @@ export function RequisicionAcciones({
 /**
  * Modal para capturar datos adicionales requeridos por algunas acciones
  * ISS-SEC: Ahora soporta confirmación de dos pasos para acciones críticas
+ * ISS-FIX: Agregado estado isSubmitting para prevenir doble clic
  */
 function ModalDatosAdicionales({ tipo, accion, datosExtra = {}, requisicion, onConfirm, onCancel }) {
   const [valor, setValor] = useState('');
   const [fechaRecoleccion, setFechaRecoleccion] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // ISS-FIX: Prevenir doble envío
+    if (isSubmitting) return;
     
     let datos = { ...datosExtra };
     
@@ -298,7 +303,14 @@ function ModalDatosAdicionales({ tipo, accion, datosExtra = {}, requisicion, onC
       datos._confirmado = true;
     }
     
-    onConfirm(datos);
+    // ISS-FIX: Marcar como en proceso y ejecutar
+    setIsSubmitting(true);
+    try {
+      await onConfirm(datos);
+    } finally {
+      // El modal se cierra desde el padre, pero por si acaso
+      setIsSubmitting(false);
+    }
   };
   
   const getTitulo = () => {
@@ -458,15 +470,21 @@ function ModalDatosAdicionales({ tipo, accion, datosExtra = {}, requisicion, onC
             <button
               type="button"
               onClick={onCancel}
-              className="px-4 py-2 text-gray-600 hover:text-gray-800 border border-gray-300 rounded-md"
+              disabled={isSubmitting}
+              className="px-4 py-2 text-gray-600 hover:text-gray-800 border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {tipo === 'confirmacion_dos_pasos' ? 'No, volver' : 'Cancelar'}
             </button>
             <button
               type="submit"
-              className={`px-4 py-2 rounded-md text-white ${getBotonConfirmacionClasses()}`}
+              disabled={isSubmitting}
+              className={`px-4 py-2 rounded-md text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 ${getBotonConfirmacionClasses()}`}
             >
-              {tipo === 'confirmacion_dos_pasos' ? `Sí, ${accion.label.toLowerCase()}` : accion.label}
+              {isSubmitting && <FaSpinner className="animate-spin" />}
+              {isSubmitting 
+                ? 'Procesando...' 
+                : (tipo === 'confirmacion_dos_pasos' ? `Sí, ${accion.label.toLowerCase()}` : accion.label)
+              }
             </button>
           </div>
         </form>

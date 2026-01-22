@@ -179,6 +179,14 @@ function Login() {
       } else if (error.response?.data?.detail) {
         setErrorMessage(error.response.data.detail);
         toast.error('No fue posible iniciar sesión');
+      } else if (error.isServerStarting || error.retriesExhausted) {
+        // ISS-FIX: Mensaje específico para cold starts de Render
+        setErrorMessage('El servidor está iniciando. Por favor espera unos segundos e intenta de nuevo.');
+        toast.error('El servidor está despertando, intenta de nuevo en unos segundos');
+      } else if (!error.response) {
+        // Error de red sin respuesta del servidor
+        setErrorMessage('No se puede conectar con el servidor. Verifica tu conexión a internet.');
+        toast.error('Error de conexión');
       } else {
         setErrorMessage('Error al conectar con el servidor');
         toast.error('No fue posible iniciar sesión');

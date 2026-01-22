@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { PermissionContext } from './contexts';
 import apiClient, { authAPI } from '../services/api';
-import { setAccessToken, hasAccessToken, migrateFromLocalStorage, isLogoutInProgress } from '../services/tokenManager';
+import { setAccessToken, hasAccessToken, migrateFromLocalStorage, isLogoutInProgress, isRefreshInProgress, setRefreshInProgress } from '../services/tokenManager';
 // ISS-009 FIX: Usar lógica de roles centralizada
 // ISS-AUDIT FIX: getRolPrincipal importado como getRolPrincipalUtil, función local getRolPrincipal para navegación
 import { 
@@ -808,21 +808,48 @@ export function PermissionProvider({ children }) {
           return;
         }
         
-        // ISS-002/005 FIX: Verificar sessionStorage en lugar de localStorage
-        const storedUserId = sessionStorage.getItem(SESSION_KEYS.USER_ID);
-        if (!storedUserId && !forceRefresh) {
-          // No hay sesión previa, no intentar refresh
-          setLoading(false);
-          return;
-        }
-        
-        try {
-          // El refresh token está en cookie HttpOnly, el servidor lo lee automáticamente
-          const refreshResponse = await authAPI.refresh();
-          if (refreshResponse.data?.access) {
-            setAccessToken(refreshResponse.data.access);
+        // ISS-FIX: Si ya hay un refresh en progreso, esperar a que termine
+        if (isRefreshInProgress()) {
+          // Esperar un poco y reintentar (el interceptor ya está haciendo refresh)
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          if (hasAccessToken()) {
+            // El refresh del interceptor fue exitoso, continuar
           } else {
-            // Refresh falló, limpiar datos de sesión
+            setLoading(false);
+            return;
+          }
+        } else {
+          // ISS-002/005 FIX: Verificar sessionStorage en lugar de localStorage
+          const storedUserId = sessionStorage.getItem(SESSION_KEYS.USER_ID);
+          if (!storedUserId && !forceRefresh) {
+            // No hay sesión previa, no intentar refresh
+            setLoading(false);
+            return;
+          }
+          
+          try {
+            // ISS-FIX: Marcar que hay refresh en progreso para evitar duplicados
+            setRefreshInProgress(true);
+            // El refresh token está en cookie HttpOnly, el servidor lo lee automáticamente
+            const refreshResponse = await authAPI.refresh();
+            if (refreshResponse.data?.access) {
+              setAccessToken(refreshResponse.data.access);
+            } else {
+              // Refresh falló, limpiar datos de sesión
+              sessionStorage.removeItem(SESSION_KEYS.USER_ID);
+              sessionStorage.removeItem(SESSION_KEYS.USER_ROLE);
+              sessionStorage.removeItem(SESSION_KEYS.SESSION_HASH);
+              localStorage.removeItem('user'); // Limpiar legacy
+              // SEGURIDAD: Resetear estado de usuario para evitar UI inconsistente
+              setUser(null);
+              setPermisos({});
+              setGrupos([]);
+              setPermisosValidados(false);
+              setLoading(false);
+              return;
+            }
+          } catch (refreshError) {
+            // No hay sesión válida, limpiar datos
             sessionStorage.removeItem(SESSION_KEYS.USER_ID);
             sessionStorage.removeItem(SESSION_KEYS.USER_ROLE);
             sessionStorage.removeItem(SESSION_KEYS.SESSION_HASH);
@@ -834,20 +861,9 @@ export function PermissionProvider({ children }) {
             setPermisosValidados(false);
             setLoading(false);
             return;
+          } finally {
+            setRefreshInProgress(false);
           }
-        } catch (refreshError) {
-          // No hay sesión válida, limpiar datos
-          sessionStorage.removeItem(SESSION_KEYS.USER_ID);
-          sessionStorage.removeItem(SESSION_KEYS.USER_ROLE);
-          sessionStorage.removeItem(SESSION_KEYS.SESSION_HASH);
-          localStorage.removeItem('user'); // Limpiar legacy
-          // SEGURIDAD: Resetear estado de usuario para evitar UI inconsistente
-          setUser(null);
-          setPermisos({});
-          setGrupos([]);
-          setPermisosValidados(false);
-          setLoading(false);
-          return;
         }
       }
 
