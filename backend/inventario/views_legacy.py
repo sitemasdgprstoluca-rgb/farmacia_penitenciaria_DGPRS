@@ -7205,10 +7205,22 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         ISS-AUDIT-002 FIX: Usa select_for_update() para prevenir race conditions
         en autorizaciones concurrentes que compiten por el mismo stock.
         """
-        # ISS-AUDIT-002 FIX: Bloquear requisición PRIMERO para evitar race conditions
-        # Esto previene sobre-autorización de stock cuando múltiples admins autorizan
-        # requisiciones simultáneamente que compiten por los mismos lotes.
-        requisicion = Requisicion.objects.select_for_update(nowait=False).get(pk=pk)
+        try:
+            # ISS-AUDIT-002 FIX: Bloquear requisición PRIMERO para evitar race conditions
+            # Esto previene sobre-autorización de stock cuando múltiples admins autorizan
+            # requisiciones simultáneamente que compiten por los mismos lotes.
+            requisicion = Requisicion.objects.select_for_update(nowait=False).get(pk=pk)
+        except Requisicion.DoesNotExist:
+            return Response({
+                'error': f'No se encontró la requisición con ID {pk}'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error(f"Error al obtener requisición {pk}: {e}", exc_info=True)
+            return Response({
+                'error': 'Error al acceder a la requisición',
+                'detalle': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
         estado_actual = (requisicion.estado or '').lower()
         
         # ISS-FLUJO-FIX: Solo permitir autorizar desde 'en_revision'
@@ -7303,7 +7315,14 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 continue
             try:
                 item = requisicion.detalles.get(id=item_id)
-                item.cantidad_autorizada = max(0, int(cant_autorizada))
+                # ISS-FIX: Convertir cantidad con manejo robusto de tipos
+                try:
+                    # Primero intentar como float por si viene con decimales, luego truncar
+                    cant_int = int(float(cant_autorizada))
+                except (ValueError, TypeError):
+                    logger.warning(f"Cantidad inválida para item {item_id}: {cant_autorizada}")
+                    continue
+                item.cantidad_autorizada = max(0, cant_int)
                 motivo_ajuste = item_data.get('motivo_ajuste', '')
                 if item.cantidad_autorizada < item.cantidad_solicitada and not motivo_ajuste:
                     return Response({
@@ -7315,6 +7334,12 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 items_procesados.add(item_id)
             except DetalleRequisicion.DoesNotExist:
                 continue
+            except Exception as e:
+                logger.error(f"Error procesando item {item_id}: {e}", exc_info=True)
+                return Response({
+                    'error': f'Error procesando cantidad para item {item_id}',
+                    'detalle': str(e)
+                }, status=status.HTTP_400_BAD_REQUEST)
         
         # ISS-SURTIR-FIX: Si NO se enviaron items explícitos, autorizar TODOS los detalles
         # con cantidad_autorizada = cantidad_solicitada (aprobación total)
