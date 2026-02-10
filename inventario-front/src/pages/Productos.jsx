@@ -1314,11 +1314,11 @@ const Productos = () => {
       }
 
       const response = await productosAPI.importar(form);
-      const resumen = response.data?.resumen || {};
+      const resumen = response.data?.resumen || response.data || {};
       const errores = response.data?.errores || [];
 
       toast.success(
-        `Importación completada. Creados: ${resumen.creados || 0} | Actualizados: ${resumen.actualizados || 0} | Total: ${resumen.total_procesados || 0}`,
+        `Importación completada. Creados: ${resumen.creados || 0} | Actualizados: ${resumen.actualizados || 0} | Total: ${resumen.total_registros || 0}`,
         { duration: 5000 }
       );
       if (errores.length) {

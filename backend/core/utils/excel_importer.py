@@ -579,9 +579,23 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                 # ========== CANTIDAD INICIAL (requerido) - Leer primero ==========
                 cant_raw = get_val('cantidad_inicial', '0')
                 try:
-                    cantidad_inicial = max(1, int(float(cant_raw)))
+                    cantidad_inicial = int(float(cant_raw))
                 except:
                     resultado.agregar_error(fila_num, 'cantidad', f'Cantidad inválida: {cant_raw}')
+                    continue
+                
+                # Validar cantidad_inicial > 0 (CHECK constraint en Supabase)
+                if cantidad_inicial <= 0:
+                    # ISS-INV-001: Si hay cantidad_contrato, dar mensaje sobre flujo parcial
+                    cant_contrato_preview = get_val('cantidad_contrato')
+                    if cant_contrato_preview and int(float(cant_contrato_preview)) > 0:
+                        resultado.agregar_error(fila_num, 'cantidad', 
+                            f'Cantidad Inicial es 0 pero Contrato dice {cant_contrato_preview}. '
+                            f'Importe este lote cuando llegue la primera entrega con la cantidad real recibida. '
+                            f'Ejemplo: si llegan 5 de {cant_contrato_preview}, ponga Cantidad Inicial=5.')
+                    else:
+                        resultado.agregar_error(fila_num, 'cantidad', 
+                            'Cantidad Inicial debe ser mayor a 0. No se puede registrar un lote sin unidades recibidas.')
                     continue
                 
                 # ========== FECHA CADUCIDAD (requerido) - Leer primero ==========

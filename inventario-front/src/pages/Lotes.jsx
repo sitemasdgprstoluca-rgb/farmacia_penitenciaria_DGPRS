@@ -805,7 +805,7 @@ const handleImportar = async (e) => {
   try {
     setImportLoading(true);
     const response = await lotesAPI.importar(formData);
-    const resumen = response.data?.resumen || {};
+    const resumen = response.data?.resumen || response.data || {};
     const errores = response.data?.errores || [];
 
     // Función para traducir errores técnicos a mensajes amigables
@@ -845,16 +845,22 @@ const handleImportar = async (e) => {
       if (str.includes('Cantidades invalidas')) {
         return '⚠️ Cantidad inválida - debe ser un número positivo';
       }
+      if (str.includes('Cantidad Inicial es 0') || str.includes('Cantidad Inicial debe ser mayor a 0')) {
+        return '⚠️ Cantidad recibida es 0 - importe cuando llegue la primera entrega';
+      }
       
       return str;
     };
 
     // Mostrar resultado principal
-    if (resumen.exitos > 0) {
+    const totalExitos = resumen.creados || resumen.registros_exitosos || 0;
+    if (totalExitos > 0) {
       toast.success(
-        `✅ Importación completada: ${resumen.exitos} lotes importados correctamente`,
+        `✅ Importación completada: ${totalExitos} lotes importados correctamente`,
         { duration: 4000 }
       );
+    } else if (!errores.length) {
+      toast('Importación completada. No se crearon ni actualizaron lotes.', { icon: 'ℹ️', duration: 4000 });
     }
     
     if (errores.length) {
