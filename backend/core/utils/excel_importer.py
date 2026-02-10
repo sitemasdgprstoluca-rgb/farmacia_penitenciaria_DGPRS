@@ -504,6 +504,7 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
         logger.info("Lotes - Centro: NULL (Almacén Central/FARMACIA)")
 
     creados = 0
+    omitidos_centro = 0  # ISS-FIX: Contar filas omitidas por pertenecer a otro centro
     
     with transaction.atomic():
         for fila_num in range(fila_inicio_datos, sheet.max_row + 1):
@@ -575,6 +576,31 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                     resultado.agregar_error(fila_num, 'lote', 
                         'Producto y numero de lote son obligatorios')
                     continue
+                
+                # ========== FILTRO DE CENTRO/UBICACIÓN ==========
+                # ISS-FIX: Si el Excel tiene columna Ubicación o Centro, y la fila
+                # pertenece a un centro penitenciario (no Farmacia Central), OMITIR
+                # ya que los lotes de centros se gestionan vía transferencias, no importación.
+                ubicacion_excel = get_val('ubicacion', '')
+                centro_excel = get_val('centro', '')
+                ubicacion_or_centro = (ubicacion_excel or centro_excel or '').strip().lower()
+                
+                if not centro and ubicacion_or_centro:
+                    # Importando a Farmacia Central: omitir filas de centros penitenciarios
+                    es_almacen_central = (
+                        not ubicacion_or_centro or
+                        'almac' in ubicacion_or_centro or
+                        'central' in ubicacion_or_centro or
+                        'farmacia' in ubicacion_or_centro
+                    )
+                    if not es_almacen_central:
+                        logger.info(
+                            f"Fila {fila_num}: OMITIDA - lote {numero_lote} pertenece a "
+                            f"'{ubicacion_excel or centro_excel}', no a Farmacia Central"
+                        )
+                        # No contar como error ni éxito, simplemente omitir
+                        omitidos_centro += 1
+                        continue
                 
                 # ========== CANTIDAD INICIAL (requerido) - Leer primero ==========
                 cant_raw = get_val('cantidad_inicial', '0')
@@ -798,6 +824,13 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
 
     result = resultado.get_dict()
     result['creados'] = creados
+    # ISS-FIX: Informar sobre filas omitidas por pertenecer a otros centros
+    if omitidos_centro > 0:
+        result['omitidos_centro'] = omitidos_centro
+        result['nota_centros'] = (
+            f'{omitidos_centro} fila(s) omitida(s) por pertenecer a centros penitenciarios. '
+            f'Los lotes de centros se gestionan mediante transferencias, no por importación directa.'
+        )
     return result
 
 

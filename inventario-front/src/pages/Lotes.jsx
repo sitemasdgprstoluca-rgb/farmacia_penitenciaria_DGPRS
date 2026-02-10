@@ -681,9 +681,18 @@ const Lotes = () => {
       if (filtroCaducidad) params.caducidad = filtroCaducidad;
       if (filtroConStock) params.con_stock = filtroConStock;
       if (filtroActivo) params.activo = filtroActivo;
-      // Forzar filtro de centro para usuarios sin permisos globales
-      const centroParaExportar = !puedeVerGlobal ? (centroUsuario?.toString() || filtroCentro) : filtroCentro;
-      if (centroParaExportar) params.centro = centroParaExportar;
+      // ISS-FIX: Usar misma lógica de centro que cargarLotes
+      // Admin/farmacia: por defecto solo exportar Farmacia Central
+      // Para exportar centros, usar Reportes > Inventario > elegir centro
+      if (!puedeVerGlobal) {
+        params.centro = centroUsuario?.toString() || filtroCentro || '';
+      } else if (filtroCentro === 'todos') {
+        // Sin filtro = exportar todo
+      } else if (filtroCentro) {
+        params.centro = filtroCentro;
+      } else {
+        params.centro = 'central'; // Default: solo Farmacia Central
+      }
       
       const response = await lotesAPI.exportar(params);
       
@@ -726,9 +735,16 @@ const Lotes = () => {
       if (filtroCaducidad) params.caducidad = filtroCaducidad;
       if (filtroConStock) params.con_stock = filtroConStock;
       if (filtroActivo) params.activo = filtroActivo;
-      // Forzar filtro de centro para usuarios sin permisos globales
-      const centroParaExportar = !puedeVerGlobal ? (centroUsuario?.toString() || filtroCentro) : filtroCentro;
-      if (centroParaExportar) params.centro = centroParaExportar;
+      // ISS-FIX: Usar misma lógica de centro que cargarLotes
+      if (!puedeVerGlobal) {
+        params.centro = centroUsuario?.toString() || filtroCentro || '';
+      } else if (filtroCentro === 'todos') {
+        // Sin filtro = exportar todo
+      } else if (filtroCentro) {
+        params.centro = filtroCentro;
+      } else {
+        params.centro = 'central';
+      }
       
       const response = await lotesAPI.exportarPdf(params);
       
@@ -861,6 +877,14 @@ const handleImportar = async (e) => {
       );
     } else if (!errores.length) {
       toast('Importación completada. No se crearon ni actualizaron lotes.', { icon: 'ℹ️', duration: 4000 });
+    }
+    
+    // ISS-FIX: Mostrar nota sobre filas de centros omitidas
+    if (resumen.omitidos_centro > 0) {
+      toast(
+        `ℹ️ ${resumen.omitidos_centro} fila(s) omitida(s) porque pertenecen a centros penitenciarios. Solo se importan lotes de Farmacia Central.`,
+        { icon: '🏥', duration: 6000 }
+      );
     }
     
     if (errores.length) {
