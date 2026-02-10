@@ -21,9 +21,9 @@ python manage.py migrate --no-input
 
 echo "=== Setting admin password (PostgreSQL only) ==="
 # HALLAZGO #8: Solo ejecutar en PostgreSQL, no en SQLite fallback
-python set_admin_password.py
+python scripts/set_admin_password.py
 
 echo "=== Enabling donations module for ADMIN and FARMACIA users ==="
-python habilitar_donaciones.py
+python scripts/habilitar_donaciones.py
 
 echo "=== Build complete ==="

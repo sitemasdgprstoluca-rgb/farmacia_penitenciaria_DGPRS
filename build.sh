@@ -16,9 +16,9 @@ echo "=== Running migrations ==="
 python manage.py migrate --no-input
 
 echo "=== Setting admin password ==="
-python set_admin_password.py
+python scripts/set_admin_password.py
 
 echo "=== Enabling donations module ==="
-python habilitar_donaciones.py
+python scripts/habilitar_donaciones.py
 
 echo "=== Build complete ==="
