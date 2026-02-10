@@ -624,7 +624,7 @@ def invalidar_cache_dashboard(centro_id=None):
         logger.warning(f'Error al invalidar caché del dashboard: {e}')
 
 
-def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=None, requisicion=None, observaciones='', skip_centro_check=False, subtipo_salida=None, numero_expediente=None, fecha_salida=None):
+def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=None, requisicion=None, observaciones='', skip_centro_check=False, subtipo_salida=None, numero_expediente=None, fecha_salida=None, folio_documento=None):
     """
     Helper central para registrar un movimiento y actualizar cantidad_actual del lote.
     
@@ -650,6 +650,7 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
         subtipo_salida: Tipo de salida (receta, consumo_interno, merma, etc.)
         numero_expediente: Número de expediente del paciente (para recetas)
         fecha_salida: Fecha real de salida física del medicamento (opcional)
+        folio_documento: Folio/número de documento oficial de entrada/salida (opcional)
     
     Raises:
         ValidationError: Si los datos son inválidos o hay problemas de autorización
@@ -784,12 +785,31 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
             subtipo_salida=subtipo_salida if tipo_normalizado == 'salida' else None,
             numero_expediente=numero_expediente if tipo_normalizado == 'salida' and subtipo_salida == 'receta' else None,
             # Fecha de salida física (puede diferir de fecha de registro)
-            fecha_salida=fecha_salida if tipo_normalizado == 'salida' else None
+            fecha_salida=fecha_salida if tipo_normalizado == 'salida' else None,
+            # FORMATO B: Folio/número de documento oficial
+            folio_documento=folio_documento or None
+        )
+        
+        # DIAGNÓSTICO: Log para rastrear fecha_salida en el helper
+        logger.info(
+            f'[MOV-FECHA-DIAG] registrar_movimiento_stock: '
+            f'tipo={tipo_normalizado}, fecha_salida_param={fecha_salida}, '
+            f'mov.fecha_salida={movimiento.fecha_salida}, '
+            f'folio_documento={folio_documento}'
         )
         # Guardar stock previo para evitar fallos de validacion al crear el movimiento
         movimiento._stock_pre_movimiento = stock_disponible
         # HALLAZGO #1 FIX: Usar skip_stock_update porque ya actualizamos stock arriba con F()
         movimiento.save(skip_stock_update=True)
+        
+        # DIAGNÓSTICO POST-SAVE: Verificar que fecha_salida se guardó en la BD
+        if fecha_salida:
+            mov_db = Movimiento.objects.filter(pk=movimiento.pk).values('fecha_salida', 'folio_documento').first()
+            logger.info(
+                f'[MOV-FECHA-DIAG] POST-SAVE mov.id={movimiento.pk}: '
+                f'fecha_salida_en_bd={mov_db.get("fecha_salida") if mov_db else "NOT_FOUND"}, '
+                f'folio_en_bd={mov_db.get("folio_documento") if mov_db else "NOT_FOUND"}'
+            )
         
         # ISS-005: Invalidar caché del dashboard al registrar movimientos
         centro_afectado = centro.id if centro else (lote_ref.centro.id if lote_ref.centro else None)

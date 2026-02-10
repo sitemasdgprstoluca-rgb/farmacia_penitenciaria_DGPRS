@@ -329,8 +329,25 @@ class MovimientoViewSet(
         # Fecha de salida física (puede diferir de la fecha de registro en el sistema)
         # MOV-FECHA: Solo farmacia/admin pueden establecer fecha_salida
         fecha_salida = serializer.validated_data.get('fecha_salida')
-        if fecha_salida and not is_farmacia_or_admin(user):
-            fecha_salida = None  # Silenciosamente ignorar si no tiene permisos
+        es_admin_farmacia = is_farmacia_or_admin(user)
+        
+        # DIAGNÓSTICO: Log para rastrear flujo de fecha_salida
+        logger.info(
+            f'[MOV-FECHA-DIAG] perform_create: user={user.username}, '
+            f'rol={getattr(user, "rol", "N/A")}, '
+            f'is_farmacia_or_admin={es_admin_farmacia}, '
+            f'fecha_salida_raw={fecha_salida}, tipo={tipo}'
+        )
+        
+        if fecha_salida and not es_admin_farmacia:
+            logger.warning(
+                f'[MOV-FECHA-DIAG] fecha_salida BLOQUEADA para user={user.username} '
+                f'rol={getattr(user, "rol", "N/A")} - no es farmacia/admin'
+            )
+            fecha_salida = None
+        
+        # FORMATO B: Folio/número de documento oficial
+        folio_documento = serializer.validated_data.get('folio_documento')
         
         movimiento, _ = registrar_movimiento_stock(
             lote=lote,
@@ -345,7 +362,8 @@ class MovimientoViewSet(
             numero_expediente=numero_expediente,
             # ISS-FIX: Saltear validación de centro para transferencias de Almacén Central
             skip_centro_check=es_transferencia_farmacia,
-            fecha_salida=fecha_salida
+            fecha_salida=fecha_salida,
+            folio_documento=folio_documento
         )
         # Dejar instancia lista para serializer.data
         serializer.instance = movimiento

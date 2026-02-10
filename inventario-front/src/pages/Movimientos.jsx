@@ -1123,10 +1123,33 @@ const Movimientos = () => {
       cargarMovimientos();
       cargarCatalogos();
     } catch (err) {
-      const errorMsg = err.response?.data?.error || err.response?.data?.mensaje || 
-                       err.response?.data?.detail || err.response?.data?.cantidad?.[0] ||
-                       err.response?.data?.message || err.response?.data?.errores?.join(', ') ||
-                       "No se pudo registrar el movimiento";
+      // ISS-FIX: Extraer errores de validación de campo de DRF (formato {field: [messages]})
+      let errorMsg = "No se pudo registrar el movimiento";
+      const data = err.response?.data;
+      if (data) {
+        if (typeof data === 'string') {
+          errorMsg = data;
+        } else if (data.error && typeof data.error === 'string') {
+          errorMsg = data.error;
+        } else if (data.message) {
+          errorMsg = data.message;
+        } else if (data.detail) {
+          errorMsg = data.detail;
+        } else if (data.errores && Array.isArray(data.errores)) {
+          errorMsg = data.errores.join(', ');
+        } else {
+          // Errores de validación de campo: {field: ["msg"]} o {field: "msg"}
+          const fieldErrors = Object.entries(data)
+            .filter(([key]) => !['error', 'message', 'detail', 'errores'].includes(key))
+            .map(([key, val]) => {
+              const msg = Array.isArray(val) ? val.join(', ') : val;
+              return `${key}: ${msg}`;
+            });
+          if (fieldErrors.length > 0) {
+            errorMsg = fieldErrors.join(' | ');
+          }
+        }
+      }
       toast.error(errorMsg);
       // ISS-SEC FIX: Resetear modal en caso de error también
       setShowConfirmMerma(false);
