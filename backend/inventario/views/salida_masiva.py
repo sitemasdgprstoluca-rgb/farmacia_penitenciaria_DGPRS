@@ -6,21 +6,21 @@ con generación de hoja de entrega para firma.
 FLUJO DE TRANSFERENCIAS A CENTROS PENITENCIARIOS:
 ================================================
 
-FASE 1 - Centros SIN acceso al sistema (actual):
+FASE ACTUAL - Transferencia CON retención en centro:
     1. Farmacia hace salida masiva con auto_confirmar=True (default)
     2. Stock se descuenta INMEDIATAMENTE del lote de Farmacia Central
     3. Se CREA lote espejo en centro destino con la cantidad transferida
-    4. Se genera hoja de entrega para firma física del receptor
-    5. Movimientos quedan: SALIDA en Central + ENTRADA en Centro
+    4. El inventario PERMANECE en el centro destino para gestión manual
+    5. El centro puede registrar salidas (dispensación, consumo, etc.) manualmente
+    6. Movimientos: SALIDA en Central + ENTRADA en Centro (sin dispensación automática)
 
-FASE 2 - Centros CON acceso al sistema (futuro):
-    1. El centro verá su lote con el stock que DEBERÍA tener según recibido
-    2. Si ya consumieron medicamentos, deberán registrar SALIDAS para justificar:
+GESTIÓN EN CENTRO:
+    1. El centro verá su lote con el stock recibido
+    2. Deberán registrar SALIDAS para justificar consumo:
        - Salida por receta (dispensación a pacientes)
        - Consumo interno
        - Merma/caducidad
     3. Si hay diferencias inexplicables → AJUSTE con justificación obligatoria
-    4. Solo con inventario "limpio" podrán crear nuevas requisiciones
 
 AUDITORÍA:
     - Todo movimiento tiene usuario, fecha y motivo
@@ -84,6 +84,25 @@ def salida_masiva(request):
         items = request.data.get('items', [])
         # Por defecto auto-confirmar (centros no tienen acceso aún)
         auto_confirmar = request.data.get('auto_confirmar', True)
+        # Fecha de salida física (puede diferir de la fecha de procesamiento en el sistema)
+        fecha_salida_raw = request.data.get('fecha_salida', None)
+        fecha_salida = None
+        if fecha_salida_raw:
+            from django.utils.dateparse import parse_datetime, parse_date
+            from datetime import datetime as dt
+            if isinstance(fecha_salida_raw, str):
+                fecha_salida = parse_datetime(fecha_salida_raw)
+                if not fecha_salida:
+                    fecha_parsed = parse_date(fecha_salida_raw)
+                    if fecha_parsed:
+                        fecha_salida = timezone.make_aware(dt.combine(fecha_parsed, dt.min.time())) if timezone.is_naive(dt.combine(fecha_parsed, dt.min.time())) else dt.combine(fecha_parsed, dt.min.time())
+        
+        # MOV-FECHA: Validar que fecha_salida no sea futura
+        if fecha_salida and fecha_salida > timezone.now():
+            return Response({
+                'error': True,
+                'message': 'La fecha de salida no puede ser una fecha futura.'
+            }, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
         
         # Validaciones básicas
         if not centro_destino_id:
@@ -243,35 +262,12 @@ def salida_masiva(request):
                     mov_entrada.save(skip_stock_update=True)
                     
                     # ===============================================================
-                    # DISPENSACIÓN AUTOMÁTICA: Al confirmar, el centro dispensa
-                    # inmediatamente los medicamentos a los internos.
+                    # ISS-FLUJO-FIX: El inventario permanece en el centro destino
+                    # para que ellos gestionen las salidas manualmente.
+                    # NO se crea dispensación automática.
+                    # El stock del lote destino mantiene la cantidad transferida
+                    # hasta que el centro registre sus propios movimientos.
                     # ===============================================================
-                    
-                    # Guardar stock antes de descontar (para validación del movimiento)
-                    stock_antes_dispensacion = lote_destino.cantidad_actual
-                    
-                    # Crear movimiento de SALIDA (dispensación) en centro ANTES de descontar
-                    motivo_salida = f'[CONFIRMADO][{grupo_salida}] Dispensación a internos del centro'
-                    mov_dispensacion = Movimiento(
-                        tipo='salida',
-                        producto=lote_destino.producto,
-                        lote=lote_destino,
-                        centro_origen=centro_destino,
-                        centro_destino=None,  # Sale a pacientes
-                        cantidad=cantidad,
-                        motivo=motivo_salida,
-                        usuario=request.user,
-                        subtipo_salida='dispensacion',
-                        referencia=grupo_salida
-                    )
-                    mov_dispensacion._stock_pre_movimiento = stock_antes_dispensacion
-                    # HALLAZGO #1 FIX: Ya actualizamos stock abajo, usar skip_stock_update
-                    mov_dispensacion.save(skip_stock_update=True)
-                    
-                    # Ahora sí descontar del lote destino (queda en 0)
-                    lote_destino.cantidad_actual = 0
-                    lote_destino.activo = False
-                    lote_destino.save(update_fields=['cantidad_actual', 'activo', 'updated_at'])
                 
                 # Crear movimiento de SALIDA desde Farmacia Central
                 motivo_completo = f'{estado_tag}[{grupo_salida}] {observaciones}'.strip()
@@ -286,7 +282,8 @@ def salida_masiva(request):
                     motivo=motivo_completo,
                     usuario=request.user,
                     subtipo_salida='transferencia',
-                    referencia=grupo_salida
+                    referencia=grupo_salida,
+                    fecha_salida=fecha_salida
                 )
                 movimiento._stock_pre_movimiento = stock_anterior
                 # HALLAZGO #1 FIX: Ya actualizamos stock arriba, usar skip_stock_update
@@ -609,35 +606,10 @@ def confirmar_entrega(request, grupo_salida):
                         )
                         
                         # ===============================================================
-                        # DISPENSACIÓN AUTOMÁTICA: Al confirmar entrega, el centro 
-                        # dispensa inmediatamente los medicamentos a los internos.
-                        # Esto mantiene el inventario del centro en 0.
+                        # ISS-FLUJO-FIX: El inventario permanece en el centro destino
+                        # para que ellos gestionen las salidas manualmente.
+                        # NO se crea dispensación automática.
                         # ===============================================================
-                        
-                        # Guardar stock antes de descontar (para validación del movimiento)
-                        stock_antes_dispensacion = lote_destino.cantidad_actual
-                        
-                        # Crear movimiento de SALIDA (dispensación) ANTES de descontar
-                        motivo_salida = f'[CONFIRMADO][{grupo_salida}] Dispensación a internos del centro'
-                        mov_dispensacion = Movimiento(
-                            tipo='salida',
-                            producto=lote_destino.producto,
-                            lote=lote_destino,
-                            centro_origen=centro_destino,
-                            centro_destino=None,  # Sale a pacientes
-                            cantidad=cantidad,
-                            motivo=motivo_salida,
-                            usuario=request.user,
-                            subtipo_salida='dispensacion',
-                            referencia=grupo_salida
-                        )
-                        mov_dispensacion._stock_pre_movimiento = stock_antes_dispensacion
-                        mov_dispensacion.save()
-                        
-                        # Ahora sí descontar del lote destino (queda en 0)
-                        lote_destino.cantidad_actual = 0
-                        lote_destino.activo = False
-                        lote_destino.save(update_fields=['cantidad_actual', 'activo', 'updated_at'])
                     
                     # Cambiar estado de [PENDIENTE] a [CONFIRMADO]
                     nuevo_motivo = (mov.motivo or '').replace('[PENDIENTE]', '[CONFIRMADO]')

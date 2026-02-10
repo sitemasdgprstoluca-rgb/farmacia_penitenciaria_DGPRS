@@ -25,7 +25,7 @@ import {
   FaChartLine,
   FaDollarSign
 } from "react-icons/fa";
-import { reportesAPI, centrosAPI, descargarArchivo } from "../services/api";
+import { reportesAPI, centrosAPI, descargarArchivo, abrirPdfEnNavegador } from "../services/api";
 import PageHeader from "../components/PageHeader";
 import { usePermissions } from '../hooks/usePermissions';
 
@@ -403,28 +403,25 @@ const Reportes = () => {
   };
 
   const exportarPDF = async () => {
+    const win = abrirPdfEnNavegador(); // Pre-abrir pestaña (preserva user-gesture)
+    if (!win) return;
+
     setExporting(true);
     const toastId = toast.loading("Generando archivo PDF...");
     try {
       const params = { ...buildParams(), formato: 'pdf' };
       let response;
-      let filename;
       
       if (filtros.tipo === "inventario") {
         response = await reportesAPI.exportarInventarioPDF(params);
-        filename = `reporte_inventario_${new Date().toISOString().split("T")[0]}.pdf`;
       } else if (filtros.tipo === "caducidades") {
         response = await reportesAPI.exportarCaducidadesPDF(params);
-        filename = `reporte_caducidades_${new Date().toISOString().split("T")[0]}.pdf`;
       } else if (filtros.tipo === "requisiciones") {
         response = await reportesAPI.exportarRequisicionesPDF(params);
-        filename = `reporte_requisiciones_${new Date().toISOString().split("T")[0]}.pdf`;
       } else if (filtros.tipo === "movimientos") {
         response = await reportesAPI.exportarMovimientosPDF(params);
-        filename = `reporte_movimientos_${new Date().toISOString().split("T")[0]}.pdf`;
       } else if (filtros.tipo === "contratos") {
         response = await reportesAPI.exportarContratosPDF(params);
-        filename = `reporte_contratos_${new Date().toISOString().split("T")[0]}.pdf`;
       } else if (filtros.tipo === "control_mensual") {
         // Control Mensual - Formato Oficial A
         const controlParams = {
@@ -433,17 +430,14 @@ const Reportes = () => {
           centro: filtros.centro || 'central'
         };
         response = await reportesAPI.exportarControlMensualPDF(controlParams);
-        const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
-                       'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-        const mesNombre = meses[controlParams.mes - 1] || 'Mes';
-        filename = `Control_Mensual_${mesNombre}_${controlParams.anio}.pdf`;
       } else {
+        try { win.close(); } catch {}
         toast.error("Tipo de reporte no soportado para PDF", { id: toastId });
         return;
       }
       
-      descargarArchivo(response, filename);
-      toast.success(`✅ ${filename} descargado`, { id: toastId });
+      abrirPdfEnNavegador(response, win);
+      toast.success(`✅ PDF generado`, { id: toastId });
     } catch (err) {
       const msg = err.response?.data?.detail || err.message || "Error al exportar PDF";
       toast.error(`❌ ${msg}`, { id: toastId });

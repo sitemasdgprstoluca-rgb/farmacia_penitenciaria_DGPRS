@@ -700,10 +700,130 @@ apiClient.interceptors.response.use(
 );
 
 /**
- * ISS-005 FIX (audit33): Descarga un blob como archivo local con validación de tipo
+ * Abre un PDF en el visor nativo del navegador (nueva pestaña), sin descarga automática.
+ *
+ * Soporta dos modos de uso:
+ *
+ * 1. **Con blob ya resuelto** (modo clásico):
+ *    ```js
+ *    const response = await api.exportarPdf();
+ *    abrirPdfEnNavegador(response.data);
+ *    ```
+ *
+ * 2. **Con ventana pre-abierta** (evita bloqueo de pop-ups):
+ *    ```js
+ *    const win = abrirPdfEnNavegador(); // abre pestaña en blanco
+ *    const response = await api.exportarPdf();
+ *    abrirPdfEnNavegador(response.data, win); // carga el PDF en la misma pestaña
+ *    ```
+ *
+ * @param {Blob|Response|undefined} blob - El blob PDF (omitir o null para pre-abrir pestaña)
+ * @param {Window|null} ventanaPrevia - Ventana pre-abierta por una llamada anterior
+ * @returns {Window|boolean} Window si se pre-abrió; true si PDF cargado; false si error
+ */
+export const abrirPdfEnNavegador = (blob, ventanaPrevia) => {
+  // ── Modo 1: Pre-abrir pestaña (sin blob, preserva user-gesture) ──
+  if (blob === undefined || blob === null) {
+    try {
+      const win = window.open('about:blank', '_blank', 'noopener');
+      if (!win) {
+        toast.error(
+          'El navegador bloqueó la ventana emergente. Permite las ventanas emergentes para ver el PDF.'
+        );
+        return false;
+      }
+      // Mostrar indicador de carga en la pestaña pre-abierta
+      try {
+        win.document.title = 'Cargando PDF…';
+        win.document.body.innerHTML =
+          '<p style="font-family:sans-serif;text-align:center;margin-top:40vh">Cargando PDF…</p>';
+      } catch { /* cross-origin: silenciar */ }
+      return win;
+    } catch {
+      return false;
+    }
+  }
+
+  // ── Modo 2: Cargar blob en pestaña (existente o nueva) ──
+  try {
+    const contenido = blob?.data ?? blob;
+
+    if (!contenido) {
+      _cerrarVentanaPrevia(ventanaPrevia);
+      console.error('[abrirPdfEnNavegador] No se recibió contenido');
+      toast.error('Error: No se recibió el archivo del servidor');
+      return false;
+    }
+
+    // Verificar si es un error JSON
+    if (contenido instanceof Blob && contenido.type === 'application/json') {
+      _cerrarVentanaPrevia(ventanaPrevia);
+      contenido.text().then(text => {
+        try {
+          const error = JSON.parse(text);
+          const mensaje = error.detail || error.error || error.message || 'Error al generar el archivo';
+          console.error('[abrirPdfEnNavegador] Error del servidor:', error);
+          toast.error(mensaje);
+        } catch {
+          toast.error('Error inesperado al abrir el PDF');
+        }
+      });
+      return false;
+    }
+
+    if (contenido.size !== undefined && contenido.size === 0) {
+      _cerrarVentanaPrevia(ventanaPrevia);
+      console.warn('[abrirPdfEnNavegador] Archivo vacío recibido');
+      toast.error('El archivo generado está vacío. Verifica los filtros.');
+      return false;
+    }
+
+    // Asegurar que el blob tenga tipo application/pdf para el visor del navegador
+    const pdfBlob = contenido instanceof Blob && contenido.type === 'application/pdf'
+      ? contenido
+      : new Blob([contenido], { type: 'application/pdf' });
+
+    const url = window.URL.createObjectURL(pdfBlob);
+
+    // Usar ventana pre-abierta si existe, o abrir nueva
+    if (ventanaPrevia && !ventanaPrevia.closed) {
+      ventanaPrevia.location.href = url;
+    } else {
+      const win = window.open(url, '_blank', 'noopener');
+      if (!win) {
+        toast.error(
+          'El navegador bloqueó la ventana emergente. Permite las ventanas emergentes para ver el PDF.'
+        );
+        window.URL.revokeObjectURL(url);
+        return false;
+      }
+    }
+
+    // Limpieza diferida del object URL
+    setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
+
+    return true;
+  } catch (error) {
+    _cerrarVentanaPrevia(ventanaPrevia);
+    console.error('[abrirPdfEnNavegador] Error:', error);
+    toast.error('Error al abrir el PDF');
+    return false;
+  }
+};
+
+/** Cierra la ventana pre-abierta si la petición falla */
+const _cerrarVentanaPrevia = (win) => {
+  try {
+    if (win && !win.closed) win.close();
+  } catch { /* cross-origin: silenciar */ }
+};
+
+/**
+ * ISS-005 FIX (audit33): Descarga un blob como archivo local con validación de tipo.
+ * Para PDFs, abre automáticamente en el visor nativo del navegador (sin descarga).
  * @param {Blob|Response} blob - El blob o respuesta de axios
  * @param {string} nombreArchivo - Nombre del archivo a descargar
- * @returns {boolean} true si la descarga fue exitosa, false si hubo error
+ * @returns {boolean} true si la descarga/apertura fue exitosa, false si hubo error
  */
 export const descargarArchivo = (blob, nombreArchivo) => {
   try {
@@ -740,7 +860,14 @@ export const descargarArchivo = (blob, nombreArchivo) => {
       toast.error('El archivo generado está vacío. Verifica los filtros.');
       return false;
     }
+
+    // PDF: abrir en el visor nativo del navegador (sin descarga automática)
+    if (nombreArchivo?.toLowerCase().endsWith('.pdf') ||
+        (contenido instanceof Blob && contenido.type === 'application/pdf')) {
+      return abrirPdfEnNavegador(contenido);
+    }
     
+    // Otros formatos (Excel, CSV, etc.): descarga clásica
     const url = window.URL.createObjectURL(contenido);
     const enlace = document.createElement('a');
     enlace.href = url;

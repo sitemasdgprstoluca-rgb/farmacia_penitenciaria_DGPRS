@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { lotesAPI, productosAPI, centrosAPI } from '../services/api';
+import { lotesAPI, productosAPI, centrosAPI, abrirPdfEnNavegador } from '../services/api';
 import { toast } from 'react-hot-toast';
 import { hasAccessToken } from '../services/tokenManager';
 import {
@@ -136,7 +136,7 @@ const Lotes = () => {
   const [errorSinCentro, setErrorSinCentro] = useState(false);
   
   // ISS-DB: Campos alineados con tabla lotes de Supabase
-  // Campos reales: numero_lote, producto_id, cantidad_inicial, cantidad_actual, 
+  // Campos reales: numero_lote, producto_id, cantidad_inicial, cantidad_actual, cantidad_contrato,
   // fecha_fabricacion, fecha_caducidad, precio_unitario, numero_contrato, marca, ubicacion, centro_id, activo
   const [formData, setFormData] = useState({
     producto: '',
@@ -145,6 +145,7 @@ const Lotes = () => {
     fecha_fabricacion: '',    // Campo real en DB
     fecha_caducidad: '',
     cantidad_inicial: '',
+    cantidad_contrato: '',    // ISS-INV-001: Total según contrato (opcional)
     precio_unitario: '',      // Nombre real en DB (antes precio_compra)
     numero_contrato: '',
     marca: '',
@@ -371,6 +372,21 @@ const Lotes = () => {
       return;
     }
     
+    // ISS-INV-001: Parsear cantidad_contrato si existe
+    let cantidadContrato = null;
+    if (formData.cantidad_contrato && formData.cantidad_contrato.toString().trim() !== '') {
+      cantidadContrato = parseInt(formData.cantidad_contrato, 10);
+      if (isNaN(cantidadContrato) || cantidadContrato < 0) {
+        toast.error('La cantidad del contrato debe ser un número válido y no negativo');
+        return;
+      }
+      // Advertencia si cantidad contrato es menor que cantidad inicial
+      if (cantidadContrato < cantidadInicial) {
+        toast.error('La cantidad del contrato no puede ser menor que la cantidad surtida');
+        return;
+      }
+    }
+    
     // Parsear precio si existe (campo real: precio_unitario)
     const precioUnitario = formData.precio_unitario ? parseFloat(formData.precio_unitario) : null;
     if (formData.precio_unitario && (isNaN(precioUnitario) || precioUnitario < 0)) {
@@ -388,6 +404,7 @@ const Lotes = () => {
       const dataToSend = {
         ...formData,
         cantidad_inicial: cantidadInicial,
+        cantidad_contrato: cantidadContrato,  // ISS-INV-001: Cantidad del contrato
         precio_unitario: precioUnitario,
       };
       
@@ -449,6 +466,7 @@ const Lotes = () => {
       fecha_fabricacion: lote.fecha_fabricacion || '',
       fecha_caducidad: lote.fecha_caducidad,
       cantidad_inicial: lote.cantidad_inicial,
+      cantidad_contrato: lote.cantidad_contrato || '',  // ISS-INV-001: Cantidad del contrato
       precio_unitario: lote.precio_unitario || lote.precio_compra || '',
       numero_contrato: lote.numero_contrato || '',
       marca: lote.marca || '',
@@ -584,6 +602,7 @@ const Lotes = () => {
       fecha_fabricacion: '',
       fecha_caducidad: '',
       cantidad_inicial: '',
+      cantidad_contrato: '',  // ISS-INV-001: Cantidad del contrato
       precio_unitario: '',
       numero_contrato: '',
       marca: '',
@@ -658,6 +677,9 @@ const Lotes = () => {
     }
     
     if (exportPdfLoading) return;
+
+    const win = abrirPdfEnNavegador(); // Pre-abrir pestaña (preserva user-gesture)
+    if (!win) return;
     
     try {
       setExportPdfLoading(true);
@@ -674,16 +696,9 @@ const Lotes = () => {
       
       const response = await lotesAPI.exportarPdf(params);
       
-      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `inventario_lotes_${new Date().toISOString().split('T')[0]}.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      
-      toast.success('PDF de inventario generado correctamente');
+      if (abrirPdfEnNavegador(response.data, win)) {
+        toast.success('PDF de inventario generado correctamente');
+      }
     } catch (error) {
       toast.error('Error al generar PDF');
     } finally {
@@ -1219,11 +1234,25 @@ const handleImportar = async (e) => {
                         <span className="text-gray-400 italic">Sin marca</span>
                       )}
                     </td>
+                    {/* ISS-INV-001: Columna de Inventario mejorada con info de contrato */}
                     <td className="px-3 py-2 text-xs">
                       <div className={`font-bold text-base ${lote.cantidad_actual === 0 ? 'text-red-600' : 'text-green-700'}`}>
                         {lote.cantidad_actual}
                       </div>
                       <div className="text-gray-500">de {lote.cantidad_inicial}</div>
+                      {/* Mostrar info de contrato si existe */}
+                      {lote.cantidad_contrato && (
+                        <div className="mt-1 text-xs">
+                          <div className="text-blue-600" title={`Contrato: ${lote.cantidad_contrato} unidades`}>
+                            📄 {lote.cantidad_contrato}
+                          </div>
+                          {lote.cantidad_pendiente > 0 && (
+                            <div className="text-orange-600" title={`Pendiente por recibir: ${lote.cantidad_pendiente} unidades`}>
+                              ⏳ -{lote.cantidad_pendiente}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm">
                       <div className="flex items-center gap-3">
@@ -1497,6 +1526,36 @@ const handleImportar = async (e) => {
                     </p>
                   </div>
                   
+                  {/* ISS-INV-001: Cantidad del Contrato (opcional) */}
+                  <div>
+                    <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
+                      CANTIDAD CONTRATO
+                      <span className="text-xs text-gray-500 font-normal ml-1">(opcional)</span>
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={formData.cantidad_contrato}
+                      onChange={(e) => setFormData({...formData, cantidad_contrato: e.target.value})}
+                      className="w-full px-4 py-3 border-2 rounded-xl transition-all focus:outline-none border-gray-200"
+                      onFocus={(e) => {
+                        e.target.style.borderColor = '#9F2241';
+                        e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
+                      }}
+                      onBlur={(e) => {
+                        e.target.style.borderColor = '#E5E7EB';
+                        e.target.style.boxShadow = 'none';
+                      }}
+                      placeholder="Total esperado por contrato"
+                    />
+                    <p className="text-xs text-gray-500 italic mt-1">
+                      Si el contrato establece una cantidad mayor a la recibida
+                    </p>
+                  </div>
+                </div>
+
+                {/* Precio Unitario */}
+                <div className="grid grid-cols-2 gap-4">
                   {/* Precio Unitario (nombre real en DB) */}
                   <div>
                     <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
@@ -1748,24 +1807,32 @@ const handleImportar = async (e) => {
             <div className="p-6">
               <div className="mb-4">
                 <p className="text-sm text-gray-600 mb-2">
-                  El archivo debe contener las siguientes columnas en orden:
+                  El archivo debe contener las siguientes columnas:
                 </p>
                 <ul className="text-sm text-gray-600 list-disc list-inside space-y-1">
-                  <li><strong>Producto</strong> (Clave o Nombre) - Requerido</li>
+                  <li><strong>Clave Producto</strong> - Requerido</li>
+                  <li><strong>Nombre Producto</strong> - Requerido (debe coincidir con clave)</li>
                   <li><strong>Número Lote</strong> - Requerido</li>
                   <li><strong>Fecha Caducidad</strong> (YYYY-MM-DD) - Requerido</li>
-                  <li><strong>Cantidad Inicial</strong> - Requerido</li>
-                  <li>Cantidad Actual (opcional, default = Inicial)</li>
+                  <li><strong>Cantidad Inicial</strong> - Requerido (unidades recibidas)</li>
+                  <li><strong className="text-blue-600">Cantidad Contrato</strong> - Opcional (total según contrato)</li>
                   <li>Fecha Fabricación (opcional, YYYY-MM-DD)</li>
                   <li>Precio Unitario (opcional, default = 0)</li>
                   <li>Número Contrato (opcional)</li>
                   <li>Marca (opcional)</li>
-                  <li>Nombre Comercial (opcional)</li>
-                  <li>Ubicación (opcional)</li>
-                  <li>Centro ID (opcional)</li>
                 </ul>
+                <div className="mt-3 p-2 bg-blue-50 rounded-lg border border-blue-200">
+                  <p className="text-xs text-blue-700 font-medium">📦 Entregas Parciales:</p>
+                  <p className="text-xs text-blue-600 mt-1">
+                    Si el contrato dice 100 pero llegaron 80: use Cantidad Inicial=80, Cantidad Contrato=100.
+                    El sistema calculará automáticamente las unidades pendientes.
+                  </p>
+                  <p className="text-xs text-blue-600 mt-1">
+                    Para completar entregas, reimporte con mismos datos clave y el sistema sumará las cantidades.
+                  </p>
+                </div>
                 <p className="text-xs text-amber-600 mt-2">
-                  Nota: Las columnas deben estar en el orden indicado. El sistema buscará el producto por clave o nombre.
+                  Nota: Clave y Nombre del producto deben coincidir con el catálogo. Descargue la plantilla para ver el formato correcto.
                 </p>
                 {/* Botón de descarga de plantilla */}
                 <button

@@ -3427,14 +3427,24 @@ class LoteViewSet(viewsets.ModelViewSet):
         3. Nombre Comercial (referencia) - Solo informativo
         4. Numero Lote* (REQUERIDO) - Identificador único del lote
         5. Fecha Caducidad* (REQUERIDO, YYYY-MM-DD)
-        6. Cantidad Inicial* (REQUERIDO) - Cantidad recibida
+        6. Cantidad Inicial* (REQUERIDO) - Cantidad recibida/surtida
         
         COLUMNAS OPCIONALES:
-        7. Fecha Fabricacion (YYYY-MM-DD)
-        8. Precio Unitario (default = 0)
-        9. Numero Contrato
-        10. Marca
-        11. Activo (default = Activo)
+        7. Cantidad Contrato - Total según contrato (si aplica)
+        8. Fecha Fabricacion (YYYY-MM-DD)
+        9. Precio Unitario (default = 0)
+        10. Numero Contrato
+        11. Marca
+        12. Activo (default = Activo)
+        
+        ISS-INV-001: SOPORTE PARA CONTRATOS PARCIALES
+        Si el contrato establece 100 unidades pero solo llegaron 80:
+        - Cantidad Inicial = 80 (lo que realmente llegó)
+        - Cantidad Contrato = 100 (lo esperado según contrato)
+        
+        El sistema calculará automáticamente el pendiente por recibir.
+        Al re-importar un lote existente (mismo producto, lote, contrato, marca, caducidad),
+        las cantidades se sumarán al lote existente.
         
         IMPORTANTE: El sistema verifica que CLAVE y NOMBRE coincidan con el producto
         en la base de datos. Si hay discrepancia (clave correcta pero nombre incorrecto),
@@ -3447,10 +3457,10 @@ class LoteViewSet(viewsets.ModelViewSet):
         ws = wb.active
         ws.title = 'Lotes'
         
-        # Headers con Nombre Comercial como referencia visual
+        # Headers con Nombre Comercial como referencia visual y Cantidad Contrato (ISS-INV-001)
         headers = [
             'Clave Producto', 'Nombre Producto', 'Nombre Comercial', 'Numero Lote', 
-            'Fecha Caducidad', 'Cantidad Inicial',
+            'Fecha Caducidad', 'Cantidad Inicial', 'Cantidad Contrato',
             'Fecha Fabricacion', 'Precio Unitario',
             'Numero Contrato', 'Marca', 'Activo'
         ]
@@ -3464,21 +3474,24 @@ class LoteViewSet(viewsets.ModelViewSet):
         fecha_cad_ejemplo = (date.today() + timedelta(days=365)).strftime('%Y-%m-%d')
         fecha_fab_ejemplo = date.today().strftime('%Y-%m-%d')
         
+        # Ejemplo 1: Lote completo (cantidad recibida = cantidad contrato)
         ws.append([
             'PRUEBA001', '[EJEMPLO] Paracetamol - ELIMINAR', 'Tempra', 'LOTE-PRUEBA-001', 
-            fecha_cad_ejemplo, 100,
+            fecha_cad_ejemplo, 100, 100,  # Recibido = Contrato
             fecha_fab_ejemplo, 25.50,
             'CONT-PRUEBA-001', '[EJEMPLO] Laboratorio - ELIMINAR', 'Activo'
         ])
+        # Ejemplo 2: Lote parcial (solo llegó parte del contrato)
         ws.append([
             'PRUEBA002', '[EJEMPLO] Ibuprofeno - ELIMINAR', 'Advil', 'LOTE-PRUEBA-002', 
-            fecha_cad_ejemplo, 50,
+            fecha_cad_ejemplo, 40, 50,  # Solo llegaron 40 de 50
             fecha_fab_ejemplo, 18.75,
             'CONT-PRUEBA-002', '[EJEMPLO] Farmacéutica - ELIMINAR', 'Activo'
         ])
+        # Ejemplo 3: Sin contrato específico
         ws.append([
             'PRUEBA003', '[EJEMPLO] Jeringa - ELIMINAR', '', 'LOTE-PRUEBA-003', 
-            fecha_cad_ejemplo, 200,
+            fecha_cad_ejemplo, 200, '',  # Sin cantidad contrato (se deja vacío)
             '', 5.00,
             '', '[EJEMPLO] Material - ELIMINAR', 'Activo'
         ])
@@ -6803,15 +6816,11 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             return response
             
         except Exception as e:
-            import traceback
             import logging
             logger = logging.getLogger(__name__)
-            logger.error(f"Error generando hoja consulta req {pk}: {str(e)}")
-            logger.error(traceback.format_exc())
+            logger.error(f"Error generando hoja consulta req {pk}: {str(e)}", exc_info=True)
             return Response({
                 'error': 'Error al generar la hoja de consulta',
-                'mensaje': str(e),
-                'detalle': traceback.format_exc()
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=True, methods=['get'], url_path='pdf-rechazo')

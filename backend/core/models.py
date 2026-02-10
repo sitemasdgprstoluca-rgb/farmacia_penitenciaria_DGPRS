@@ -1041,10 +1041,21 @@ class Lote(models.Model):
     Modelo de Lote de Producto - Supabase
     
     Campos en Supabase: id, numero_lote, producto_id, cantidad_inicial, 
-    cantidad_actual, fecha_fabricacion, fecha_caducidad, precio_unitario,
-    numero_contrato, marca, ubicacion, centro_id, activo, created_at, updated_at
+    cantidad_actual, cantidad_contrato, fecha_fabricacion, fecha_caducidad, 
+    precio_unitario, numero_contrato, marca, ubicacion, centro_id, activo, 
+    created_at, updated_at
     
     Constraints: lote_producto_unique (numero_lote, producto_id)
+    
+    ISS-INV-001: Sistema de cantidades para contratos:
+    ==================================================
+    - cantidad_contrato: Total según contrato (ej: 100 unidades)
+    - cantidad_inicial:  Total que ha llegado/surtido (se acumula con re-imports)
+    - cantidad_actual:   Stock disponible (cantidad_inicial - salidas)
+    - Pendiente:         cantidad_contrato - cantidad_inicial (calculado)
+    
+    Ejemplo: Contrato dice 100, llegaron 80, salieron 5 a centros
+    → cantidad_contrato=100, cantidad_inicial=80, cantidad_actual=75, pendiente=20
     
     ISS-001: Validaciones de negocio implementadas:
     - fecha_caducidad debe ser posterior a fecha_fabricacion
@@ -1068,6 +1079,8 @@ class Lote(models.Model):
     producto = models.ForeignKey(Producto, on_delete=models.PROTECT, related_name='lotes', db_column='producto_id')
     cantidad_inicial = models.IntegerField()
     cantidad_actual = models.IntegerField(default=0)
+    # ISS-INV-001: cantidad_contrato = Total según contrato (puede diferir de lo que realmente llegó)
+    cantidad_contrato = models.IntegerField(null=True, blank=True, help_text='Cantidad total según contrato. NULL si no aplica.')
     fecha_fabricacion = models.DateField(null=True, blank=True)
     fecha_caducidad = models.DateField()
     precio_unitario = models.DecimalField(max_digits=12, decimal_places=2, default=0)
@@ -1326,6 +1339,9 @@ class Movimiento(models.Model):
     numero_expediente = models.CharField(max_length=50, blank=True, null=True, db_column='numero_expediente')
     # FORMATO OFICIAL B: Folio/número de documento de entrada/salida para trazabilidad oficial
     folio_documento = models.CharField(max_length=100, blank=True, null=True, db_column='folio_documento')
+    # Fecha de salida física: permite registrar la fecha real de salida del medicamento
+    # (puede diferir de la fecha de procesamiento en el sistema)
+    fecha_salida = models.DateTimeField(blank=True, null=True, db_column='fecha_salida')
     fecha = models.DateTimeField(auto_now_add=True)  # BD default: now()
     created_at = models.DateTimeField(auto_now_add=True)  # BD default: now()
 
@@ -3556,7 +3572,17 @@ class Dispensacion(models.Model):
 
     def __str__(self):
         return f"{self.folio} - {self.paciente.nombre_completo}"
-    
+
+    def save(self, *args, **kwargs):
+        """Auto-genera folio si el campo está vacío (fallback para entornos sin trigger DB)."""
+        if not self.folio:
+            import uuid
+            from datetime import datetime as _dt
+            centro_id = self.centro_id or 0
+            ts = _dt.now().strftime('%Y%m%d%H%M%S')
+            self.folio = f"DISP-{centro_id}-{ts}-{uuid.uuid4().hex[:6].upper()}"
+        super().save(*args, **kwargs)
+
     def get_total_items(self):
         """Retorna el total de items en la dispensación"""
         return self.detalles.count()
@@ -3904,6 +3930,16 @@ class CompraCajaChica(models.Model):
 
     def __str__(self):
         return f"{self.folio} - {self.centro.nombre if self.centro else 'Sin centro'}"
+    
+    def save(self, *args, **kwargs):
+        """Auto-genera folio si el campo está vacío (fallback para entornos sin trigger DB)."""
+        if not self.folio:
+            import uuid
+            from datetime import datetime as _dt
+            centro_id = self.centro_id or 0
+            ts = _dt.now().strftime('%Y%m%d%H%M%S')
+            self.folio = f"CC-{centro_id}-{ts}-{uuid.uuid4().hex[:6].upper()}"
+        super().save(*args, **kwargs)
     
     def calcular_totales(self):
         """

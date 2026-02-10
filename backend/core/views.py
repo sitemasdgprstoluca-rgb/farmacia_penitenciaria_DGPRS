@@ -1610,12 +1610,14 @@ class ReportesViewSet(viewsets.ViewSet):
             if formato == 'pdf':
                 from core.utils.pdf_reports import generar_reporte_inventario
                 pdf_buffer = generar_reporte_inventario(datos)
-                return FileResponse(
+                response = FileResponse(
                     pdf_buffer,
                     content_type='application/pdf',
-                    as_attachment=True,
+                    as_attachment=False,
                     filename=f'reporte_inventario_{timezone.now().strftime("%Y%m%d")}.pdf'
                 )
+                response['Content-Disposition'] = f'inline; filename="reporte_inventario_{timezone.now().strftime("%Y%m%d")}.pdf"'
+                return response
 
             if formato == 'excel':
                 workbook = openpyxl.Workbook()
@@ -1705,12 +1707,14 @@ class ReportesViewSet(viewsets.ViewSet):
 
         if formato == 'pdf':
             pdf_buffer = generar_reporte_caducidades(datos, dias=dias)
-            return FileResponse(
+            response = FileResponse(
                 pdf_buffer,
                 content_type='application/pdf',
-                as_attachment=True,
+                as_attachment=False,
                 filename=f'reporte_caducidades_{timezone.now().strftime("%Y%m%d")}.pdf'
             )
+            response['Content-Disposition'] = f'inline; filename="reporte_caducidades_{timezone.now().strftime("%Y%m%d")}.pdf"'
+            return response
 
         return Response({
             'reporte': 'caducidades',
@@ -1783,12 +1787,14 @@ class ReportesViewSet(viewsets.ViewSet):
 
         if formato == 'pdf':
             pdf_buffer = generar_reporte_requisiciones(datos, filtros=filtros)
-            return FileResponse(
+            response = FileResponse(
                 pdf_buffer,
                 content_type='application/pdf',
-                as_attachment=True,
+                as_attachment=False,
                 filename=f'reporte_requisiciones_{timezone.now().strftime("%Y%m%d")}.pdf'
             )
+            response['Content-Disposition'] = f'inline; filename="reporte_requisiciones_{timezone.now().strftime("%Y%m%d")}.pdf"'
+            return response
         
         if formato == 'excel':
             # Generar Excel con detalles de productos
@@ -7459,7 +7465,7 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                         numero_expediente=dispensacion.paciente.numero_expediente,
                     )
                     movimiento._stock_pre_movimiento = stock_antes
-                    movimiento.save()
+                    movimiento.save(skip_stock_update=True)
                     
                     # ISS-SEC FIX: Actualizar detalle ACUMULANDO cantidad_dispensada
                     # En dispensaciones parciales/reintentos, no sobrescribir
@@ -7592,11 +7598,9 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         except Exception as e:
-            import traceback
-            error_trace = traceback.format_exc()
-            logger.error(f"Error generando PDF Formato C: {e}\n{error_trace}")
+            logger.error(f"Error generando PDF Formato C: {e}", exc_info=True)
             return Response(
-                {'error': f'Error al generar PDF: {str(e)}', 'trace': error_trace},
+                {'error': 'Error al generar PDF del Formato C'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     

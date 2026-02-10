@@ -176,6 +176,33 @@ class MovimientoViewSet(
         if referencia:
             queryset = queryset.filter(referencia__icontains=referencia)
         
+        # Filtro por origen: requisicion, masiva, individual
+        origen = self.request.query_params.get('origen', '').lower()
+        if origen == 'requisicion':
+            # Movimientos que vienen de una requisición
+            queryset = queryset.filter(
+                Q(referencia__istartswith='REQ-') |
+                Q(requisicion__isnull=False) |
+                Q(motivo__icontains='REQUISICIÓN') |
+                Q(motivo__icontains='REQUISICION')
+            )
+        elif origen == 'masiva':
+            # Salidas masivas (agrupadas con referencia SAL-)
+            queryset = queryset.filter(
+                Q(referencia__istartswith='SAL-') |
+                Q(motivo__icontains='[SAL-')
+            )
+        elif origen == 'individual':
+            # Movimientos individuales: ni requisición ni salida masiva
+            queryset = queryset.exclude(
+                Q(referencia__istartswith='REQ-') |
+                Q(requisicion__isnull=False) |
+                Q(motivo__icontains='REQUISICIÓN') |
+                Q(motivo__icontains='REQUISICION') |
+                Q(referencia__istartswith='SAL-') |
+                Q(motivo__icontains='[SAL-')
+            )
+        
         # Filtro por centro_destino (para ver transferencias a un centro específico)
         centro_destino = self.request.query_params.get('centro_destino')
         if centro_destino:
@@ -198,6 +225,7 @@ class MovimientoViewSet(
                 Q(motivo__icontains=search_term) |
                 Q(lote__numero_lote__icontains=search_term) |
                 Q(lote__producto__clave__icontains=search_term) |
+                Q(lote__producto__nombre__icontains=search_term) |
                 Q(lote__producto__descripcion__icontains=search_term) |
                 Q(numero_expediente__icontains=search_term) |
                 Q(referencia__icontains=search_term)
@@ -226,7 +254,7 @@ class MovimientoViewSet(
                     motivo__icontains='[PENDIENTE]'
                 ).exclude(motivo__icontains='[CONFIRMADO]')
         
-        return queryset.order_by('-fecha')
+        return queryset.distinct().order_by('-fecha')
 
     def perform_create(self, serializer):
         """
@@ -298,6 +326,12 @@ class MovimientoViewSet(
         
         es_transferencia_farmacia = is_farmacia_or_admin(user) and centro_destino and lote and lote.centro is None
         
+        # Fecha de salida física (puede diferir de la fecha de registro en el sistema)
+        # MOV-FECHA: Solo farmacia/admin pueden establecer fecha_salida
+        fecha_salida = serializer.validated_data.get('fecha_salida')
+        if fecha_salida and not is_farmacia_or_admin(user):
+            fecha_salida = None  # Silenciosamente ignorar si no tiene permisos
+        
         movimiento, _ = registrar_movimiento_stock(
             lote=lote,
             tipo=serializer.validated_data.get('tipo'),
@@ -310,7 +344,8 @@ class MovimientoViewSet(
             subtipo_salida=subtipo_salida_raw,  # Usar valor original, no lowercase
             numero_expediente=numero_expediente,
             # ISS-FIX: Saltear validación de centro para transferencias de Almacén Central
-            skip_centro_check=es_transferencia_farmacia
+            skip_centro_check=es_transferencia_farmacia,
+            fecha_salida=fecha_salida
         )
         # Dejar instancia lista para serializer.data
         serializer.instance = movimiento

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { donacionesAPI, productosDonacionAPI, centrosAPI, lotesAPI, salidasDonacionesAPI, detallesDonacionAPI } from '../services/api';
+import { donacionesAPI, productosDonacionAPI, centrosAPI, lotesAPI, salidasDonacionesAPI, detallesDonacionAPI, abrirPdfEnNavegador } from '../services/api';
 import { toast } from 'react-hot-toast';
 import {
   FaPlus,
@@ -916,22 +916,17 @@ const Donaciones = () => {
 
   // Exportar inventario a PDF
   const handleExportarInventarioPdf = async () => {
+    const win = abrirPdfEnNavegador(); // Pre-abrir pestaña (preserva user-gesture)
+    if (!win) return;
+
     setExportingInventario(true);
     try {
       const params = getInventarioFilterParams();
       const response = await detallesDonacionAPI.exportarPdf(params);
       
-      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
-      const link = document.createElement('a');
-      link.href = url;
-      const fecha = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-      link.setAttribute('download', `inventario_donaciones_${fecha}.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      
-      toast.success('Inventario exportado a PDF correctamente');
+      if (abrirPdfEnNavegador(response.data, win)) {
+        toast.success('Inventario exportado a PDF correctamente');
+      }
     } catch (err) {
       console.error('Error exportando inventario PDF:', err);
       toast.error('Error al exportar inventario a PDF');
@@ -1123,22 +1118,13 @@ const Donaciones = () => {
       const ids = grupo?.entregas?.map(e => e.id) || [];
       const response = await salidasDonacionesAPI.getReciboPdf(salida.id, finalizado, ids);
       
-      const blob = new Blob([response.data], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      // Usar folio con rango si hay múltiples productos
-      const folio = ids.length > 1 ? `DON-${Math.min(...ids)}-${Math.max(...ids)}` : `${salida.id}`;
-      link.download = `recibo_salida_donacion_${folio}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-      
-      toast.success(`Recibo descargado (${ids.length || 1} producto${ids.length > 1 ? 's' : ''})`);
+      if (abrirPdfEnNavegador(response.data)) {
+        const count = ids.length || 1;
+        toast.success(`Recibo abierto (${count} producto${count > 1 ? 's' : ''})`);
+      }
     } catch (err) {
-      console.error('Error descargando recibo:', err);
-      toast.error('Error al descargar recibo');
+      console.error('Error abriendo recibo:', err);
+      toast.error('Error al abrir recibo');
     }
   };
 

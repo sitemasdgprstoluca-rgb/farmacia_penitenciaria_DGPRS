@@ -950,10 +950,12 @@ class LoteViewSet(viewsets.ModelViewSet):
         Importa lotes desde Excel usando el importador estandarizado.
         
         Soporta múltiples formatos de columnas:
-        - Clave/ID/Nombre Producto (OBLIGATORIO)
+        - Clave Producto (OBLIGATORIO)
+        - Nombre Producto (OBLIGATORIO - debe coincidir con clave)
         - Número Lote (OBLIGATORIO)
-        - Cantidad Inicial (OBLIGATORIO)
+        - Cantidad Inicial (OBLIGATORIO) - unidades recibidas/surtidas
         - Fecha Caducidad (OBLIGATORIO)
+        - Cantidad Contrato (opcional) - ISS-INV-001: total según contrato
         - Fecha Fabricación (opcional)
         - Precio Unitario (opcional, default 0)
         - Número Contrato (opcional)
@@ -961,6 +963,15 @@ class LoteViewSet(viewsets.ModelViewSet):
         - Ubicación (opcional)
         - Centro (opcional - nombre del centro)
         - Activo (opcional, default Activo)
+        
+        ISS-INV-001: ENTREGAS PARCIALES
+        Si el contrato dice 100 pero llegaron 80:
+        - Cantidad Inicial = 80 (lo que llegó)
+        - Cantidad Contrato = 100 (lo contratado)
+        - El sistema calculará Pendiente = 20
+        
+        REIMPORTACIÓN: Si reimporta con misma clave/lote/contrato/marca/fecha,
+        el sistema SUMARÁ las cantidades (no duplica lotes).
         
         Detecta automáticamente la fila de encabezados.
         Soporta archivos con encabezados en fila 1, 2 o 3.

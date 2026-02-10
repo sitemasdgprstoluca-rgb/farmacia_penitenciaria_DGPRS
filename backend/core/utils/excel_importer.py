@@ -363,15 +363,26 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
     - Clave Producto (REQUERIDO): código/clave del producto
     - Nombre Producto (REQUERIDO): nombre del producto (debe coincidir con clave)
     - Lote (REQUERIDO): número de lote
-    - Cantidad Inicial (REQUERIDO): cantidad inicial
+    - Cantidad Inicial / Cantidad Recibida (REQUERIDO): cantidad que llegó/se surtió
     - Fecha Caducidad (REQUERIDO): fecha de vencimiento
     
     COLUMNAS OPCIONALES:
+    - Cantidad Contrato: total según contrato (para cuando llega menos de lo pactado)
     - Precio Unitario: precio unitario (default 0)
     - Número Contrato: número de contrato
     - Marca: laboratorio (opcional)
     - Fecha Fabricación: fecha de elaboración
     - Activo: estado del lote (default Activo)
+    
+    ISS-INV-001: SOPORTE PARA CONTRATOS PARCIALES
+    =============================================
+    Si el contrato establece 100 unidades pero solo llegan 80:
+    - Cantidad Contrato = 100 (lo esperado según contrato)
+    - Cantidad Inicial = 80 (lo que realmente llegó)
+    
+    Cuando llegan más unidades del contrato, se puede re-importar el Excel
+    con las mismas clave/lote/contrato/marca/caducidad y el sistema SUMARÁ
+    la cantidad a la existente (pero mantiene la cantidad_contrato original).
     
     IMPORTANTE: El sistema verifica que CLAVE y NOMBRE coincidan con el producto
     en la base de datos. Si hay discrepancia, se reporta error para evitar
@@ -416,8 +427,12 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
         'producto_id': ['id producto', 'producto id', 'id_producto'],
         'numero_lote': ['numero lote', 'lote', 'num lote', 'no lote', 'numero de lote', 
                         'n lote', 'nro lote', 'batch'],
+        # ISS-INV-001: Separar cantidad_contrato (total esperado) de cantidad_inicial (recibido)
+        'cantidad_contrato': ['cantidad contrato', 'cant contrato', 'total contrato', 
+                              'cantidad esperada', 'qty contrato', 'cantidad por contrato'],
         'cantidad_inicial': ['cantidad inicial', 'cantidad', 'cant inicial', 'stock', 'existencia', 
-                             'qty', 'unidades', 'piezas', 'cant'],
+                             'qty', 'unidades', 'piezas', 'cant', 'cantidad recibida', 
+                             'cantidad surtida', 'cant recibida', 'cant surtida'],
         'cantidad_actual': ['cantidad actual', 'cant actual', 'stock actual'],
         'caducidad': ['fecha caducidad', 'caducidad', 'vencimiento', 'fecha vencimiento', 
                       'expira', 'fec cad', 'expiracion', 'fecha expiracion'],
@@ -597,6 +612,16 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                 numero_contrato = get_val('contrato')
                 marca = get_val('marca')
                 
+                # ISS-INV-001: Leer cantidad_contrato si viene en el Excel
+                cantidad_contrato = None
+                if 'cantidad_contrato' in col_map:
+                    cant_contrato_raw = get_val('cantidad_contrato')
+                    if cant_contrato_raw:
+                        try:
+                            cantidad_contrato = int(float(cant_contrato_raw))
+                        except:
+                            pass  # Si no se puede parsear, se deja como NULL
+                
                 # ========== VERIFICAR DUPLICADO Y CONSOLIDAR ==========
                 # Buscar lote existente con los mismos datos clave
                 lote_existente_activo = Lote.objects.filter(
@@ -629,10 +654,12 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                     
                     if contrato_igual and marca_igual and fecha_igual:
                         # ========== CONSOLIDAR: Sumar cantidades al lote existente ==========
+                        # ISS-INV-001: Al consolidar, cantidad_contrato NO se modifica (se mantiene original)
                         cantidad_anterior = lote.cantidad_actual
                         cantidad_inicial_anterior = lote.cantidad_inicial
+                        cantidad_contrato_lote = lote.cantidad_contrato
                         
-                        # Actualizar lote existente
+                        # Actualizar lote existente (NO tocar cantidad_contrato)
                         lote.cantidad_actual += cantidad_inicial
                         lote.cantidad_inicial += cantidad_inicial
                         lote.save(update_fields=['cantidad_actual', 'cantidad_inicial', 'updated_at'])
@@ -642,10 +669,16 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                             stock_actual=F('stock_actual') + cantidad_inicial
                         )
                         
+                        # ISS-INV-001: Log mejorado con información de contrato
+                        pendiente_str = ""
+                        if cantidad_contrato_lote:
+                            pendiente = cantidad_contrato_lote - lote.cantidad_inicial
+                            pendiente_str = f", contrato: {cantidad_contrato_lote}, pendiente: {pendiente}"
+                        
                         logger.info(
                             f"Fila {fila_num}: CONSOLIDADO lote {numero_lote} producto {clave_producto} - "
-                            f"cantidad anterior: {cantidad_anterior}, sumado: +{cantidad_inicial}, "
-                            f"nueva cantidad: {lote.cantidad_actual}"
+                            f"surtido anterior: {cantidad_inicial_anterior}, sumado: +{cantidad_inicial}, "
+                            f"nuevo surtido: {lote.cantidad_inicial}, stock: {lote.cantidad_actual}{pendiente_str}"
                         )
                         
                         creados += 1  # Contar como éxito (consolidación)
@@ -720,12 +753,14 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                     activo = _parse_bool(activo_raw)
                 
                 # Crear lote
+                # ISS-INV-001: Incluir cantidad_contrato si fue proporcionada
                 Lote.objects.create(
                     producto=producto,
                     centro=centro_lote,
                     numero_lote=numero_lote,
                     cantidad_inicial=cantidad_inicial,
                     cantidad_actual=cantidad_inicial,
+                    cantidad_contrato=cantidad_contrato,  # ISS-INV-001: Total según contrato (puede ser NULL)
                     fecha_caducidad=fecha_caducidad,
                     fecha_fabricacion=fecha_fabricacion,
                     precio_unitario=precio_unitario,

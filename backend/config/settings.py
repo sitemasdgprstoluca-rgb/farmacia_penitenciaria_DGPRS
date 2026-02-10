@@ -325,6 +325,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'core.middleware.SecurityHeadersMiddleware',  # CSP y headers de seguridad adicionales
+    'core.middleware.PdfInlineMiddleware',  # PDFs se abren en visor del navegador (inline, no attachment)
 ]
 
 

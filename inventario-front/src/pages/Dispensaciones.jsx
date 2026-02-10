@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { dispensacionesAPI, pacientesAPI, centrosAPI, productosAPI, lotesAPI, descargarArchivo } from '../services/api';
+import { dispensacionesAPI, pacientesAPI, centrosAPI, productosAPI, lotesAPI, abrirPdfEnNavegador } from '../services/api';
 import { toast } from 'react-hot-toast';
 import {
   FaPlus,
@@ -419,6 +419,9 @@ const Dispensaciones = () => {
 
   // Generar reporte Control Mensual CPRS (Formato A oficial)
   const handleGenerarControlMensual = async () => {
+    const win = abrirPdfEnNavegador(); // Pre-abrir pestaña (preserva user-gesture)
+    if (!win) return;
+
     setReporteModal(prev => ({ ...prev, loading: true }));
     const toastId = toast.loading('Generando Control Mensual...');
     
@@ -435,14 +438,8 @@ const Dispensaciones = () => {
       
       const response = await dispensacionesAPI.exportarControlMensualCPRS(params);
       
-      // Obtener nombre del mes para el archivo
-      const meses = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-                     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-      const mesNombre = meses[reporteModal.mes];
-      const filename = `Control_Mensual_${mesNombre}_${reporteModal.anio}.pdf`;
-      
-      descargarArchivo(response, filename);
-      toast.success(`✅ ${filename} descargado`, { id: toastId });
+      abrirPdfEnNavegador(response, win);
+      toast.success(`✅ Control Mensual generado`, { id: toastId });
       setReporteModal(prev => ({ ...prev, show: false }));
     } catch (error) {
       console.error('Error al generar Control Mensual:', error);
@@ -687,18 +684,14 @@ const Dispensaciones = () => {
   };
 
   const handleExportPdf = async (dispensacion) => {
+    const win = abrirPdfEnNavegador();
+    if (!win) return;
     try {
       const response = await dispensacionesAPI.exportarPdf(dispensacion.id);
       
-      const blob = new Blob([response.data], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Formato_C_${dispensacion.folio}.pdf`;
-      a.click();
-      window.URL.revokeObjectURL(url);
-      
-      toast.success('PDF generado correctamente');
+      if (abrirPdfEnNavegador(response.data, win)) {
+        toast.success('PDF generado correctamente');
+      }
     } catch (error) {
       console.error('Error al generar PDF:', error);
       toast.error('Error al generar PDF');

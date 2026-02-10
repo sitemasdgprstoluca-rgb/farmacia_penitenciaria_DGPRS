@@ -5,7 +5,7 @@ import {
   productosAPI,
   centrosAPI,
   lotesAPI,
-  descargarArchivo,
+  abrirPdfEnNavegador,
   catalogosAPI,
 } from '../services/api';
 import { usePermissions } from '../hooks/usePermissions';
@@ -1705,29 +1705,28 @@ const Requisiciones = () => {
     }
     
     if (actionLoading === `pdf-${id}`) return; // Evitar doble clic
+
+    const win = abrirPdfEnNavegador(); // Pre-abrir pestaña (preserva user-gesture)
+    if (!win) return;
     
     setActionLoading(`pdf-${id}`);
     try {
       let response;
-      let nombreArchivo;
 
       if (tipo === 'aceptacion') {
         const estadoNorm = (estado || '').toLowerCase();
         // SIEMPRE usar Recibo de Salida para requisiciones surtidas/entregadas
         if (['surtida', 'parcial', 'entregada', 'recibida'].includes(estadoNorm)) {
           response = await requisicionesAPI.downloadReciboSalida(id);
-          nombreArchivo = `Recibo_Salida_${folio || id}.pdf`;
         } else {
           response = await requisicionesAPI.downloadPDFAceptacion(id);
-          nombreArchivo = `Hoja_Recoleccion_${folio || id}.pdf`;
         }
       } else {
         response = await requisicionesAPI.downloadPDFRechazo(id);
-        nombreArchivo = `requisicion_rechazada_${folio || id}.pdf`;
       }
 
-      descargarArchivo(response.data, nombreArchivo);
-      toast.success('PDF descargado correctamente');
+      abrirPdfEnNavegador(response.data, win);
+      toast.success('PDF generado correctamente');
     } catch (error) {
       console.error('Error al descargar PDF:', error);
       const message = error.response?.data?.error || error.message || 'Error al descargar PDF';

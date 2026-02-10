@@ -1,6 +1,7 @@
 """
 Middleware para capturar IP y User-Agent en auditoría
 """
+import re
 import threading
 from django.conf import settings
 
@@ -171,3 +172,50 @@ class RateLimitMiddleware:
             ]
             for k in expired_keys:
                 del self._request_counts[k]
+
+
+class PdfInlineMiddleware:
+    """
+    Middleware que convierte Content-Disposition de 'attachment' a 'inline' para
+    respuestas PDF, permitiendo que el navegador las abra en su visor nativo
+    en lugar de forzar la descarga automática.
+
+    También añade headers de seguridad y caché apropiados para PDFs:
+    - Content-Length (si no está presente)
+    - Cache-Control: no-store (datos sensibles)
+    - X-Content-Type-Options: nosniff
+
+    El usuario conserva la posibilidad de descargar o imprimir desde el visor.
+    """
+
+    _ATTACHMENT_RE = re.compile(r'\battachment\b', re.IGNORECASE)
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+
+        content_type = response.get('Content-Type', '')
+        if 'application/pdf' not in content_type:
+            return response
+
+        # Content-Disposition: attachment → inline
+        disposition = response.get('Content-Disposition', '')
+        if disposition and 'attachment' in disposition.lower():
+            response['Content-Disposition'] = self._ATTACHMENT_RE.sub('inline', disposition)
+
+        # Content-Length (si no está presente y el contenido es accesible)
+        if not response.get('Content-Length'):
+            try:
+                if hasattr(response, 'content'):
+                    response['Content-Length'] = str(len(response.content))
+            except Exception:
+                pass  # FileResponse streaming — Content-Length lo pone Django
+
+        # Seguridad / caché para PDFs con datos sensibles
+        if not response.get('Cache-Control'):
+            response['Cache-Control'] = 'no-store, no-cache, must-revalidate, private'
+        response['X-Content-Type-Options'] = 'nosniff'
+
+        return response

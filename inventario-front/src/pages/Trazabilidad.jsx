@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { trazabilidadAPI, centrosAPI, productosAPI, descargarArchivo } from '../services/api';
+import { trazabilidadAPI, centrosAPI, productosAPI, descargarArchivo, abrirPdfEnNavegador } from '../services/api';
 import { toast } from 'react-hot-toast';
 import { FaSearch, FaBox, FaWarehouse, FaHistory, FaExclamationTriangle, FaFilePdf, FaFileExcel, FaBuilding, FaSpinner, FaInfoCircle, FaTimes, FaGlobe, FaCalendarAlt, FaFilter, FaClipboardList } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
@@ -408,6 +408,9 @@ const Trazabilidad = () => {
   const handleExportarPdf = async () => {
     if (modoGlobal) {
       // Exportar trazabilidad global
+      const win = abrirPdfEnNavegador();
+      if (!win) return;
+
       setExportingPdf(true);
       try {
         const params = {};
@@ -417,8 +420,7 @@ const Trazabilidad = () => {
         if (tipoMovimiento) params.tipo = tipoMovimiento;
         
         const response = await trazabilidadAPI.exportarGlobalPdf(params);
-        const filename = `trazabilidad_global_${new Date().toISOString().split('T')[0]}.pdf`;
-        descargarArchivo(response, filename);
+        abrirPdfEnNavegador(response, win);
         toast.success('PDF global generado exitosamente');
       } catch (error) {
         console.error('Error al exportar PDF global:', error);
@@ -439,10 +441,12 @@ const Trazabilidad = () => {
       return;
     }
 
+    const win = abrirPdfEnNavegador();
+    if (!win) return;
+
     setExportingPdf(true);
     try {
       let response;
-      let filename;
       
       // Preparar parámetros con filtros de fecha
       const params = {};
@@ -452,14 +456,12 @@ const Trazabilidad = () => {
       
       if (tipoBusqueda === 'producto') {
         response = await trazabilidadAPI.exportarPdf(identificadorResultados, params);
-        filename = `trazabilidad_producto_${identificadorResultados}_${new Date().toISOString().split('T')[0]}.pdf`;
       } else {
         const loteId = resultados?.id;
         response = await trazabilidadAPI.exportarLotePdf(identificadorResultados, loteId, params);
-        filename = `trazabilidad_lote_${identificadorResultados}_${new Date().toISOString().split('T')[0]}.pdf`;
       }
       
-      descargarArchivo(response, filename);
+      abrirPdfEnNavegador(response, win);
       toast.success('PDF generado exitosamente');
     } catch (error) {
       console.error('Error al exportar PDF:', error);
@@ -564,6 +566,9 @@ const Trazabilidad = () => {
       return;
     }
 
+    const win = abrirPdfEnNavegador();
+    if (!win) return;
+
     setExportingFormatoB(true);
     try {
       const loteId = resultados?.id;
@@ -577,10 +582,7 @@ const Trazabilidad = () => {
       // Usar la misma API pero con parámetro de formato especial
       const response = await trazabilidadAPI.exportarLotePdf(identificadorResultados, loteId, params);
       
-      const tipoFormato = centroFiltro && centroFiltro !== 'central' && centroFiltro !== 'todos' ? 'CPRS' : 'CIA';
-      const filename = `FormatoB_${tipoFormato}_Lote_${identificadorResultados}_${new Date().toISOString().split('T')[0]}.pdf`;
-      
-      descargarArchivo(response, filename);
+      abrirPdfEnNavegador(response, win);
       toast.success('📋 Formato B (Tarjeta Entradas/Salidas) generado exitosamente');
     } catch (error) {
       console.error('Error al exportar Formato B:', error);

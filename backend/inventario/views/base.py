@@ -624,7 +624,7 @@ def invalidar_cache_dashboard(centro_id=None):
         logger.warning(f'Error al invalidar caché del dashboard: {e}')
 
 
-def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=None, requisicion=None, observaciones='', skip_centro_check=False, subtipo_salida=None, numero_expediente=None):
+def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=None, requisicion=None, observaciones='', skip_centro_check=False, subtipo_salida=None, numero_expediente=None, fecha_salida=None):
     """
     Helper central para registrar un movimiento y actualizar cantidad_actual del lote.
     
@@ -649,6 +649,7 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
                           de sistema/admin que ya validaron permisos)
         subtipo_salida: Tipo de salida (receta, consumo_interno, merma, etc.)
         numero_expediente: Número de expediente del paciente (para recetas)
+        fecha_salida: Fecha real de salida física del medicamento (opcional)
     
     Raises:
         ValidationError: Si los datos son inválidos o hay problemas de autorización
@@ -781,7 +782,9 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
             motivo=observaciones or '',
             # MEJORA FLUJO 5: Campos de trazabilidad para pacientes
             subtipo_salida=subtipo_salida if tipo_normalizado == 'salida' else None,
-            numero_expediente=numero_expediente if tipo_normalizado == 'salida' and subtipo_salida == 'receta' else None
+            numero_expediente=numero_expediente if tipo_normalizado == 'salida' and subtipo_salida == 'receta' else None,
+            # Fecha de salida física (puede diferir de fecha de registro)
+            fecha_salida=fecha_salida if tipo_normalizado == 'salida' else None
         )
         # Guardar stock previo para evitar fallos de validacion al crear el movimiento
         movimiento._stock_pre_movimiento = stock_disponible

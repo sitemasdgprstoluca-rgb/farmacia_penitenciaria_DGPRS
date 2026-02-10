@@ -196,13 +196,14 @@ def generar_plantilla_lotes(centro=None):
         "Fecha Fabricación",
         "Fecha Caducidad",
         "Cantidad Inicial",
+        "Cantidad Contrato",  # ISS-INV-001: Total según contrato
         "Precio Unitario",
         "Número Contrato",
         "Marca",
         "Activo"
     ]
 
-    column_widths = [15, 40, 20, 18, 18, 16, 15, 18, 35, 12]
+    column_widths = [15, 40, 20, 18, 18, 16, 18, 15, 18, 35, 12]
     
     for col_num, header in enumerate(headers, 1):
         ws.cell(row=1, column=col_num, value=header)
@@ -218,15 +219,19 @@ def generar_plantilla_lotes(centro=None):
     fecha_cad = (date.today() + timedelta(days=365)).strftime('%Y-%m-%d')
     fecha_fab = date.today().strftime('%Y-%m-%d')
     
+    # ISS-INV-001: Ejemplos con cantidad_contrato para mostrar entregas parciales
     ejemplos = [
+        # Ejemplo 1: Recepción completa (llegó todo lo del contrato)
         ["PRUEBA001", "[EJEMPLO] Paracetamol - ELIMINAR", "LOTE-PRUEBA-001",
-         fecha_fab, fecha_cad, 100, 15.50, "CONT-PRUEBA-001",
+         fecha_fab, fecha_cad, 100, 100, 15.50, "CONT-PRUEBA-001",
          "[EJEMPLO] Laboratorio - ELIMINAR", "Activo"],
+        # Ejemplo 2: Recepción PARCIAL (contrato dice 100, llegaron solo 80)
         ["PRUEBA002", "[EJEMPLO] Ibuprofeno - ELIMINAR", "LOTE-PRUEBA-002",
-         fecha_fab, fecha_cad, 50, 18.75, "CONT-PRUEBA-002",
+         fecha_fab, fecha_cad, 80, 100, 18.75, "CONT-PRUEBA-002",
          "[EJEMPLO] Farmacéutica - ELIMINAR", "Activo"],
+        # Ejemplo 3: Sin contrato específico (dejar vacío)
         ["PRUEBA003", "[EJEMPLO] Jeringa - ELIMINAR", "LOTE-PRUEBA-003",
-         "", fecha_cad, 200, 5.00, "",
+         "", fecha_cad, 200, "", 5.00, "",
          "[EJEMPLO] Proveedor - ELIMINAR", "Activo"],
     ]
     
@@ -264,16 +269,31 @@ def generar_plantilla_lotes(centro=None):
         ["• Nombre Producto* - OBLIGATORIO: Debe coincidir con la clave"],
         ["• Número Lote*    - Identificador único del lote"],
         ["• Fecha Caducidad* - Formato: YYYY-MM-DD (ej: 2026-12-31)"],
-        ["• Cantidad Inicial* - Cantidad de unidades recibidas"],
+        ["• Cantidad Inicial* - Cantidad de unidades RECIBIDAS/SURTIDAS"],
         [""],
         ["────────────────────────────────────────────────────────────────────────"],
         ["COLUMNAS OPCIONALES:"],
         ["────────────────────────────────────────────────────────────────────────"],
+        ["• Cantidad Contrato - Total según contrato (para entregas parciales)"],
+        ["                     Si llegan 80 de 100 contratados: Inicial=80, Contrato=100"],
         ["• Fecha Fabricación - Formato: YYYY-MM-DD"],
         ["• Precio Unitario   - Precio por unidad (default: 0)"],
         ["• Número Contrato   - Referencia del contrato de adquisición"],
         ["• Marca             - Laboratorio o fabricante"],
         ["• Activo            - Activo/Inactivo (default: Activo)"],
+        [""],
+        ["════════════════════════════════════════════════════════════════════════"],
+        ["📦 ENTREGAS PARCIALES Y REIMPORTACIÓN (ISS-INV-001):"],
+        ["════════════════════════════════════════════════════════════════════════"],
+        ["Si el contrato establece 100 unidades pero solo llegan 80:"],
+        ["  • Cantidad Inicial = 80 (lo que realmente llegó)"],
+        ["  • Cantidad Contrato = 100 (lo esperado según contrato)"],
+        ["  • El sistema calculará: Pendiente = 100 - 80 = 20"],
+        [""],
+        ["Cuando llegue el resto, puede REIMPORTAR el Excel con:"],
+        ["  - Misma Clave, Lote, Contrato, Marca y Fecha Caducidad"],
+        ["  - Cantidad Inicial = 20 (las nuevas unidades)"],
+        ["  → El sistema SUMARÁ las cantidades al lote existente."],["  → La Cantidad Contrato original se PRESERVA (no se sobreescribe)."],
         [""],
         ["────────────────────────────────────────────────────────────────────────"],
         ["NOTAS:"],

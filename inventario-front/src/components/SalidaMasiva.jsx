@@ -31,6 +31,7 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
   // Estado del formulario
   const [centroDestino, setCentroDestino] = useState('');
   const [observaciones, setObservaciones] = useState('');
+  const [fechaSalida, setFechaSalida] = useState('');
   const [items, setItems] = useState([]); // Carrito de items seleccionados
   
   // Catálogo de lotes disponibles
@@ -49,6 +50,8 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
   // Estado de procesamiento
   const [procesando, setProcesando] = useState(false);
   const [resultado, setResultado] = useState(null);
+  // MOV-FECHA: Doble confirmación cuando se establece fecha de salida
+  const [showConfirmFecha, setShowConfirmFecha] = useState(false);
   
   // Ref para debounce de búsqueda
   const searchTimeoutRef = useRef(null);
@@ -286,6 +289,19 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
       return;
     }
     
+    // MOV-FECHA: Validar fecha no futura
+    if (fechaSalida && new Date(fechaSalida) > new Date()) {
+      toast.error('La fecha de salida no puede ser una fecha futura');
+      return;
+    }
+    
+    // MOV-FECHA: Doble confirmación cuando se establece fecha de salida
+    if (fechaSalida && !showConfirmFecha) {
+      setShowConfirmFecha(true);
+      return;
+    }
+    setShowConfirmFecha(false);
+    
     setProcesando(true);
     
     try {
@@ -293,6 +309,7 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
         centro_destino_id: parseInt(centroDestino),
         observaciones: observaciones,
         auto_confirmar: false, // PENDIENTE hasta confirmar entrega física (igual que salida unitaria)
+        fecha_salida: fechaSalida || null,
         items: items.map(item => ({
           lote_id: item.lote_id,
           cantidad: item.cantidad
@@ -893,6 +910,23 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
                       className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-rose-500 transition-colors resize-none"
                     />
                   </div>
+
+                  {/* Fecha de Salida */}
+                  <div className="mt-4">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Fecha de Salida <span className="text-gray-400 text-xs">(opcional)</span>
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={fechaSalida}
+                      onChange={(e) => setFechaSalida(e.target.value)}
+                      max={new Date().toISOString().slice(0, 16)}
+                      className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-rose-500 transition-colors"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      📅 Fecha real de salida física. Si no se indica, se usa la fecha de registro en el sistema.
+                    </p>
+                  </div>
                 </>
               )}
             </div>
@@ -952,6 +986,51 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
           </div>
         </div>
       </div>
+      
+      {/* MOV-FECHA: Modal de confirmación de fecha de salida */}
+      {showConfirmFecha && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+            <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-600 to-indigo-600 rounded-t-xl">
+              <h2 className="text-lg font-bold text-white">📅 Confirmar Fecha de Salida</h2>
+              <p className="text-white/80 text-sm mt-1">La fecha efectiva difiere de la fecha actual</p>
+            </div>
+            <div className="p-6">
+              <div className="mb-4 p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
+                <p className="text-blue-800 font-semibold text-center mb-2">
+                  ⚠️ Está registrando una salida masiva con fecha diferente a la actual
+                </p>
+                <div className="space-y-2 text-sm mt-3">
+                  <div className="flex justify-between py-1 border-b border-blue-100">
+                    <span className="text-blue-600">Fecha de salida:</span>
+                    <span className="font-bold text-blue-900">
+                      {fechaSalida ? new Date(fechaSalida).toLocaleString('es-MX') : '-'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between py-1">
+                    <span className="text-blue-600">Productos:</span>
+                    <span className="font-medium text-gray-700">{totalProductos} productos, {totalUnidades} unidades</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t bg-gray-50 flex justify-between rounded-b-xl">
+              <button
+                onClick={() => setShowConfirmFecha(false)}
+                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => procesarSalida()}
+                className="px-6 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-colors font-medium shadow-md flex items-center gap-2"
+              >
+                ✓ Confirmar y Procesar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

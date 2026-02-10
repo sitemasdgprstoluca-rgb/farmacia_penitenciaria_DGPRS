@@ -1011,6 +1011,9 @@ class LoteSerializer(serializers.ModelSerializer):
     tiene_documentos = serializers.SerializerMethodField()
     # ISS-TRAZ: Indicar si el lote tiene movimientos (para bloquear edición de campos críticos)
     tiene_movimientos = serializers.SerializerMethodField()
+    # ISS-INV-001: Campo cantidad_contrato y cálculo de pendiente
+    cantidad_contrato = serializers.IntegerField(required=False, allow_null=True, help_text='Cantidad total según contrato')
+    cantidad_pendiente = serializers.SerializerMethodField(help_text='Cantidad pendiente por recibir (contrato - surtido)')
     
     class Meta:
         model = Lote
@@ -1019,19 +1022,34 @@ class LoteSerializer(serializers.ModelSerializer):
             'producto_info',  # Información adicional del producto
             'centro', 'centro_nombre',
             'numero_lote', 'fecha_caducidad', 'fecha_fabricacion',
-            'cantidad_inicial', 'cantidad_actual', 'precio_unitario', 'precio_compra',
+            # ISS-INV-001: Campos de cantidades para control de contratos
+            'cantidad_contrato',  # Total según contrato (ej: 100)
+            'cantidad_inicial',   # Total surtido/recibido (ej: 80, se acumula)
+            'cantidad_actual',    # Stock disponible (ej: 75)
+            'cantidad_pendiente', # Calculado: contrato - inicial (ej: 20)
+            'precio_unitario', 'precio_compra',
             'numero_contrato', 'marca', 'ubicacion', 'activo', 'estado',
             'dias_para_caducar', 'alerta_caducidad', 'porcentaje_consumido',
             'documentos', 'tiene_documentos', 'tiene_movimientos',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['created_at', 'updated_at', 'estado', 'documentos', 'tiene_documentos', 'tiene_movimientos']
+        read_only_fields = ['created_at', 'updated_at', 'estado', 'documentos', 'tiene_documentos', 'tiene_movimientos', 'cantidad_pendiente']
         extra_kwargs = {
             'cantidad_actual': {'required': False, 'default': 0},
+            'cantidad_contrato': {'required': False, 'allow_null': True},
             'numero_contrato': {'required': False, 'allow_null': True, 'allow_blank': True},
             'marca': {'required': False, 'allow_null': True, 'allow_blank': True},
             'ubicacion': {'required': False, 'allow_null': True, 'allow_blank': True},
         }
+    
+    def get_cantidad_pendiente(self, obj):
+        """
+        ISS-INV-001: Calcula cantidad pendiente por recibir del contrato.
+        Si cantidad_contrato es NULL, retorna NULL (no aplica).
+        """
+        if obj.cantidad_contrato is None:
+            return None
+        return max(0, obj.cantidad_contrato - (obj.cantidad_inicial or 0))
     
     def get_producto_info(self, obj):
         """Devuelve información adicional del producto para mostrar en tabla/formulario."""
@@ -1790,6 +1808,8 @@ class MovimientoSerializer(serializers.ModelSerializer):
     numero_expediente = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=50)
     # FORMATO OFICIAL B: Folio/número de documento de entrada/salida
     folio_documento = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=100)
+    # Fecha de salida física (puede diferir de la fecha de registro en el sistema)
+    fecha_salida = serializers.DateTimeField(required=False, allow_null=True)
     
     # ========== FIX: Campos para escritura desde frontend ==========
     # El frontend envía 'centro' y 'observaciones', pero el modelo tiene 'centro_destino' y 'motivo'
@@ -1803,7 +1823,7 @@ class MovimientoSerializer(serializers.ModelSerializer):
             'centro_origen', 'centro_origen_nombre', 'centro_destino', 'centro_destino_nombre', 'centro_nombre',
             'cantidad', 'usuario', 'usuario_nombre', 'requisicion', 'requisicion_folio',
             'motivo', 'observaciones', 'referencia', 'subtipo_salida', 'numero_expediente', 'folio_documento',
-            'fecha', 'fecha_movimiento', 'created_at'
+            'fecha_salida', 'fecha', 'fecha_movimiento', 'created_at'
         ]
         read_only_fields = ['fecha', 'created_at']
         extra_kwargs = {
@@ -1933,6 +1953,16 @@ class MovimientoSerializer(serializers.ModelSerializer):
         # ISS-DB-003: Limpiar subtipo_salida vacío
         if 'subtipo_salida' in data and not data['subtipo_salida']:
             data['subtipo_salida'] = None
+        
+        # MOV-FECHA: Validar que fecha_salida no sea futura
+        fecha_salida = data.get('fecha_salida')
+        if fecha_salida:
+            from django.utils import timezone as tz
+            ahora = tz.now()
+            if fecha_salida > ahora:
+                raise serializers.ValidationError({
+                    'fecha_salida': 'La fecha de salida no puede ser una fecha futura.'
+                })
         
         return data
 

@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import Pagination from "../components/Pagination";
 import SalidaMasiva from "../components/SalidaMasiva";
-import { movimientosAPI, productosAPI, centrosAPI, lotesAPI, salidaMasivaAPI, descargarArchivo } from "../services/api";
+import { movimientosAPI, productosAPI, centrosAPI, lotesAPI, salidaMasivaAPI, descargarArchivo, abrirPdfEnNavegador } from "../services/api";
 import { usePermissions } from "../hooks/usePermissions";
 import { FaFilter, FaChevronDown, FaChevronRight, FaExchangeAlt, FaFileExcel, FaFilePdf, FaSpinner, FaInfoCircle, FaExclamationTriangle, FaTruck, FaLayerGroup, FaList, FaFileDownload, FaCheckCircle, FaClipboardCheck, FaTrash, FaBoxes, FaHistory, FaClock } from "react-icons/fa";
 import { COLORS } from "../constants/theme";
@@ -126,9 +126,14 @@ const MovCounter = ({ salidas, entradas }) => (
 
 const Movimientos = () => {
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const highlightId = location.state?.highlightId;
   const highlightRef = useRef(null);
   const { user, permisos, getRolPrincipal } = usePermissions();
+  
+  // Request deduplication & abort controller
+  const abortControllerRef = useRef(null);
+  const requestIdRef = useRef(0);
   
   // ===========================================================================
   // HALLAZGO #5 DOCUMENTACIÓN: Roles y Permisos
@@ -192,6 +197,7 @@ const Movimientos = () => {
     fecha_fin: "",
     tipo: "",
     subtipo_salida: "",
+    origen: "",
     producto: "",
     centro: centroInicial,
     lote: "",
@@ -205,6 +211,7 @@ const Movimientos = () => {
     fecha_fin: "",
     tipo: "",
     subtipo_salida: "",
+    origen: "",
     producto: "",
     centro: centroInicial,
     lote: "",
@@ -229,6 +236,7 @@ const Movimientos = () => {
     subtipo_salida: esFarmacia ? "transferencia" : (esMedico ? "receta" : "consumo_interno"),
     numero_expediente: "",
     folio_documento: "",  // FORMATO B: Folio/número de documento oficial
+    fecha_salida: "",  // Fecha real de salida física del medicamento
   });
   const [productoFiltro, setProductoFiltro] = useState("");
   const [productoBusqueda, setProductoBusqueda] = useState(""); // Texto de búsqueda del producto
@@ -238,10 +246,13 @@ const Movimientos = () => {
   const [exporting, setExporting] = useState(null); // 'pdf' | 'excel' | null
   const [showFiltersMenu, setShowFiltersMenu] = useState(false);
   const [showSalidaMasiva, setShowSalidaMasiva] = useState(false); // Modal salida masiva
+  const [errorState, setErrorState] = useState(null); // { status, message } — for 403/422/500 display
   
   // ISS-SEC FIX: Modal de confirmación para merma/caducidad (operaciones irreversibles)
   const [showConfirmMerma, setShowConfirmMerma] = useState(false);
   const [confirmStep, setConfirmStep] = useState(1); // 1: mostrar resumen, 2: confirmar texto
+  // MOV-FECHA: Modal de doble confirmación cuando se establece fecha de salida diferente
+  const [showConfirmFechaSalida, setShowConfirmFechaSalida] = useState(false);
 
   const columnas = useMemo(
     () => ["producto", "tipo", "cantidad", "centro", "fecha"],
@@ -578,20 +589,24 @@ const Movimientos = () => {
   };
 
   const cargarMovimientos = useCallback(async () => {
+    // Cancel any in-flight request to prevent stale data races
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const thisRequestId = ++requestIdRef.current;
+
     setLoading(true);
+    setErrorState(null); // Clear previous errors
     try {
-      // ISS-FIX: Enviar estado_confirmacion al backend para filtrar correctamente
-      // El backend ahora soporta este filtro
-      
       if (vistaAgrupada) {
-        // ISS-FIX: Vista agrupada - usar endpoint que agrupa en backend
         const params = {
           page: pageGrupos,
           page_size: GRUPOS_POR_PAGINA,
           ordering: "-fecha",
           ...filtrosAplicados,
         };
-        // Limpiar parámetros vacíos
         Object.keys(params).forEach(key => {
           if (params[key] === "" || params[key] === null || params[key] === undefined) {
             delete params[key];
@@ -599,19 +614,19 @@ const Movimientos = () => {
         });
         
         const response = await movimientosAPI.getAgrupados(params);
+        // Discard if a newer request was fired
+        if (thisRequestId !== requestIdRef.current) return;
         setDatosAgrupados(response.data);
         setTotalGrupos(response.data.total_elementos || 0);
-        setMovimientos([]); // Limpiar movimientos individuales
+        setMovimientos([]);
         setTotal(0);
       } else {
-        // Vista individual - paginación normal en backend
         const params = {
           page: page,
           page_size: PAGE_SIZE_INDIVIDUAL,
           ordering: "-fecha",
           ...filtrosAplicados,
         };
-        // Limpiar parámetros vacíos
         Object.keys(params).forEach(key => {
           if (params[key] === "" || params[key] === null || params[key] === undefined) {
             delete params[key];
@@ -619,8 +634,8 @@ const Movimientos = () => {
         });
         
         const response = await movimientosAPI.getAll(params);
+        if (thisRequestId !== requestIdRef.current) return;
         let data = response.data?.results || response.data || [];
-        // Agregar campo 'confirmado' a cada movimiento
         let dataConConfirmado = (Array.isArray(data) ? data : []).map(mov => ({
           ...mov,
           confirmado: estaConfirmado(mov)
@@ -628,13 +643,38 @@ const Movimientos = () => {
         
         setMovimientos(dataConConfirmado);
         setTotal(response.data?.count || data.length || 0);
-        setDatosAgrupados(null); // Limpiar datos agrupados
+        setDatosAgrupados(null);
         calcularStats(dataConConfirmado);
       }
     } catch (err) {
-      toast.error(err.response?.data?.detail || "No se pudieron cargar los movimientos");
+      // Ignore aborted requests
+      if (err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError') return;
+      if (thisRequestId !== requestIdRef.current) return;
+
+      const status = err.response?.status;
+      const detail = err.response?.data?.detail;
+
+      // Clear stale data on error — never show previous results as if valid
+      setMovimientos([]);
+      setDatosAgrupados(null);
+      setTotal(0);
+      setTotalGrupos(0);
+
+      if (status === 403) {
+        setErrorState({ status: 403, message: detail || 'Sin permisos para ver movimientos de este centro.' });
+      } else if (status === 422) {
+        setErrorState({ status: 422, message: detail || 'Parámetros de filtro no válidos. Revise los campos.' });
+        toast.error(detail || 'Filtro no válido — revise los campos');
+      } else if (status === 409) {
+        setErrorState({ status: 409, message: detail || 'Conflicto en la solicitud. Intente de nuevo.' });
+      } else {
+        setErrorState({ status: status || 0, message: detail || 'Error al cargar movimientos. Intente de nuevo.' });
+        toast.error(detail || 'No se pudieron cargar los movimientos');
+      }
     } finally {
-      setLoading(false);
+      if (thisRequestId === requestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, [page, pageGrupos, filtrosAplicados, vistaAgrupada]);
 
@@ -679,6 +719,48 @@ const Movimientos = () => {
       cargarMovimientos();
     }
   }, [cargarMovimientos, centroResuelto]);
+
+  // ─── URL state sync: persist applied filters in URL for sharing / back-navigation ───
+  const urlSyncInitDone = useRef(false);
+  const FILTER_URL_KEYS = ['tipo', 'subtipo_salida', 'origen', 'producto', 'centro', 'lote', 'search', 'fecha_inicio', 'fecha_fin', 'estado_confirmacion'];
+
+  // On mount: read filters from URL query string (only once)
+  useEffect(() => {
+    if (urlSyncInitDone.current) return;
+    urlSyncInitDone.current = true;
+    const initial = {};
+    let hasUrlFilters = false;
+    FILTER_URL_KEYS.forEach(key => {
+      const val = searchParams.get(key);
+      if (val) { initial[key] = val; hasUrlFilters = true; }
+    });
+    if (hasUrlFilters) {
+      const merged = { ...filtros, ...initial };
+      // Respect centro restriction
+      if (!puedeVerTodosCentros && centroUsuario) {
+        merged.centro = centroUsuario.toString();
+      }
+      setFiltros(merged);
+      setFiltrosAplicados(merged);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Whenever applied filters change, mirror them to URL (replace, no history push)
+  useEffect(() => {
+    const params = new URLSearchParams();
+    FILTER_URL_KEYS.forEach(key => {
+      const val = filtrosAplicados[key];
+      if (val) params.set(key, val);
+    });
+    // Only update if different from current URL to avoid re-renders
+    const currentSearch = searchParams.toString();
+    const newSearch = params.toString();
+    if (currentSearch !== newSearch) {
+      setSearchParams(params, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtrosAplicados]);
 
   // Escuchar evento de limpieza de inventario para refrescar Movimientos
   useEffect(() => {
@@ -807,6 +889,12 @@ const Movimientos = () => {
       return;
     }
     
+    // MOV-FECHA: Validar que fecha de salida no sea futura (defensa frontend)
+    if (formData.fecha_salida && new Date(formData.fecha_salida) > new Date()) {
+      toast.error("La fecha de salida no puede ser una fecha futura");
+      return;
+    }
+    
     // =========================================================================
     // HALLAZGO #1 FIX (RACE CONDITION): Verificar stock ACTUALIZADO antes de enviar
     // El estado local 'lotes' puede estar desactualizado si otro usuario/pestaña
@@ -903,6 +991,12 @@ const Movimientos = () => {
       }
     }
     
+    // MOV-FECHA: Doble confirmación cuando se establece una fecha de salida distinta
+    if (esSalida && formData.fecha_salida && !showConfirmFechaSalida && !showConfirmMerma) {
+      setShowConfirmFechaSalida(true);
+      return; // No continuar hasta confirmar
+    }
+    
     // ISS-SEC FIX: Para merma/caducidad, mostrar modal de confirmación de varios pasos
     const esMermaOCaducidad = ['merma', 'caducidad'].includes(formData.subtipo_salida);
     if (esSalida && esMermaOCaducidad && puedeHacerEntradas && !showConfirmMerma) {
@@ -923,6 +1017,7 @@ const Movimientos = () => {
           centro_destino_id: parseInt(formData.centro),
           observaciones: formData.observaciones || '',
           auto_confirmar: false, // PENDIENTE hasta confirmar entrega física
+          fecha_salida: formData.fecha_salida || null,
           items: [{
             lote_id: parseInt(formData.lote),
             cantidad: Number(formData.cantidad)
@@ -964,6 +1059,7 @@ const Movimientos = () => {
           cantidad: Number(formData.cantidad),
           observaciones: formData.observaciones || '',
           folio_documento: formData.folio_documento?.trim() || null,
+          fecha_salida: formData.fecha_salida || null,
         };
         
         // Campos adicionales para SALIDA (no transferencias)
@@ -1005,6 +1101,7 @@ const Movimientos = () => {
       
       // ISS-SEC FIX: Resetear modal de confirmación
       setShowConfirmMerma(false);
+      setShowConfirmFechaSalida(false);
       setConfirmStep(1);
       
       // Reset del formulario
@@ -1017,6 +1114,7 @@ const Movimientos = () => {
         subtipo_salida: puedeHacerEntradas ? "transferencia" : (esMedico ? "receta" : "consumo_interno"),
         numero_expediente: "",
         folio_documento: "",
+        fecha_salida: "",
       });
       setProductoFiltro("");
       setProductoBusqueda("");
@@ -1030,6 +1128,7 @@ const Movimientos = () => {
       toast.error(errorMsg);
       // ISS-SEC FIX: Resetear modal en caso de error también
       setShowConfirmMerma(false);
+      setShowConfirmFechaSalida(false);
       setConfirmStep(1);
     } finally {
       setSubmitting(false);
@@ -1068,6 +1167,9 @@ const Movimientos = () => {
   const exportarPdf = async () => {
     if (exporting) return; // Evitar exportaciones simultáneas
     
+    const win = abrirPdfEnNavegador(); // Pre-abrir pestaña (preserva user-gesture)
+    if (!win) return;
+
     setExporting('pdf');
     try {
       // Sanitizar filtros: eliminar valores vacíos antes de enviar
@@ -1075,7 +1177,7 @@ const Movimientos = () => {
         Object.entries(filtrosAplicados).filter(([, v]) => v !== "" && v !== null && v !== undefined)
       );
       const response = await movimientosAPI.exportarPdf(filtrosLimpios);
-      descargarArchivo(response, `movimientos_${new Date().toISOString().split("T")[0]}.pdf`);
+      abrirPdfEnNavegador(response, win);
       toast.success("PDF generado");
     } catch (err) {
       toast.error(err.response?.data?.detail || "No se pudo generar el PDF");
@@ -1086,12 +1188,13 @@ const Movimientos = () => {
 
   // Descargar recibo de salida con campos de firma
   const descargarReciboSalida = async (movimiento) => {
+    const win = abrirPdfEnNavegador();
+    if (!win) return;
     try {
       toast.loading("Generando recibo...", { id: "recibo" });
       const response = await movimientosAPI.getReciboSalida(movimiento.id);
-      const fecha = new Date(movimiento.fecha || movimiento.fecha_movimiento).toISOString().split("T")[0];
       // ISS-FIX: Usar response.data ya que axios devuelve los datos en .data
-      descargarArchivo(response.data || response, `recibo_salida_${movimiento.id}_${fecha}.pdf`);
+      abrirPdfEnNavegador(response.data || response, win);
       toast.success("Recibo generado", { id: "recibo" });
     } catch (err) {
       const errorMsg = err.response?.data?.error || err.response?.data?.detail || err.message || "No se pudo generar el recibo";
@@ -1102,12 +1205,13 @@ const Movimientos = () => {
 
   // Descargar recibo de entrega finalizada (con sello ENTREGADO en lugar de firmas)
   const descargarReciboFinalizado = async (movimiento) => {
+    const win = abrirPdfEnNavegador();
+    if (!win) return;
     try {
       toast.loading("Generando comprobante de entrega...", { id: "recibo-final" });
       const response = await movimientosAPI.getReciboSalida(movimiento.id, true);
-      const fecha = new Date(movimiento.fecha || movimiento.fecha_movimiento).toISOString().split("T")[0];
       // ISS-FIX: Usar response.data ya que axios devuelve los datos en .data
-      descargarArchivo(response.data || response, `comprobante_entrega_${movimiento.id}_${fecha}.pdf`);
+      abrirPdfEnNavegador(response.data || response, win);
       toast.success("Comprobante generado", { id: "recibo-final" });
     } catch (err) {
       const errorMsg = err.response?.data?.error || err.response?.data?.detail || err.message || "No se pudo generar el comprobante";
@@ -1118,11 +1222,13 @@ const Movimientos = () => {
 
   // Descargar hoja de entrega para grupo de salida masiva
   const descargarHojaEntregaGrupo = async (grupoId) => {
+    const win = abrirPdfEnNavegador();
+    if (!win) return;
     try {
       toast.loading("Generando hoja de entrega...", { id: "hoja-grupo" });
       const response = await salidaMasivaAPI.hojaEntregaPdf(grupoId, false);
-      descargarArchivo(response.data, `Hoja_Entrega_${grupoId}.pdf`);
-      toast.success("Hoja de entrega descargada", { id: "hoja-grupo" });
+      abrirPdfEnNavegador(response.data, win);
+      toast.success("Hoja de entrega lista", { id: "hoja-grupo" });
     } catch (err) {
       toast.error("No se pudo generar la hoja de entrega", { id: "hoja-grupo" });
       console.error("Error generando hoja:", err);
@@ -1131,11 +1237,13 @@ const Movimientos = () => {
 
   // Descargar comprobante de entrega para grupo de salida masiva
   const descargarComprobanteGrupo = async (grupoId) => {
+    const win = abrirPdfEnNavegador();
+    if (!win) return;
     try {
       toast.loading("Generando comprobante de entrega...", { id: "comp-grupo" });
       const response = await salidaMasivaAPI.hojaEntregaPdf(grupoId, true);
-      descargarArchivo(response.data, `Comprobante_Entrega_${grupoId}.pdf`);
-      toast.success("Comprobante de entrega descargado", { id: "comp-grupo" });
+      abrirPdfEnNavegador(response.data, win);
+      toast.success("Comprobante de entrega listo", { id: "comp-grupo" });
     } catch (err) {
       toast.error("No se pudo generar el comprobante", { id: "comp-grupo" });
       console.error("Error generando comprobante:", err);
@@ -1247,9 +1355,10 @@ const Movimientos = () => {
     }
     setFiltros((prev) => {
       const newState = { ...prev, [field]: value };
-      // Limpiar subtipo_salida si el tipo cambia a algo que no es salida
+      // Limpiar subtipo_salida y origen si el tipo cambia a algo que no es salida
       if (field === 'tipo' && value !== 'salida' && value !== '') {
         newState.subtipo_salida = '';
+        newState.origen = '';
         // También limpiar estado_confirmacion si cambia de salida (pendiente solo aplica a salidas)
         if (prev.estado_confirmacion === 'pendiente') {
           newState.estado_confirmacion = '';
@@ -1298,6 +1407,7 @@ const Movimientos = () => {
       fecha_fin: "",
       tipo: "",
       subtipo_salida: "",
+      origen: "",
       producto: "",
       centro: centroFijo,
       lote: "",
@@ -1841,6 +1951,25 @@ const Movimientos = () => {
                 </p>
               </div>
 
+              {/* Fecha de Salida - solo visible para salidas de FARMACIA/ADMIN */}
+              {formData.tipo === 'salida' && puedeHacerEntradas && (
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-700">
+                    Fecha de Salida <span className="text-gray-400 text-xs">(opcional)</span>
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={formData.fecha_salida}
+                    onChange={(e) => handleFormChange("fecha_salida", e.target.value)}
+                    max={new Date().toISOString().slice(0, 16)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="text-xs text-gray-500">
+                    📅 Fecha real de salida física del medicamento. Si no se indica, se usa la fecha de registro en el sistema.
+                  </p>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-gray-700">
                   Observaciones <span className="text-red-500">*</span>
@@ -1966,6 +2095,11 @@ const Movimientos = () => {
                       <option value="">Todos</option>
                       <option value="receta">💊 Receta médica</option>
                       <option value="consumo_interno">🏥 Consumo interno</option>
+                      <option value="transferencia">🔄 Transferencia</option>
+                      <option value="merma">📉 Merma</option>
+                      <option value="caducidad">⏰ Caducidad</option>
+                      <option value="donacion">🎁 Donación</option>
+                      <option value="devolucion">↩️ Devolución</option>
                     </select>
                   </div>
                 )}
@@ -1981,6 +2115,22 @@ const Movimientos = () => {
                       <option value="">Todos</option>
                       <option value="confirmado">✅ Confirmados</option>
                       <option value="pendiente">⏳ Pendientes</option>
+                    </select>
+                  </div>
+                )}
+                {/* Filtro por origen: Requisición, Salida Masiva, Individual */}
+                {(filtros.tipo === "" || filtros.tipo === "salida") && (
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-semibold text-gray-700">Origen</label>
+                    <select
+                      value={filtros.origen}
+                      onChange={(e) => handleFiltro("origen", e.target.value)}
+                      className="border rounded-lg px-3 py-2"
+                    >
+                      <option value="">Todos</option>
+                      <option value="requisicion">📋 Requisición</option>
+                      <option value="masiva">📦 Salida Masiva</option>
+                      <option value="individual">👤 Individual</option>
                     </select>
                   </div>
                 )}
@@ -2047,37 +2197,112 @@ const Movimientos = () => {
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-semibold text-gray-700">Buscar</label>
-                  <input
-                    type="text"
-                    value={filtros.search}
-                    onChange={(e) => handleFiltro("search", e.target.value)}
-                    className="border rounded-lg px-3 py-2"
-                    placeholder="Producto o documento"
-                  />
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={filtros.search}
+                      onChange={(e) => handleFiltro("search", e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); aplicarFiltros(); } }}
+                      className="border rounded-lg px-3 py-2 pr-8 w-full"
+                      placeholder="Producto, lote, expediente o referencia"
+                    />
+                    {filtros.search && (
+                      <button
+                        type="button"
+                        onClick={() => handleFiltro("search", "")}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm font-bold"
+                        title="Limpiar búsqueda"
+                      >✕</button>
+                    )}
+                  </div>
                 </div>
               </div>
 
-                  <div className="flex gap-2 items-center col-span-full">
+                  <div className="flex gap-2 items-center flex-wrap col-span-full">
                     <button
                       onClick={aplicarFiltros}
-                      className="px-4 py-2 rounded-lg text-white text-sm font-semibold transition bg-theme-gradient"
-                      disabled={loading}
+                      className="px-4 py-2 rounded-lg text-white text-sm font-semibold transition bg-theme-gradient disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={loading || submitting}
                     >
-                      {hayFiltrosPendientes ? '⚡ Aplicar' : 'Aplicar'}
+                      {loading ? (
+                        <span className="flex items-center gap-1"><FaSpinner className="animate-spin text-xs" /> Cargando…</span>
+                      ) : hayFiltrosPendientes ? '⚡ Aplicar filtros' : 'Aplicar'}
                     </button>
                     <button
                       onClick={limpiarFiltros}
-                      className="px-3 py-2 rounded-lg border bg-white text-sm hover:bg-gray-50"
+                      className="px-3 py-2 rounded-lg border bg-white text-sm hover:bg-gray-50 disabled:opacity-50"
                       disabled={loading || !hayFiltrosActivos}
                     >
-                      Limpiar
+                      Limpiar todo
                     </button>
-                    {hayFiltrosActivos && (
-                      <span className="text-xs text-gray-500 ml-2">
-                        {Object.values(filtrosAplicados).filter(v => v !== "").length} filtro(s) activo(s)
-                      </span>
-                    )}
                   </div>
+
+                  {/* ═══ Active filter chips ═══ */}
+                  {hayFiltrosActivos && (
+                    <div className="flex flex-wrap gap-1.5 items-center pt-1 border-t border-gray-200 mt-1">
+                      <span className="text-xs text-gray-500 font-medium mr-1">Activos:</span>
+                      {filtrosAplicados.tipo && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-xs font-medium">
+                          Tipo: {filtrosAplicados.tipo}
+                          <button onClick={() => { handleFiltro('tipo', ''); setFiltrosAplicados(p => ({ ...p, tipo: '', subtipo_salida: '', origen: '' })); setPage(1); setPageGrupos(1); }} className="ml-0.5 hover:text-indigo-900">✕</button>
+                        </span>
+                      )}
+                      {filtrosAplicados.origen && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-medium">
+                          Origen: {filtrosAplicados.origen === 'requisicion' ? 'Requisición' : filtrosAplicados.origen === 'masiva' ? 'Masiva' : 'Individual'}
+                          <button onClick={() => { handleFiltro('origen', ''); setFiltrosAplicados(p => ({ ...p, origen: '' })); setPage(1); setPageGrupos(1); }} className="ml-0.5 hover:text-blue-900">✕</button>
+                        </span>
+                      )}
+                      {filtrosAplicados.subtipo_salida && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-pink-100 text-pink-700 text-xs font-medium">
+                          Subtipo: {filtrosAplicados.subtipo_salida}
+                          <button onClick={() => { handleFiltro('subtipo_salida', ''); setFiltrosAplicados(p => ({ ...p, subtipo_salida: '' })); setPage(1); setPageGrupos(1); }} className="ml-0.5 hover:text-pink-900">✕</button>
+                        </span>
+                      )}
+                      {filtrosAplicados.producto && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-medium">
+                          Producto: {productos.find(p => p.id === parseInt(filtrosAplicados.producto))?.clave || filtrosAplicados.producto}
+                          <button onClick={() => { handleFiltro('producto', ''); setFiltrosAplicados(p => ({ ...p, producto: '' })); setPage(1); setPageGrupos(1); }} className="ml-0.5 hover:text-emerald-900">✕</button>
+                        </span>
+                      )}
+                      {filtrosAplicados.lote && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs font-medium">
+                          Lote: {lotes.find(l => l.id === parseInt(filtrosAplicados.lote))?.numero_lote || filtrosAplicados.lote}
+                          <button onClick={() => { handleFiltro('lote', ''); setFiltrosAplicados(p => ({ ...p, lote: '' })); setPage(1); setPageGrupos(1); }} className="ml-0.5 hover:text-amber-900">✕</button>
+                        </span>
+                      )}
+                      {filtrosAplicados.search && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-200 text-gray-700 text-xs font-medium">
+                          Búsqueda: &ldquo;{filtrosAplicados.search}&rdquo;
+                          <button onClick={() => { handleFiltro('search', ''); setFiltrosAplicados(p => ({ ...p, search: '' })); setPage(1); setPageGrupos(1); }} className="ml-0.5 hover:text-gray-900">✕</button>
+                        </span>
+                      )}
+                      {filtrosAplicados.centro && puedeVerTodosCentros && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 text-xs font-medium">
+                          Centro: {centros.find(c => c.id === parseInt(filtrosAplicados.centro))?.nombre || filtrosAplicados.centro}
+                          <button onClick={() => { handleFiltro('centro', ''); setFiltrosAplicados(p => ({ ...p, centro: '' })); setPage(1); setPageGrupos(1); }} className="ml-0.5 hover:text-violet-900">✕</button>
+                        </span>
+                      )}
+                      {filtrosAplicados.fecha_inicio && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 text-xs font-medium">
+                          Desde: {filtrosAplicados.fecha_inicio}
+                          <button onClick={() => { handleFiltro('fecha_inicio', ''); setFiltrosAplicados(p => ({ ...p, fecha_inicio: '' })); setPage(1); setPageGrupos(1); }} className="ml-0.5 hover:text-teal-900">✕</button>
+                        </span>
+                      )}
+                      {filtrosAplicados.fecha_fin && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 text-xs font-medium">
+                          Hasta: {filtrosAplicados.fecha_fin}
+                          <button onClick={() => { handleFiltro('fecha_fin', ''); setFiltrosAplicados(p => ({ ...p, fecha_fin: '' })); setPage(1); setPageGrupos(1); }} className="ml-0.5 hover:text-teal-900">✕</button>
+                        </span>
+                      )}
+                      {filtrosAplicados.estado_confirmacion && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 text-xs font-medium">
+                          Estado: {filtrosAplicados.estado_confirmacion === 'confirmado' ? '✅ Confirmado' : '⏳ Pendiente'}
+                          <button onClick={() => { handleFiltro('estado_confirmacion', ''); setFiltrosAplicados(p => ({ ...p, estado_confirmacion: '' })); setPage(1); setPageGrupos(1); }} className="ml-0.5 hover:text-yellow-900">✕</button>
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -2109,6 +2334,34 @@ const Movimientos = () => {
                     <>
                       {[...Array(8)].map((_, i) => <SkeletonRow key={i} index={i} />)}
                     </>
+                  ) : errorState ? (
+                    /* ⚠️ Error State — clear, no stale data */
+                    <tr>
+                      <td colSpan={esFarmacia ? 6 : esCentroUser ? 4 : 5} className="px-4 py-16 text-center">
+                        <div className="flex flex-col items-center justify-center max-w-md mx-auto">
+                          <div className={`w-20 h-20 rounded-full flex items-center justify-center mb-4 shadow-inner ${errorState.status === 403 ? 'bg-red-100' : errorState.status === 422 ? 'bg-amber-100' : 'bg-gray-100'}`}>
+                            <FaExclamationTriangle className={`text-3xl ${errorState.status === 403 ? 'text-red-500' : errorState.status === 422 ? 'text-amber-500' : 'text-gray-500'}`} />
+                          </div>
+                          <h3 className="text-lg font-semibold text-gray-700 mb-1">
+                            {errorState.status === 403 ? 'Acceso denegado' : errorState.status === 422 ? 'Filtro no válido' : errorState.status === 409 ? 'Conflicto' : 'Error al cargar'}
+                          </h3>
+                          <p className="text-sm text-gray-500 mb-4">{errorState.message}</p>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={cargarMovimientos}
+                              className="px-4 py-2 text-sm rounded-lg bg-theme-gradient text-white font-semibold hover:shadow-lg transition"
+                            >
+                              Reintentar
+                            </button>
+                            {hayFiltrosActivos && (
+                              <button onClick={limpiarFiltros} className="px-4 py-2 text-sm rounded-lg border bg-white hover:bg-gray-50 transition">
+                                Limpiar filtros
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
                   ) : vistaAgrupada && movimientosAgrupados ? (
                     <>
                       {/* 📭 Empty State Premium */}
@@ -3367,6 +3620,66 @@ const Movimientos = () => {
                 className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-lg hover:from-emerald-600 hover:to-green-700 transition-colors flex items-center gap-2 shadow-md"
               >
                 <FaCheckCircle /> Aceptar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* MOV-FECHA: Modal de confirmación de fecha de salida diferente */}
+      {showConfirmFechaSalida && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in duration-200">
+            <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-600 to-indigo-600 rounded-t-xl">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                📅 Confirmar Fecha de Salida
+              </h2>
+              <p className="text-white/80 text-sm mt-1">La fecha efectiva difiere de la fecha actual</p>
+            </div>
+            
+            <div className="p-6">
+              <div className="mb-4 p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
+                <p className="text-blue-800 font-semibold text-center mb-2">
+                  ⚠️ Está registrando una salida con fecha diferente a la actual
+                </p>
+                <div className="space-y-2 text-sm mt-3">
+                  <div className="flex justify-between py-1 border-b border-blue-100">
+                    <span className="text-blue-600">Fecha de salida indicada:</span>
+                    <span className="font-bold text-blue-900">
+                      {formData.fecha_salida ? new Date(formData.fecha_salida).toLocaleString('es-MX') : '-'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between py-1">
+                    <span className="text-blue-600">Fecha de registro (sistema):</span>
+                    <span className="font-medium text-gray-700">{new Date().toLocaleString('es-MX')}</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-amber-50 border border-amber-300 rounded-lg p-3 text-sm text-amber-800">
+                <strong>Nota:</strong> La fecha de salida será registrada para trazabilidad y reportes. 
+                La fecha de registro en el sistema se mantendrá automáticamente.
+              </div>
+            </div>
+            
+            <div className="px-6 py-4 border-t bg-gray-50 flex justify-between rounded-b-xl">
+              <button
+                onClick={() => setShowConfirmFechaSalida(false)}
+                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  setShowConfirmFechaSalida(false);
+                  // Continuar con el registro — re-invocar registrarMovimiento 
+                  // que ahora pasará el check de showConfirmFechaSalida=false
+                  registrarMovimiento();
+                }}
+                className="px-6 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-colors font-medium shadow-md flex items-center gap-2"
+              >
+                <FaCheckCircle />
+                Confirmar Fecha y Registrar
               </button>
             </div>
           </div>

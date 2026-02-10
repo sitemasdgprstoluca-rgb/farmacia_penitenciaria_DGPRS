@@ -49,6 +49,24 @@ const PDF_MIME = 'application/pdf';
 const hexToARGB = (hex) => `FF${hex.replace('#', '').toUpperCase()}`;
 
 const triggerDownload = (blob, fileName) => {
+  // PDFs: abrir en visor nativo del navegador (sin descarga)
+  if (fileName.toLowerCase().endsWith('.pdf') ||
+      (blob.type && blob.type === 'application/pdf')) {
+    const url = window.URL.createObjectURL(blob);
+    const ventana = window.open(url, '_blank');
+    if (!ventana) {
+      // Fallback: descarga directa si pop-ups están bloqueados
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', fileName);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
+    setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+    return;
+  }
+  // Otros formatos: descarga clásica
   const url = window.URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
@@ -56,6 +74,7 @@ const triggerDownload = (blob, fileName) => {
   document.body.appendChild(link);
   link.click();
   link.remove();
+  window.URL.revokeObjectURL(url);
 };
 
 const addFooter = (sheet, columnCount, colors, config) => {
