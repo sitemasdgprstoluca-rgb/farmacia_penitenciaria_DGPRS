@@ -838,6 +838,7 @@ class LoteViewSet(viewsets.ModelViewSet):
                     'fecha_fabricacion': lote.fecha_fabricacion.strftime('%Y-%m-%d') if lote.fecha_fabricacion else '',
                     'fecha_caducidad': lote.fecha_caducidad.strftime('%Y-%m-%d') if lote.fecha_caducidad else '',
                     'fecha_caducidad_raw': lote.fecha_caducidad,
+                    'cantidad_contrato': lote.cantidad_contrato,
                     'cantidad_inicial': lote.cantidad_inicial,
                     'cantidad_actual': lote.cantidad_actual,
                     'centro_nombre': getattr(lote.centro, 'nombre', 'Farmacia Central') if lote.centro else 'Farmacia Central',
@@ -912,7 +913,8 @@ class LoteViewSet(viewsets.ModelViewSet):
             # Headers exactos
             headers = [
                 'Clave', 'Producto', 'Presentación', 'Código de Lote', 'Fecha de Caducidad',
-                'Cantidad Inicial', 'Cantidad Actual', 'Precio Unitario', 'Fecha de Fabricación',
+                'Cantidad Contrato', 'Cantidad Recibida', 'Cantidad Inventario',
+                'Precio Unitario', 'Fecha de Fabricación',
                 'Ubicación', 'Número de Contrato', 'Marca / Laboratorio', 'Lote activo'
             ]
             ws.append(headers)
@@ -935,8 +937,9 @@ class LoteViewSet(viewsets.ModelViewSet):
                     presentacion = ''
 
                 # Datos directos del lote (sin consolidar)
-                cant_inicial = lote.cantidad_inicial or 0
-                cant_actual = lote.cantidad_actual or 0
+                cant_contrato = lote.cantidad_contrato or ''  # Total según contrato
+                cant_recibida = lote.cantidad_inicial or 0    # Lo que ha llegado
+                cant_inventario = lote.cantidad_actual or 0   # Lo que queda (recibido - salidas)
                 activo_str = 'Sí' if lote.activo else 'No'
                 
                 # Ubicación real del lote
@@ -948,8 +951,9 @@ class LoteViewSet(viewsets.ModelViewSet):
                     presentacion,
                     lote.numero_lote or '',
                     lote.fecha_caducidad.strftime('%d/%m/%Y') if lote.fecha_caducidad else '',
-                    cant_inicial,
-                    cant_actual,
+                    cant_contrato,
+                    cant_recibida,
+                    cant_inventario,
                     float(lote.precio_unitario) if lote.precio_unitario else 0.00,
                     lote.fecha_fabricacion.strftime('%d/%m/%Y') if lote.fecha_fabricacion else '',
                     ubicacion_str,
@@ -959,7 +963,7 @@ class LoteViewSet(viewsets.ModelViewSet):
                 ])
 
             # Ajustar anchos de columna
-            column_widths = [10, 40, 25, 15, 15, 15, 15, 15, 15, 25, 20, 20, 12]
+            column_widths = [10, 40, 25, 15, 15, 18, 18, 18, 15, 15, 25, 20, 20, 12]
             for col_idx, width in enumerate(column_widths, 1):
                 ws.column_dimensions[get_column_letter(col_idx)].width = width
 

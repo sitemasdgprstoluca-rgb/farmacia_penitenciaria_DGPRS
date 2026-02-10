@@ -1215,7 +1215,7 @@ def generar_reporte_lotes(lotes_data, filtros=None):
         wordWrap='CJK',
     )
     
-    data = [['#', 'Clave', 'Producto', 'Lote', 'F. Fabricación', 'F. Caducidad', 'Cant. Inicial', 'Cant. Actual', 'Centro', 'Estado']]
+    data = [['#', 'Clave', 'Producto', 'Lote', 'F. Cad.', 'Contrato', 'Recibida', 'Inventario', 'Centro', 'Estado']]
     
     for idx, lote in enumerate(lotes_data, 1):
         # SIN TRUNCAR - usar Paragraph para wrap automático
@@ -1259,8 +1259,8 @@ def generar_reporte_lotes(lotes_data, filtros=None):
             clave_paragraph,
             producto_paragraph,
             lote_num_paragraph,
-            str(lote.get('fecha_fabricacion', '')),
             str(lote.get('fecha_caducidad', '')),
+            str(lote.get('cantidad_contrato', '')) if lote.get('cantidad_contrato') else '-',
             str(lote.get('cantidad_inicial', 0)),
             str(lote.get('cantidad_actual', 0)),
             centro_paragraph,
@@ -1268,7 +1268,7 @@ def generar_reporte_lotes(lotes_data, filtros=None):
         ])
     
     # ISS-FIX: Anchos ajustados - columna Centro más ancha para nombres largos
-    col_widths = [0.3*inch, 0.65*inch, 1.6*inch, 0.75*inch, 0.7*inch, 0.7*inch, 0.55*inch, 0.55*inch, 1.5*inch, 0.75*inch]
+    col_widths = [0.3*inch, 0.6*inch, 1.5*inch, 0.7*inch, 0.7*inch, 0.6*inch, 0.6*inch, 0.6*inch, 1.3*inch, 0.7*inch]
     table = _crear_tabla_institucional(data, col_widths)
     elements.append(table)
     
