@@ -95,7 +95,10 @@ def salida_masiva(request):
                 if not fecha_salida:
                     fecha_parsed = parse_date(fecha_salida_raw)
                     if fecha_parsed:
-                        fecha_salida = timezone.make_aware(dt.combine(fecha_parsed, dt.min.time())) if timezone.is_naive(dt.combine(fecha_parsed, dt.min.time())) else dt.combine(fecha_parsed, dt.min.time())
+                        fecha_salida = timezone.make_aware(dt.combine(fecha_parsed, dt.min.time()))
+                # Asegurar que siempre sea timezone-aware para evitar comparaciones naive vs aware
+                if fecha_salida and timezone.is_naive(fecha_salida):
+                    fecha_salida = timezone.make_aware(fecha_salida)
         
         # MOV-FECHA: Validar que fecha_salida no sea futura
         if fecha_salida and fecha_salida > timezone.now():
