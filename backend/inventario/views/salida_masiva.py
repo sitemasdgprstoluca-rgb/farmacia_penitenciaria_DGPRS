@@ -133,6 +133,13 @@ def salida_masiva(request):
         errores = []
         items_validos = []
         
+        # =====================================================================
+        # PERF-FIX: Batch-fetch lotes y stock reservado para evitar N+1 queries
+        # Antes: 2 queries por item (get + stock_reservado) = 2N queries
+        # Ahora: 2 queries totales para todos los items
+        # =====================================================================
+        lote_ids = []
+        cantidades_por_idx = {}
         for idx, item in enumerate(items, 1):
             lote_id = item.get('lote_id')
             cantidad = item.get('cantidad', 0)
@@ -140,33 +147,55 @@ def salida_masiva(request):
             if not lote_id:
                 errores.append(f'Item {idx}: Falta ID de lote')
                 continue
-            
             if not cantidad or cantidad <= 0:
                 errores.append(f'Item {idx}: Cantidad debe ser mayor a 0')
                 continue
             
-            try:
-                lote = Lote.objects.select_related('producto').get(pk=lote_id)
-                
-                # ISS-FIX: Verificar stock disponible (considerando reservas pendientes)
-                stock_reservado = _calcular_stock_reservado(lote)
-                stock_disponible = lote.cantidad_actual - stock_reservado
-                
-                if stock_disponible < cantidad:
-                    errores.append(
-                        f'Item {idx}: Stock insuficiente en lote {lote.numero_lote}. '
-                        f'Disponible real: {stock_disponible} (total: {lote.cantidad_actual}, reservado: {stock_reservado}), '
-                        f'Solicitado: {cantidad}'
-                    )
-                    continue
-                
-                items_validos.append({
-                    'lote': lote,
-                    'cantidad': int(cantidad)
-                })
-                
-            except Lote.DoesNotExist:
+            lote_ids.append(lote_id)
+            cantidades_por_idx[lote_id] = cantidades_por_idx.get(lote_id, [])
+            cantidades_por_idx[lote_id].append((idx, int(cantidad)))
+        
+        # Batch-fetch todos los lotes en 1 query
+        lotes_map = {}
+        if lote_ids:
+            lotes_qs = Lote.objects.select_related('producto').filter(pk__in=lote_ids)
+            lotes_map = {l.pk: l for l in lotes_qs}
+        
+        # Batch-calculate stock reservado para todos los lotes en 1 query
+        reservado_map = _calcular_stock_reservado_batch(list(lotes_map.values())) if lotes_map else {}
+        
+        # Validar cada item usando los datos pre-cargados
+        for item_raw in items:
+            lote_id = item_raw.get('lote_id')
+            cantidad = item_raw.get('cantidad', 0)
+            if not lote_id or not cantidad or cantidad <= 0:
+                continue  # Ya reportado arriba
+            
+            idx_list = cantidades_por_idx.get(lote_id, [])
+            if not idx_list:
+                continue
+            idx, cantidad_int = idx_list.pop(0)
+            
+            lote = lotes_map.get(lote_id)
+            if not lote:
                 errores.append(f'Item {idx}: Lote con ID {lote_id} no encontrado')
+                continue
+            
+            stock_reservado = reservado_map.get(lote.pk, 0)
+            stock_disponible = lote.cantidad_actual - stock_reservado
+            
+            if stock_disponible < cantidad_int:
+                errores.append(
+                    f'Item {idx}: Stock insuficiente en lote {lote.numero_lote}. '
+                    f'Disponible real: {stock_disponible} (total: {lote.cantidad_actual}, reservado: {stock_reservado}), '
+                    f'Solicitado: {cantidad_int}'
+                )
+                continue
+            
+            items_validos.append({
+                'lote': lote,
+                'cantidad': cantidad_int
+            })
         
         if errores:
             return Response({
@@ -186,20 +215,34 @@ def salida_masiva(request):
         estado_tag = '[CONFIRMADO]' if auto_confirmar else '[PENDIENTE]'
         
         with transaction.atomic():
+            # =====================================================================
+            # PERF-FIX: Batch lock todos los lotes en 1 query + batch stock reservado
+            # Antes: (select_for_update + stock_reservado + full_clean) * N = ~5N queries
+            # Ahora: 2 queries batch + 1 INSERT por item = 2 + N queries
+            # =====================================================================
+            lote_pks_validos = [item['lote'].pk for item in items_validos]
+            lotes_locked_qs = Lote.objects.select_for_update().select_related('producto').filter(pk__in=lote_pks_validos)
+            lotes_locked_map = {l.pk: l for l in lotes_locked_qs}
+            
+            # Re-calcular stock reservado dentro de la transacción (con locks)
+            if not auto_confirmar:
+                reservado_locked = _calcular_stock_reservado_batch(list(lotes_locked_map.values()))
+            else:
+                reservado_locked = {}
+            
             for item in items_validos:
                 lote = item['lote']
                 cantidad = item['cantidad']
                 
-                # Bloquear lote para verificación atómica
-                lote_locked = Lote.objects.select_for_update().get(pk=lote.pk)
+                lote_locked = lotes_locked_map.get(lote.pk)
+                if not lote_locked:
+                    raise Exception(f'Lote {lote.pk} no encontrado al procesar')
                 
-                # Re-validar stock disponible
+                # Re-validar stock disponible (usando datos batch)
                 if not auto_confirmar:
-                    # Si no es auto-confirmar, considerar reservas pendientes
-                    stock_reservado = _calcular_stock_reservado(lote_locked)
+                    stock_reservado = reservado_locked.get(lote_locked.pk, 0)
                     stock_disponible = lote_locked.cantidad_actual - stock_reservado
                 else:
-                    # Si es auto-confirmar, solo validar stock real
                     stock_disponible = lote_locked.cantidad_actual
                 
                 if stock_disponible < cantidad:
@@ -262,7 +305,7 @@ def salida_masiva(request):
                         subtipo_salida=None,
                         referencia=grupo_salida
                     )
-                    mov_entrada.save(skip_stock_update=True)
+                    mov_entrada.save(skip_stock_update=True, skip_validation=True)
                     
                     # ===============================================================
                     # ISS-FLUJO-FIX: El inventario permanece en el centro destino
@@ -290,7 +333,8 @@ def salida_masiva(request):
                 )
                 movimiento._stock_pre_movimiento = stock_anterior
                 # HALLAZGO #1 FIX: Ya actualizamos stock arriba, usar skip_stock_update
-                movimiento.save(skip_stock_update=True)
+                # PERF-FIX: skip_validation — ya validamos en la vista
+                movimiento.save(skip_stock_update=True, skip_validation=True)
                 
                 movimientos_creados.append({
                     'id': movimiento.id,
@@ -353,6 +397,37 @@ def _calcular_stock_reservado(lote):
     ).aggregate(total=Sum('cantidad'))['total'] or 0
     
     return reservado
+
+
+def _calcular_stock_reservado_batch(lotes):
+    """
+    PERF-FIX: Calcula stock reservado para MÚLTIPLES lotes en 1 sola query.
+    
+    Antes: N queries individuales (1 por lote).
+    Ahora: 1 query con GROUP BY lote_id.
+    
+    Args:
+        lotes: Lista de instancias Lote
+    
+    Returns:
+        dict: {lote_id: cantidad_reservada}
+    """
+    from django.db.models import Sum
+    
+    if not lotes:
+        return {}
+    
+    lote_ids = [l.pk for l in lotes]
+    
+    reservados = Movimiento.objects.filter(
+        lote_id__in=lote_ids,
+        tipo='salida',
+        motivo__contains='[PENDIENTE]'
+    ).values('lote_id').annotate(
+        total=Sum('cantidad')
+    )
+    
+    return {r['lote_id']: r['total'] or 0 for r in reservados}
 
 
 def _es_movimiento_pendiente(movimiento):
@@ -612,7 +687,7 @@ def confirmar_entrega(request, grupo_salida):
                             subtipo_salida=None,
                             referencia=grupo_salida
                         )
-                        mov_entrada.save(skip_stock_update=True)
+                        mov_entrada.save(skip_stock_update=True, skip_validation=True)
                         
                         # ===============================================================
                         # ISS-FLUJO-FIX: El inventario permanece en el centro destino
