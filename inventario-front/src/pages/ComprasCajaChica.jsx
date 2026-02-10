@@ -181,6 +181,10 @@ const ComprasCajaChica = () => {
     fecha_caducidad: '',
   });
   
+  // Buscador combo de productos
+  const [productoSearch, setProductoSearch] = useState('');
+  const [showProductoDropdown, setShowProductoDropdown] = useState(false);
+  
   // Modales
   const [deleteModal, setDeleteModal] = useState({ show: false, compra: null });
   const [cancelModal, setCancelModal] = useState({ show: false, compra: null, motivo: '' });
@@ -322,19 +326,41 @@ const ComprasCajaChica = () => {
       ...prev,
       [name]: value
     }));
-    
-    // Auto-llenar descripción cuando se selecciona producto
-    if (name === 'producto' && value) {
-      const producto = productos.find(p => p.id === parseInt(value));
-      if (producto) {
-        setCurrentDetalle(prev => ({
-          ...prev,
-          descripcion_producto: producto.nombre,
-          presentacion: producto.presentacion || '',
-        }));
-      }
-    }
   };
+
+  // Manejar búsqueda/escritura en el combo de producto
+  const handleProductoSearchChange = (e) => {
+    const value = e.target.value;
+    setProductoSearch(value);
+    setCurrentDetalle(prev => ({
+      ...prev,
+      descripcion_producto: value,
+      producto: '', // Limpiar selección de catálogo al escribir libre
+    }));
+    setShowProductoDropdown(value.length >= 2);
+  };
+
+  // Seleccionar producto del dropdown de búsqueda
+  const handleSelectProducto = (producto) => {
+    setProductoSearch(`${producto.clave} - ${producto.nombre}`);
+    setCurrentDetalle(prev => ({
+      ...prev,
+      producto: producto.id,
+      descripcion_producto: producto.nombre,
+      presentacion: producto.presentacion || '',
+    }));
+    setShowProductoDropdown(false);
+  };
+
+  // Productos filtrados por búsqueda
+  const productosFiltrados = productoSearch.length >= 2
+    ? productos.filter(p => {
+        const search = productoSearch.toLowerCase();
+        return (p.nombre?.toLowerCase().includes(search) ||
+                p.clave?.toString().includes(search) ||
+                p.descripcion?.toLowerCase().includes(search));
+      }).slice(0, 8)
+    : [];
 
   // Agregar detalle a la lista
   const handleAddDetalle = () => {
@@ -360,6 +386,8 @@ const ComprasCajaChica = () => {
     }));
     
     // Limpiar formulario de detalle
+    setProductoSearch('');
+    setShowProductoDropdown(false);
     setCurrentDetalle({
       producto: '',
       descripcion_producto: '',
@@ -1437,33 +1465,38 @@ const ComprasCajaChica = () => {
                   Agregar Productos
                 </h3>
                 
-                <div className="grid grid-cols-1 md:grid-cols-6 gap-3 mb-4">
-                  <div className="md:col-span-2">
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Producto (opcional)</label>
-                    <select
-                      name="producto"
-                      value={currentDetalle.producto}
-                      onChange={handleDetalleChange}
-                      className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-green-500"
-                    >
-                      <option value="">Seleccionar o escribir abajo</option>
-                      {productos.map(producto => (
-                        <option key={producto.id} value={producto.id}>
-                          {producto.clave} - {producto.nombre}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Descripción *</label>
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-4">
+                  <div className="md:col-span-3 relative">
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Producto *</label>
                     <input
                       type="text"
-                      name="descripcion_producto"
-                      value={currentDetalle.descripcion_producto}
-                      onChange={handleDetalleChange}
-                      placeholder="Nombre del medicamento"
+                      value={productoSearch}
+                      onChange={handleProductoSearchChange}
+                      onFocus={() => productoSearch.length >= 2 && setShowProductoDropdown(true)}
+                      onBlur={() => setTimeout(() => setShowProductoDropdown(false), 200)}
+                      placeholder="Escriba el nombre o clave del producto (busca en catálogo o escriba libre)"
                       className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-green-500"
                     />
+                    {showProductoDropdown && productosFiltrados.length > 0 && (
+                      <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                        {productosFiltrados.map(p => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onMouseDown={() => handleSelectProducto(p)}
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-green-50 border-b last:border-b-0 flex justify-between items-center"
+                          >
+                            <span className="font-medium">{p.clave} - {p.nombre}</span>
+                            {p.presentacion && <span className="text-xs text-gray-400 ml-2">{p.presentacion}</span>}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {productoSearch.length >= 2 && productosFiltrados.length === 0 && showProductoDropdown && (
+                      <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg px-3 py-2 text-sm text-gray-500">
+                        No se encontró en catálogo — se usará como texto libre
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">Cantidad *</label>
