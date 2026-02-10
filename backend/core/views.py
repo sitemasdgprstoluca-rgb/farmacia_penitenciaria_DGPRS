@@ -5493,10 +5493,10 @@ class SalidaDonacionViewSet(viewsets.ModelViewSet):
                 'fecha': fecha_obj,
                 'centro_destino': centro_destino_nombre,
                 'items': items,
-                # Datos de firma para el PDF
-                'nombre_encargada': 'Q.F.B. MARILENE JUÁREZ DÍAZ',
+                # Datos de firma para el PDF (nombres en blanco para firma manual)
+                'nombre_encargada': '',
                 'cargo_encargada': 'ENCARGADA DEL ALMACÉN MÉDICO',
-                'nombre_titular': 'MTRA. ETIENNE JESTHI VELÁZQUEZ BÁEZ',
+                'nombre_titular': '',
                 'cargo_titular': 'TITULAR DE LA DIRECCIÓN DE REINSERCIÓN SOCIAL',
             }
             

@@ -1263,10 +1263,10 @@ def generar_hoja_entrega(datos_entrega, finalizado=False, es_donacion=False):
                 Paragraph("_______________________________", estilo_firma_titulo),
                 Paragraph("_______________________________", estilo_firma_titulo),
             ],
-            # Fila 6: Nombres y cargos
+            # Fila 6: Cargos (nombres en blanco para firma manual)
             [
-                Paragraph("MTRA. ETIENNE JESTHI VELÁZQUEZ BÁEZ<br/>TITULAR DE LA DIRECCIÓN DE REINSERCIÓN SOCIAL", estilo_firma_nombre),
-                Paragraph("Q.F.B. MARILENE JUÁREZ DÍAZ<br/>ENCARGADA DEL ALMACÉN MÉDICO", estilo_firma_nombre),
+                Paragraph("NOMBRE Y FIRMA<br/>TITULAR DE LA DIRECCIÓN DE REINSERCIÓN SOCIAL", estilo_firma_nombre),
+                Paragraph("NOMBRE Y FIRMA<br/>ENCARGADA DEL ALMACÉN MÉDICO", estilo_firma_nombre),
                 Paragraph("NOMBRE, CARGO, FIRMA, FECHA.", estilo_firma_nombre),
             ],
         ]
