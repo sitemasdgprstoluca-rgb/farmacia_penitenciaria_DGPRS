@@ -449,9 +449,40 @@ const Lotes = () => {
       resetForm();
       cargarLotes();
     } catch (error) {
-      const errorMsg = error.response?.data?.numero_lote?.[0] || 
-                       error.response?.data?.error || 
-                       'Error al guardar lote';
+      // Extraer mensajes de error detallados del backend
+      const respData = error.response?.data;
+      let errorMsg = 'Error al guardar lote';
+      
+      if (respData) {
+        // Priorizar detalles específicos de validación
+        if (respData.detalles) {
+          const detalles = respData.detalles;
+          // detalles puede ser un objeto { campo: ["msg"] } o { campo: "msg" }
+          const mensajes = [];
+          if (typeof detalles === 'object' && !Array.isArray(detalles)) {
+            Object.entries(detalles).forEach(([campo, msgs]) => {
+              const campoLabel = campo === '__all__' || campo === 'non_field_errors' ? '' : `${campo}: `;
+              if (Array.isArray(msgs)) {
+                msgs.forEach(m => mensajes.push(`${campoLabel}${typeof m === 'object' ? m.message || JSON.stringify(m) : m}`));
+              } else if (typeof msgs === 'string') {
+                mensajes.push(`${campoLabel}${msgs}`);
+              } else if (typeof msgs === 'object' && msgs.message) {
+                mensajes.push(`${campoLabel}${msgs.message}`);
+              }
+            });
+          } else if (Array.isArray(detalles)) {
+            detalles.forEach(m => mensajes.push(typeof m === 'string' ? m : JSON.stringify(m)));
+          }
+          errorMsg = mensajes.length > 0 ? mensajes.join(' | ') : (respData.error || errorMsg);
+        } else if (respData.numero_lote?.[0]) {
+          errorMsg = respData.numero_lote[0];
+        } else if (respData.error) {
+          errorMsg = respData.error;
+        } else if (respData.mensaje) {
+          errorMsg = respData.mensaje;
+        }
+      }
+      
       toast.error(errorMsg);
       console.error(error);
     } finally {

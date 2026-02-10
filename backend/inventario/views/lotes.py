@@ -28,6 +28,7 @@ from rest_framework import viewsets, serializers, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.db.models import Q, Sum
 from django.http import HttpResponse
@@ -298,6 +299,13 @@ class LoteViewSet(viewsets.ModelViewSet):
                 {'error': 'Error de validacion', 'detalles': e.detail}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
+        except DjangoValidationError as e:
+            # Model-level clean() raises Django ValidationError (not DRF's)
+            detalles = e.message_dict if hasattr(e, 'message_dict') else {'__all__': e.messages}
+            return Response(
+                {'error': 'Error de validacion', 'detalles': detalles},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         except Exception as e:
             # traceback removido por seguridad (ISS-008)
             return Response(
@@ -342,6 +350,12 @@ class LoteViewSet(viewsets.ModelViewSet):
         except serializers.ValidationError as e:
             return Response(
                 {'error': 'Error de validacion', 'detalles': e.detail}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except DjangoValidationError as e:
+            detalles = e.message_dict if hasattr(e, 'message_dict') else {'__all__': e.messages}
+            return Response(
+                {'error': 'Error de validacion', 'detalles': detalles},
                 status=status.HTTP_400_BAD_REQUEST
             )
         except Exception as e:
