@@ -787,24 +787,54 @@ export const abrirPdfEnNavegador = (blob, ventanaPrevia) => {
 
     const url = window.URL.createObjectURL(pdfBlob);
 
-    // Estrategia 1: Usar ventana pre-abierta real (Window object)
-    if (ventanaPrevia && ventanaPrevia instanceof Window && !ventanaPrevia.closed) {
-      ventanaPrevia.location.href = url;
-      setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
-      return true;
+    // Estrategia 1: Usar ventana pre-abierta (NO usar instanceof Window, falla con popups)
+    if (ventanaPrevia && !ventanaPrevia._fallback && typeof ventanaPrevia.closed !== 'undefined' && !ventanaPrevia.closed) {
+      try {
+        ventanaPrevia.location.href = url;
+        setTimeout(() => window.URL.revokeObjectURL(url), 120_000);
+        return true;
+      } catch (navError) {
+        console.warn('[abrirPdfEnNavegador] No se pudo navegar ventana pre-abierta:', navError);
+        // Continuar con estrategias alternativas
+      }
     }
 
-    // Estrategia 2: Pre-open fue bloqueado (_fallback) o no hubo pre-open
-    // Intentar window.open (funciona si estamos en contexto de click)
-    const win = window.open(url, '_blank');
-    if (win && !win.closed) {
-      setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
+    // Estrategia 2: Abrir nueva ventana (funciona si estamos en contexto de click síncrono)
+    try {
+      const win = window.open(url, '_blank');
+      if (win && !win.closed) {
+        // Cerrar ventana pre-abierta huérfana si existe
+        _cerrarVentanaPrevia(ventanaPrevia);
+        setTimeout(() => window.URL.revokeObjectURL(url), 120_000);
+        return true;
+      }
+    } catch { /* silenciar */ }
+
+    // Estrategia 3 (fallback final): Inyectar <iframe> invisible para mostrar PDF
+    // Esto NO es bloqueado por pop-up blockers y muestra el PDF inline
+    try {
+      _cerrarVentanaPrevia(ventanaPrevia);
+      const iframe = document.createElement('iframe');
+      iframe.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:99999;border:none;background:#fff';
+      iframe.src = url;
+      // Botón para cerrar el iframe
+      const closeBtn = document.createElement('button');
+      closeBtn.textContent = '✕ Cerrar PDF';
+      closeBtn.style.cssText = 'position:fixed;top:10px;right:20px;z-index:100000;padding:8px 20px;background:#9F2241;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:bold;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,0.3)';
+      closeBtn.onclick = () => {
+        document.body.removeChild(iframe);
+        document.body.removeChild(closeBtn);
+        window.URL.revokeObjectURL(url);
+      };
+      document.body.appendChild(iframe);
+      document.body.appendChild(closeBtn);
       return true;
+    } catch (iframeError) {
+      console.warn('[abrirPdfEnNavegador] iframe fallback falló:', iframeError);
     }
 
-    // Estrategia 3: Pop-ups totalmente bloqueados → descargar el archivo
-    // <a download> NUNCA es bloqueado por pop-up blockers
-    console.warn('[abrirPdfEnNavegador] Pop-up bloqueado, descargando PDF directamente');
+    // Último recurso: descarga directa
+    _cerrarVentanaPrevia(ventanaPrevia);
     _descargarPdfDirecto(pdfBlob, url);
     return true;
   } catch (error) {

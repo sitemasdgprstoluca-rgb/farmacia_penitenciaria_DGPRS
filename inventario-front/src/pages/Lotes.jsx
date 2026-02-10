@@ -362,11 +362,8 @@ const Lotes = () => {
       return;
     }
 
-    // cantidad_inicial: se auto-calcula desde cantidad_contrato al crear
-    // En creación, cantidad_inicial = cantidad_contrato (primera entrega completa)
-    const cantidadInicial = editingLote 
-      ? parseInt(formData.cantidad_inicial, 10) 
-      : cantidadContrato;
+    // cantidad_inicial: cantidad realmente recibida (puede ser parcial vs contrato)
+    const cantidadInicial = parseInt(formData.cantidad_inicial, 10);
     
     // Validación: cantidad debe ser un número válido
     if (isNaN(cantidadInicial)) {
@@ -383,6 +380,12 @@ const Lotes = () => {
     // Validación: cantidad no puede ser cero para nuevos lotes
     if (!editingLote && cantidadInicial === 0) {
       toast.error('La cantidad inicial debe ser mayor a cero');
+      return;
+    }
+    
+    // Validación: cantidad_inicial no puede superar cantidad_contrato
+    if (!editingLote && cantidadInicial > cantidadContrato) {
+      toast.error('La cantidad inicial recibida no puede superar la cantidad del contrato');
       return;
     }
     
@@ -1491,7 +1494,7 @@ const handleImportar = async (e) => {
                 </div>
               
                 <div className="grid grid-cols-2 gap-4">
-                  {/* ISS-INV-001: Cantidad del Contrato (OBLIGATORIO - campo principal) */}
+                  {/* ISS-INV-001: Cantidad del Contrato (OBLIGATORIO) */}
                   <div>
                     <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
                       CANTIDAD CONTRATO <span className="text-red-600">*</span>
@@ -1500,15 +1503,7 @@ const handleImportar = async (e) => {
                       type="number"
                       min="1"
                       value={formData.cantidad_contrato}
-                      onChange={(e) => {
-                        const newVal = e.target.value;
-                        const updates = { cantidad_contrato: newVal };
-                        // Auto-sincronizar cantidad_inicial al crear (mismo valor que contrato)
-                        if (!editingLote) {
-                          updates.cantidad_inicial = newVal;
-                        }
-                        setFormData({...formData, ...updates});
-                      }}
+                      onChange={(e) => !editingLote && setFormData({...formData, cantidad_contrato: e.target.value})}
                       className={`w-full px-4 py-3 border-2 rounded-xl transition-all focus:outline-none ${
                         editingLote 
                           ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed' 
@@ -1531,30 +1526,46 @@ const handleImportar = async (e) => {
                     />
                     <p className="text-xs text-gray-500 italic mt-1">
                       {editingLote 
-                        ? 'No editable. Cantidad establecida por contrato' 
-                        : 'Total de unidades según el contrato de adquisición'}
+                        ? 'No editable. Cantidad total establecida por contrato' 
+                        : 'Total de unidades que establece el contrato de adquisición'}
                     </p>
                   </div>
                   
-                  {/* Cantidad Inicial - AUTO-CALCULADO desde contrato */}
+                  {/* Cantidad Inicial - cantidad realmente recibida (puede ser parcial) */}
                   <div>
                     <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                      CANTIDAD INICIAL
+                      CANTIDAD INICIAL {!editingLote && <span className="text-red-600">*</span>}
                       {editingLote && <span className="text-red-500 text-xs ml-1">🔒</span>}
                     </label>
                     <input
                       type="number"
-                      min="0"
+                      min="1"
                       value={formData.cantidad_inicial}
-                      className="w-full px-4 py-3 border-2 rounded-xl transition-all focus:outline-none border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed"
-                      disabled
-                      readOnly
-                      placeholder="Auto-calculada"
+                      onChange={(e) => !editingLote && setFormData({...formData, cantidad_inicial: e.target.value})}
+                      className={`w-full px-4 py-3 border-2 rounded-xl transition-all focus:outline-none ${
+                        editingLote 
+                          ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed' 
+                          : 'border-gray-200'
+                      }`}
+                      onFocus={(e) => {
+                        if (!editingLote) {
+                          e.target.style.borderColor = '#9F2241';
+                          e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
+                        }
+                      }}
+                      onBlur={(e) => {
+                        e.target.style.borderColor = '#E5E7EB';
+                        e.target.style.boxShadow = 'none';
+                      }}
+                      required={!editingLote}
+                      disabled={editingLote}
+                      readOnly={editingLote}
+                      placeholder="Cantidad recibida"
                     />
                     <p className="text-xs text-gray-500 italic mt-1">
                       {editingLote 
                         ? 'No editable. Use Movimientos → Entrada para reabastecer' 
-                        : 'Se establece automáticamente desde la cantidad del contrato'}
+                        : 'Unidades realmente recibidas (puede ser parcial del contrato)'}
                     </p>
                   </div>
                 </div>
