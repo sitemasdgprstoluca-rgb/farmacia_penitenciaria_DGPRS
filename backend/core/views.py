@@ -5714,15 +5714,19 @@ class AdminLimpiarDatosView(APIView):
             'categorias': {
                 'productos': {
                     'nombre': 'Productos e Inventario',
-                    'descripcion': 'Elimina productos, sus imágenes, lotes asociados y documentos de lotes',
-                    'total': productos_count + ProductoImagen.objects.count() + lotes_count + LoteDocumento.objects.count(),
+                    'descripcion': 'Elimina productos, lotes, movimientos, requisiciones, dispensaciones y donaciones vinculadas',
+                    'total': productos_count + ProductoImagen.objects.count() + lotes_count + LoteDocumento.objects.count() + dispensaciones_count + detalle_dispensaciones_count + historial_dispensaciones_count + donaciones_count + detalles_donacion_count + salidas_donacion_count,
                     'detalle': {
                         'productos': productos_count,
                         'producto_imagenes': ProductoImagen.objects.count(),
                         'lotes': lotes_count,
                         'lote_documentos': LoteDocumento.objects.count(),
+                        'dispensaciones': dispensaciones_count,
+                        'detalle_dispensaciones': detalle_dispensaciones_count,
+                        'donaciones': donaciones_count,
+                        'detalles_donacion': detalles_donacion_count,
                     },
-                    'dependencias': ['También eliminará: movimientos, hojas recolección y sus detalles'],
+                    'dependencias': ['También eliminará: movimientos, hojas recolección, dispensaciones, donaciones y sus detalles'],
                 },
                 'lotes': {
                     'nombre': 'Solo Lotes',
@@ -6137,116 +6141,196 @@ class AdminLimpiarDatosView(APIView):
                 
                 elif categoria == 'productos':
                     # Elimina productos Y todo lo que depende de ellos
+                    # ORDEN FK-SAFE: primero eliminar tablas hijas que referencian productos
                     
-                    # 1. Detalles de hojas de recolección
+                    # ====== DISPENSACIONES (detalle_dispensaciones.producto_id → ON DELETE RESTRICT) ======
+                    # 1. Historial de dispensaciones
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM historial_dispensaciones")
+                        eliminados['historial_dispensaciones'] = cursor.rowcount
+                    # 2. Detalles de dispensaciones (referencia producto_id)
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM detalle_dispensaciones")
+                        eliminados['detalle_dispensaciones'] = cursor.rowcount
+                    # 3. Dispensaciones
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM dispensaciones")
+                        eliminados['dispensaciones'] = cursor.rowcount
+                    
+                    # ====== DONACIONES (detalle_donaciones.producto_id → ON DELETE RESTRICT) ======
+                    # 4. Salidas de donación
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM salidas_donaciones")
+                        eliminados['salidas_donacion'] = cursor.rowcount
+                    # 5. Detalles de donación (referencia producto_id)
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM detalle_donaciones")
+                        eliminados['detalles_donacion'] = cursor.rowcount
+                    # 6. Donaciones
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM donaciones")
+                        eliminados['donaciones'] = cursor.rowcount
+                    
+                    # ====== HOJAS DE RECOLECCIÓN ======
+                    # 7. Detalles de hojas de recolección
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM detalle_hojas_recoleccion")
                         eliminados['detalles_hojas_recoleccion'] = cursor.rowcount
-                    
-                    # 2. Hojas de recolección
+                    # 8. Hojas de recolección
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM hojas_recoleccion")
                         eliminados['hojas_recoleccion'] = cursor.rowcount
                     
-                    # 3. Ajustes de cantidad
+                    # ====== REQUISICIONES ======
+                    # 9. Ajustes de cantidad
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM requisicion_ajustes_cantidad")
                         eliminados['requisicion_ajustes_cantidad'] = cursor.rowcount
-                    
-                    # 4. Detalles de requisición
+                    # 10. Detalles de requisición
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM detalles_requisicion")
                         eliminados['detalles_requisicion'] = cursor.rowcount
-                    
-                    # 5. Historial de estados
+                    # 11. Historial de estados
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM requisicion_historial_estados")
                         eliminados['requisicion_historial_estados'] = cursor.rowcount
-                    
-                    # 6. Movimientos
+                    # 12. Movimientos
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM movimientos")
                         eliminados['movimientos'] = cursor.rowcount
-                    
-                    # 7. Requisiciones
+                    # 13. Requisiciones
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM requisiciones")
                         eliminados['requisiciones'] = cursor.rowcount
                     
-                    # 8. Documentos de lotes
+                    # ====== LOTES ======
+                    # 14. Documentos de lotes
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM lote_documentos")
                         eliminados['lote_documentos'] = cursor.rowcount
-                    
-                    # 9. Lotes
+                    # 15. Lotes
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM lotes")
                         eliminados['lotes'] = cursor.rowcount
                     
-                    # 10. Imágenes de productos
+                    # ====== PRODUCTOS (ahora seguro - sin hijos que lo referencien) ======
+                    # 16. Imágenes de productos
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM producto_imagenes")
                         eliminados['producto_imagenes'] = cursor.rowcount
-                    
-                    # 11. Productos
+                    # 17. Productos
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM productos")
                         eliminados['productos'] = cursor.rowcount
                     
-                    # 12. Logs de importación
+                    # 18. Logs de importación
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM importacion_logs")
                         eliminados['importacion_logs'] = cursor.rowcount
                 
                 else:  # categoria == 'todos'
-                    # LIMPIEZA COMPLETA - Usar SQL directo para evitar problemas con modelos unmanaged
+                    # LIMPIEZA COMPLETA - Orden FK-safe: tablas hijas ANTES que padres
+                    # CRÍTICO: detalle_dispensaciones y detalle_donaciones tienen
+                    # producto_id con ON DELETE RESTRICT → deben eliminarse ANTES de productos
                     
                     # 0. Limpiar FKs que referencian lotes antes de eliminarlos
                     with connection.cursor() as cursor:
                         cursor.execute("UPDATE detalle_dispensaciones SET lote_id = NULL WHERE lote_id IS NOT NULL")
                         cursor.execute("UPDATE detalles_requisicion SET lote_id = NULL WHERE lote_id IS NOT NULL")
                     
-                    # 1. Detalles de hojas de recolección
+                    # ==================== DISPENSACIONES (FORMATO C) ====================
+                    # Deben eliminarse ANTES de productos (detalle_dispensaciones.producto_id)
+                    # 1. Historial de dispensaciones
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM historial_dispensaciones")
+                        eliminados['historial_dispensaciones'] = cursor.rowcount
+                    
+                    # 2. Detalles de dispensaciones
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM detalle_dispensaciones")
+                        eliminados['detalle_dispensaciones'] = cursor.rowcount
+                    
+                    # 3. Dispensaciones
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM dispensaciones")
+                        eliminados['dispensaciones'] = cursor.rowcount
+                    
+                    # 4. Pacientes
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM pacientes")
+                        eliminados['pacientes'] = cursor.rowcount
+                    
+                    # ==================== DONACIONES ====================
+                    # Deben eliminarse ANTES de productos (detalle_donaciones.producto_id)
+                    # 5. Salidas de donación
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM salidas_donaciones")
+                        eliminados['salidas_donacion'] = cursor.rowcount
+                    
+                    # 6. Detalles de donación
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM detalle_donaciones")
+                        eliminados['detalles_donacion'] = cursor.rowcount
+                    
+                    # 7. Donaciones
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM donaciones")
+                        eliminados['donaciones'] = cursor.rowcount
+                    
+                    # 8. Catálogo de productos de donación
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM productos_donacion")
+                        eliminados['productos_donacion'] = cursor.rowcount
+                    
+                    # ==================== NOTIFICACIONES ====================
+                    # 9. Notificaciones (sin FKs críticas)
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM notificaciones")
+                        eliminados['notificaciones'] = cursor.rowcount
+                    
+                    # ==================== REQUISICIONES Y HOJAS ====================
+                    # 10. Detalles de hojas de recolección
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM detalle_hojas_recoleccion")
                         eliminados['detalles_hojas_recoleccion'] = cursor.rowcount
                     
-                    # 2. Hojas de recolección
+                    # 11. Hojas de recolección
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM hojas_recoleccion")
                         eliminados['hojas_recoleccion'] = cursor.rowcount
                     
-                    # 3. Ajustes de cantidad
+                    # 12. Ajustes de cantidad
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM requisicion_ajustes_cantidad")
                         eliminados['requisicion_ajustes_cantidad'] = cursor.rowcount
                     
-                    # 4. Detalles de requisición
+                    # 13. Detalles de requisición
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM detalles_requisicion")
                         eliminados['detalles_requisicion'] = cursor.rowcount
                     
-                    # 5. Historial de estados
+                    # 14. Historial de estados
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM requisicion_historial_estados")
                         eliminados['requisicion_historial_estados'] = cursor.rowcount
                     
-                    # 6. Movimientos
+                    # 15. Movimientos
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM movimientos")
                         eliminados['movimientos'] = cursor.rowcount
                     
-                    # 7. Requisiciones
+                    # 16. Requisiciones
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM requisiciones")
                         eliminados['requisiciones'] = cursor.rowcount
                     
-                    # 8. Documentos de lotes
+                    # ==================== LOTES ====================
+                    # 17. Documentos de lotes
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM lote_documentos")
                         eliminados['lote_documentos'] = cursor.rowcount
                     
-                    # 9. Lotes - con verificación para 'todos'
+                    # 18. Lotes - con verificación
                     with connection.cursor() as cursor:
                         cursor.execute("SELECT COUNT(*) FROM lotes")
                         lotes_antes = cursor.fetchone()[0]
@@ -6263,84 +6347,45 @@ class AdminLimpiarDatosView(APIView):
                         else:
                             logger.info(f"✅ Lotes eliminados: {lotes_antes}")
                     
-                    # 10. Imágenes de productos
+                    # ==================== PRODUCTOS ====================
+                    # AHORA SEGURO: todas las tablas hijas ya fueron eliminadas
+                    # 19. Imágenes de productos
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM producto_imagenes")
                         eliminados['producto_imagenes'] = cursor.rowcount
                     
-                    # 11. Productos
+                    # 20. Productos
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM productos")
                         eliminados['productos'] = cursor.rowcount
                     
-                    # 12. Logs de importación
+                    # 21. Logs de importación
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM importacion_logs")
                         eliminados['importacion_logs'] = cursor.rowcount
                     
-                    # 13. Salidas de donación
-                    with connection.cursor() as cursor:
-                        cursor.execute("DELETE FROM salidas_donaciones")
-                        eliminados['salidas_donacion'] = cursor.rowcount
-                    
-                    # 14. Detalles de donación
-                    with connection.cursor() as cursor:
-                        cursor.execute("DELETE FROM detalle_donaciones")
-                        eliminados['detalles_donacion'] = cursor.rowcount
-                    
-                    # 15. Donaciones
-                    with connection.cursor() as cursor:
-                        cursor.execute("DELETE FROM donaciones")
-                        eliminados['donaciones'] = cursor.rowcount
-                    
-                    # 16. Notificaciones
-                    with connection.cursor() as cursor:
-                        cursor.execute("DELETE FROM notificaciones")
-                        eliminados['notificaciones'] = cursor.rowcount
-                    
-                    # ==================== DISPENSACIONES (FORMATO C) ====================
-                    # 17. Historial de dispensaciones
-                    with connection.cursor() as cursor:
-                        cursor.execute("DELETE FROM historial_dispensaciones")
-                        eliminados['historial_dispensaciones'] = cursor.rowcount
-                    
-                    # 18. Detalles de dispensaciones
-                    with connection.cursor() as cursor:
-                        cursor.execute("DELETE FROM detalle_dispensaciones")
-                        eliminados['detalle_dispensaciones'] = cursor.rowcount
-                    
-                    # 19. Dispensaciones
-                    with connection.cursor() as cursor:
-                        cursor.execute("DELETE FROM dispensaciones")
-                        eliminados['dispensaciones'] = cursor.rowcount
-                    
-                    # 20. Pacientes
-                    with connection.cursor() as cursor:
-                        cursor.execute("DELETE FROM pacientes")
-                        eliminados['pacientes'] = cursor.rowcount
-                    
                     # ==================== CAJA CHICA FARMACIA ====================
-                    # 21. Historial de compras caja chica
+                    # 22. Historial de compras caja chica
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM historial_compras_caja_chica")
                         eliminados['historial_compras_caja_chica'] = cursor.rowcount
                     
-                    # 22. Movimientos de caja chica
+                    # 23. Movimientos de caja chica
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM movimientos_caja_chica")
                         eliminados['movimientos_caja_chica'] = cursor.rowcount
                     
-                    # 23. Detalles de compras caja chica
+                    # 24. Detalles de compras caja chica
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM detalle_compras_caja_chica")
                         eliminados['detalle_compras_caja_chica'] = cursor.rowcount
                     
-                    # 24. Compras caja chica
+                    # 25. Compras caja chica
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM compras_caja_chica")
                         eliminados['compras_caja_chica'] = cursor.rowcount
                     
-                    # 25. Inventario caja chica
+                    # 26. Inventario caja chica
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM inventario_caja_chica")
                         eliminados['inventario_caja_chica'] = cursor.rowcount
