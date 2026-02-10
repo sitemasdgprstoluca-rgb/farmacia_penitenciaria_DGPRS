@@ -727,7 +727,7 @@ def _obtener_folio_documento_movimiento(mov):
     return f"{tipo_corto}-{mov.id}"
 
 
-def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=None, requisicion=None, observaciones='', skip_centro_check=False, subtipo_salida=None, numero_expediente=None, folio_documento=None):
+def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=None, requisicion=None, observaciones='', skip_centro_check=False, subtipo_salida=None, numero_expediente=None, folio_documento=None, fecha_salida=None):
     """
     Helper central para registrar un movimiento y actualizar cantidad_actual del lote.
     
@@ -872,7 +872,9 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
             subtipo_salida=subtipo_salida if tipo_normalizado == 'salida' else None,
             numero_expediente=numero_expediente if tipo_normalizado == 'salida' and subtipo_salida == 'receta' else None,
             # MEJORA CONTROL MENSUAL: Folio documento para trazabilidad de entradas
-            folio_documento=folio_documento if tipo_normalizado == 'entrada' else None
+            folio_documento=folio_documento if tipo_normalizado == 'entrada' else None,
+            # Fecha de salida física (puede diferir de fecha de registro)
+            fecha_salida=fecha_salida if tipo_normalizado == 'salida' else None
         )
         # Guardar stock previo para evitar fallos de validacion al crear el movimiento
         movimiento._stock_pre_movimiento = stock_disponible
@@ -4379,7 +4381,9 @@ class MovimientoViewSet(
             # MEJORA CONTROL MENSUAL: Folio de documento de entrada
             folio_documento=folio_documento,
             # ISS-FIX: Saltear validación de centro para transferencias del Almacén Central
-            skip_centro_check=es_transferencia_almacen
+            skip_centro_check=es_transferencia_almacen,
+            # Fecha de salida física seleccionada por el usuario
+            fecha_salida=serializer.validated_data.get('fecha_salida')
         )
         # Dejar instancia lista para serializer.data
         serializer.instance = movimiento

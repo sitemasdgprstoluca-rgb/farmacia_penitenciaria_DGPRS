@@ -436,7 +436,8 @@ def hoja_entrega_pdf(request, grupo_salida):
             }, status=status.HTTP_403_FORBIDDEN)
         
         usuario = primer_mov.usuario
-        fecha = primer_mov.fecha
+        # Priorizar fecha_salida (fecha real de salida física) sobre fecha del sistema
+        fecha = primer_mov.fecha_salida or primer_mov.fecha
         
         # Extraer observaciones (quitar el prefijo del grupo)
         observaciones_raw = primer_mov.motivo or ''

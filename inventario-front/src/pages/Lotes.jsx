@@ -1244,16 +1244,22 @@ const handleImportar = async (e) => {
                       <div className={`font-bold text-base ${lote.cantidad_actual === 0 ? 'text-red-600' : 'text-green-700'}`}>
                         {lote.cantidad_actual}
                       </div>
-                      <div className="text-gray-500">de {lote.cantidad_inicial}</div>
-                      {/* Mostrar info de contrato si existe */}
-                      {lote.cantidad_contrato && (
+                      {/* Mostrar "de X" con la referencia correcta: contrato si existe, sino inicial */}
+                      <div className="text-gray-500">
+                        de {lote.cantidad_contrato || lote.cantidad_inicial}
+                      </div>
+                      {/* Mostrar desglose si contrato difiere de inicial (entrega parcial) */}
+                      {lote.cantidad_contrato && lote.cantidad_contrato !== lote.cantidad_inicial && (
                         <div className="mt-1 text-xs">
-                          <div className="text-blue-600" title={`Contrato: ${lote.cantidad_contrato} unidades`}>
-                            📄 {lote.cantidad_contrato}
+                          <div className="text-blue-600" title={`Contrato: ${lote.cantidad_contrato} | Recibido: ${lote.cantidad_inicial}`}>
+                            📄 Contrato: {lote.cantidad_contrato}
                           </div>
-                          {lote.cantidad_pendiente > 0 && (
-                            <div className="text-orange-600" title={`Pendiente por recibir: ${lote.cantidad_pendiente} unidades`}>
-                              ⏳ -{lote.cantidad_pendiente}
+                          <div className="text-indigo-600" title={`Recibido inicialmente: ${lote.cantidad_inicial} unidades`}>
+                            📦 Recibido: {lote.cantidad_inicial}
+                          </div>
+                          {lote.cantidad_contrato > lote.cantidad_inicial && (
+                            <div className="text-orange-600" title={`Pendiente por recibir: ${lote.cantidad_contrato - lote.cantidad_inicial} unidades`}>
+                              ⏳ Pendiente: {lote.cantidad_contrato - lote.cantidad_inicial}
                             </div>
                           )}
                         </div>

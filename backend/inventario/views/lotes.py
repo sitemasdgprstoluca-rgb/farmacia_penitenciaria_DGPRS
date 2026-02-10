@@ -443,7 +443,7 @@ class LoteViewSet(viewsets.ModelViewSet):
         queryset = Lote.objects.select_related('producto', 'centro').only(
             'id', 'numero_lote', 'fecha_caducidad', 'fecha_fabricacion',
             'precio_unitario', 'marca', 'numero_contrato', 'ubicacion',
-            'cantidad_inicial', 'cantidad_actual', 'activo',
+            'cantidad_inicial', 'cantidad_actual', 'cantidad_contrato', 'activo',
             'producto__id', 'producto__clave', 'producto__nombre', 
             'producto__descripcion', 'producto__presentacion', 'producto__unidad_medida',
             'centro__id', 'centro__nombre'
@@ -575,6 +575,8 @@ class LoteViewSet(viewsets.ModelViewSet):
             'numero_contrato': None,
             'centros': [],
             'centros_detalle': [],  # Lista con nombre y cantidad por centro
+            'cantidad_contrato': None,  # Total de contrato (agregado de todos los lotes del grupo)
+            'cantidad_contrato_total': 0,  # Suma de cantidades contrato
             'activo': True,
             'dias_para_caducar': 999,
             'alerta_caducidad': 'normal',
@@ -625,6 +627,9 @@ class LoteViewSet(viewsets.ModelViewSet):
             
             cons['cantidad_total'] += lote.cantidad_actual
             cons['cantidad_inicial_total'] += lote.cantidad_inicial
+            # Acumular cantidad_contrato de todos los lotes del grupo
+            if lote.cantidad_contrato:
+                cons['cantidad_contrato_total'] += lote.cantidad_contrato
             cons['lotes_ids'].append(lote.id)  # Agregar ID para verificar movimientos
             
             # Registrar centro
@@ -650,6 +655,14 @@ class LoteViewSet(viewsets.ModelViewSet):
             cons['porcentaje_consumido'] = porcentaje
             cons['cantidad_actual'] = cons['cantidad_total']  # Alias para compatibilidad
             cons['cantidad_inicial'] = cons['cantidad_inicial_total']
+            # Exponer cantidad_contrato solo si algún lote tenía contrato
+            cons['cantidad_contrato'] = cons['cantidad_contrato_total'] if cons['cantidad_contrato_total'] > 0 else None
+            # Calcular pendiente respecto al contrato
+            if cons['cantidad_contrato']:
+                cons['cantidad_pendiente'] = max(0, cons['cantidad_contrato'] - cons['cantidad_inicial_total'])
+            else:
+                cons['cantidad_pendiente'] = 0
+            del cons['cantidad_contrato_total']  # No exponer campo auxiliar
             cons['centro_nombre'] = ', '.join(cons['centros'][:2]) + ('...' if len(cons['centros']) > 2 else '')
             
             # ISS-TRAZ: Indicar si el lote tiene movimientos (para bloquear edición de campos críticos)
