@@ -12,16 +12,19 @@ pip install -r requirements.txt
 echo "=== Collecting static files ==="
 python manage.py collectstatic --no-input
 
-echo "=== Applying custom SQL migrations ==="
-python manage.py dbshell -- < migrations_sql/add_fecha_salida_movimientos.sql 2>/dev/null || python -c "
+echo "=== Applying custom SQL migrations (PostgreSQL only) ==="
+python -c "
 import django, os
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 django.setup()
 from django.db import connection
-with connection.cursor() as c:
-    c.execute('ALTER TABLE movimientos ADD COLUMN IF NOT EXISTS fecha_salida TIMESTAMP WITH TIME ZONE NULL')
-    c.execute('CREATE INDEX IF NOT EXISTS idx_movimientos_fecha_salida ON movimientos (fecha_salida) WHERE fecha_salida IS NOT NULL')
-print('fecha_salida column ensured')
+if connection.vendor != 'postgresql':
+    print('Skipping SQL migration: not PostgreSQL (current: ' + connection.vendor + ')')
+else:
+    with connection.cursor() as c:
+        c.execute('ALTER TABLE movimientos ADD COLUMN IF NOT EXISTS fecha_salida TIMESTAMP WITH TIME ZONE NULL')
+        c.execute('CREATE INDEX IF NOT EXISTS idx_movimientos_fecha_salida ON movimientos (fecha_salida) WHERE fecha_salida IS NOT NULL')
+    print('fecha_salida column ensured')
 "
 
 echo "=== Running migrations ==="
