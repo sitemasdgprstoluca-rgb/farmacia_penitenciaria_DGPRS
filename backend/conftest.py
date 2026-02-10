@@ -179,16 +179,16 @@ def usuario_farmacia(django_user_model, db):
 @pytest.fixture
 def usuario_centro(django_user_model, centro, db):
     """Usuario con rol centro"""
-    user, _ = django_user_model.objects.get_or_create(
-        username='centro_test',
-        defaults={
-            'email': 'centro@test.com',
-            'rol': 'centro',
-            'centro': centro
-        }
-    )
-    user.set_password('testpass123')
-    user.save()
+    try:
+        user = django_user_model.objects.get(username='centro_test')
+    except django_user_model.DoesNotExist:
+        user = django_user_model.objects.create_user(
+            username='centro_test',
+            email='centro@test.com',
+            password='testpass123',
+            rol='centro',
+            centro=centro,
+        )
     return user
 
 
