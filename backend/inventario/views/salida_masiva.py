@@ -594,8 +594,12 @@ def confirmar_entrega(request, grupo_salida):
                             lote_destino.save(update_fields=['cantidad_actual', 'cantidad_inicial', 'activo', 'updated_at'])
                         
                         # Crear movimiento de ENTRADA en centro destino
+                        # FIX: Usar Movimiento() + save(skip_stock_update=True) en lugar de
+                        # Movimiento.objects.create() — ya actualizamos stock manualmente arriba,
+                        # sin skip_stock_update el save() llamaría aplicar_movimiento_a_lote()
+                        # y DUPLICARÍA la cantidad en el lote destino.
                         motivo_entrada = f'[CONFIRMADO][{grupo_salida}] Entrada por transferencia desde Almacén Central'
-                        Movimiento.objects.create(
+                        mov_entrada = Movimiento(
                             tipo='entrada',
                             producto=lote_destino.producto,
                             lote=lote_destino,
@@ -607,6 +611,7 @@ def confirmar_entrega(request, grupo_salida):
                             subtipo_salida=None,
                             referencia=grupo_salida
                         )
+                        mov_entrada.save(skip_stock_update=True)
                         
                         # ===============================================================
                         # ISS-FLUJO-FIX: El inventario permanece en el centro destino

@@ -484,7 +484,8 @@ const Movimientos = () => {
             // Inicialmente tomar centro del movimiento
             centro_nombre: mov.centro_nombre || 'Almacén Central',
             centro_id: mov.centro_id || mov.centro,
-            fecha: mov.fecha || mov.fecha_movimiento,
+            // Priorizar fecha_salida (fecha real de salida física) sobre fecha del sistema
+            fecha: mov.fecha_salida || mov.fecha || mov.fecha_movimiento,
             usuario_nombre: mov.usuario_nombre || 'Sistema',
             // Contadores detallados
             salidas: [],
@@ -526,11 +527,12 @@ const Movimientos = () => {
         if (estaConfirmado(mov)) grupo.confirmado = true;
         if (estaPendiente(mov)) grupo.pendiente = true;
         
-        // Fecha más reciente
-        const fechaMov = new Date(mov.fecha || mov.fecha_movimiento);
+        // Fecha más reciente (priorizar fecha_salida para salidas)
+        const fechaEfectiva = mov.fecha_salida || mov.fecha || mov.fecha_movimiento;
+        const fechaMov = new Date(fechaEfectiva);
         const fechaGrupo = new Date(grupo.fecha);
         if (fechaMov > fechaGrupo) {
-          grupo.fecha = mov.fecha || mov.fecha_movimiento;
+          grupo.fecha = fechaEfectiva;
         }
       } else {
         sinGrupo.push(mov);
@@ -2663,7 +2665,7 @@ const Movimientos = () => {
                                                               <span className="font-bold text-emerald-600 text-base">+{Math.abs(mov.cantidad)}</span>
                                                             </td>
                                                             <td className="px-3 py-2.5 text-right text-xs text-slate-500">
-                                                              {mov.fecha ? new Date(mov.fecha).toLocaleDateString('es-MX', {day: '2-digit', month: 'short'}) : '-'}
+                                                              {(mov.fecha_salida || mov.fecha) ? new Date(mov.fecha_salida || mov.fecha).toLocaleDateString('es-MX', {day: '2-digit', month: 'short'}) : '-'}
                                                             </td>
                                                           </tr>
                                                         ))}
@@ -2714,7 +2716,7 @@ const Movimientos = () => {
                                                               <span className="font-bold text-orange-600 text-base">-{Math.abs(mov.cantidad)}</span>
                                                             </td>
                                                             <td className="px-3 py-2.5 text-right text-xs text-slate-500">
-                                                              {mov.fecha ? new Date(mov.fecha).toLocaleDateString('es-MX', {day: '2-digit', month: 'short'}) : '-'}
+                                                              {(mov.fecha_salida || mov.fecha) ? new Date(mov.fecha_salida || mov.fecha).toLocaleDateString('es-MX', {day: '2-digit', month: 'short'}) : '-'}
                                                             </td>
                                                           </tr>
                                                         ))}
@@ -2785,7 +2787,7 @@ const Movimientos = () => {
                                                   </td>
                                                   <td className="px-2 py-2.5 text-gray-600 text-xs hidden sm:table-cell">Almacén Central</td>
                                                   <td className="px-2 py-2.5 text-gray-500 text-xs hidden md:table-cell">
-                                                    {mov.fecha ? new Date(mov.fecha).toLocaleDateString('es-MX') : ''}
+                                                    {(mov.fecha_salida || mov.fecha) ? new Date(mov.fecha_salida || mov.fecha).toLocaleDateString('es-MX') : ''}
                                                   </td>
                                                   <td className="px-2 py-2.5 text-center">
                                                     <span className="text-xs text-gray-400 font-mono">#{mov.id}</span>
@@ -2847,7 +2849,7 @@ const Movimientos = () => {
                                                   </td>
                                                   <td className="px-2 py-2.5 text-gray-600 text-xs hidden sm:table-cell">{mov.centro_nombre || grupo.centro_nombre}</td>
                                                   <td className="px-2 py-2.5 text-gray-500 text-xs hidden md:table-cell">
-                                                    {mov.fecha ? new Date(mov.fecha).toLocaleDateString('es-MX') : ''}
+                                                    {(mov.fecha_salida || mov.fecha) ? new Date(mov.fecha_salida || mov.fecha).toLocaleDateString('es-MX') : ''}
                                                   </td>
                                                   <td className="px-2 py-2.5 text-center">
                                                     <span className="text-xs text-gray-400 font-mono">#{mov.id}</span>
@@ -2911,7 +2913,7 @@ const Movimientos = () => {
                                                   </td>
                                                   <td className="px-2 py-2.5 text-gray-600 text-xs hidden sm:table-cell">{mov.centro_nombre || grupo.centro_nombre}</td>
                                                   <td className="px-2 py-2.5 text-gray-500 text-xs hidden md:table-cell">
-                                                    {mov.fecha ? new Date(mov.fecha).toLocaleDateString('es-MX') : ''}
+                                                    {(mov.fecha_salida || mov.fecha) ? new Date(mov.fecha_salida || mov.fecha).toLocaleDateString('es-MX') : ''}
                                                   </td>
                                                   <td className="px-2 py-2.5 text-center">
                                                     <span className="text-xs text-gray-400 font-mono">#{mov.id}</span>
@@ -2996,7 +2998,9 @@ const Movimientos = () => {
                               </span>
                             </td>
                             <td className="px-2 py-3.5 text-gray-600 text-xs hidden md:table-cell">
-                              {mov.fecha_movimiento
+                              {mov.fecha_salida
+                                ? new Date(mov.fecha_salida).toLocaleDateString('es-MX')
+                                : mov.fecha_movimiento
                                 ? new Date(mov.fecha_movimiento).toLocaleDateString('es-MX')
                                 : mov.fecha
                                 ? new Date(mov.fecha).toLocaleDateString('es-MX')
@@ -3207,7 +3211,9 @@ const Movimientos = () => {
                             <span className="line-clamp-2">{mov.centro_nombre || mov.centro || "Almacén Central"}</span>
                           </td>
                           <td className="px-2 py-3.5 text-gray-600 text-xs hidden md:table-cell whitespace-nowrap">
-                            {mov.fecha_movimiento
+                            {mov.fecha_salida
+                              ? new Date(mov.fecha_salida).toLocaleDateString('es-MX')
+                              : mov.fecha_movimiento
                               ? new Date(mov.fecha_movimiento).toLocaleDateString('es-MX')
                               : mov.fecha
                               ? new Date(mov.fecha).toLocaleDateString('es-MX')

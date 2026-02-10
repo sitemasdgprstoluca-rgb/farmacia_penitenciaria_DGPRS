@@ -719,28 +719,30 @@ apiClient.interceptors.response.use(
  *
  * @param {Blob|Response|undefined} blob - El blob PDF (omitir o null para pre-abrir pestaña)
  * @param {Window|null} ventanaPrevia - Ventana pre-abierta por una llamada anterior
- * @returns {Window|boolean} Window si se pre-abrió; true si PDF cargado; false si error
+ * @returns {Window|boolean|{_fallback:true}} Window si se pre-abrió; true si PDF cargado; false si error
  */
 export const abrirPdfEnNavegador = (blob, ventanaPrevia) => {
   // ── Modo 1: Pre-abrir pestaña (sin blob, preserva user-gesture) ──
   if (blob === undefined || blob === null) {
     try {
-      const win = window.open('about:blank', '_blank', 'noopener');
-      if (!win) {
-        toast.error(
-          'El navegador bloqueó la ventana emergente. Permite las ventanas emergentes para ver el PDF.'
-        );
-        return false;
+      // IMPORTANTE: NO usar 'noopener' — hace que window.open devuelva null,
+      // impidiendo cargar el PDF después. Tampoco 'noreferrer'.
+      const win = window.open('about:blank', '_blank');
+      if (!win || win.closed) {
+        // Pop-up bloqueado: retornar marcador para que Mode 2 use descarga directa
+        console.warn('[abrirPdfEnNavegador] Pop-up bloqueado, se usará descarga directa');
+        return { _fallback: true };
       }
       // Mostrar indicador de carga en la pestaña pre-abierta
       try {
         win.document.title = 'Cargando PDF…';
         win.document.body.innerHTML =
-          '<p style="font-family:sans-serif;text-align:center;margin-top:40vh">Cargando PDF…</p>';
+          '<p style="font-family:sans-serif;text-align:center;margin-top:40vh;color:#666">' +
+          '⏳ Cargando PDF… por favor espere</p>';
       } catch { /* cross-origin: silenciar */ }
       return win;
     } catch {
-      return false;
+      return { _fallback: true };
     }
   }
 
@@ -785,23 +787,25 @@ export const abrirPdfEnNavegador = (blob, ventanaPrevia) => {
 
     const url = window.URL.createObjectURL(pdfBlob);
 
-    // Usar ventana pre-abierta si existe, o abrir nueva
-    if (ventanaPrevia && !ventanaPrevia.closed) {
+    // Estrategia 1: Usar ventana pre-abierta real (Window object)
+    if (ventanaPrevia && ventanaPrevia instanceof Window && !ventanaPrevia.closed) {
       ventanaPrevia.location.href = url;
-    } else {
-      const win = window.open(url, '_blank', 'noopener');
-      if (!win) {
-        toast.error(
-          'El navegador bloqueó la ventana emergente. Permite las ventanas emergentes para ver el PDF.'
-        );
-        window.URL.revokeObjectURL(url);
-        return false;
-      }
+      setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
+      return true;
     }
 
-    // Limpieza diferida del object URL
-    setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
+    // Estrategia 2: Pre-open fue bloqueado (_fallback) o no hubo pre-open
+    // Intentar window.open (funciona si estamos en contexto de click)
+    const win = window.open(url, '_blank');
+    if (win && !win.closed) {
+      setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
+      return true;
+    }
 
+    // Estrategia 3: Pop-ups totalmente bloqueados → descargar el archivo
+    // <a download> NUNCA es bloqueado por pop-up blockers
+    console.warn('[abrirPdfEnNavegador] Pop-up bloqueado, descargando PDF directamente');
+    _descargarPdfDirecto(pdfBlob, url);
     return true;
   } catch (error) {
     _cerrarVentanaPrevia(ventanaPrevia);
@@ -809,6 +813,23 @@ export const abrirPdfEnNavegador = (blob, ventanaPrevia) => {
     toast.error('Error al abrir el PDF');
     return false;
   }
+};
+
+/**
+ * Descarga un PDF directamente como archivo cuando los pop-ups están bloqueados.
+ * Usa <a download> que NUNCA es bloqueado por pop-up blockers.
+ */
+const _descargarPdfDirecto = (pdfBlob, url) => {
+  const blobUrl = url || window.URL.createObjectURL(pdfBlob);
+  const a = document.createElement('a');
+  a.href = blobUrl;
+  a.download = `reporte_${new Date().toISOString().slice(0,10)}.pdf`;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => window.URL.revokeObjectURL(blobUrl), 10_000);
+  toast.success('📥 PDF descargado. Ábrelo desde tu carpeta de descargas.', { duration: 5000 });
 };
 
 /** Cierra la ventana pre-abierta si la petición falla */
