@@ -932,6 +932,32 @@ const Movimientos = () => {
       }
     }
     
+    // ISS-CONTRATO: Para entradas, validar que no exceda cantidad_contrato
+    if (esEntrada && loteSeleccionado) {
+      try {
+        const respLote = await lotesAPI.getById(parseInt(formData.lote));
+        const loteData = respLote.data;
+        const cantContrato = loteData?.cantidad_contrato;
+        const cantInicial = loteData?.cantidad_inicial || 0;
+        const cantEntrada = Number(formData.cantidad);
+        
+        if (cantContrato && cantContrato > 0) {
+          const nuevaInicial = cantInicial + cantEntrada;
+          if (nuevaInicial > cantContrato) {
+            const disponible = Math.max(0, cantContrato - cantInicial);
+            toast.error(
+              `⚠️ La entrada excede el contrato. Contrato: ${cantContrato}, ` +
+              `ya recibido: ${cantInicial}, intentando: ${cantEntrada}. ` +
+              `Máximo permitido: ${disponible}.`
+            );
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('Error verificando contrato, el backend también validará:', err);
+      }
+    }
+    
     // Validaciones específicas para SALIDA
     if (esSalida) {
       // ISS-SEC FIX: Validar centro destino SOLO para transferencias entre centros
