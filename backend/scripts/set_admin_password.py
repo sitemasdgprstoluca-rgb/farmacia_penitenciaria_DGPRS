@@ -8,6 +8,9 @@ HALLAZGO #8: Detectar motor de BD antes de ejecutar comandos específicos de pro
 import os
 import sys
 
+# Añadir directorio backend al path para que Django encuentre config.settings
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 def main():
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
     
