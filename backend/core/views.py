@@ -7345,8 +7345,12 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                     )
                 
                 # Bloquear todos los detalles con select_for_update
+                # ISS-FIX: No usar select_related('lote') con select_for_update()
+                # porque lote es nullable (LEFT OUTER JOIN) y PostgreSQL no permite
+                # FOR UPDATE en el lado nullable de un outer join.
+                # Los lotes se bloquean individualmente más adelante con select_for_update().
                 detalles_bloqueados = list(
-                    dispensacion.detalles.select_for_update().select_related('producto', 'lote')
+                    dispensacion.detalles.select_for_update().select_related('producto')
                 )
                 
                 if not detalles_bloqueados:
@@ -7359,7 +7363,7 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                 detalles_a_procesar = []
                 
                 for detalle in detalles_bloqueados:
-                    if not detalle.lote:
+                    if not detalle.lote_id:
                         errores_stock.append(f'{detalle.producto.nombre}: No tiene lote asignado')
                         continue
                     
@@ -7377,7 +7381,7 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                     
                     # Obtener y bloquear el lote
                     try:
-                        lote = Lote.objects.select_for_update().get(id=detalle.lote.id)
+                        lote = Lote.objects.select_for_update().get(id=detalle.lote_id)
                     except Lote.DoesNotExist:
                         errores_stock.append(f'{detalle.producto.nombre}: El lote ya no existe')
                         continue
