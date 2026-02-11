@@ -962,7 +962,7 @@ const Dispensaciones = () => {
                           </button>
                         )}
                         
-                        {disp.estado === 'pendiente' && puedeEditar && (
+                        {disp.estado === 'pendiente' && puedeEditar && (disp.created_by === user?.id || esFarmaciaAdmin(user) || user?.is_superuser) && (
                           <button
                             onClick={() => handleOpenModal(disp)}
                             className="text-blue-600 hover:text-blue-800 p-1"
@@ -1000,7 +1000,7 @@ const Dispensaciones = () => {
                           <FaHistory />
                         </button>
                         
-                        {disp.estado === 'pendiente' && puedeEditar && (
+                        {disp.estado === 'pendiente' && puedeEditar && (disp.created_by === user?.id || esFarmaciaAdmin(user) || user?.is_superuser) && (
                           <button
                             onClick={() => setDeleteModal({ show: true, dispensacion: disp })}
                             className="text-red-600 hover:text-red-800 p-1"

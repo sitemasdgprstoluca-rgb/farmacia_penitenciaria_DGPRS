@@ -2947,6 +2947,7 @@ class DispensacionListSerializer(serializers.ModelSerializer):
     paciente_nombre = serializers.SerializerMethodField()
     paciente_expediente = serializers.SerializerMethodField()
     centro_nombre = serializers.SerializerMethodField()
+    created_by_nombre = serializers.SerializerMethodField()
     total_items = serializers.SerializerMethodField()
     tipo_dispensacion_display = serializers.SerializerMethodField()
     estado_display = serializers.SerializerMethodField()
@@ -2957,7 +2958,8 @@ class DispensacionListSerializer(serializers.ModelSerializer):
             'id', 'folio', 'paciente', 'paciente_nombre', 'paciente_expediente',
             'centro', 'centro_nombre', 'fecha_dispensacion',
             'tipo_dispensacion', 'tipo_dispensacion_display',
-            'estado', 'estado_display', 'total_items'
+            'estado', 'estado_display', 'total_items',
+            'created_by', 'created_by_nombre'
         ]
     
     def get_paciente_nombre(self, obj):
@@ -2968,6 +2970,11 @@ class DispensacionListSerializer(serializers.ModelSerializer):
     
     def get_centro_nombre(self, obj):
         return obj.centro.nombre if obj.centro else None
+    
+    def get_created_by_nombre(self, obj):
+        if obj.created_by:
+            return f"{obj.created_by.first_name} {obj.created_by.last_name}".strip() or obj.created_by.username
+        return None
     
     def get_total_items(self, obj):
         return obj.get_total_items()

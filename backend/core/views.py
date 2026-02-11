@@ -7076,17 +7076,10 @@ class DispensacionViewSet(viewsets.ModelViewSet):
             # Admin y farmacia pueden ver todo (modo auditoría global)
             pass
         elif user.centro:
-            # Usuario de centro: filtrar según su rol específico
-            if user.rol == 'medico':
-                # ISS-SEC-FIX: Médico SOLO ve sus propias dispensaciones
-                # Esto evita que médicos del mismo centro vean datos de otros
-                queryset = queryset.filter(centro=user.centro, created_by=user)
-            elif user.rol in ['director_centro', 'administrador_centro']:
-                # Director/Admin del centro: ven todas las de su centro (supervisión)
-                queryset = queryset.filter(centro=user.centro)
-            else:
-                # Usuario de centro genérico: ve las de su centro
-                queryset = queryset.filter(centro=user.centro)
+            # ISS-FIX: Todos los usuarios del centro pueden VER todas las dispensaciones
+            # de su centro (médicos, directores, etc.) para coordinación clínica.
+            # La restricción de EDICIÓN se hace en update/destroy, no en visibilidad.
+            queryset = queryset.filter(centro=user.centro)
         else:
             # Sin centro asignado = no ve nada (seguridad)
             return queryset.none()
@@ -7123,6 +7116,24 @@ class DispensacionViewSet(viewsets.ModelViewSet):
         if self.action == 'list':
             return DispensacionListSerializer
         return DispensacionSerializer
+    
+    def update(self, request, *args, **kwargs):
+        """
+        Actualiza una dispensación.
+        ISS-FIX: Solo el creador puede editar (o admin/farmacia).
+        """
+        dispensacion = self.get_object()
+        user = request.user
+        
+        # Solo el creador, admin o farmacia pueden editar
+        if not (user.is_superuser or user.rol in ['admin', 'admin_sistema', 'farmacia']):
+            if dispensacion.created_by_id != user.id:
+                return Response(
+                    {'error': 'Solo el usuario que creó esta dispensación puede editarla'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
+        return super().update(request, *args, **kwargs)
     
     def create(self, request, *args, **kwargs):
         """
@@ -7243,9 +7254,18 @@ class DispensacionViewSet(viewsets.ModelViewSet):
         """
         Elimina una dispensación.
         Solo se pueden eliminar dispensaciones en estado 'pendiente'.
-        Las dispensaciones ya dispensadas o canceladas no se pueden eliminar.
+        ISS-FIX: Solo el creador puede eliminar (o admin/farmacia).
         """
         dispensacion = self.get_object()
+        user = request.user
+        
+        # Solo el creador, admin o farmacia pueden eliminar
+        if not (user.is_superuser or user.rol in ['admin', 'admin_sistema', 'farmacia']):
+            if dispensacion.created_by_id != user.id:
+                return Response(
+                    {'error': 'Solo el usuario que creó esta dispensación puede eliminarla'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
         
         if dispensacion.estado == 'dispensada':
             return Response(
