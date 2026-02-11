@@ -1300,14 +1300,17 @@ const Dashboard = () => {
                     '#EC4899', '#14B8A6', '#F97316', '#6366F1', '#EF4444'
                   ];
                   
-                  // Función para navegar a reportes con el centro filtrado
+                  // Función para navegar al detalle del centro
+                  const puedeNavegar = permisos?.verReportes;
                   const irAReportesCentro = (centroId) => {
-                    navigate('/reportes', { 
-                      state: { 
-                        tipo: 'inventario', 
-                        centro: centroId 
-                      } 
-                    });
+                    if (puedeNavegar) {
+                      navigate('/reportes', { 
+                        state: { 
+                          tipo: 'inventario', 
+                          centro: centroId 
+                        } 
+                      });
+                    }
                   };
                   
                   return (
@@ -1318,9 +1321,9 @@ const Dashboard = () => {
                         return (
                           <div 
                             key={item.centro} 
-                            className="group cursor-pointer"
+                            className={puedeNavegar ? 'group cursor-pointer' : 'group'}
                             onClick={() => irAReportesCentro(item.centro_id)}
-                            title={`Click para ver detalle de inventario de ${item.centro}`}
+                            title={puedeNavegar ? `Click para ver detalle de inventario de ${item.centro}` : item.centro}
                           >
                             <div className="flex items-center justify-between mb-1.5">
                               <span className="text-sm font-semibold text-gray-700 truncate max-w-[60%] group-hover:text-gray-900 transition-colors" title={item.centro}>
