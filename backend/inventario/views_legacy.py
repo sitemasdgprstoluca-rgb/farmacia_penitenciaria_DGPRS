@@ -8327,11 +8327,17 @@ def dashboard_graficas(request):
             # Solo contar movimientos CONFIRMADOS o sin marca de estado
             mov_mes_confirmados = mov_mes.exclude(motivo__icontains='[PENDIENTE]')
             
-            entradas = mov_mes_confirmados.filter(tipo='entrada').aggregate(
+            # ISS-FIX: Incluir TODOS los tipos que suman stock (entrada, ajuste_positivo, devolucion)
+            entradas = mov_mes_confirmados.filter(
+                tipo__in=['entrada', 'ajuste_positivo', 'devolucion']
+            ).aggregate(
                 total=Coalesce(Sum('cantidad'), 0, output_field=IntegerField())
             )['total']
             
-            salidas = mov_mes_confirmados.filter(tipo='salida').aggregate(
+            # ISS-FIX: Incluir TODOS los tipos que restan stock (salida, ajuste_negativo, merma, caducidad, transferencia)
+            salidas = mov_mes_confirmados.filter(
+                tipo__in=['salida', 'ajuste_negativo', 'merma', 'caducidad', 'transferencia']
+            ).aggregate(
                 total=Coalesce(Sum('cantidad'), 0, output_field=IntegerField())
             )['total']
             
