@@ -873,9 +873,11 @@ class MovimientoViewSet(
             finalizado = request.query_params.get('finalizado', 'false').lower() == 'true'
             
             # Construir datos del movimiento
+            # Priorizar fecha_salida (fecha real de salida física) sobre fecha del sistema
+            fecha_efectiva = movimiento.fecha_salida or movimiento.fecha
             movimiento_data = {
                 'folio': movimiento.id,
-                'fecha': movimiento.fecha.strftime('%Y-%m-%d %H:%M') if movimiento.fecha else 'N/A',
+                'fecha': fecha_efectiva.strftime('%Y-%m-%d %H:%M') if fecha_efectiva else 'N/A',
                 'tipo': movimiento.tipo,
                 'subtipo_salida': movimiento.subtipo_salida or 'transferencia',
                 'centro_origen': {
