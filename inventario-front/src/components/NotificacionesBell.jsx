@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { notificacionesAPI } from "../services/api";
 import { usePermissions } from "../hooks/usePermissions";
+import { hasAccessToken } from "../services/tokenManager";
 
 const BELL_PAGE_SIZE = 10; // Límite de notificaciones en el dropdown
 
@@ -31,8 +32,8 @@ const NotificacionesBell = ({ externalCount, onCountChange }) => {
 
   // Cargar contador de no leídas (endpoint dedicado)
   const cargarContador = useCallback(async () => {
-    // Validar permiso además de usuario
-    if (!user || !tienePermiso) return;
+    // ISS-FIX: Validar permiso Y token disponible para evitar 401
+    if (!user || !tienePermiso || !hasAccessToken()) return;
     try {
       const res = await notificacionesAPI.noLeidasCount();
       const count = res.data?.no_leidas ?? 0;
@@ -46,8 +47,8 @@ const NotificacionesBell = ({ externalCount, onCountChange }) => {
 
   // Cargar notificaciones para el dropdown (limitado)
   const cargar = useCallback(async () => {
-    // Validar permiso además de usuario
-    if (!user || !tienePermiso) return;
+    // ISS-FIX: Validar permiso Y token disponible para evitar 401
+    if (!user || !tienePermiso || !hasAccessToken()) return;
     setCargando(true);
     try {
       const [notifRes, countRes] = await Promise.all([

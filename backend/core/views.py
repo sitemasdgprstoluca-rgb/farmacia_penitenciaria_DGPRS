@@ -1425,9 +1425,17 @@ class NotificacionViewSet(
             logger.warning(f"Error marcando notificaciones como leídas: {e}")
             return Response({'marcadas': 0})
 
-    @action(detail=False, methods=['get'], url_path='no-leidas-count')
+    @action(detail=False, methods=['get'], url_path='no-leidas-count',
+           permission_classes=[AllowAny])
     def no_leidas_count(self, request):
-        """GET /api/notificaciones/no-leidas-count/"""
+        """GET /api/notificaciones/no-leidas-count/
+        
+        ISS-FIX: Permite acceso sin autenticación para evitar errores 401
+        durante el polling del frontend cuando el token expira.
+        Devuelve 0 si el usuario no está autenticado.
+        """
+        if not request.user or not request.user.is_authenticated:
+            return Response({'no_leidas': 0})
         try:
             count = self.get_queryset().filter(leida=False).count()
             return Response({'no_leidas': count})
