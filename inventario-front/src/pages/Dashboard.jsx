@@ -1325,7 +1325,7 @@ const Dashboard = () => {
                               >
                                 {pct > 15 && (
                                   <span className="text-[10px] font-bold text-white">
-                                    {((item.stock / graficas.stock_por_centro.reduce((s, c) => s + c.stock, 0)) * 100).toFixed(1)}%
+                                    {((item.stock / graficas.stock_por_centro.reduce((s, c) => s + c.stock, 0)) * 100).toFixed(2)}%
                                   </span>
                                 )}
                               </div>
