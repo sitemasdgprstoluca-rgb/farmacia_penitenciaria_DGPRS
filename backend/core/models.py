@@ -3578,9 +3578,9 @@ class Dispensacion(models.Model):
         if not self.folio:
             import uuid
             from datetime import datetime as _dt
-            centro_id = self.centro_id or 0
-            ts = _dt.now().strftime('%Y%m%d%H%M%S')
-            self.folio = f"DISP-{centro_id}-{ts}-{uuid.uuid4().hex[:6].upper()}"
+            ts = _dt.now().strftime('%y%m%d')
+            short_id = uuid.uuid4().hex[:4].upper()
+            self.folio = f"DISP-{ts}-{short_id}"
         super().save(*args, **kwargs)
 
     def get_total_items(self):
