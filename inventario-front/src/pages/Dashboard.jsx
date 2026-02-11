@@ -358,54 +358,57 @@ const ChartCard = ({
   const [isExpanded, setIsExpanded] = useState(false);
   
   return (
-    <div className={`
-      bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden
-      transition-all duration-300 hover:shadow-xl
-      ${isExpanded ? 'fixed inset-4 z-50' : ''}
-      ${className}
-    `}>
-      {/* Header con gradiente del tema */}
-      <div 
-        className="px-6 py-4 border-b border-gray-100 flex items-center justify-between"
-        style={{ 
-          background: 'linear-gradient(to right, var(--color-primary-light, rgba(159, 34, 65, 0.05)), transparent)'
-        }}
-      >
-        <div className="flex items-center gap-3">
-          <div 
-            className="w-10 h-10 rounded-xl flex items-center justify-center"
-            style={{ backgroundColor: 'var(--color-primary-light, rgba(159, 34, 65, 0.1))' }}
-          >
-            <Icon className="text-lg" style={{ color: 'var(--color-primary, #9F2241)' }} />
-          </div>
-          <h3 className="font-bold text-gray-800">{title}</h3>
-        </div>
-        <div className="flex items-center gap-2">
-          {action}
-          {expandable && (
-            <button
-              onClick={() => setIsExpanded(!isExpanded)}
-              className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600"
-            >
-              {isExpanded ? <FaCompress /> : <FaExpand />}
-            </button>
-          )}
-        </div>
-      </div>
-      
-      {/* Contenido */}
-      <div className={`p-6 ${isExpanded ? 'h-[calc(100%-80px)]' : ''}`}>
-        {children}
-      </div>
-      
-      {/* Overlay para modo expandido */}
+    <>
+      {/* Overlay claro para modo expandido */}
       {isExpanded && (
         <div 
-          className="fixed inset-0 bg-black/50 -z-10"
+          className="fixed inset-0 z-40 backdrop-blur-sm"
+          style={{ backgroundColor: 'rgba(255, 255, 255, 0.85)' }}
           onClick={() => setIsExpanded(false)}
         />
       )}
-    </div>
+      <div className={`
+        bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden
+        transition-all duration-300 hover:shadow-xl
+        ${isExpanded ? 'fixed inset-6 z-50 shadow-2xl overflow-y-auto' : ''}
+        ${className}
+      `}>
+        {/* Header con gradiente del tema */}
+        <div 
+          className="px-6 py-4 border-b border-gray-100 flex items-center justify-between"
+          style={{ 
+            background: 'linear-gradient(to right, var(--color-primary-light, rgba(159, 34, 65, 0.05)), transparent)'
+          }}
+        >
+          <div className="flex items-center gap-3">
+            <div 
+              className="w-10 h-10 rounded-xl flex items-center justify-center"
+              style={{ backgroundColor: 'var(--color-primary-light, rgba(159, 34, 65, 0.1))' }}
+            >
+              <Icon className="text-lg" style={{ color: 'var(--color-primary, #9F2241)' }} />
+            </div>
+            <h3 className="font-bold text-gray-800">{title}</h3>
+          </div>
+          <div className="flex items-center gap-2">
+            {action}
+            {expandable && (
+              <button
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600"
+                title={isExpanded ? 'Minimizar' : 'Pantalla completa'}
+              >
+                {isExpanded ? <FaCompress /> : <FaExpand />}
+              </button>
+            )}
+          </div>
+        </div>
+        
+        {/* Contenido */}
+        <div className={`p-6 ${isExpanded ? 'h-[calc(100%-80px)] overflow-y-auto' : ''}`}>
+          {children}
+        </div>
+      </div>
+    </>
   );
 };
 
