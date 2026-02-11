@@ -307,6 +307,10 @@ def salida_masiva(request):
                     )
                     mov_entrada.save(skip_stock_update=True, skip_validation=True)
                     
+                    # ISS-FECHA FIX: Propagar fecha_salida a la entrada
+                    if fecha_salida:
+                        Movimiento.objects.filter(pk=mov_entrada.pk).update(fecha=fecha_salida)
+                    
                     # ===============================================================
                     # ISS-FLUJO-FIX: El inventario permanece en el centro destino
                     # para que ellos gestionen las salidas manualmente.
@@ -693,6 +697,10 @@ def confirmar_entrega(request, grupo_salida):
                             referencia=grupo_salida
                         )
                         mov_entrada.save(skip_stock_update=True, skip_validation=True)
+                        
+                        # ISS-FECHA FIX: Propagar fecha_salida de la salida original a la entrada
+                        if mov.fecha_salida:
+                            Movimiento.objects.filter(pk=mov_entrada.pk).update(fecha=mov.fecha_salida)
                         
                         # ===============================================================
                         # ISS-FLUJO-FIX: El inventario permanece en el centro destino
