@@ -1877,6 +1877,11 @@ export const dispensacionesAPI = {
     params,
     responseType: 'blob'
   }),
+  // Exportar Formato C Consolidado (Tarjeta distribución insumos médicos)
+  exportarFormatoCConsolidado: (params) => apiClient.get('/dispensaciones/formato-c-consolidado/', {
+    params,
+    responseType: 'blob'
+  }),
 };
 
 // Detalles de Dispensación

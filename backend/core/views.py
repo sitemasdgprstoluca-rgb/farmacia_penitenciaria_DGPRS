@@ -7928,6 +7928,124 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+    @action(detail=False, methods=['get'], url_path='formato-c-consolidado')
+    def formato_c_consolidado(self, request):
+        """
+        Genera PDF consolidado "Tarjeta para la distribución de Insumos médicos (C)".
+        
+        Una página por producto con todas las dispensaciones del periodo.
+        
+        Parámetros:
+        - fecha_inicio: YYYY-MM-DD (requerido)
+        - fecha_fin: YYYY-MM-DD (requerido)
+        - hora_inicio: HH:MM (opcional, default 00:00)
+        - hora_fin: HH:MM (opcional, default 23:59)
+        - centro: ID del centro (automático si usuario tiene centro asignado)
+        """
+        from datetime import datetime as dt_class
+        from core.utils.pdf_reports import generar_formato_c_consolidado
+        
+        user = request.user
+        
+        try:
+            # ---- Parámetros de fecha ----
+            fecha_inicio_str = request.query_params.get('fecha_inicio')
+            fecha_fin_str = request.query_params.get('fecha_fin')
+            
+            if not fecha_inicio_str or not fecha_fin_str:
+                return Response(
+                    {'error': 'Los parámetros fecha_inicio y fecha_fin son requeridos (formato YYYY-MM-DD)'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            
+            try:
+                fecha_inicio = dt_class.strptime(fecha_inicio_str, '%Y-%m-%d').date()
+                fecha_fin = dt_class.strptime(fecha_fin_str, '%Y-%m-%d').date()
+            except ValueError:
+                return Response(
+                    {'error': 'Formato de fecha inválido. Use YYYY-MM-DD'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            
+            # Horas opcionales
+            hora_inicio_str = request.query_params.get('hora_inicio', '00:00')
+            hora_fin_str = request.query_params.get('hora_fin', '23:59')
+            
+            try:
+                hora_inicio = dt_class.strptime(hora_inicio_str, '%H:%M').time()
+                hora_fin = dt_class.strptime(hora_fin_str, '%H:%M').time()
+            except ValueError:
+                hora_inicio = dt_class.strptime('00:00', '%H:%M').time()
+                hora_fin = dt_class.strptime('23:59', '%H:%M').time()
+            
+            datetime_inicio = timezone.make_aware(dt_class.combine(fecha_inicio, hora_inicio))
+            datetime_fin = timezone.make_aware(dt_class.combine(fecha_fin, hora_fin))
+            
+            # ---- Determinar centro ----
+            centro = None
+            centro_nombre = 'Todos los Centros'
+            centro_param = request.query_params.get('centro')
+            
+            if user.centro:
+                centro = user.centro
+                centro_nombre = centro.nombre
+            
+            if centro_param and centro_param not in ('', 'null', 'undefined'):
+                if user.is_superuser or user.rol in ('admin', 'admin_sistema', 'farmacia'):
+                    try:
+                        centro = Centro.objects.get(pk=int(centro_param))
+                        centro_nombre = centro.nombre
+                    except Centro.DoesNotExist:
+                        return Response({'error': 'Centro no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+                elif user.centro and str(user.centro.id) != centro_param:
+                    return Response(
+                        {'error': 'No tiene permiso para generar reporte de otro centro'},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+            
+            if not centro:
+                if not (user.is_superuser or user.rol in ('admin', 'admin_sistema', 'farmacia')):
+                    return Response(
+                        {'error': 'No se encontró centro asignado al usuario'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            
+            # ---- Filtrar dispensaciones ----
+            dispensaciones = Dispensacion.objects.filter(
+                estado='dispensada',
+                fecha_dispensacion__gte=datetime_inicio,
+                fecha_dispensacion__lte=datetime_fin,
+            ).select_related('paciente', 'centro', 'dispensado_por')
+            
+            if centro:
+                dispensaciones = dispensaciones.filter(centro=centro)
+            
+            dispensaciones = dispensaciones.order_by('fecha_dispensacion')
+            
+            # ---- Generar PDF ----
+            pdf_buffer = generar_formato_c_consolidado(
+                dispensaciones_qs=dispensaciones,
+                centro_nombre=centro_nombre,
+                fecha_inicio=fecha_inicio,
+                fecha_fin=fecha_fin,
+            )
+            
+            filename = (
+                f"Formato_C_Consolidado_{centro_nombre.replace(' ', '_')}_"
+                f"{fecha_inicio.strftime('%Y%m%d')}-{fecha_fin.strftime('%Y%m%d')}.pdf"
+            )
+            
+            response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error generando Formato C Consolidado: {e}", exc_info=True)
+            return Response(
+                {'error': f'Error al generar reporte: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
 
 class DetalleDispensacionViewSet(viewsets.ModelViewSet):
     """

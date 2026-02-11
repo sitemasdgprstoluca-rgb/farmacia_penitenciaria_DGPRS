@@ -4846,5 +4846,354 @@ def generar_tarjeta_entradas_salidas_formato_b_reporte(productos_data, filtros=N
 
 
 # =============================================================================
+# FORMATO C CONSOLIDADO - TARJETA DISTRIBUCIÓN DE INSUMOS MÉDICOS
+# =============================================================================
+
+def generar_formato_c_consolidado(dispensaciones_qs, centro_nombre, fecha_inicio, fecha_fin):
+    """
+    Genera PDF consolidado "Tarjeta para la distribución de Insumos médicos (C)".
+    
+    Produce una página por producto con todas las dispensaciones del periodo,
+    siguiendo el formato oficial gubernamental.
+    
+    Columnas oficiales:
+    Fecha | Doc. Entrada (Folio) | Entrada | Salida | Existencias |
+    PPL/S.P. | Nombre persona | Firma recibido (1ª,2ª,3ª Dosis) |
+    Personal médico | Revisó
+    
+    Args:
+        dispensaciones_qs: QuerySet de Dispensacion (ya filtrado por centro/fechas)
+        centro_nombre: Nombre del centro penitenciario
+        fecha_inicio: date - inicio del periodo
+        fecha_fin: date - fin del periodo
+        
+    Returns:
+        BytesIO: Buffer con el PDF generado
+    """
+    from core.models import TemaGlobal, DetalleDispensacion
+    from collections import defaultdict
+
+    buffer = BytesIO()
+    page_width, page_height = landscape(letter)
+
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(letter),
+        rightMargin=0.4 * inch,
+        leftMargin=0.4 * inch,
+        topMargin=0.6 * inch,
+        bottomMargin=0.4 * inch,
+    )
+
+    # ========== TEMA Y COLORES ==========
+    tema_colores = _obtener_colores_tema()
+    COLOR_HEADER = tema_colores['encabezado']
+    COLOR_HEADER_TEXT = tema_colores['texto_encabezado']
+    COLOR_TEXTO = tema_colores['texto']
+    COLOR_TEXTO_SEC = tema_colores['texto_secundario']
+    COLOR_FILAS_ALT = tema_colores['filas_alternas']
+    fondo_path = tema_colores.get('fondo_reportes_path')
+    nombre_institucion = tema_colores.get('nombre_institucion', 'Sistema de Farmacia Penitenciaria')
+    subtitulo_inst = tema_colores.get('subtitulo', 'Secretaría de Seguridad')
+
+    styles = getSampleStyleSheet()
+
+    # Estilos reutilizables
+    style_titulo = ParagraphStyle(
+        'FCConsTitulo', parent=styles['Heading1'],
+        fontSize=13, textColor=COLOR_HEADER, alignment=TA_CENTER, spaceAfter=2,
+    )
+    style_subtitulo = ParagraphStyle(
+        'FCConsSub', parent=styles['Normal'],
+        fontSize=9, textColor=COLOR_TEXTO, alignment=TA_CENTER, spaceAfter=1,
+    )
+    style_cell = ParagraphStyle(
+        'FCConsCell', parent=styles['Normal'],
+        fontSize=6.5, leading=8, textColor=COLOR_TEXTO,
+    )
+    style_cell_center = ParagraphStyle(
+        'FCConsCellC', parent=styles['Normal'],
+        fontSize=6.5, leading=8, textColor=COLOR_TEXTO, alignment=TA_CENTER,
+    )
+    style_header_cell = ParagraphStyle(
+        'FCConsHdrCell', parent=styles['Normal'],
+        fontSize=6.5, leading=8, textColor=COLOR_HEADER_TEXT, alignment=TA_CENTER,
+    )
+
+    # ========== AGRUPAR DETALLES POR PRODUCTO ==========
+    disp_ids = list(dispensaciones_qs.values_list('id', flat=True))
+    detalles = (
+        DetalleDispensacion.objects
+        .filter(dispensacion_id__in=disp_ids)
+        .select_related('producto', 'lote', 'dispensacion', 'dispensacion__paciente')
+        .order_by('producto__nombre', 'dispensacion__fecha_dispensacion')
+    )
+
+    productos_map = defaultdict(list)
+    for det in detalles:
+        productos_map[det.producto_id].append(det)
+
+    if not productos_map:
+        # Sin datos — generar página vacía informativa
+        elements = []
+        elements.append(Spacer(1, 1.5 * inch))
+        elements.append(Paragraph(nombre_institucion, style_titulo))
+        elements.append(Paragraph(subtitulo_inst, style_subtitulo))
+        elements.append(Spacer(1, 0.3 * inch))
+        elements.append(Paragraph(
+            "<b>TARJETA PARA LA DISTRIBUCIÓN DE INSUMOS MÉDICOS (C)</b>",
+            ParagraphStyle('FCConsTitDoc', parent=style_titulo, fontSize=11),
+        ))
+        elements.append(Spacer(1, 0.5 * inch))
+        elements.append(Paragraph(
+            f"No se encontraron dispensaciones en el periodo "
+            f"{fecha_inicio.strftime('%d/%m/%Y')} - {fecha_fin.strftime('%d/%m/%Y')} "
+            f"para el centro <b>{centro_nombre}</b>.",
+            ParagraphStyle('FCConsVacio', fontSize=10, textColor=COLOR_TEXTO, alignment=TA_CENTER),
+        ))
+
+        class FondoCanvasVacio(canvas.Canvas):
+            def __init__(self, *args, **kwargs):
+                self._fondo = fondo_path
+                canvas.Canvas.__init__(self, *args, **kwargs)
+                self._dibujar_fondo()
+            def showPage(self):
+                canvas.Canvas.showPage(self)
+                self._dibujar_fondo()
+            def _dibujar_fondo(self):
+                if self._fondo and os.path.exists(self._fondo):
+                    try:
+                        self.drawImage(str(self._fondo), 0, 0,
+                                       width=page_width, height=page_height,
+                                       preserveAspectRatio=False, mask='auto')
+                    except Exception:
+                        pass
+
+        doc.build(elements, canvasmaker=FondoCanvasVacio)
+        buffer.seek(0)
+        return buffer
+
+    # ========== GENERAR PÁGINAS POR PRODUCTO ==========
+    elements = []
+    periodo_texto = f"{fecha_inicio.strftime('%d/%m/%Y')} — {fecha_fin.strftime('%d/%m/%Y')}"
+    content_width = page_width - 0.8 * inch  # total usable width
+
+    sorted_productos = sorted(productos_map.items(), key=lambda x: x[1][0].producto.nombre)
+
+    for idx_prod, (producto_id, det_list) in enumerate(sorted_productos):
+        if idx_prod > 0:
+            elements.append(PageBreak())
+
+        producto = det_list[0].producto
+
+        # ---------- ENCABEZADO INSTITUCIONAL ----------
+        elements.append(Spacer(1, 0.2 * inch))
+        elements.append(Paragraph(nombre_institucion, style_titulo))
+        elements.append(Paragraph(subtitulo_inst, style_subtitulo))
+        elements.append(Paragraph(
+            "<b>TARJETA PARA LA DISTRIBUCIÓN DE INSUMOS MÉDICOS (C)</b>",
+            ParagraphStyle('FCConsTitDoc', parent=style_titulo, fontSize=10, spaceBefore=4, spaceAfter=6),
+        ))
+
+        # ---------- DATOS DEL PRODUCTO (campos 1-5 del formato) ----------
+        info_data = [
+            [
+                Paragraph(f"<b>1. Institución Penitenciaria:</b> {centro_nombre}", style_cell),
+                Paragraph(f"<b>Periodo:</b> {periodo_texto}", style_cell),
+            ],
+            [
+                Paragraph(f"<b>2. Insumo Médico:</b> {producto.nombre}", style_cell),
+                Paragraph(f"<b>3. Clave:</b> {producto.clave}", style_cell),
+            ],
+            [
+                Paragraph(f"<b>4. Presentación:</b> {producto.presentacion or 'N/A'}", style_cell),
+                Paragraph(f"<b>5. Concentración:</b> {producto.concentracion or 'N/A'}", style_cell),
+            ],
+        ]
+
+        info_table = Table(info_data, colWidths=[content_width * 0.55, content_width * 0.45])
+        info_table.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            ('TOPPADDING', (0, 0), (-1, -1), 3),
+            ('BOX', (0, 0), (-1, -1), 0.5, COLOR_HEADER),
+            ('INNERGRID', (0, 0), (-1, -1), 0.25, colors.HexColor('#E5E7EB')),
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#FBF2F5')),
+        ]))
+        elements.append(info_table)
+        elements.append(Spacer(1, 0.1 * inch))
+
+        # ---------- TABLA DE MOVIMIENTOS (campos 6-15) ----------
+        # Column widths proportional to content_width
+        col_widths = [
+            content_width * 0.070,  # Fecha
+            content_width * 0.095,  # Folio (Doc. entrada)
+            content_width * 0.050,  # Caducidad
+            content_width * 0.045,  # Entrada
+            content_width * 0.045,  # Salida
+            content_width * 0.050,  # Existencias
+            content_width * 0.055,  # PPL/S.P.
+            content_width * 0.170,  # Nombre persona
+            content_width * 0.120,  # Firma recibido (1ª,2ª,3ª)
+            content_width * 0.170,  # Personal médico
+            content_width * 0.130,  # Revisó
+        ]
+
+        header_row = [
+            Paragraph('<b>6. Fecha</b>', style_header_cell),
+            Paragraph('<b>7. Doc.<br/>Entrada</b>', style_header_cell),
+            Paragraph('<b>5. Fecha<br/>Caduc.</b>', style_header_cell),
+            Paragraph('<b>8. Entrada<br/>Caja/Pza</b>', style_header_cell),
+            Paragraph('<b>9. Salida<br/>Pza</b>', style_header_cell),
+            Paragraph('<b>10. Exist.<br/>Pza</b>', style_header_cell),
+            Paragraph('<b>11. PPL<br/>/S.P.</b>', style_header_cell),
+            Paragraph('<b>12. Nombre de la persona</b>', style_header_cell),
+            Paragraph('<b>13. Firma recibido<br/>(1ª, 2ª, 3ª Dosis)</b>', style_header_cell),
+            Paragraph('<b>14. Nombre y firma<br/>del personal médico</b>', style_header_cell),
+            Paragraph('<b>15. Revisó</b>', style_header_cell),
+        ]
+
+        table_data = [header_row]
+
+        # Calcular existencias acumuladas para este producto
+        existencia_acum = 0
+        # Usar el stock al inicio del periodo como base (simplificado: lotes del centro)
+        try:
+            from core.models import Lote
+            from django.db.models import Sum, Q
+            centro_obj = det_list[0].dispensacion.centro
+            stock_base = (
+                Lote.objects
+                .filter(producto=producto, centro=centro_obj, activo=True)
+                .filter(Q(fecha_caducidad__gte=fecha_inicio) | Q(fecha_caducidad__isnull=True))
+                .aggregate(total=Sum('cantidad_actual'))
+            )['total'] or 0
+            # Add back all dispensed quantities in this period to get starting stock
+            total_dispensado_periodo = sum(d.cantidad_dispensada for d in det_list)
+            existencia_acum = stock_base + total_dispensado_periodo
+        except Exception:
+            existencia_acum = 0
+
+        for det in det_list:
+            disp = det.dispensacion
+            paciente = disp.paciente
+
+            fecha_str = disp.fecha_dispensacion.strftime('%d/%m/%Y') if disp.fecha_dispensacion else '-'
+
+            # Nombre del paciente
+            try:
+                nombre_pac = paciente.nombre_completo if paciente else '-'
+            except Exception:
+                nombre_pac = f"{paciente.nombre} {paciente.apellido_paterno}" if paciente else '-'
+
+            # Fecha caducidad del lote
+            fecha_cad = det.lote.fecha_caducidad.strftime('%m/%Y') if det.lote and det.lote.fecha_caducidad else '-'
+
+            # Tipo PPL / Servidor Público
+            tipo_ppl = 'PPL'  # Default: Persona Privada de la Libertad
+
+            # Médico prescriptor
+            medico = disp.medico_prescriptor or '-'
+
+            # Actualizar existencias
+            salida = det.cantidad_dispensada
+            existencia_acum -= salida
+
+            # Dispensador (quien revisó/entregó)
+            revisor = '-'
+            if disp.dispensado_por:
+                revisor_name = (
+                    f"{disp.dispensado_por.first_name} {disp.dispensado_por.last_name}".strip()
+                )
+                revisor = revisor_name or disp.dispensado_por.username
+
+            row = [
+                Paragraph(fecha_str, style_cell_center),
+                Paragraph(disp.folio or '-', style_cell_center),
+                Paragraph(fecha_cad, style_cell_center),
+                Paragraph('-', style_cell_center),                   # Entrada (no aplica en dispensación)
+                Paragraph(str(salida), style_cell_center),           # Salida
+                Paragraph(str(max(existencia_acum, 0)), style_cell_center),  # Existencias
+                Paragraph(tipo_ppl, style_cell_center),
+                Paragraph(nombre_pac[:35], style_cell),              # Nombre truncado
+                Paragraph('', style_cell_center),                    # Firma (espacio en blanco para impresión)
+                Paragraph(medico[:30] if len(medico) > 30 else medico, style_cell),
+                Paragraph(revisor[:25] if len(revisor) > 25 else revisor, style_cell),
+            ]
+            table_data.append(row)
+
+        # Rellenar filas vacías para que el formato tenga mínimo de líneas
+        min_rows = 15
+        if len(table_data) - 1 < min_rows:
+            for _ in range(min_rows - (len(table_data) - 1)):
+                empty_row = [Paragraph('', style_cell_center)] * 11
+                table_data.append(empty_row)
+
+        mov_table = Table(table_data, colWidths=col_widths, repeatRows=1)
+        mov_table.setStyle(TableStyle([
+            # Encabezado
+            ('BACKGROUND', (0, 0), (-1, 0), COLOR_HEADER),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 6.5),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            # Datos
+            ('FONTSIZE', (0, 1), (-1, -1), 6.5),
+            ('GRID', (0, 0), (-1, -1), 0.4, COLOR_HEADER),
+            ('LEFTPADDING', (0, 0), (-1, -1), 2),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+            ('TOPPADDING', (0, 0), (-1, -1), 3),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            # Filas alternas
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, COLOR_FILAS_ALT]),
+        ]))
+        elements.append(mov_table)
+
+        # ---------- PIE DE PÁGINA ----------
+        elements.append(Spacer(1, 0.15 * inch))
+        pie_style = ParagraphStyle(
+            'FCConsPie', fontSize=6.5, textColor=COLOR_TEXTO_SEC, alignment=TA_CENTER,
+        )
+        elements.append(Paragraph(
+            f"Tarjeta C — {producto.nombre} | {centro_nombre} | "
+            f"Periodo: {periodo_texto} | "
+            f"Generado: {timezone.now().strftime('%d/%m/%Y %H:%M')} | "
+            f"Pág. {idx_prod + 1} de {len(sorted_productos)}",
+            pie_style,
+        ))
+
+    # ========== CANVAS CON FONDO ==========
+    class FormatoCConsCanvas(canvas.Canvas):
+        def __init__(self, *args, **kwargs):
+            self._fondo = fondo_path
+            canvas.Canvas.__init__(self, *args, **kwargs)
+            self._dibujar_fondo()
+
+        def showPage(self):
+            canvas.Canvas.showPage(self)
+            self._dibujar_fondo()
+
+        def _dibujar_fondo(self):
+            if self._fondo and os.path.exists(self._fondo):
+                try:
+                    self.drawImage(
+                        str(self._fondo), 0, 0,
+                        width=page_width, height=page_height,
+                        preserveAspectRatio=False, mask='auto',
+                    )
+                except Exception as e:
+                    logger.warning(f"Error dibujando fondo Formato C Consolidado: {e}")
+
+    doc.build(elements, canvasmaker=FormatoCConsCanvas)
+    buffer.seek(0)
+    logger.info(
+        f"Formato C Consolidado PDF generado - Centro: {centro_nombre}, "
+        f"Periodo: {periodo_texto}, Productos: {len(sorted_productos)}"
+    )
+    return buffer
+
+
+# =============================================================================
 # FIN DEL ARCHIVO - NO AGREGAR MÁS FUNCIONES AQUÍ
 # =============================================================================

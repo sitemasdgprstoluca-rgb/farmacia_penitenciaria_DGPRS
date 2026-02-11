@@ -156,6 +156,16 @@ const Dispensaciones = () => {
     loading: false 
   });
 
+  // Modal para Formato C Consolidado
+  const [formatoCModal, setFormatoCModal] = useState({
+    show: false,
+    fecha_inicio: new Date().toISOString().slice(0, 10),
+    fecha_fin: new Date().toISOString().slice(0, 10),
+    hora_inicio: '00:00',
+    hora_fin: '23:59',
+    loading: false,
+  });
+
   // Función para abrir modal de detalle con carga de datos completos
   const handleOpenDetail = async (disp) => {
     setDetailModal({ show: true, dispensacion: disp, loading: true });
@@ -447,6 +457,42 @@ const Dispensaciones = () => {
       toast.error(`❌ ${msg}`, { id: toastId });
     } finally {
       setReporteModal(prev => ({ ...prev, loading: false }));
+    }
+  };
+
+  // Generar Formato C Consolidado (Tarjeta distribución insumos médicos)
+  const handleGenerarFormatoCConsolidado = async () => {
+    if (!formatoCModal.fecha_inicio || !formatoCModal.fecha_fin) {
+      toast.error('Seleccione fecha inicio y fecha fin');
+      return;
+    }
+    const win = abrirPdfEnNavegador();
+    if (!win) return;
+
+    setFormatoCModal(prev => ({ ...prev, loading: true }));
+    const toastId = toast.loading('Generando Formato C Consolidado...');
+
+    try {
+      const params = {
+        fecha_inicio: formatoCModal.fecha_inicio,
+        fecha_fin: formatoCModal.fecha_fin,
+        hora_inicio: formatoCModal.hora_inicio,
+        hora_fin: formatoCModal.hora_fin,
+      };
+      if (centroUsuario) {
+        params.centro = centroUsuario;
+      }
+
+      const response = await dispensacionesAPI.exportarFormatoCConsolidado(params);
+      abrirPdfEnNavegador(response, win);
+      toast.success('✅ Formato C Consolidado generado', { id: toastId });
+      setFormatoCModal(prev => ({ ...prev, show: false }));
+    } catch (error) {
+      console.error('Error al generar Formato C Consolidado:', error);
+      const msg = error.response?.data?.error || error.response?.data?.detail || error.message || 'Error al generar reporte';
+      toast.error(`❌ ${msg}`, { id: toastId });
+    } finally {
+      setFormatoCModal(prev => ({ ...prev, loading: false }));
     }
   };
 
@@ -771,6 +817,17 @@ const Dispensaciones = () => {
               >
                 <FaFileAlt />
                 Control Mensual
+              </button>
+            )}
+
+            {/* Botón para Formato C Consolidado */}
+            {puedeCrear && (
+              <button
+                onClick={() => setFormatoCModal(prev => ({ ...prev, show: true }))}
+                className="flex items-center gap-2 px-4 py-2 bg-white text-guinda border border-guinda rounded-lg hover:bg-guinda hover:text-white transition-colors"
+              >
+                <FaFilePdf />
+                Formato C Consolidado
               </button>
             )}
           </div>
@@ -1699,6 +1756,110 @@ const Dispensaciones = () => {
                   className="flex items-center gap-2 px-4 py-2 bg-guinda text-white rounded-lg hover:bg-guinda-dark disabled:opacity-50"
                 >
                   {reporteModal.loading ? (
+                    <>
+                      <FaSpinner className="animate-spin" />
+                      Generando...
+                    </>
+                  ) : (
+                    <>
+                      <FaFilePdf />
+                      Generar PDF
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Formato C Consolidado */}
+      {formatoCModal.show && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full">
+            <div className="flex items-center justify-between p-4 border-b bg-guinda text-white rounded-t-lg">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <FaFilePdf /> Formato C - Tarjeta de Distribución
+              </h3>
+              <button
+                onClick={() => setFormatoCModal(prev => ({ ...prev, show: false }))}
+                className="hover:bg-white/20 p-1 rounded"
+              >
+                <FaTimes />
+              </button>
+            </div>
+
+            <div className="p-6">
+              <p className="text-gray-600 mb-4 text-sm">
+                Genera un PDF consolidado con una página por producto, mostrando todas las dispensaciones del periodo seleccionado.
+              </p>
+
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Fecha Inicio <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={formatoCModal.fecha_inicio}
+                    onChange={(e) => setFormatoCModal(prev => ({ ...prev, fecha_inicio: e.target.value }))}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-guinda"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Fecha Fin <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={formatoCModal.fecha_fin}
+                    onChange={(e) => setFormatoCModal(prev => ({ ...prev, fecha_fin: e.target.value }))}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-guinda"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Hora Inicio
+                  </label>
+                  <input
+                    type="time"
+                    value={formatoCModal.hora_inicio}
+                    onChange={(e) => setFormatoCModal(prev => ({ ...prev, hora_inicio: e.target.value }))}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-guinda"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Hora Fin
+                  </label>
+                  <input
+                    type="time"
+                    value={formatoCModal.hora_fin}
+                    onChange={(e) => setFormatoCModal(prev => ({ ...prev, hora_fin: e.target.value }))}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-guinda"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setFormatoCModal(prev => ({ ...prev, show: false }))}
+                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  disabled={formatoCModal.loading}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleGenerarFormatoCConsolidado}
+                  disabled={formatoCModal.loading}
+                  className="flex items-center gap-2 px-4 py-2 bg-guinda text-white rounded-lg hover:bg-guinda-dark disabled:opacity-50"
+                >
+                  {formatoCModal.loading ? (
                     <>
                       <FaSpinner className="animate-spin" />
                       Generando...
