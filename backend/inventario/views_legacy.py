@@ -8361,6 +8361,7 @@ def dashboard_graficas(request):
             if stock_farmacia > 0:
                 stock_por_centro.append({
                     'centro': 'Farmacia Central',
+                    'centro_id': 'central',  # Valor especial para frontend
                     'stock': stock_farmacia
                 })
             
@@ -8382,6 +8383,7 @@ def dashboard_graficas(request):
                     # El truncado se hace en el frontend solo para el eje Y
                     stock_por_centro.append({
                         'centro': centro.nombre,
+                        'centro_id': centro.id,
                         'stock': stock
                     })
         else:
@@ -8397,6 +8399,7 @@ def dashboard_graficas(request):
                 
                 stock_por_centro.append({
                     'centro': user_centro.nombre,
+                    'centro_id': user_centro.id,
                     'stock': max(0, stock)
                 })
         

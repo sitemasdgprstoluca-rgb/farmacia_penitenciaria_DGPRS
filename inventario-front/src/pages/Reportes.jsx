@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { 
   FaChartBar, 
@@ -185,6 +186,7 @@ const formatValue = (value, key) => {
 
 const Reportes = () => {
   const { user, permisos, getRolPrincipal } = usePermissions();
+  const location = useLocation();
   
   // Verificación de permisos
   const rolPrincipal = getRolPrincipal();
@@ -196,7 +198,25 @@ const Reportes = () => {
   // Si el usuario tiene centro asignado y no es admin/farmacia, forzar filtro por su centro
   const userCentroId = user?.centro?.id || null;
   
-  const [filtros, setFiltros] = useState(baseFilters);
+  // Inicializar filtros desde navegación si vienen en state
+  const initFiltros = () => {
+    const navegacionState = location.state || {};
+    const filtrosBase = { ...baseFilters };
+    
+    // Si viene tipo de reporte desde navegación, aplicarlo
+    if (navegacionState.tipo) {
+      filtrosBase.tipo = navegacionState.tipo;
+    }
+    
+    // Si viene centro desde navegación, aplicarlo
+    if (navegacionState.centro) {
+      filtrosBase.centro = navegacionState.centro;
+    }
+    
+    return filtrosBase;
+  };
+  
+  const [filtros, setFiltros] = useState(initFiltros());
   const [datos, setDatos] = useState([]);
   const [resumen, setResumen] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -334,6 +354,18 @@ const Reportes = () => {
   useEffect(() => {
     cargarCatalogos();
   }, []);
+
+  // Si viene navegación desde Dashboard con filtros, cargar automáticamente el reporte
+  useEffect(() => {
+    const navegacionState = location.state || {};
+    if (navegacionState.tipo || navegacionState.centro) {
+      // Hay filtros desde navegación, cargar automáticamente después de que estén los catálogos
+      const timer = setTimeout(() => {
+        cargarReporte();
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [location.state]);
 
   // Cuando cambia el tipo de reporte, resetear fechas según el tipo (sin cargar automáticamente)
   const handleTipoChange = (nuevoTipo) => {

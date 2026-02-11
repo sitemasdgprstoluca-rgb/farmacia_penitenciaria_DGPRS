@@ -1299,24 +1299,40 @@ const Dashboard = () => {
                     '#9F2241', '#0EA5E9', '#10B981', '#F59E0B', '#8B5CF6',
                     '#EC4899', '#14B8A6', '#F97316', '#6366F1', '#EF4444'
                   ];
+                  
+                  // Función para navegar a reportes con el centro filtrado
+                  const irAReportesCentro = (centroId) => {
+                    navigate('/reportes', { 
+                      state: { 
+                        tipo: 'inventario', 
+                        centro: centroId 
+                      } 
+                    });
+                  };
+                  
                   return (
-                    <div className="space-y-3">
+                    <div className={`space-y-3 ${sorted.length > 8 ? 'max-h-96 overflow-y-auto pr-2' : ''}`}>
                       {sorted.map((item, index) => {
                         const pct = Math.max((item.stock / maxStock) * 100, 2);
                         const color = COLORS_CENTRO[index % COLORS_CENTRO.length];
                         return (
-                          <div key={item.centro} className="group">
+                          <div 
+                            key={item.centro} 
+                            className="group cursor-pointer"
+                            onClick={() => irAReportesCentro(item.centro_id)}
+                            title={`Click para ver detalle de inventario de ${item.centro}`}
+                          >
                             <div className="flex items-center justify-between mb-1.5">
-                              <span className="text-sm font-semibold text-gray-700 truncate max-w-[60%]" title={item.centro}>
+                              <span className="text-sm font-semibold text-gray-700 truncate max-w-[60%] group-hover:text-gray-900 transition-colors" title={item.centro}>
                                 {item.centro}
                               </span>
                               <span className="text-sm font-bold text-gray-900 tabular-nums">
                                 {item.stock.toLocaleString('es-MX')} <span className="text-gray-400 font-normal text-xs">uds</span>
                               </span>
                             </div>
-                            <div className="w-full bg-gray-100 rounded-full h-5 overflow-hidden">
+                            <div className="w-full bg-gray-100 rounded-full h-5 overflow-hidden group-hover:shadow-md transition-shadow">
                               <div
-                                className="h-full rounded-full transition-all duration-700 ease-out flex items-center justify-end pr-2"
+                                className="h-full rounded-full transition-all duration-700 ease-out flex items-center justify-end pr-2 group-hover:opacity-90"
                                 style={{ 
                                   width: `${pct}%`, 
                                   background: `linear-gradient(90deg, ${color}CC, ${color})`,
