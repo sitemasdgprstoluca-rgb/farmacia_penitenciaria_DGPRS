@@ -7591,6 +7591,18 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                 except Exception as hist_error:
                     logger.warning(f"No se pudo crear historial al dispensar: {hist_error}")
                 
+                # ISS-FIX: Invalidar caché del dashboard tras dispensar
+                # para que el inventario por centro se actualice inmediatamente
+                try:
+                    from django.core.cache import cache as dashboard_cache
+                    dashboard_cache.delete('dashboard_resumen_global')
+                    dashboard_cache.delete('dashboard_graficas_global')
+                    if dispensacion.centro_id:
+                        dashboard_cache.delete(f'dashboard_resumen_{dispensacion.centro_id}')
+                        dashboard_cache.delete(f'dashboard_graficas_{dispensacion.centro_id}')
+                except Exception as cache_err:
+                    logger.warning(f'Error al invalidar caché del dashboard tras dispensar: {cache_err}')
+                
                 serializer = self.get_serializer(dispensacion)
                 return Response({
                     'dispensacion': serializer.data,

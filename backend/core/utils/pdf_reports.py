@@ -3626,15 +3626,20 @@ def generar_control_mensual_almacen(periodo_data, productos_data, centro_nombre=
     return buffer
 
 # =============================================================================
-# FORMATO C - DISPENSACIÓN A PACIENTES
+# FORMATO C - TARJETA PARA LA DISTRIBUCIÓN DE INSUMOS MÉDICOS
 # =============================================================================
 
 def generar_formato_c_dispensacion(dispensacion):
     """
-    Genera el PDF Formato C de Dispensación a Pacientes.
+    Genera el PDF Formato C oficial: Tarjeta para la Distribución de Insumos Médicos.
     
-    Documento oficial para registro de entrega de medicamentos a internos,
-    con trazabilidad completa de productos y firmas de recepción.
+    Formato kardex gubernamental por producto con columnas:
+    Fecha | Doc. Entrada (Folio) | Fecha Caduc. | Entrada | Salida | Existencias |
+    PPL/S.P. | Nombre de la persona | Firma recibido (1ª, 2ª, 3ª Dosis) |
+    Personal médico | Revisó
+    
+    Genera una página por cada producto dispensado en esta dispensación,
+    mostrando la dispensación como una fila en el kardex.
     
     Args:
         dispensacion: Instancia del modelo Dispensacion
@@ -3642,294 +3647,326 @@ def generar_formato_c_dispensacion(dispensacion):
     Returns:
         BytesIO: Buffer con el PDF generado
     """
-    from core.models import TemaGlobal
-    
+    from core.models import Lote, Movimiento
+    from django.db.models import Sum, Q
+    from collections import defaultdict
+
     buffer = BytesIO()
+    page_width, page_height = landscape(letter)
+
     doc = SimpleDocTemplate(
         buffer,
-        pagesize=letter,
-        rightMargin=0.5*inch,
-        leftMargin=0.5*inch,
-        topMargin=0.8*inch,
-        bottomMargin=0.5*inch
+        pagesize=landscape(letter),
+        rightMargin=0.4 * inch,
+        leftMargin=0.4 * inch,
+        topMargin=0.6 * inch,
+        bottomMargin=0.4 * inch,
     )
-    
-    elements = []
+
+    # ========== TEMA Y COLORES ==========
+    tema_colores = _obtener_colores_tema()
+    COLOR_HEADER = tema_colores['encabezado']
+    COLOR_HEADER_TEXT = tema_colores['texto_encabezado']
+    COLOR_TEXTO = tema_colores['texto']
+    COLOR_TEXTO_SEC = tema_colores['texto_secundario']
+    COLOR_FILAS_ALT = tema_colores['filas_alternas']
+    fondo_path = tema_colores.get('fondo_reportes_path')
+    nombre_institucion = tema_colores.get('nombre_institucion', 'Sistema de Farmacia Penitenciaria')
+    subtitulo_inst = tema_colores.get('subtitulo', 'Secretaría de Seguridad')
+
     styles = getSampleStyleSheet()
-    
-    # Obtener tema activo para colores institucionales
-    try:
-        tema = TemaGlobal.objects.filter(es_activo=True).first()
-        color_primario = tema.color_primario if tema else '#9F2241'
-        institucion = tema.titulo_sistema if tema else 'Sistema de Farmacia Penitenciaria'
-        subtitulo = tema.subtitulo_sistema if tema else 'Gobierno del Estado'
-    except:
-        color_primario = '#9F2241'
-        institucion = 'Sistema de Farmacia Penitenciaria'
-        subtitulo = 'Gobierno del Estado'
-    
-    COLOR_GUINDA = colors.HexColor(color_primario)
-    COLOR_TEXTO = colors.HexColor('#1f2937')
-    COLOR_GRIS = colors.HexColor('#6b7280')
-    
-    # Fondo institucional
-    fondo_path = str(FONDO_INSTITUCIONAL_PATH) if FONDO_INSTITUCIONAL_PATH.exists() else None
-    
-    # ========== ENCABEZADO ==========
-    header_style = ParagraphStyle('HeaderFC', parent=styles['Heading1'], fontSize=14, 
-                                   textColor=COLOR_GUINDA, alignment=TA_CENTER, spaceAfter=6)
-    subheader_style = ParagraphStyle('SubHeaderFC', parent=styles['Normal'], fontSize=10, 
-                                      textColor=COLOR_TEXTO, alignment=TA_CENTER, spaceAfter=3)
-    
-    elements.append(Spacer(1, 0.5*inch))
-    elements.append(Paragraph(institucion, header_style))
-    elements.append(Paragraph(subtitulo, subheader_style))
-    elements.append(Paragraph("<b>FORMATO C - DISPENSACIÓN A PACIENTES</b>", 
-                              ParagraphStyle('TituloFC', parent=header_style, fontSize=12, spaceBefore=8)))
-    elements.append(Spacer(1, 0.2*inch))
-    
-    # ========== DATOS DE LA DISPENSACIÓN ==========
-    fecha_disp = dispensacion.fecha_dispensacion.strftime('%d/%m/%Y %H:%M') if dispensacion.fecha_dispensacion else 'N/A'
-    
-    # Obtener displays de forma segura
-    try:
-        tipo_display = dispensacion.get_tipo_dispensacion_display()
-    except:
-        tipo_display = dispensacion.tipo_dispensacion or 'Normal'
-    
-    try:
-        estado_display = dispensacion.get_estado_display()
-    except:
-        estado_display = dispensacion.estado or 'Pendiente'
-    
-    info_data = [
-        ['Folio:', dispensacion.folio or 'N/A', 'Fecha:', fecha_disp],
-        ['Centro:', dispensacion.centro.nombre if dispensacion.centro else 'N/A', 
-         'Tipo:', tipo_display],
-        ['Estado:', estado_display, '', ''],
-    ]
-    
-    info_table = Table(info_data, colWidths=[1.2*inch, 2.5*inch, 0.8*inch, 2.5*inch])
-    info_table.setStyle(TableStyle([
-        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-        ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
-        ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
-        ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-    ]))
-    elements.append(info_table)
-    elements.append(Spacer(1, 0.15*inch))
-    
-    # ========== DATOS DEL PACIENTE ==========
-    seccion_style = ParagraphStyle('SeccionFC', parent=styles['Heading2'], fontSize=10, 
-                                    textColor=colors.white, backColor=COLOR_GUINDA,
-                                    leftIndent=6, spaceBefore=8, spaceAfter=6)
-    
-    elements.append(Paragraph("DATOS DEL PACIENTE", seccion_style))
-    
-    paciente = dispensacion.paciente
-    
-    # Obtener sexo display de forma segura
-    try:
-        sexo_display = paciente.get_sexo_display() if paciente and paciente.sexo else 'N/A'
-    except:
-        sexo_display = paciente.sexo if paciente else 'N/A'
-    
-    # Obtener nombre completo de forma segura
-    try:
-        nombre_paciente = paciente.nombre_completo if paciente else 'N/A'
-    except:
-        nombre_paciente = f"{paciente.nombre} {paciente.apellido_paterno}" if paciente else 'N/A'
-    
-    paciente_data = [
-        ['No. Expediente:', paciente.numero_expediente if paciente else 'N/A', 
-         'Nombre:', nombre_paciente],
-        ['Dormitorio:', (paciente.dormitorio or 'N/A') if paciente else 'N/A', 
-         'Celda:', (paciente.celda or 'N/A') if paciente else 'N/A'],
-        ['Edad:', f"{paciente.edad} años" if paciente and paciente.edad else 'N/A',
-         'Sexo:', sexo_display],
-    ]
-    
-    paciente_table = Table(paciente_data, colWidths=[1.2*inch, 2.5*inch, 0.8*inch, 2.5*inch])
-    paciente_table.setStyle(TableStyle([
-        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-        ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
-        ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
-        ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#FBF2F5')),
-        ('BOX', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
-        ('INNERGRID', (0, 0), (-1, -1), 0.25, colors.HexColor('#E5E7EB')),
-    ]))
-    elements.append(paciente_table)
-    elements.append(Spacer(1, 0.1*inch))
-    
-    # ========== PRESCRIPCIÓN MÉDICA ==========
-    if dispensacion.diagnostico or dispensacion.medico_prescriptor:
-        elements.append(Paragraph("PRESCRIPCIÓN MÉDICA", seccion_style))
-        
-        prescripcion_data = [
-            ['Médico Prescriptor:', dispensacion.medico_prescriptor or 'N/A', 
-             'Cédula:', dispensacion.cedula_medico or 'N/A'],
-            ['Diagnóstico:', dispensacion.diagnostico or 'N/A', '', ''],
-        ]
-        
-        prescripcion_table = Table(prescripcion_data, colWidths=[1.4*inch, 2.3*inch, 0.8*inch, 2.5*inch])
-        prescripcion_table.setStyle(TableStyle([
-            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-            ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 8),
-            ('TEXTCOLOR', (0, 0), (-1, -1), COLOR_TEXTO),
-            ('SPAN', (1, 1), (3, 1)),  # Diagnóstico ocupa toda la fila
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-        ]))
-        elements.append(prescripcion_table)
-        elements.append(Spacer(1, 0.1*inch))
-    
-    # ========== MEDICAMENTOS DISPENSADOS ==========
-    elements.append(Paragraph("MEDICAMENTOS DISPENSADOS", seccion_style))
-    
-    # Encabezados de la tabla de medicamentos
-    med_headers = ['No.', 'Clave', 'Medicamento', 'Lote', 'Prescrito', 'Dispensado', 'Dosis/Frecuencia']
-    med_data = [med_headers]
-    
+
+    # Estilos reutilizables
+    style_titulo = ParagraphStyle(
+        'FCTitulo', parent=styles['Heading1'],
+        fontSize=13, textColor=COLOR_HEADER, alignment=TA_CENTER, spaceAfter=2,
+    )
+    style_subtitulo = ParagraphStyle(
+        'FCSub', parent=styles['Normal'],
+        fontSize=9, textColor=COLOR_TEXTO, alignment=TA_CENTER, spaceAfter=1,
+    )
+    style_cell = ParagraphStyle(
+        'FCCell', parent=styles['Normal'],
+        fontSize=6.5, leading=8, textColor=COLOR_TEXTO,
+    )
+    style_cell_center = ParagraphStyle(
+        'FCCellC', parent=styles['Normal'],
+        fontSize=6.5, leading=8, textColor=COLOR_TEXTO, alignment=TA_CENTER,
+    )
+    style_header_cell = ParagraphStyle(
+        'FCHdrCell', parent=styles['Normal'],
+        fontSize=6.5, leading=8, textColor=COLOR_HEADER_TEXT, alignment=TA_CENTER,
+    )
+
+    # ========== AGRUPAR DETALLES POR PRODUCTO ==========
     detalles = dispensacion.detalles.all().select_related('producto', 'lote')
     
-    for idx, detalle in enumerate(detalles, 1):
-        dosis_freq = []
-        if detalle.dosis:
-            dosis_freq.append(detalle.dosis)
-        if detalle.frecuencia:
-            dosis_freq.append(detalle.frecuencia)
+    productos_map = defaultdict(list)
+    for det in detalles:
+        productos_map[det.producto_id].append(det)
+    
+    if not productos_map:
+        # Sin detalles — generar página vacía informativa
+        elements = []
+        elements.append(Spacer(1, 1.5 * inch))
+        elements.append(Paragraph(nombre_institucion, style_titulo))
+        elements.append(Paragraph(subtitulo_inst, style_subtitulo))
+        elements.append(Spacer(1, 0.3 * inch))
+        elements.append(Paragraph(
+            "<b>TARJETA PARA LA DISTRIBUCIÓN DE INSUMOS MÉDICOS (C)</b>",
+            ParagraphStyle('FCTitDoc', parent=style_titulo, fontSize=11),
+        ))
+        elements.append(Spacer(1, 0.5 * inch))
+        elements.append(Paragraph(
+            f"La dispensación <b>{dispensacion.folio}</b> no tiene medicamentos registrados.",
+            ParagraphStyle('FCVacio', fontSize=10, textColor=COLOR_TEXTO, alignment=TA_CENTER),
+        ))
         
-        med_data.append([
-            str(idx),
-            detalle.producto.clave if detalle.producto else 'N/A',
-            Paragraph(detalle.producto.nombre[:40] if detalle.producto else 'N/A', 
-                      ParagraphStyle('MedNombre', fontSize=7)),
-            detalle.lote.numero_lote[:15] if detalle.lote else 'N/A',
-            str(detalle.cantidad_prescrita),
-            str(detalle.cantidad_dispensada),
-            ' / '.join(dosis_freq) if dosis_freq else '-'
-        ])
+        class FondoCanvasVacio(canvas.Canvas):
+            def __init__(self, *args, **kwargs):
+                self._fondo = fondo_path
+                canvas.Canvas.__init__(self, *args, **kwargs)
+                self._dibujar_fondo()
+            def showPage(self):
+                canvas.Canvas.showPage(self)
+                self._dibujar_fondo()
+            def _dibujar_fondo(self):
+                if self._fondo and os.path.exists(self._fondo):
+                    try:
+                        self.drawImage(str(self._fondo), 0, 0,
+                                       width=page_width, height=page_height,
+                                       preserveAspectRatio=False, mask='auto')
+                    except Exception:
+                        pass
+        
+        doc.build(elements, canvasmaker=FondoCanvasVacio)
+        buffer.seek(0)
+        return buffer
+
+    # ========== DATOS COMUNES DE LA DISPENSACIÓN ==========
+    paciente = dispensacion.paciente
+    centro_nombre = dispensacion.centro.nombre if dispensacion.centro else 'N/A'
+    fecha_disp = dispensacion.fecha_dispensacion.strftime('%d/%m/%Y') if dispensacion.fecha_dispensacion else 'N/A'
     
-    # Si no hay detalles, agregar fila vacía
-    if len(med_data) == 1:
-        med_data.append(['-', '-', 'Sin medicamentos registrados', '-', '-', '-', '-'])
+    try:
+        nombre_paciente = paciente.nombre_completo if paciente else 'N/A'
+    except Exception:
+        nombre_paciente = f"{paciente.nombre} {paciente.apellido_paterno}" if paciente else 'N/A'
     
-    med_table = Table(med_data, colWidths=[0.35*inch, 0.7*inch, 2.3*inch, 1*inch, 0.65*inch, 0.75*inch, 1.25*inch])
-    med_table.setStyle(TableStyle([
-        # Encabezado
-        ('BACKGROUND', (0, 0), (-1, 0), COLOR_GUINDA),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 8),
-        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-        ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
-        # Datos
-        ('FONTSIZE', (0, 1), (-1, -1), 8),
-        ('TEXTCOLOR', (0, 1), (-1, -1), COLOR_TEXTO),
-        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
-        ('ALIGN', (0, 1), (0, -1), 'CENTER'),  # No.
-        ('ALIGN', (4, 1), (5, -1), 'CENTER'),  # Cantidades
-        ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 3),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 3),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        # Filas alternas
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F9F9F9')]),
-    ]))
-    elements.append(med_table)
-    elements.append(Spacer(1, 0.15*inch))
+    medico = dispensacion.medico_prescriptor or '-'
     
-    # ========== INDICACIONES ==========
-    if dispensacion.indicaciones:
-        elements.append(Paragraph("INDICACIONES", seccion_style))
-        elements.append(Paragraph(dispensacion.indicaciones, 
-                                  ParagraphStyle('IndFC', fontSize=9, textColor=COLOR_TEXTO, spaceBefore=4)))
-        elements.append(Spacer(1, 0.1*inch))
-    
-    # ========== OBSERVACIONES ==========
-    if dispensacion.observaciones:
-        elements.append(Paragraph("OBSERVACIONES", seccion_style))
-        elements.append(Paragraph(dispensacion.observaciones,
-                                  ParagraphStyle('ObsFC', fontSize=9, textColor=COLOR_TEXTO, spaceBefore=4)))
-        elements.append(Spacer(1, 0.1*inch))
-    
-    # ========== SECCIÓN DE FIRMAS ==========
-    elements.append(Spacer(1, 0.25*inch))
-    
-    dispensador_nombre = 'N/A'
+    dispensador_nombre = '-'
     if dispensacion.dispensado_por:
         dispensador_nombre = f"{dispensacion.dispensado_por.first_name} {dispensacion.dispensado_por.last_name}".strip()
         if not dispensador_nombre:
             dispensador_nombre = dispensacion.dispensado_por.username
-    
-    firma_data = [
-        ['', '', ''],
-        ['_' * 35, '_' * 35, '_' * 35],
-        ['PACIENTE / INTERNO', 'DISPENSADOR', 'Vo. Bo. RESPONSABLE'],
-        [paciente.nombre_completo if paciente else 'N/A', dispensador_nombre, ''],
-        [f'Exp: {paciente.numero_expediente}' if paciente else '', '', ''],
-    ]
-    
-    firma_table = Table(firma_data, colWidths=[2.3*inch, 2.3*inch, 2.3*inch])
-    firma_table.setStyle(TableStyle([
-        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-        ('FONTNAME', (0, 2), (-1, 2), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('FONTSIZE', (0, 3), (-1, 4), 7),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('TOPPADDING', (0, 0), (-1, 0), 20),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-        ('TEXTCOLOR', (0, 2), (-1, 2), COLOR_GUINDA),
-        ('TEXTCOLOR', (0, 3), (-1, 4), COLOR_GRIS),
-    ]))
-    elements.append(firma_table)
-    
-    # ========== PIE DE PÁGINA ==========
-    elements.append(Spacer(1, 0.2*inch))
-    nota_style = ParagraphStyle('NotaFC', parent=styles['Normal'], fontSize=7, textColor=COLOR_GRIS, alignment=TA_CENTER)
-    elements.append(Paragraph(
-        f"Formato C - Dispensación a Pacientes | {institucion} | Folio: {dispensacion.folio} | Generado: {timezone.now().strftime('%d/%m/%Y %H:%M')}",
-        nota_style
-    ))
-    
-    # Canvas con fondo institucional
-    class FondoCanvas(canvas.Canvas):
+
+    # Tipo PPL/S.P.
+    tipo_ppl = 'PPL'
+
+    content_width = page_width - 0.8 * inch
+
+    # ========== GENERAR PÁGINAS POR PRODUCTO ==========
+    elements = []
+    sorted_productos = sorted(productos_map.items(), key=lambda x: x[1][0].producto.nombre)
+
+    for idx_prod, (producto_id, det_list) in enumerate(sorted_productos):
+        if idx_prod > 0:
+            elements.append(PageBreak())
+
+        producto = det_list[0].producto
+
+        # ---------- ENCABEZADO INSTITUCIONAL ----------
+        elements.append(Spacer(1, 0.2 * inch))
+        elements.append(Paragraph(nombre_institucion, style_titulo))
+        elements.append(Paragraph(subtitulo_inst, style_subtitulo))
+        elements.append(Paragraph(
+            "<b>TARJETA PARA LA DISTRIBUCIÓN DE INSUMOS MÉDICOS (C)</b>",
+            ParagraphStyle('FCTitDoc', parent=style_titulo, fontSize=10, spaceBefore=4, spaceAfter=6),
+        ))
+
+        # ---------- DATOS DEL PRODUCTO (campos 1-5 del formato oficial) ----------
+        info_data = [
+            [
+                Paragraph(f"<b>1. Institución Penitenciaria:</b> {centro_nombre}", style_cell),
+                Paragraph(f"<b>Folio:</b> {dispensacion.folio}", style_cell),
+            ],
+            [
+                Paragraph(f"<b>2. Insumo Médico:</b> {producto.nombre}", style_cell),
+                Paragraph(f"<b>3. Clave:</b> {producto.clave}", style_cell),
+            ],
+            [
+                Paragraph(f"<b>4. Presentación:</b> {producto.presentacion or 'N/A'}", style_cell),
+                Paragraph(f"<b>5. Concentración:</b> {producto.concentracion or 'N/A'}", style_cell),
+            ],
+            [
+                Paragraph(f"<b>Paciente:</b> {nombre_paciente} (Exp: {paciente.numero_expediente if paciente else 'N/A'})", style_cell),
+                Paragraph(f"<b>Médico:</b> {medico}", style_cell),
+            ],
+        ]
+
+        info_table = Table(info_data, colWidths=[content_width * 0.55, content_width * 0.45])
+        info_table.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            ('TOPPADDING', (0, 0), (-1, -1), 3),
+            ('BOX', (0, 0), (-1, -1), 0.5, COLOR_HEADER),
+            ('INNERGRID', (0, 0), (-1, -1), 0.25, colors.HexColor('#E5E7EB')),
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#FBF2F5')),
+        ]))
+        elements.append(info_table)
+        elements.append(Spacer(1, 0.1 * inch))
+
+        # ---------- TABLA KARDEX (campos 6-15 del formato oficial) ----------
+        col_widths = [
+            content_width * 0.070,   # 6. Fecha
+            content_width * 0.095,   # 7. Doc. Entrada (Folio)
+            content_width * 0.050,   # 5. Fecha Caducidad
+            content_width * 0.045,   # 8. Entrada
+            content_width * 0.045,   # 9. Salida
+            content_width * 0.050,   # 10. Existencias
+            content_width * 0.055,   # 11. PPL/S.P.
+            content_width * 0.170,   # 12. Nombre persona
+            content_width * 0.120,   # 13. Firma recibido (1ª,2ª,3ª Dosis)
+            content_width * 0.170,   # 14. Personal médico
+            content_width * 0.130,   # 15. Revisó
+        ]
+
+        header_row = [
+            Paragraph('<b>6. Fecha</b>', style_header_cell),
+            Paragraph('<b>7. Doc.<br/>Entrada</b>', style_header_cell),
+            Paragraph('<b>5. Fecha<br/>Caduc.</b>', style_header_cell),
+            Paragraph('<b>8. Entrada<br/>Caja/Pza</b>', style_header_cell),
+            Paragraph('<b>9. Salida<br/>Pza</b>', style_header_cell),
+            Paragraph('<b>10. Exist.<br/>Pza</b>', style_header_cell),
+            Paragraph('<b>11. PPL<br/>/S.P.</b>', style_header_cell),
+            Paragraph('<b>12. Nombre de la persona</b>', style_header_cell),
+            Paragraph('<b>13. Firma recibido<br/>(1ª, 2ª, 3ª Dosis)</b>', style_header_cell),
+            Paragraph('<b>14. Nombre y firma<br/>del personal médico</b>', style_header_cell),
+            Paragraph('<b>15. Revisó</b>', style_header_cell),
+        ]
+
+        table_data = [header_row]
+
+        for det in det_list:
+            # Fecha caducidad del lote
+            fecha_cad = det.lote.fecha_caducidad.strftime('%m/%Y') if det.lote and det.lote.fecha_caducidad else '-'
+            
+            salida = det.cantidad_dispensada
+            
+            # Calcular existencia actual del lote (ya descontado)
+            existencia = det.lote.cantidad_actual if det.lote else 0
+            
+            row = [
+                Paragraph(fecha_disp, style_cell_center),
+                Paragraph(dispensacion.folio or '-', style_cell_center),
+                Paragraph(fecha_cad, style_cell_center),
+                Paragraph('-', style_cell_center),                              # Entrada (N/A en dispensación)
+                Paragraph(str(salida), style_cell_center),                      # Salida
+                Paragraph(str(max(existencia, 0)), style_cell_center),          # Existencias
+                Paragraph(tipo_ppl, style_cell_center),                         # PPL/S.P.
+                Paragraph(nombre_paciente[:35], style_cell),                    # Nombre persona
+                Paragraph('', style_cell_center),                               # Firma (espacio para impresión)
+                Paragraph(medico[:30] if len(medico) > 30 else medico, style_cell),  # Personal médico
+                Paragraph(dispensador_nombre[:25] if len(dispensador_nombre) > 25 else dispensador_nombre, style_cell),  # Revisó
+            ]
+            table_data.append(row)
+
+        # Rellenar filas vacías para formato mínimo
+        min_rows = 15
+        if len(table_data) - 1 < min_rows:
+            for _ in range(min_rows - (len(table_data) - 1)):
+                empty_row = [Paragraph('', style_cell_center)] * 11
+                table_data.append(empty_row)
+
+        mov_table = Table(table_data, colWidths=col_widths, repeatRows=1)
+        mov_table.setStyle(TableStyle([
+            # Encabezado
+            ('BACKGROUND', (0, 0), (-1, 0), COLOR_HEADER),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 6.5),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            # Datos
+            ('FONTSIZE', (0, 1), (-1, -1), 6.5),
+            ('GRID', (0, 0), (-1, -1), 0.4, COLOR_HEADER),
+            ('LEFTPADDING', (0, 0), (-1, -1), 2),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+            ('TOPPADDING', (0, 0), (-1, -1), 3),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            # Filas alternas
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, COLOR_FILAS_ALT]),
+        ]))
+        elements.append(mov_table)
+
+        # ---------- SECCIÓN DE FIRMAS ----------
+        elements.append(Spacer(1, 0.15 * inch))
+        
+        firma_data = [
+            ['', '', ''],
+            ['_' * 40, '_' * 40, '_' * 40],
+            ['PACIENTE / INTERNO', 'DISPENSADOR', 'Vo. Bo. RESPONSABLE'],
+            [nombre_paciente, dispensador_nombre, ''],
+            [f'Exp: {paciente.numero_expediente}' if paciente else '', f'Médico: {medico}', ''],
+        ]
+        
+        firma_table = Table(firma_data, colWidths=[content_width * 0.33, content_width * 0.34, content_width * 0.33])
+        firma_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+            ('FONTNAME', (0, 2), (-1, 2), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 7),
+            ('FONTSIZE', (0, 3), (-1, 4), 6.5),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('TOPPADDING', (0, 0), (-1, 0), 15),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ('TEXTCOLOR', (0, 2), (-1, 2), COLOR_HEADER),
+            ('TEXTCOLOR', (0, 3), (-1, 4), COLOR_TEXTO_SEC),
+        ]))
+        elements.append(firma_table)
+
+        # ---------- PIE DE PÁGINA ----------
+        elements.append(Spacer(1, 0.1 * inch))
+        pie_style = ParagraphStyle(
+            'FCPie', fontSize=6.5, textColor=COLOR_TEXTO_SEC, alignment=TA_CENTER,
+        )
+        elements.append(Paragraph(
+            f"Formato C — Tarjeta de Distribución de Insumos Médicos | {nombre_institucion} | "
+            f"Folio: {dispensacion.folio} | "
+            f"Generado: {timezone.now().strftime('%d/%m/%Y %H:%M')} | "
+            f"Pág. {idx_prod + 1} de {len(sorted_productos)}",
+            pie_style,
+        ))
+
+    # ========== CANVAS CON FONDO ==========
+    class FondoCanvasFC(canvas.Canvas):
         def __init__(self, *args, **kwargs):
-            self.fondo_path = fondo_path
+            self._fondo = fondo_path
             canvas.Canvas.__init__(self, *args, **kwargs)
             self._dibujar_fondo()
-        
+
         def showPage(self):
             canvas.Canvas.showPage(self)
             self._dibujar_fondo()
-        
+
         def _dibujar_fondo(self):
-            if self.fondo_path and os.path.exists(self.fondo_path):
+            if self._fondo and os.path.exists(self._fondo):
                 try:
-                    page_width, page_height = letter
                     self.drawImage(
-                        str(self.fondo_path),
-                        0, 0,
-                        width=page_width,
-                        height=page_height,
-                        preserveAspectRatio=False,
-                        mask='auto'
+                        str(self._fondo), 0, 0,
+                        width=page_width, height=page_height,
+                        preserveAspectRatio=False, mask='auto',
                     )
                 except Exception as e:
-                    logger.warning(f"No se pudo cargar imagen de fondo: {e}")
-    
-    doc.build(elements, canvasmaker=FondoCanvas)
-    
+                    logger.warning(f"No se pudo cargar imagen de fondo Formato C: {e}")
+
+    doc.build(elements, canvasmaker=FondoCanvasFC)
+
     buffer.seek(0)
-    logger.info(f"Formato C (Dispensación) PDF generado - Folio: {dispensacion.folio}, Items: {dispensacion.detalles.count()}")
+    logger.info(
+        f"Formato C (Tarjeta Distribución) PDF generado - Folio: {dispensacion.folio}, "
+        f"Productos: {len(sorted_productos)}, Items: {dispensacion.detalles.count()}"
+    )
     return buffer
 
 

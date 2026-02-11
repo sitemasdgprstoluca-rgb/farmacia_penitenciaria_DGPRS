@@ -1339,9 +1339,14 @@ const Dashboard = () => {
                                   minWidth: '40px'
                                 }}
                               >
-                                {pct > 15 && (
+                                {pct > 15 && sorted.length > 1 && (
                                   <span className="text-[10px] font-bold text-white">
                                     {((item.stock / graficas.stock_por_centro.reduce((s, c) => s + c.stock, 0)) * 100).toFixed(2)}%
+                                  </span>
+                                )}
+                                {pct > 15 && sorted.length === 1 && (
+                                  <span className="text-[10px] font-bold text-white">
+                                    {item.stock.toLocaleString('es-MX')} uds
                                   </span>
                                 )}
                               </div>
