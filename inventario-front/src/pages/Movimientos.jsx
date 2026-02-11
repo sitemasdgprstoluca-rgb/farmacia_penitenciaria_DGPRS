@@ -3641,7 +3641,12 @@ const Movimientos = () => {
                     <div className="max-h-32 overflow-y-auto space-y-1">
                       {resultadoConfirmacion.itemsConfirmados.map((item, idx) => (
                         <div key={idx} className="flex justify-between items-center text-xs bg-white/50 rounded px-2 py-1">
-                          <span className="text-gray-700 truncate flex-1">{item.producto || item.numero_lote}</span>
+                          <div className="flex-1 truncate">
+                            <span className="font-semibold text-gray-800">{item.producto_clave || item.numero_lote}</span>
+                            {item.producto_nombre && (
+                              <span className="text-gray-600 ml-1">- {item.producto_nombre}</span>
+                            )}
+                          </div>
                           <span className="font-bold text-emerald-600 ml-2">-{item.cantidad}</span>
                         </div>
                       ))}

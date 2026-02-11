@@ -703,6 +703,8 @@ def confirmar_entrega(request, grupo_salida):
                     items_confirmados.append({
                         'lote_id': lote_locked.id,
                         'numero_lote': lote_locked.numero_lote,
+                        'producto_clave': lote_locked.producto.clave if lote_locked.producto else 'N/A',
+                        'producto_nombre': lote_locked.producto.nombre if lote_locked.producto else 'Sin nombre',
                         'cantidad': cantidad,
                         'stock_anterior': stock_anterior,
                         'stock_actual': nuevo_stock,
