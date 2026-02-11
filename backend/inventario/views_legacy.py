@@ -8419,6 +8419,32 @@ def dashboard_graficas(request):
                 })
         
         # =========================================
+        # 2b. STOCK POR PRODUCTO (solo para usuarios de centro)
+        # Permite al frontend mostrar desglose por producto
+        # cuando solo hay un centro visible.
+        # =========================================
+        stock_por_producto = []
+        if filtrar_por_centro and user_centro:
+            lotes_agrupados = (
+                Lote.objects.filter(
+                    centro=user_centro,
+                    activo=True,
+                    cantidad_actual__gt=0
+                )
+                .values('producto__nombre', 'producto__id')
+                .annotate(
+                    total=Coalesce(Sum('cantidad_actual'), 0, output_field=IntegerField())
+                )
+                .order_by('-total')
+            )
+            for lp in lotes_agrupados:
+                stock_por_producto.append({
+                    'producto': lp['producto__nombre'],
+                    'producto_id': lp['producto__id'],
+                    'stock': lp['total'],
+                })
+        
+        # =========================================
         # 3. REQUISICIONES POR ESTADO
         # =========================================
         requisiciones_qs = Requisicion.objects.all()
@@ -8441,6 +8467,7 @@ def dashboard_graficas(request):
         response_data = {
             'consumo_mensual': consumo_mensual,
             'stock_por_centro': stock_por_centro,
+            'stock_por_producto': stock_por_producto,
             'requisiciones_por_estado': requisiciones_por_estado
         }
         
@@ -8456,6 +8483,7 @@ def dashboard_graficas(request):
         return Response({
             'consumo_mensual': [],
             'stock_por_centro': [],
+            'stock_por_producto': [],
             'requisiciones_por_estado': [],
             'error': 'Error interno del servidor'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

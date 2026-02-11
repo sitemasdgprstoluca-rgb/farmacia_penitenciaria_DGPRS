@@ -640,6 +640,7 @@ const Dashboard = () => {
   const [graficas, setGraficas] = useState({
     consumo_mensual: [],
     stock_por_centro: [],
+    stock_por_producto: [],
     requisiciones_por_estado: []
   });
   const [loading, setLoading] = useState(true);
@@ -705,6 +706,7 @@ const Dashboard = () => {
         setGraficas({
           consumo_mensual: graficasResponse.data.consumo_mensual || [],
           stock_por_centro: graficasResponse.data.stock_por_centro || [],
+          stock_por_producto: graficasResponse.data.stock_por_producto || [],
           requisiciones_por_estado: graficasResponse.data.requisiciones_por_estado || []
         });
       } catch (graficasError) {
@@ -713,6 +715,7 @@ const Dashboard = () => {
           setGraficas({
             consumo_mensual: [],
             stock_por_centro: [],
+            stock_por_producto: [],
             requisiciones_por_estado: []
           });
         }
@@ -730,7 +733,7 @@ const Dashboard = () => {
       }
       setKpis({ total_productos: 0, stock_total: 0, lotes_activos: 0, movimientos_mes: 0 });
       setMovimientos([]);
-      setGraficas({ consumo_mensual: [], stock_por_centro: [], requisiciones_por_estado: [] });
+      setGraficas({ consumo_mensual: [], stock_por_centro: [], stock_por_producto: [], requisiciones_por_estado: [] });
     } finally {
       if (isMountedRef.current) {
         setLoading(false);
@@ -1287,94 +1290,149 @@ const Dashboard = () => {
             )}
           </ChartCard>
 
-          {/* Stock por Centro - Bar Chart Horizontal */}
-          <ChartCard title="Inventario por Centro" icon={FaWarehouse} expandable>
-            {graficas.stock_por_centro.length > 0 ? (
-              <>
-                {/* Tabla visual cuando hay datos muy dispares */}
-                {(() => {
-                  const sorted = [...graficas.stock_por_centro].sort((a, b) => b.stock - a.stock);
-                  const maxStock = sorted[0]?.stock || 1;
-                  const COLORS_CENTRO = [
-                    '#9F2241', '#0EA5E9', '#10B981', '#F59E0B', '#8B5CF6',
-                    '#EC4899', '#14B8A6', '#F97316', '#6366F1', '#EF4444'
-                  ];
-                  
-                  // Función para navegar al detalle del centro
-                  const puedeNavegar = permisos?.verReportes;
-                  const irAReportesCentro = (centroId) => {
-                    if (puedeNavegar) {
-                      navigate('/reportes', { 
-                        state: { 
-                          tipo: 'inventario', 
-                          centro: centroId 
-                        } 
-                      });
-                    }
-                  };
-                  
-                  return (
-                    <div className={`space-y-3 ${sorted.length > 8 ? 'max-h-96 overflow-y-auto pr-2' : ''}`}>
-                      {sorted.map((item, index) => {
-                        const pct = Math.max((item.stock / maxStock) * 100, 2);
-                        const color = COLORS_CENTRO[index % COLORS_CENTRO.length];
-                        return (
-                          <div 
-                            key={item.centro} 
-                            className={puedeNavegar ? 'group cursor-pointer' : 'group'}
-                            onClick={() => irAReportesCentro(item.centro_id)}
-                            title={puedeNavegar ? `Click para ver detalle de inventario de ${item.centro}` : item.centro}
-                          >
-                            <div className="flex items-center justify-between mb-1.5">
-                              <span className="text-sm font-semibold text-gray-700 truncate max-w-[60%] group-hover:text-gray-900 transition-colors" title={item.centro}>
-                                {item.centro}
-                              </span>
-                              <span className="text-sm font-bold text-gray-900 tabular-nums">
-                                {item.stock.toLocaleString('es-MX')} <span className="text-gray-400 font-normal text-xs">uds</span>
-                              </span>
-                            </div>
-                            <div className="w-full bg-gray-100 rounded-full h-5 overflow-hidden group-hover:shadow-md transition-shadow">
-                              <div
-                                className="h-full rounded-full transition-all duration-700 ease-out flex items-center justify-end pr-2 group-hover:opacity-90"
-                                style={{ 
-                                  width: `${pct}%`, 
-                                  background: `linear-gradient(90deg, ${color}CC, ${color})`,
-                                  minWidth: '40px'
-                                }}
-                              >
-                                {pct > 15 && sorted.length > 1 && (
-                                  <span className="text-[10px] font-bold text-white">
-                                    {((item.stock / graficas.stock_por_centro.reduce((s, c) => s + c.stock, 0)) * 100).toFixed(2)}%
-                                  </span>
-                                )}
-                                {pct > 15 && sorted.length === 1 && (
-                                  <span className="text-[10px] font-bold text-white">
-                                    {item.stock.toLocaleString('es-MX')} uds
-                                  </span>
-                                )}
+          {/* Stock por Centro / por Producto - Bar Chart Horizontal */}
+          {(() => {
+            const stockCentro = graficas.stock_por_centro || [];
+            const stockProducto = graficas.stock_por_producto || [];
+            const esCentroUnico = stockCentro.length <= 1 && stockProducto.length > 0;
+            const chartTitle = esCentroUnico ? 'Inventario por Producto' : 'Inventario por Centro';
+            const chartIcon = esCentroUnico ? FaCubes : FaWarehouse;
+
+            return (
+              <ChartCard title={chartTitle} icon={chartIcon} expandable>
+                {esCentroUnico ? (
+                  /* ── Vista CENTRO: desglose por producto ── */
+                  (() => {
+                    const sorted = [...stockProducto].sort((a, b) => b.stock - a.stock);
+                    const maxStock = sorted[0]?.stock || 1;
+                    const totalStock = sorted.reduce((s, p) => s + p.stock, 0);
+                    const COLORS = [
+                      '#9F2241', '#0EA5E9', '#10B981', '#F59E0B', '#8B5CF6',
+                      '#EC4899', '#14B8A6', '#F97316', '#6366F1', '#EF4444'
+                    ];
+
+                    return (
+                      <div className={`space-y-3 ${sorted.length > 8 ? 'max-h-96 overflow-y-auto pr-2' : ''}`}>
+                        {sorted.map((item, index) => {
+                          const pct = Math.max((item.stock / maxStock) * 100, 2);
+                          const pctTotal = ((item.stock / totalStock) * 100).toFixed(1);
+                          const color = COLORS[index % COLORS.length];
+                          return (
+                            <div key={item.producto_id || item.producto} className="group">
+                              <div className="flex items-center justify-between mb-1.5">
+                                <span className="text-sm font-semibold text-gray-700 truncate max-w-[60%]" title={item.producto}>
+                                  {item.producto}
+                                </span>
+                                <span className="text-sm font-bold text-gray-900 tabular-nums">
+                                  {item.stock.toLocaleString('es-MX')} <span className="text-gray-400 font-normal text-xs">uds</span>
+                                </span>
+                              </div>
+                              <div className="w-full bg-gray-100 rounded-full h-5 overflow-hidden">
+                                <div
+                                  className="h-full rounded-full transition-all duration-700 ease-out flex items-center justify-end pr-2"
+                                  style={{
+                                    width: `${pct}%`,
+                                    background: `linear-gradient(90deg, ${color}CC, ${color})`,
+                                    minWidth: '40px'
+                                  }}
+                                >
+                                  {pct > 15 && (
+                                    <span className="text-[10px] font-bold text-white">
+                                      {pctTotal}%
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        );
-                      })}
-                      {/* Total */}
-                      <div className="pt-3 mt-2 border-t border-gray-200 flex items-center justify-between">
-                        <span className="text-sm font-bold text-gray-600">Total inventario</span>
-                        <span className="text-lg font-black text-gray-900 tabular-nums">
-                          {graficas.stock_por_centro.reduce((s, c) => s + c.stock, 0).toLocaleString('es-MX')} <span className="text-gray-400 font-normal text-xs">uds</span>
-                        </span>
+                          );
+                        })}
+                        {/* Total */}
+                        <div className="pt-3 mt-2 border-t border-gray-200 flex items-center justify-between">
+                          <span className="text-sm font-bold text-gray-600">Total inventario</span>
+                          <span className="text-lg font-black text-gray-900 tabular-nums">
+                            {totalStock.toLocaleString('es-MX')} <span className="text-gray-400 font-normal text-xs">uds</span>
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })()}
-              </>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-64 text-gray-400">
-                <FaWarehouse className="text-4xl mb-3 opacity-50" />
-                <p>No hay datos de inventario por centro</p>
-              </div>
-            )}
-          </ChartCard>
+                    );
+                  })()
+                ) : stockCentro.length > 0 ? (
+                  /* ── Vista FARMACIA/ADMIN: desglose por centro ── */
+                  (() => {
+                    const sorted = [...stockCentro].sort((a, b) => b.stock - a.stock);
+                    const maxStock = sorted[0]?.stock || 1;
+                    const COLORS_CENTRO = [
+                      '#9F2241', '#0EA5E9', '#10B981', '#F59E0B', '#8B5CF6',
+                      '#EC4899', '#14B8A6', '#F97316', '#6366F1', '#EF4444'
+                    ];
+
+                    const puedeNavegar = permisos?.verReportes;
+                    const irAReportesCentro = (centroId) => {
+                      if (puedeNavegar) {
+                        navigate('/reportes', {
+                          state: { tipo: 'inventario', centro: centroId }
+                        });
+                      }
+                    };
+
+                    return (
+                      <div className={`space-y-3 ${sorted.length > 8 ? 'max-h-96 overflow-y-auto pr-2' : ''}`}>
+                        {sorted.map((item, index) => {
+                          const pct = Math.max((item.stock / maxStock) * 100, 2);
+                          const color = COLORS_CENTRO[index % COLORS_CENTRO.length];
+                          return (
+                            <div
+                              key={item.centro}
+                              className={puedeNavegar ? 'group cursor-pointer' : 'group'}
+                              onClick={() => irAReportesCentro(item.centro_id)}
+                              title={puedeNavegar ? `Click para ver detalle de inventario de ${item.centro}` : item.centro}
+                            >
+                              <div className="flex items-center justify-between mb-1.5">
+                                <span className="text-sm font-semibold text-gray-700 truncate max-w-[60%] group-hover:text-gray-900 transition-colors" title={item.centro}>
+                                  {item.centro}
+                                </span>
+                                <span className="text-sm font-bold text-gray-900 tabular-nums">
+                                  {item.stock.toLocaleString('es-MX')} <span className="text-gray-400 font-normal text-xs">uds</span>
+                                </span>
+                              </div>
+                              <div className="w-full bg-gray-100 rounded-full h-5 overflow-hidden group-hover:shadow-md transition-shadow">
+                                <div
+                                  className="h-full rounded-full transition-all duration-700 ease-out flex items-center justify-end pr-2 group-hover:opacity-90"
+                                  style={{
+                                    width: `${pct}%`,
+                                    background: `linear-gradient(90deg, ${color}CC, ${color})`,
+                                    minWidth: '40px'
+                                  }}
+                                >
+                                  {pct > 15 && sorted.length > 1 && (
+                                    <span className="text-[10px] font-bold text-white">
+                                      {((item.stock / stockCentro.reduce((s, c) => s + c.stock, 0)) * 100).toFixed(2)}%
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {/* Total */}
+                        <div className="pt-3 mt-2 border-t border-gray-200 flex items-center justify-between">
+                          <span className="text-sm font-bold text-gray-600">Total inventario</span>
+                          <span className="text-lg font-black text-gray-900 tabular-nums">
+                            {stockCentro.reduce((s, c) => s + c.stock, 0).toLocaleString('es-MX')} <span className="text-gray-400 font-normal text-xs">uds</span>
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+                    <FaWarehouse className="text-4xl mb-3 opacity-50" />
+                    <p>No hay datos de inventario</p>
+                  </div>
+                )}
+              </ChartCard>
+            );
+          })()}
         </section>
       )}
 
