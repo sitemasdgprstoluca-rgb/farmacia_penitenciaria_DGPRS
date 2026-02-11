@@ -963,7 +963,7 @@ class MovimientoViewSet(
             queryset.select_related(
                 'lote__producto', 'centro_origen', 'centro_destino', 'usuario'
             ).only(
-                'id', 'tipo', 'subtipo_salida', 'cantidad', 'fecha', 'motivo', 'referencia',
+                'id', 'tipo', 'subtipo_salida', 'cantidad', 'fecha', 'fecha_salida', 'motivo', 'referencia',
                 'lote__id', 'lote__numero_lote', 'lote__producto__id', 'lote__producto__clave', 'lote__producto__nombre',
                 'lote__centro_id',
                 'centro_origen__id', 'centro_origen__nombre',
@@ -1055,7 +1055,9 @@ class MovimientoViewSet(
                     # Inicializar grupo
                     grupo['id'] = grupo_id
                     grupo['tipo_grupo'] = tipo_grupo_detectado
-                    grupo['fecha'] = mov.fecha.isoformat() if mov.fecha else None
+                    # Priorizar fecha_salida (fecha real de salida física) sobre fecha del sistema
+                    fecha_efectiva = mov.fecha_salida or mov.fecha
+                    grupo['fecha'] = fecha_efectiva.isoformat() if fecha_efectiva else None
                     if mov.usuario:
                         grupo['usuario_nombre'] = mov.usuario.get_full_name() or mov.usuario.username
                 
@@ -1110,13 +1112,16 @@ class MovimientoViewSet(
                     subtipo_desc = None
                     tipo_display = 'Entrada Centro (Recepción)'
                 
+                # Priorizar fecha_salida (fecha real de salida física)
+                fecha_item = mov.fecha_salida or mov.fecha
                 item_data = {
                     'id': mov.id,
                     'tipo': mov.tipo,
                     'subtipo_salida': subtipo_desc,
                     'tipo_display': tipo_display,
                     'cantidad': mov.cantidad,
-                    'fecha': mov.fecha.isoformat() if mov.fecha else None,
+                    'fecha': fecha_item.isoformat() if fecha_item else None,
+                    'fecha_salida': mov.fecha_salida.isoformat() if mov.fecha_salida else None,
                     'motivo': mov.motivo,
                     'lote_numero': mov.lote.numero_lote if mov.lote else None,
                     'producto_clave': mov.lote.producto.clave if mov.lote and mov.lote.producto else None,
@@ -1150,8 +1155,8 @@ class MovimientoViewSet(
                 # Total = salidas (o entradas si no hay salidas)
                 grupo['total_cantidad'] = grupo['cantidad_salidas'] or grupo['cantidad_entradas']
                 
-                # Actualizar fecha con la más reciente
-                mov_fecha = mov.fecha
+                # Actualizar fecha con la más reciente (priorizando fecha_salida)
+                mov_fecha = mov.fecha_salida or mov.fecha
                 grupo_fecha = grupo['fecha']
                 if mov_fecha and grupo_fecha:
                     if mov_fecha.isoformat() > grupo_fecha:
@@ -1174,12 +1179,15 @@ class MovimientoViewSet(
                         else (mov.lote.centro.nombre if mov.lote and mov.lote.centro else 'Centro destino')
                     )
                 
+                # Priorizar fecha_salida para movimientos individuales también
+                fecha_sg = mov.fecha_salida or mov.fecha
                 sin_grupo.append({
                     'id': mov.id,
                     'tipo': mov.tipo,
                     'subtipo_salida': mov.subtipo_salida,
                     'cantidad': mov.cantidad,
-                    'fecha': mov.fecha.isoformat() if mov.fecha else None,
+                    'fecha': fecha_sg.isoformat() if fecha_sg else None,
+                    'fecha_salida': mov.fecha_salida.isoformat() if mov.fecha_salida else None,
                     'motivo': mov.motivo,
                     'confirmado': es_confirmado(mov),
                     'pendiente': es_pendiente(mov),
