@@ -2361,18 +2361,18 @@ const Movimientos = () => {
               <table className="w-full table-fixed text-sm">
                 <thead className="bg-theme-gradient sticky top-0 z-10 shadow-md">
                   <tr>
-                    <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider text-white/90" style={{ width: '40%' }}>
+                    <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider text-white/90" style={{ width: esCentroUser ? '50%' : '40%' }}>
                       <div className="flex items-center gap-2">
                         <FaBoxes className="text-white/70 flex-shrink-0" />
                         <span>Detalle / Productos</span>
                       </div>
                     </th>
-                    <th className="px-2 py-3 text-left text-xs font-bold uppercase tracking-wider text-white/90" style={{ width: '14%' }}>Estado</th>
-                    <th className="px-2 py-3 text-right text-xs font-bold uppercase tracking-wider text-white/90" style={{ width: '8%' }}>Items</th>
+                    <th className="px-2 py-3 text-left text-xs font-bold uppercase tracking-wider text-white/90" style={{ width: esCentroUser ? '20%' : '14%' }}>Estado</th>
+                    <th className="px-2 py-3 text-right text-xs font-bold uppercase tracking-wider text-white/90" style={{ width: esCentroUser ? '12%' : '8%' }}>Items</th>
                     {!esCentroUser && (
                       <th className="px-2 py-3 text-left text-xs font-bold uppercase tracking-wider text-white/90 hidden sm:table-cell" style={{ width: '16%' }}>Destino</th>
                     )}
-                    <th className="px-2 py-3 text-left text-xs font-bold uppercase tracking-wider text-white/90" style={{ width: '12%' }}>Fecha</th>
+                    <th className="px-2 py-3 text-left text-xs font-bold uppercase tracking-wider text-white/90" style={{ width: esCentroUser ? '18%' : '12%' }}>Fecha</th>
                     {/* ISS-SEC FIX: Ocultar columna Acciones para Centro (solo pueden ver) */}
                     {esFarmacia && (
                       <th className="px-2 py-3 text-center text-xs font-bold uppercase tracking-wider text-white/90" style={{ width: '10%' }}>Acciones</th>
@@ -2660,7 +2660,7 @@ const Movimientos = () => {
                                       <>
                                         {/* Tabla de detalle para Centro */}
                                         <tr className="bg-slate-50">
-                                          <td colSpan={5} className="p-0">
+                                          <td colSpan={4} className="p-0">
                                             <div className="mx-4 my-3 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                                               {/* Header del detalle */}
                                               <div className="bg-gradient-to-r from-slate-700 to-slate-800 px-4 py-2.5">
