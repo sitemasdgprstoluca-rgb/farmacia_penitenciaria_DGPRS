@@ -2070,7 +2070,7 @@ const Movimientos = () => {
           </div>
           ) : null}
 
-          <div className={`${puedeRegistrarMovimiento ? 'lg:col-span-2' : 'lg:col-span-3'} bg-white rounded-2xl shadow-sm border border-gray-200`}>
+          <div className={`${puedeRegistrarMovimiento ? 'lg:col-span-2' : 'lg:col-span-3'} bg-white rounded-2xl shadow-sm border border-gray-200 min-w-0 overflow-hidden`}>
             <div className="px-6 py-4 border-b border-gray-200 flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-gray-800">Lista de Movimientos</h3>
@@ -2358,24 +2358,24 @@ const Movimientos = () => {
               )}
             </div>
             <div className="overflow-x-auto rounded-b-xl">
-              <table className="w-full text-sm">
+              <table className="w-full table-fixed text-sm">
                 <thead className="bg-theme-gradient sticky top-0 z-10 shadow-md">
                   <tr>
-                    <th className="min-w-[280px] px-3 py-3 text-left text-xs font-bold uppercase tracking-wider text-white/90">
+                    <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider text-white/90" style={{ width: '40%' }}>
                       <div className="flex items-center gap-2">
-                        <FaBoxes className="text-white/70" />
+                        <FaBoxes className="text-white/70 flex-shrink-0" />
                         <span>Detalle / Productos</span>
                       </div>
                     </th>
-                    <th className="w-24 px-2 py-3 text-left text-xs font-bold uppercase tracking-wider text-white/90">Estado</th>
-                    <th className="w-20 px-2 py-3 text-right text-xs font-bold uppercase tracking-wider text-white/90">Items</th>
+                    <th className="px-2 py-3 text-left text-xs font-bold uppercase tracking-wider text-white/90" style={{ width: '14%' }}>Estado</th>
+                    <th className="px-2 py-3 text-right text-xs font-bold uppercase tracking-wider text-white/90" style={{ width: '8%' }}>Items</th>
                     {!esCentroUser && (
-                      <th className="w-36 px-2 py-3 text-left text-xs font-bold uppercase tracking-wider text-white/90 hidden sm:table-cell">Destino</th>
+                      <th className="px-2 py-3 text-left text-xs font-bold uppercase tracking-wider text-white/90 hidden sm:table-cell" style={{ width: '16%' }}>Destino</th>
                     )}
-                    <th className="w-28 px-2 py-3 text-left text-xs font-bold uppercase tracking-wider text-white/90">Fecha</th>
+                    <th className="px-2 py-3 text-left text-xs font-bold uppercase tracking-wider text-white/90" style={{ width: '12%' }}>Fecha</th>
                     {/* ISS-SEC FIX: Ocultar columna Acciones para Centro (solo pueden ver) */}
                     {esFarmacia && (
-                      <th className="w-24 px-2 py-3 text-center text-xs font-bold uppercase tracking-wider text-white/90">Acciones</th>
+                      <th className="px-2 py-3 text-center text-xs font-bold uppercase tracking-wider text-white/90" style={{ width: '10%' }}>Acciones</th>
                     )}
                   </tr>
                 </thead>
@@ -3001,8 +3001,8 @@ const Movimientos = () => {
                             onClick={() => setExpandedId(expandedId === mov.id ? null : mov.id)}
                           >
                             <td className="px-3 py-3.5">
-                              <div className="font-semibold text-gray-800 text-sm">{mov.producto_nombre || mov.producto || ""}</div>
-                              <div className="text-xs text-gray-500 mt-0.5">
+                              <div className="font-semibold text-gray-800 text-sm truncate" title={mov.producto_nombre || mov.producto || ""}>{mov.producto_nombre || mov.producto || ""}</div>
+                              <div className="text-xs text-gray-500 mt-0.5 truncate">
                                 <span className="bg-gray-100 px-1.5 py-0.5 rounded">
                                   Lote: {mov.lote_numero || mov.lote_codigo || mov.numero_lote || 'N/A'}
                                 </span>
