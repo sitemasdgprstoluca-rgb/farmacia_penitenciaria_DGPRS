@@ -881,6 +881,15 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
         # HALLAZGO #1 FIX: Usar skip_stock_update porque ya actualizamos stock arriba con F()
         movimiento.save(skip_stock_update=True)
         
+        # ISS-FECHA FIX: Si la salida tiene fecha_salida (fecha física real),
+        # actualizar el campo 'fecha' del movimiento para que coincida.
+        # Esto es necesario porque 'fecha' usa auto_now_add=True y siempre se pone a now().
+        # Cuando el usuario registra una salida con fecha anterior, la fecha del
+        # movimiento debe reflejar la fecha real de la operación.
+        if tipo_normalizado == 'salida' and fecha_salida:
+            Movimiento.objects.filter(pk=movimiento.pk).update(fecha=fecha_salida)
+            movimiento.refresh_from_db()
+        
         # ISS-005: Invalidar caché del dashboard al registrar movimientos
         centro_afectado = centro.id if centro else (lote_ref.centro.id if lote_ref.centro else None)
         invalidar_cache_dashboard(centro_afectado)

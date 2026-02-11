@@ -336,6 +336,11 @@ def salida_masiva(request):
                 # PERF-FIX: skip_validation — ya validamos en la vista
                 movimiento.save(skip_stock_update=True, skip_validation=True)
                 
+                # ISS-FECHA FIX: Si tiene fecha_salida, actualizar el campo 'fecha'
+                # para que coincida (auto_now_add siempre pone now())
+                if fecha_salida:
+                    Movimiento.objects.filter(pk=movimiento.pk).update(fecha=fecha_salida)
+                
                 movimientos_creados.append({
                     'id': movimiento.id,
                     'lote_id': lote_locked.id,
