@@ -8318,15 +8318,9 @@ def dashboard_graficas(request):
                 mov_mes = mov_mes.filter(
                     Q(lote__centro=user_centro) | Q(centro_origen=user_centro)
                 )
-            elif not filtrar_por_centro:
-                # ISS-FIX: Farmacia Central sin filtro de centro específico
-                # Mostrar solo movimientos de lotes de Farmacia Central (sin centro asignado)
-                # o lotes de "Almacén Central"
-                mov_mes = mov_mes.filter(
-                    Q(lote__centro__isnull=True) | 
-                    Q(lote__centro__nombre__icontains='almacén central') |
-                    Q(lote__centro__nombre__icontains='almacen central')
-                )
+            # Cuando es vista global (admin/farmacia sin filtro de centro),
+            # mostrar TODOS los movimientos de todos los centros para reflejar
+            # el consumo real del sistema completo.
             
             # Calcular entradas y salidas
             # ISS-FIX: Excluir movimientos PENDIENTES (salidas masivas no confirmadas)

@@ -68,14 +68,23 @@ const CentroSelector = ({ onCentroChange, selectedValue = '', className = '' }) 
 
   return (
     <div className={`centro-selector flex items-center gap-2 ${className}`}>
-      <label className="text-sm font-medium text-gray-700 flex items-center gap-1">
-        <FaBuilding className="text-guinda" />
+      <label className="text-sm font-medium text-gray-600 flex items-center gap-1.5 whitespace-nowrap">
+        <FaBuilding style={{ color: 'var(--color-primary, #9F2241)' }} />
         Centro:
       </label>
       <select
         value={selectedValue || ''}
         onChange={handleChange}
-        className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-guinda focus:border-guinda text-sm min-w-[200px]"
+        className="px-3 py-2 border border-gray-200 rounded-xl shadow-sm text-sm min-w-[200px] bg-white
+          focus:ring-2 focus:border-transparent transition-all appearance-none cursor-pointer
+          hover:border-gray-300 font-medium text-gray-700"
+        style={{ 
+          focusRingColor: 'var(--color-primary, #9F2241)',
+          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: 'right 10px center',
+          paddingRight: '30px'
+        }}
       >
         <option value="">
           🌐 Todos los centros

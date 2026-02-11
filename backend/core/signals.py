@@ -1,13 +1,14 @@
 """
 Signals para el sistema de Farmacia Penitenciaria.
-Incluye auditoría automática, snapshots y notificaciones de estado.
+Incluye auditoría automática, snapshots, notificaciones de estado
+e invalidación de caché del dashboard.
 """
 import logging
 import os
 import sys
 from django.db.models.signals import post_save, pre_save, post_delete
 from django.dispatch import receiver
-from .models import Movimiento, Lote, Requisicion, Producto, AuditoriaLogs, Notificacion
+from .models import Movimiento, Lote, Requisicion, Producto, AuditoriaLogs, Notificacion, Donacion
 from .middleware import get_current_request, get_current_user
 
 logger = logging.getLogger(__name__)
@@ -731,3 +732,147 @@ def auditar_eliminacion_centro(sender, instance, **kwargs):
         accion='eliminar',
         cambios={'id': instance.id, 'nombre': instance.nombre}
     )
+
+
+# =============================================================================
+# INVALIDACIÓN DE CACHÉ DEL DASHBOARD
+# =============================================================================
+# Se invalida automáticamente al crear/actualizar/eliminar modelos clave.
+# Esto asegura que el Dashboard siempre muestre datos frescos sin importar
+# desde qué endpoint se modifiquen los datos (views, services, admin, shell).
+# =============================================================================
+
+def _invalidar_cache_dashboard_signal(centro_id=None):
+    """
+    Invalida el caché del dashboard de forma segura desde signals.
+    Maneja errores silenciosamente ya que el caché no es crítico.
+    """
+    try:
+        from django.core.cache import cache
+        # Siempre invalidar el global
+        cache.delete('dashboard_resumen_global')
+        cache.delete('dashboard_graficas_global')
+        # Si hay un centro específico, invalidar también ese
+        if centro_id:
+            cache.delete(f'dashboard_resumen_{centro_id}')
+            cache.delete(f'dashboard_graficas_{centro_id}')
+    except Exception as e:
+        logger.debug(f'Error al invalidar caché del dashboard desde signal: {e}')
+
+
+def _extraer_centro_id(instance, model_name):
+    """Extrae el centro_id relevante de una instancia de modelo."""
+    try:
+        if model_name == 'Movimiento':
+            # Un movimiento puede afectar al centro del lote, al origen y al destino
+            centros = set()
+            if hasattr(instance, 'lote') and instance.lote and hasattr(instance.lote, 'centro') and instance.lote.centro:
+                centros.add(instance.lote.centro_id)
+            if hasattr(instance, 'centro_origen') and instance.centro_origen:
+                centros.add(instance.centro_origen_id)
+            if hasattr(instance, 'centro_destino') and instance.centro_destino:
+                centros.add(instance.centro_destino_id)
+            return centros  # Puede ser un set de varios centros
+        elif model_name == 'Lote':
+            if hasattr(instance, 'centro') and instance.centro:
+                return {instance.centro_id}
+        elif model_name == 'Requisicion':
+            centros = set()
+            if hasattr(instance, 'centro_destino') and instance.centro_destino:
+                centros.add(instance.centro_destino_id)
+            if hasattr(instance, 'centro_origen') and instance.centro_origen:
+                centros.add(instance.centro_origen_id)
+            return centros
+    except Exception:
+        pass
+    return set()
+
+
+@receiver(post_save, sender=Movimiento)
+def invalidar_cache_movimiento(sender, instance, **kwargs):
+    """Invalida caché del dashboard cuando se crea/modifica un movimiento."""
+    centros = _extraer_centro_id(instance, 'Movimiento')
+    if centros:
+        for cid in centros:
+            _invalidar_cache_dashboard_signal(cid)
+    else:
+        _invalidar_cache_dashboard_signal()
+
+
+@receiver(post_delete, sender=Movimiento)
+def invalidar_cache_movimiento_delete(sender, instance, **kwargs):
+    """Invalida caché del dashboard cuando se elimina un movimiento."""
+    centros = _extraer_centro_id(instance, 'Movimiento')
+    if centros:
+        for cid in centros:
+            _invalidar_cache_dashboard_signal(cid)
+    else:
+        _invalidar_cache_dashboard_signal()
+
+
+@receiver(post_save, sender=Lote)
+def invalidar_cache_lote_save(sender, instance, **kwargs):
+    """Invalida caché del dashboard cuando se crea/modifica un lote."""
+    centros = _extraer_centro_id(instance, 'Lote')
+    if centros:
+        for cid in centros:
+            _invalidar_cache_dashboard_signal(cid)
+    else:
+        _invalidar_cache_dashboard_signal()
+
+
+@receiver(post_delete, sender=Lote)
+def invalidar_cache_lote_delete(sender, instance, **kwargs):
+    """Invalida caché del dashboard cuando se elimina un lote."""
+    centros = _extraer_centro_id(instance, 'Lote')
+    if centros:
+        for cid in centros:
+            _invalidar_cache_dashboard_signal(cid)
+    else:
+        _invalidar_cache_dashboard_signal()
+
+
+@receiver(post_save, sender=Producto)
+def invalidar_cache_producto_save(sender, instance, **kwargs):
+    """Invalida caché del dashboard cuando se crea/modifica un producto."""
+    _invalidar_cache_dashboard_signal()
+
+
+@receiver(post_delete, sender=Producto)
+def invalidar_cache_producto_delete(sender, instance, **kwargs):
+    """Invalida caché del dashboard cuando se elimina un producto."""
+    _invalidar_cache_dashboard_signal()
+
+
+@receiver(post_save, sender=Requisicion)
+def invalidar_cache_requisicion_save(sender, instance, **kwargs):
+    """Invalida caché del dashboard cuando se crea/modifica una requisición."""
+    centros = _extraer_centro_id(instance, 'Requisicion')
+    if centros:
+        for cid in centros:
+            _invalidar_cache_dashboard_signal(cid)
+    else:
+        _invalidar_cache_dashboard_signal()
+
+
+@receiver(post_delete, sender=Requisicion)
+def invalidar_cache_requisicion_delete(sender, instance, **kwargs):
+    """Invalida caché del dashboard cuando se elimina una requisición."""
+    centros = _extraer_centro_id(instance, 'Requisicion')
+    if centros:
+        for cid in centros:
+            _invalidar_cache_dashboard_signal(cid)
+    else:
+        _invalidar_cache_dashboard_signal()
+
+
+@receiver(post_save, sender=Donacion)
+def invalidar_cache_donacion_save(sender, instance, **kwargs):
+    """Invalida caché del dashboard cuando se crea/modifica una donación."""
+    _invalidar_cache_dashboard_signal()
+
+
+@receiver(post_delete, sender=Donacion)
+def invalidar_cache_donacion_delete(sender, instance, **kwargs):
+    """Invalida caché del dashboard cuando se elimina una donación."""
+    _invalidar_cache_dashboard_signal()

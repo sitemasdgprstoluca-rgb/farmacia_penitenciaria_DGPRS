@@ -42,7 +42,7 @@ import {
   FaShieldAlt,
 } from 'react-icons/fa';
 import { 
-  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
+  AreaChart, Area, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   Legend
 } from 'recharts';
@@ -651,6 +651,7 @@ const Dashboard = () => {
   const [lastUpdate, setLastUpdate] = useState(null);
   
   const isMountedRef = useRef(true);
+  const centroChangedRef = useRef(false);
 
   // Cleanup
   useEffect(() => {
@@ -768,6 +769,16 @@ const Dashboard = () => {
     loadDashboard(selectedCentro);
   }, [loadDashboard, selectedCentro, permisos?.verDashboard, permisos?._isValidating, cargandoPermisos]);
 
+  // Cuando cambia el centro seleccionado por el usuario, forzar refresh
+  // para obtener datos frescos del backend (sin caché)
+  useEffect(() => {
+    if (centroChangedRef.current) {
+      centroChangedRef.current = false;
+      // El effect principal ya cargó datos, pero necesitamos forzar refresh
+      loadDashboard(selectedCentro, true);
+    }
+  }, [selectedCentro]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Escuchar evento de limpieza de inventario para refrescar Dashboard
   useEffect(() => {
     const handleInventarioLimpiado = (event) => {
@@ -783,8 +794,37 @@ const Dashboard = () => {
     };
   }, [loadDashboard, selectedCentro]);
 
+  // Auto-refresh cada 2 minutos para mantener datos sincronizados
+  useEffect(() => {
+    if (!permisos?.verDashboard || !hasAccessToken()) return;
+    
+    const interval = setInterval(() => {
+      if (isMountedRef.current && document.visibilityState === 'visible') {
+        loadDashboard(selectedCentro, true);
+      }
+    }, 120_000); // 2 minutos
+    
+    return () => clearInterval(interval);
+  }, [loadDashboard, selectedCentro, permisos?.verDashboard]);
+
+  // Refrescar datos cuando el usuario regresa a la pestaña
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && isMountedRef.current && permisos?.verDashboard) {
+        // Solo refrescar si han pasado al menos 30 segundos desde la última actualización
+        if (lastUpdate && (Date.now() - lastUpdate.getTime()) > 30_000) {
+          loadDashboard(selectedCentro, true);
+        }
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [loadDashboard, selectedCentro, permisos?.verDashboard, lastUpdate]);
+
   const handleCentroChange = (centroId, nombreCentro = '') => {
     if (esCentroRestringido) return;
+    centroChangedRef.current = true;
     setSelectedCentro(centroId);
     setCentroNombre(nombreCentro);
     setMostrarTodos(false);
@@ -843,7 +883,7 @@ const Dashboard = () => {
     {
       title: 'Movimientos',
       value: kpis.movimientos_mes || 0,
-      subtext: `En ${new Date().toLocaleDateString('es-MX', { month: 'long', year: 'numeric' })}`,
+      subtext: `En ${(() => { const m = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']; return m[new Date().getMonth()]; })()} de ${new Date().getFullYear()}`,
       icon: FaExchangeAlt,
       colorType: 'warning',
       show: permisos?.verDashboard && permisos?.verMovimientos,
@@ -1007,32 +1047,50 @@ const Dashboard = () => {
   return (
     <div className="p-6 max-w-[1600px] mx-auto space-y-6 pb-12">
       {/* ========== HEADER ========== */}
-      <header className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-        {/* Fila superior: Título y controles */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          {/* Título y badge */}
-          <div className="flex items-center gap-3 min-w-0">
-            <h1 
-              className="text-2xl md:text-3xl font-black tracking-tight whitespace-nowrap"
-              style={{ color: 'var(--color-primary, #9F2241)' }}
-            >
-              Panel de Control
-            </h1>
-            <span 
-              className="px-3 py-1 rounded-full text-xs font-bold text-white shadow-sm flex-shrink-0"
-              style={{ 
-                background: rolPrincipal === 'ADMIN' 
-                  ? 'linear-gradient(135deg, #9F2241 0%, #6B1839 100%)'
-                  : rolPrincipal === 'FARMACIA'
-                  ? 'linear-gradient(135deg, #10B981 0%, #059669 100%)'
-                  : rolPrincipal === 'CENTRO'
-                  ? 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)'
-                  : 'linear-gradient(135deg, #6B7280 0%, #4B5563 100%)'
-              }}
-            >
-              {getRolLabel()}
-            </span>
-          </div>
+      <header 
+        className="rounded-2xl shadow-sm border border-gray-100 overflow-hidden"
+        style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,1) 100%)' }}
+      >
+        {/* Barra decorativa superior */}
+        <div 
+          className="h-1.5 w-full"
+          style={{ background: 'linear-gradient(90deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 40%, #F59E0B 100%)' }}
+        />
+        
+        <div className="p-5">
+          {/* Fila superior: Título y controles */}
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            {/* Título y badge */}
+            <div className="flex items-center gap-3 min-w-0">
+              <div 
+                className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ background: 'linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 100%)' }}
+              >
+                <FaChartLine className="text-white text-lg" />
+              </div>
+              <div>
+                <h1 
+                  className="text-2xl md:text-3xl font-black tracking-tight"
+                  style={{ color: 'var(--color-primary, #9F2241)' }}
+                >
+                  Panel de Control
+                </h1>
+              </div>
+              <span 
+                className="px-3 py-1 rounded-full text-xs font-bold text-white shadow-sm flex-shrink-0"
+                style={{ 
+                  background: rolPrincipal === 'ADMIN' 
+                    ? 'linear-gradient(135deg, #9F2241 0%, #6B1839 100%)'
+                    : rolPrincipal === 'FARMACIA'
+                    ? 'linear-gradient(135deg, #10B981 0%, #059669 100%)'
+                    : rolPrincipal === 'CENTRO'
+                    ? 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)'
+                    : 'linear-gradient(135deg, #6B7280 0%, #4B5563 100%)'
+                }}
+              >
+                {getRolLabel()}
+              </span>
+            </div>
           
           {/* Controles */}
           <div className="flex items-center gap-3 flex-shrink-0">
@@ -1060,7 +1118,7 @@ const Dashboard = () => {
         </div>
         
         {/* Fila inferior: Subtítulo y fecha */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mt-3 pt-3 border-t border-gray-100">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mt-4 pt-4 border-t border-gray-100">
           <p className="text-sm text-gray-500 flex items-center gap-2">
             {selectedCentro ? (
               <>
@@ -1080,15 +1138,16 @@ const Dashboard = () => {
           {/* Fecha compacta */}
           <div className="flex items-center gap-2 text-sm text-gray-500 flex-shrink-0">
             <FaCalendarAlt className="text-xs" style={{ color: 'var(--color-primary, #9F2241)' }} />
-            <span className="capitalize">
-              {new Date().toLocaleDateString('es-MX', {
-                weekday: 'short',
-                day: 'numeric',
-                month: 'short',
-                year: 'numeric',
-              })}
+            <span>
+              {(() => {
+                const d = new Date();
+                const dias = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+                const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+                return `${dias[d.getDay()]}, ${d.getDate()} de ${meses[d.getMonth()]} de ${d.getFullYear()}`;
+              })()}
             </span>
           </div>
+        </div>
         </div>
       </header>
 
@@ -1146,7 +1205,11 @@ const Dashboard = () => {
 
       {/* ========== KPI CARDS ========== */}
       <section>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4 flex items-center gap-2">
+          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: 'var(--color-primary, #9F2241)' }}></span>
+          Indicadores principales
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           {kpiCards
             .filter(card => card.show)
             .map((card, index) => (
@@ -1187,6 +1250,10 @@ const Dashboard = () => {
                   <YAxis 
                     tick={{ fill: '#6B7280', fontSize: 12 }}
                     axisLine={{ stroke: '#E5E7EB' }}
+                    tickFormatter={(value) => {
+                      if (value >= 1000) return `${(value / 1000).toFixed(0)}k`;
+                      return value;
+                    }}
                   />
                   <Tooltip content={<CustomTooltip />} />
                   <Legend />
@@ -1223,81 +1290,60 @@ const Dashboard = () => {
           {/* Stock por Centro - Bar Chart Horizontal */}
           <ChartCard title="Inventario por Centro" icon={FaWarehouse} expandable>
             {graficas.stock_por_centro.length > 0 ? (
-              <ResponsiveContainer width="100%" height={Math.max(320, graficas.stock_por_centro.length * 80)}>
-                <BarChart 
-                  data={graficas.stock_por_centro} 
-                  layout="vertical"
-                  margin={{ top: 5, right: 80, left: 20, bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" horizontal={false} />
-                  <XAxis 
-                    type="number" 
-                    tick={{ fill: '#6B7280', fontSize: 12 }}
-                    tickFormatter={(value) => value.toLocaleString('es-MX')}
-                  />
-                  <YAxis 
-                    dataKey="centro" 
-                    type="category" 
-                    width={180}
-                    tick={({ x, y, payload }) => (
-                      <g transform={`translate(${x},${y})`}>
-                        <title>{payload.value}</title>
-                        <text 
-                          x={-5} 
-                          y={0} 
-                          dy={4} 
-                          textAnchor="end" 
-                          fill="#374151" 
-                          fontSize={12}
-                          fontWeight={600}
-                        >
-                          {payload.value.length > 20 ? `${payload.value.slice(0, 17)}...` : payload.value}
-                        </text>
-                      </g>
-                    )}
-                  />
-                  <Tooltip 
-                    content={({ active, payload }) => {
-                      if (!active || !payload?.length) return null;
-                      const data = payload[0].payload;
-                      return (
-                        <div className="bg-white rounded-xl shadow-xl border border-gray-200 p-4 min-w-[250px]">
-                          <p className="font-bold text-gray-800 mb-2 text-base leading-tight">
-                            {data.centro}
-                          </p>
-                          <div className="flex items-center gap-2">
-                            <span 
-                              className="w-3 h-3 rounded-full" 
-                              style={{ backgroundColor: 'var(--color-primary, #9F2241)' }}
-                            />
-                            <span className="text-gray-600 text-sm">Inventario:</span>
-                            <span className="font-bold text-gray-900 text-lg">
-                              {data.stock?.toLocaleString('es-MX')} uds
-                            </span>
+              <>
+                {/* Tabla visual cuando hay datos muy dispares */}
+                {(() => {
+                  const sorted = [...graficas.stock_por_centro].sort((a, b) => b.stock - a.stock);
+                  const maxStock = sorted[0]?.stock || 1;
+                  const COLORS_CENTRO = [
+                    '#9F2241', '#0EA5E9', '#10B981', '#F59E0B', '#8B5CF6',
+                    '#EC4899', '#14B8A6', '#F97316', '#6366F1', '#EF4444'
+                  ];
+                  return (
+                    <div className="space-y-3">
+                      {sorted.map((item, index) => {
+                        const pct = Math.max((item.stock / maxStock) * 100, 2);
+                        const color = COLORS_CENTRO[index % COLORS_CENTRO.length];
+                        return (
+                          <div key={item.centro} className="group">
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-sm font-semibold text-gray-700 truncate max-w-[60%]" title={item.centro}>
+                                {item.centro}
+                              </span>
+                              <span className="text-sm font-bold text-gray-900 tabular-nums">
+                                {item.stock.toLocaleString('es-MX')} <span className="text-gray-400 font-normal text-xs">uds</span>
+                              </span>
+                            </div>
+                            <div className="w-full bg-gray-100 rounded-full h-5 overflow-hidden">
+                              <div
+                                className="h-full rounded-full transition-all duration-700 ease-out flex items-center justify-end pr-2"
+                                style={{ 
+                                  width: `${pct}%`, 
+                                  background: `linear-gradient(90deg, ${color}CC, ${color})`,
+                                  minWidth: '40px'
+                                }}
+                              >
+                                {pct > 15 && (
+                                  <span className="text-[10px] font-bold text-white">
+                                    {((item.stock / graficas.stock_por_centro.reduce((s, c) => s + c.stock, 0)) * 100).toFixed(1)}%
+                                  </span>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      );
-                    }}
-                  />
-                  <Bar 
-                    dataKey="stock" 
-                    name="Inventario"
-                    radius={[0, 8, 8, 0]}
-                    fill="var(--color-primary, #9F2241)"
-                    label={({ x, y, width, value }) => (
-                      <text
-                        x={x + width + 8}
-                        y={y + 16}
-                        fill="#374151"
-                        fontSize={12}
-                        fontWeight={600}
-                      >
-                        {value?.toLocaleString('es-MX')} uds
-                      </text>
-                    )}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
+                        );
+                      })}
+                      {/* Total */}
+                      <div className="pt-3 mt-2 border-t border-gray-200 flex items-center justify-between">
+                        <span className="text-sm font-bold text-gray-600">Total inventario</span>
+                        <span className="text-lg font-black text-gray-900 tabular-nums">
+                          {graficas.stock_por_centro.reduce((s, c) => s + c.stock, 0).toLocaleString('es-MX')} <span className="text-gray-400 font-normal text-xs">uds</span>
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </>
             ) : (
               <div className="flex flex-col items-center justify-center h-64 text-gray-400">
                 <FaWarehouse className="text-4xl mb-3 opacity-50" />
@@ -1496,9 +1542,13 @@ const Dashboard = () => {
       </section>
 
       {/* ========== FOOTER CON INFO ========== */}
-      <footer className="pt-6 border-t border-gray-100 text-center">
-        <p className="text-xs text-gray-400">
-          Sistema de Inventario Farmacéutico Penitenciario • Versión 2.0
+      <footer className="pt-6 mt-2 border-t border-gray-100 text-center">
+        <p className="text-xs text-gray-400 flex items-center justify-center gap-2">
+          <span 
+            className="w-2 h-2 rounded-full" 
+            style={{ backgroundColor: 'var(--color-primary, #9F2241)', opacity: 0.4 }}
+          />
+          SIFP &mdash; Sistema de Inventario Farmacéutico Penitenciario &bull; v2.0
         </p>
       </footer>
     </div>
