@@ -1056,6 +1056,17 @@ class LoteViewSet(viewsets.ModelViewSet):
                 status_code = status.HTTP_206_PARTIAL_CONTENT
             else:
                 status_code = status.HTTP_400_BAD_REQUEST
+                # FIX: Agregar campo 'error' al nivel superior para que el frontend lo muestre
+                errores = resultado.get('errores', [])
+                if errores:
+                    primer_error = errores[0].get('error', 'Error desconocido')
+                    total_errores = len(errores)
+                    resultado['error'] = (
+                        f'{total_errores} error(es) al importar. '
+                        f'Primer error (fila {errores[0].get("fila", "?")}): {primer_error}'
+                    )
+                else:
+                    resultado['error'] = 'No se pudo importar ningún lote del archivo'
             
             return Response(resultado, status=status_code)
             

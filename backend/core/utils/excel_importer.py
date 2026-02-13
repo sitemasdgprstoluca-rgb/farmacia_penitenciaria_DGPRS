@@ -63,9 +63,17 @@ class ResultadoImportacion:
 def cargar_excel(archivo):
     """Carga un archivo Excel con validaciones de seguridad."""
     try:
-        workbook = openpyxl.load_workbook(archivo, read_only=True, data_only=True)
+        # FIX: Usar read_only=False para evitar problemas con max_row=None
+        # y acceso aleatorio a filas. El límite de 10K filas controla el uso de memoria.
+        workbook = openpyxl.load_workbook(archivo, read_only=False, data_only=True)
         sheet = workbook.active
-        filas_totales = sheet.max_row - 1
+        filas_totales = sheet.max_row
+        
+        if filas_totales is None:
+            logger.warning("Archivo rechazado: no se pudo determinar número de filas")
+            return None, 0, False
+        
+        filas_totales = filas_totales - 1  # Restar encabezado
 
         if filas_totales > 10000:
             logger.warning(f"Archivo rechazado: {filas_totales} filas exceden límite")

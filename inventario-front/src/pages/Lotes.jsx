@@ -817,56 +817,61 @@ const handleImportar = async (e) => {
   if (!puedeVerGlobal && centroUsuario) {
     formData.append('centro', centroUsuario);
   }
+
+  // Función para traducir errores técnicos a mensajes amigables (fuera del try para usar en catch)
+  const traducirError = (errorStr) => {
+    if (!errorStr) return 'Error desconocido';
+    const str = String(errorStr);
+    
+    // Errores de fecha de caducidad
+    if (str.includes('fecha de caducidad debe ser posterior a la fecha de fabricación')) {
+      return '⚠️ La fecha de caducidad es anterior a la fabricación (dato incorrecto en Excel)';
+    }
+    if (str.includes('No se puede registrar un lote ya vencido') || str.includes('lote ya vencido')) {
+      return '⚠️ Lote ya vencido - no se puede registrar inventario caducado';
+    }
+    if (str.includes('Fecha de caducidad invalida')) {
+      return '⚠️ Formato de fecha inválido (use YYYY-MM-DD o DD/MM/YYYY)';
+    }
+    
+    // Errores de producto y validación clave+nombre
+    if (str.includes('Producto no encontrado') || str.includes('no encontrada en catálogo') || str.includes('no encontrada en el catálogo')) {
+      return '⚠️ Producto no existe en el catálogo - verifique la clave';
+    }
+    if (str.includes('Producto y numero de lote son obligatorios')) {
+      return '⚠️ Faltan datos obligatorios (Producto o Número de Lote)';
+    }
+    if (str.includes('DISCREPANCIA')) {
+      return '⚠️ Clave y nombre no coinciden - verifique que ambos correspondan al mismo producto';
+    }
+    if (str.includes('Clave de producto es OBLIGATORIA')) {
+      return '⚠️ Falta la clave del producto (columna obligatoria)';
+    }
+    if (str.includes('Nombre de producto es OBLIGATORIO')) {
+      return '⚠️ Falta el nombre del producto (columna obligatoria)';
+    }
+    
+    // Errores de cantidad
+    if (str.includes('Cantidades invalidas')) {
+      return '⚠️ Cantidad inválida - debe ser un número positivo';
+    }
+    if (str.includes('Cantidad Inicial es 0') || str.includes('Cantidad Inicial debe ser mayor a 0')) {
+      return '⚠️ Cantidad recibida es 0 - importe cuando llegue la primera entrega';
+    }
+    
+    // Errores de columnas faltantes
+    if (str.includes('Columnas faltantes')) {
+      return '⚠️ El archivo no tiene las columnas requeridas - descargue la plantilla actualizada';
+    }
+    
+    return str;
+  };
   
   try {
     setImportLoading(true);
     const response = await lotesAPI.importar(formData);
     const resumen = response.data?.resumen || response.data || {};
     const errores = response.data?.errores || [];
-
-    // Función para traducir errores técnicos a mensajes amigables
-    const traducirError = (errorStr) => {
-      if (!errorStr) return 'Error desconocido';
-      const str = String(errorStr);
-      
-      // Errores de fecha de caducidad
-      if (str.includes('fecha de caducidad debe ser posterior a la fecha de fabricación')) {
-        return '⚠️ La fecha de caducidad es anterior a la fabricación (dato incorrecto en Excel)';
-      }
-      if (str.includes('No se puede registrar un lote ya vencido') || str.includes('lote ya vencido')) {
-        return '⚠️ Lote ya vencido - no se puede registrar inventario caducado';
-      }
-      if (str.includes('Fecha de caducidad invalida')) {
-        return '⚠️ Formato de fecha inválido (use YYYY-MM-DD o DD/MM/YYYY)';
-      }
-      
-      // Errores de producto y validación clave+nombre
-      if (str.includes('Producto no encontrado') || str.includes('no encontrada en catálogo') || str.includes('no encontrada en el catálogo')) {
-        return '⚠️ Producto no existe en el catálogo - verifique la clave';
-      }
-      if (str.includes('Producto y numero de lote son obligatorios')) {
-        return '⚠️ Faltan datos obligatorios (Producto o Número de Lote)';
-      }
-      if (str.includes('DISCREPANCIA')) {
-        return '⚠️ Clave y nombre no coinciden - verifique que ambos correspondan al mismo producto';
-      }
-      if (str.includes('Clave de producto es OBLIGATORIA')) {
-        return '⚠️ Falta la clave del producto (columna obligatoria)';
-      }
-      if (str.includes('Nombre de producto es OBLIGATORIO')) {
-        return '⚠️ Falta el nombre del producto (columna obligatoria)';
-      }
-      
-      // Errores de cantidad
-      if (str.includes('Cantidades invalidas')) {
-        return '⚠️ Cantidad inválida - debe ser un número positivo';
-      }
-      if (str.includes('Cantidad Inicial es 0') || str.includes('Cantidad Inicial debe ser mayor a 0')) {
-        return '⚠️ Cantidad recibida es 0 - importe cuando llegue la primera entrega';
-      }
-      
-      return str;
-    };
 
     // Mostrar resultado principal
     const totalExitos = resumen.creados || resumen.registros_exitosos || 0;
@@ -959,7 +964,43 @@ const handleImportar = async (e) => {
     setShowImportModal(false);
     cargarLotes();
   } catch (error) {
-    toast.error(error.response?.data?.error || 'Error al importar lotes');
+    const data = error.response?.data;
+    if (data) {
+      // Si el servidor devolvió errores detallados (resultado de importación fallida)
+      const errores = data.errores || [];
+      const errorMsg = data.error || data.mensaje || 'Error al importar lotes';
+      toast.error(errorMsg, { duration: 6000 });
+      
+      // Mostrar detalles de los primeros errores si existen
+      if (errores.length > 0) {
+        const primeros = errores.slice(0, 5);
+        primeros.forEach((err) => {
+          const fila = err.fila || '?';
+          const errorDetalle = traducirError(err.error || err.mensaje);
+          toast.error(
+            (t) => (
+              <div className="flex items-start gap-2">
+                <span className="flex-1">Fila {fila}: {errorDetalle}</span>
+                <button
+                  onClick={() => toast.dismiss(t.id)}
+                  className="ml-2 text-gray-500 hover:text-gray-700 font-bold text-lg leading-none"
+                  aria-label="Cerrar"
+                >
+                  ×
+                </button>
+              </div>
+            ),
+            { duration: Infinity }
+          );
+        });
+        if (errores.length > 5) {
+          toast(`📝 Hay ${errores.length - 5} errores más. Ver consola (F12) para detalles.`, { icon: 'ℹ️', duration: 8000 });
+        }
+        console.warn('Errores en importación de lotes:', errores);
+      }
+    } else {
+      toast.error('Error de conexión al importar lotes. Verifique su conexión a internet.');
+    }
   } finally {
     setImportLoading(false);
     e.target.value = '';
