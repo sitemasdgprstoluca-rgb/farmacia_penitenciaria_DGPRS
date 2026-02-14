@@ -351,15 +351,18 @@ const Lotes = () => {
       return;
     }
     
-    // Validar cantidad del contrato (obligatoria)
-    if (!formData.cantidad_contrato || formData.cantidad_contrato.toString().trim() === '') {
-      toast.error('La cantidad del contrato es obligatoria');
-      return;
-    }
-    const cantidadContrato = parseInt(formData.cantidad_contrato, 10);
-    if (isNaN(cantidadContrato) || cantidadContrato <= 0) {
-      toast.error('La cantidad del contrato debe ser un número mayor a cero');
-      return;
+    // Validar cantidad del contrato (OPCIONAL - puede ser vacía/null)
+    // Si se proporciona, debe ser un número no negativo
+    let cantidadContrato = null;
+    if (formData.cantidad_contrato !== '' && formData.cantidad_contrato !== null && formData.cantidad_contrato !== undefined) {
+      cantidadContrato = parseInt(formData.cantidad_contrato, 10);
+      if (isNaN(cantidadContrato) || cantidadContrato < 0) {
+        toast.error('La cantidad del contrato debe ser un número no negativo');
+        return;
+      }
+      if (cantidadContrato === 0) {
+        cantidadContrato = null; // Tratar 0 como sin definir
+      }
     }
 
     // cantidad_inicial: cantidad realmente recibida (puede ser parcial vs contrato)
@@ -383,13 +386,13 @@ const Lotes = () => {
       return;
     }
     
-    // Validación: cantidad_inicial no puede superar cantidad_contrato
-    if (!editingLote && cantidadInicial > cantidadContrato) {
+    // Validación: cantidad_inicial no puede superar cantidad_contrato (solo si contrato está definido)
+    if (!editingLote && cantidadContrato !== null && cantidadInicial > cantidadContrato) {
       toast.error('La cantidad inicial recibida no puede superar la cantidad del contrato');
       return;
     }
     
-    // ISS-INV-001: cantidad_contrato ya validada arriba
+    // ISS-INV-002: cantidad_contrato es opcional, puede ser null
     let cantContratoFinal = cantidadContrato;
     
     // Parsear precio si existe (campo real: precio_unitario)
@@ -892,6 +895,14 @@ const handleImportar = async (e) => {
       );
     }
     
+    // ISS-IMPORT-CONSOLIDATION: Mostrar nota sobre filas consolidadas (parcialidades)
+    if (resumen.consolidados_archivo > 0) {
+      toast(
+        `📦 ${resumen.consolidados_archivo} fila(s) consolidada(s) automáticamente (parcialidades con mismo lote+producto+caducidad se sumaron).`,
+        { icon: '🔗', duration: 6000 }
+      );
+    }
+    
     if (errores.length) {
       console.warn('Errores en importación de lotes:', errores);
       
@@ -1341,17 +1352,23 @@ const handleImportar = async (e) => {
                         <span className="text-gray-400 italic">Sin marca</span>
                       )}
                     </td>
-                    {/* ISS-INV-001: Columna de Inventario mejorada con info de contrato */}
+                    {/* ISS-INV-002: Columna de Inventario mejorada con info de contrato */}
                     <td className="px-3 py-2 text-xs">
                       <div className={`font-bold text-base ${lote.cantidad_actual === 0 ? 'text-red-600' : 'text-green-700'}`}>
                         {lote.cantidad_actual}
                       </div>
                       {/* Mostrar "de X" con la referencia correcta: contrato si existe, sino inicial */}
                       <div className="text-gray-500">
-                        de {lote.cantidad_contrato || lote.cantidad_inicial}
+                        de {lote.cantidad_contrato != null ? lote.cantidad_contrato : lote.cantidad_inicial}
                       </div>
+                      {/* Si no hay cantidad_contrato, mostrar indicador sutil */}
+                      {lote.cantidad_contrato == null && (
+                        <div className="text-gray-400 italic text-xs mt-0.5" title="Total del contrato no definido">
+                          — Sin contrato
+                        </div>
+                      )}
                       {/* Mostrar desglose si contrato difiere de inicial (entrega parcial) */}
-                      {lote.cantidad_contrato && lote.cantidad_contrato !== lote.cantidad_inicial && (
+                      {lote.cantidad_contrato != null && lote.cantidad_contrato !== lote.cantidad_inicial && (
                         <div className="mt-1 text-xs">
                           <div className="text-blue-600" title={`Contrato: ${lote.cantidad_contrato} | Recibido: ${lote.cantidad_inicial}`}>
                             📄 Contrato: {lote.cantidad_contrato}
@@ -1602,23 +1619,31 @@ const handleImportar = async (e) => {
                 </div>
               
                 <div className="grid grid-cols-2 gap-4">
-                  {/* ISS-INV-001: Cantidad del Contrato (OBLIGATORIO) */}
+                  {/* ISS-INV-002: Cantidad del Contrato (OPCIONAL, editable por Farmacia) */}
                   <div>
                     <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                      CANTIDAD CONTRATO <span className="text-red-600">*</span>
+                      CANTIDAD CONTRATO
+                      {editingLote && !esFarmaciaAdmin && <span className="text-red-500 text-xs ml-1">🔒</span>}
                     </label>
                     <input
                       type="number"
-                      min="1"
+                      min="0"
                       value={formData.cantidad_contrato}
-                      onChange={(e) => !editingLote && setFormData({...formData, cantidad_contrato: e.target.value})}
+                      onChange={(e) => {
+                        // Editable al crear, y al editar SOLO para Farmacia/Admin
+                        const puedeEditar = !editingLote || esFarmaciaAdmin;
+                        if (puedeEditar) {
+                          setFormData({...formData, cantidad_contrato: e.target.value});
+                        }
+                      }}
                       className={`w-full px-4 py-3 border-2 rounded-xl transition-all focus:outline-none ${
-                        editingLote 
+                        editingLote && !esFarmaciaAdmin
                           ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed' 
                           : 'border-gray-200'
                       }`}
                       onFocus={(e) => {
-                        if (!editingLote) {
+                        const puedeEditar = !editingLote || esFarmaciaAdmin;
+                        if (puedeEditar) {
                           e.target.style.borderColor = '#9F2241';
                           e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
                         }
@@ -1627,15 +1652,16 @@ const handleImportar = async (e) => {
                         e.target.style.borderColor = '#E5E7EB';
                         e.target.style.boxShadow = 'none';
                       }}
-                      required
-                      disabled={editingLote}
-                      readOnly={editingLote}
-                      placeholder="Total según contrato"
+                      disabled={editingLote && !esFarmaciaAdmin}
+                      readOnly={editingLote && !esFarmaciaAdmin}
+                      placeholder={formData.cantidad_contrato === '' || formData.cantidad_contrato === null ? 'Sin definir (opcional)' : 'Total según contrato'}
                     />
                     <p className="text-xs text-gray-500 italic mt-1">
-                      {editingLote 
-                        ? 'No editable. Cantidad total establecida por contrato' 
-                        : 'Total de unidades que establece el contrato de adquisición'}
+                      {editingLote && !esFarmaciaAdmin
+                        ? 'Solo editable por Farmacia'
+                        : editingLote && esFarmaciaAdmin
+                          ? '✏️ Editable. Cantidad total establecida por contrato (opcional)'
+                          : 'Opcional. Total de unidades según contrato de adquisición'}
                     </p>
                   </div>
                   

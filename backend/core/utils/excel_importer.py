@@ -363,6 +363,76 @@ def importar_productos_desde_excel(archivo, usuario):
     return result
 
 
+def _consolidar_filas_importacion(filas_parseadas):
+    """
+    ISS-IMPORT-CONSOLIDATION: Pre-procesa filas parseadas y las consolida.
+    
+    Reglas:
+    1. Filas con mismo (lote_base, producto_id, fecha_caducidad) → se suman cantidades.
+    2. Filas con mismo (lote_base, producto_id) pero DIFERENTE fecha_caducidad 
+       → se genera sufijo .2, .3, etc. para diferenciar.
+    
+    DECISIÓN DE DISEÑO sobre sufijos existentes:
+    Si un lote ya viene con sufijo desde el proveedor (ej. "ABC123.2"), se RESPETA
+    como su lote_base (se trata como identidad distinta a "ABC123").
+    Así el proveedor mantiene control de su propia nomenclatura.
+    
+    Parámetros:
+        filas_parseadas: lista de dicts con al menos:
+            lote_base, producto_id, fecha_caducidad, cantidad_inicial,
+            cantidad_contrato (puede ser None), y demás campos opcionales.
+    
+    Retorna:
+        lista consolidada de dicts listos para crear/actualizar lotes.
+    """
+    from collections import OrderedDict
+
+    # Paso 1: Agrupar por (lote_base, producto_id, fecha_caducidad) y sumar cantidades
+    grupo_completo = OrderedDict()  # (lote_base, producto_id, fecha_cad) → fila acumulada
+    for fila in filas_parseadas:
+        key = (fila['lote_base'], fila['producto_id'], fila['fecha_caducidad'])
+        if key not in grupo_completo:
+            grupo_completo[key] = dict(fila)  # copia
+        else:
+            grupo_completo[key]['cantidad_inicial'] += fila['cantidad_inicial']
+            # cantidad_contrato: si ambos tienen valor, sumar; si alguno es None, mantener el existente
+            existing_cc = grupo_completo[key].get('cantidad_contrato')
+            new_cc = fila.get('cantidad_contrato')
+            if existing_cc is not None and new_cc is not None:
+                grupo_completo[key]['cantidad_contrato'] = existing_cc + new_cc
+            elif new_cc is not None:
+                grupo_completo[key]['cantidad_contrato'] = new_cc
+            # filas_origen: acumular para auditoría
+            grupo_completo[key].setdefault('filas_origen', [fila.get('fila_num', '?')])
+            grupo_completo[key]['filas_origen'].append(fila.get('fila_num', '?'))
+
+    consolidadas = list(grupo_completo.values())
+
+    # Paso 2: Para cada (lote_base, producto_id), detectar si hay múltiples caducidades
+    # y asignar sufijos .2, .3 al segundo, tercer grupo con distinta caducidad.
+    lote_producto_caducidades = OrderedDict()  # (lote_base, producto_id) → [fecha_cad1, fecha_cad2, ...]
+    for fila in consolidadas:
+        lp_key = (fila['lote_base'], fila['producto_id'])
+        lote_producto_caducidades.setdefault(lp_key, [])
+        if fila['fecha_caducidad'] not in lote_producto_caducidades[lp_key]:
+            lote_producto_caducidades[lp_key].append(fila['fecha_caducidad'])
+
+    for fila in consolidadas:
+        lp_key = (fila['lote_base'], fila['producto_id'])
+        caducidades = lote_producto_caducidades[lp_key]
+        if len(caducidades) > 1:
+            # Múltiples caducidades para este lote+producto: asignar sufijo
+            idx = caducidades.index(fila['fecha_caducidad'])
+            if idx == 0:
+                fila['numero_lote'] = fila['lote_base']  # el primero se queda sin sufijo
+            else:
+                fila['numero_lote'] = f"{fila['lote_base']}.{idx + 1}"
+        else:
+            fila['numero_lote'] = fila['lote_base']
+
+    return consolidadas
+
+
 def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
     """
     Importa lotes desde Excel.
@@ -375,7 +445,8 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
     - Fecha Caducidad (REQUERIDO): fecha de vencimiento
     
     COLUMNAS OPCIONALES:
-    - Cantidad Contrato: total según contrato (para cuando llega menos de lo pactado)
+    - Cantidad Contrato: total según contrato (para cuando llega menos de lo pactado).
+                         Si viene vacía o la columna no existe, se guarda como NULL.
     - Precio Unitario: precio unitario (default 0)
     - Número Contrato: número de contrato
     - Marca: laboratorio (opcional)
@@ -391,6 +462,14 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
     Cuando llegan más unidades del contrato, se puede re-importar el Excel
     con las mismas clave/lote/contrato/marca/caducidad y el sistema SUMARÁ
     la cantidad a la existente (pero mantiene la cantidad_contrato original).
+    
+    ISS-IMPORT-CONSOLIDATION: CONSOLIDACIÓN DE PARCIALIDADES
+    ========================================================
+    Si en el mismo archivo hay filas con mismo lote+producto+caducidad,
+    se suman las cantidades en un solo registro (evita duplicados).
+    
+    Si hay filas con mismo lote+producto pero DIFERENTE caducidad,
+    se crean lotes diferenciados con sufijo: Lote, Lote.2, Lote.3, etc.
     
     IMPORTANTE: El sistema verifica que CLAVE y NOMBRE coincidan con el producto
     en la base de datos. Si hay discrepancia, se reporta error para evitar
@@ -512,166 +591,279 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
         logger.info("Lotes - Centro: NULL (Almacén Central/FARMACIA)")
 
     creados = 0
+    consolidados_archivo = 0  # Filas consolidadas dentro del archivo
     omitidos_centro = 0  # ISS-FIX: Contar filas omitidas por pertenecer a otro centro
     
-    with transaction.atomic():
-        for fila_num in range(fila_inicio_datos, sheet.max_row + 1):
-            resultado.incrementar_procesados()
-            fila = list(sheet[fila_num])
+    # ========================================================================
+    # FASE 1: PARSEO - Leer todas las filas y validar datos individuales
+    # ========================================================================
+    filas_parseadas = []
+    
+    for fila_num in range(fila_inicio_datos, sheet.max_row + 1):
+        resultado.incrementar_procesados()
+        fila = list(sheet[fila_num])
+        
+        try:
+            def get_val(col_name, default=None):
+                idx = col_map.get(col_name, -1)
+                if idx >= 0 and idx < len(fila):
+                    val = fila[idx].value
+                    if val is not None and str(val).strip():
+                        return str(val).strip()
+                return default
+            
+            # ========== PRODUCTO (requerido - CLAVE Y NOMBRE son OBLIGATORIOS) ==========
+            producto = None
+            clave_producto = None
+            nombre_producto = None
+            
+            if 'producto_clave' in col_map:
+                clave_producto = get_val('producto_clave')
+            if 'producto_nombre' in col_map:
+                nombre_producto = get_val('producto_nombre')
+            
+            if not clave_producto:
+                resultado.agregar_error(fila_num, 'producto', 
+                    f'Clave de producto es OBLIGATORIA. Nombre proporcionado: {nombre_producto or "N/A"}')
+                continue
+            
+            if not nombre_producto:
+                resultado.agregar_error(fila_num, 'producto', 
+                    f'Nombre de producto es OBLIGATORIO. Clave proporcionada: {clave_producto}')
+                continue
             
             try:
-                def get_val(col_name, default=None):
-                    idx = col_map.get(col_name, -1)
-                    if idx >= 0 and idx < len(fila):
-                        val = fila[idx].value
-                        if val is not None and str(val).strip():
-                            return str(val).strip()
-                    return default
-                
-                # ========== PRODUCTO (requerido - CLAVE Y NOMBRE son OBLIGATORIOS) ==========
-                # FIX: AMBOS campos son obligatorios y deben coincidir con la BD
-                producto = None
-                producto_ref = None
-                clave_producto = None
-                nombre_producto = None
-                
-                # Obtener CLAVE (obligatoria)
-                if 'producto_clave' in col_map:
-                    clave_producto = get_val('producto_clave')
-                
-                # Obtener NOMBRE (obligatorio)
-                if 'producto_nombre' in col_map:
-                    nombre_producto = get_val('producto_nombre')
-                
-                # Validar que AMBOS campos estén presentes
-                if not clave_producto:
-                    resultado.agregar_error(fila_num, 'producto', 
-                        f'Clave de producto es OBLIGATORIA. Nombre proporcionado: {nombre_producto or "N/A"}')
-                    continue
-                
-                if not nombre_producto:
-                    resultado.agregar_error(fila_num, 'producto', 
-                        f'Nombre de producto es OBLIGATORIO. Clave proporcionada: {clave_producto}')
-                    continue
-                
-                # Buscar producto por CLAVE
-                producto_ref = clave_producto.upper()
-                try:
-                    producto = Producto.objects.get(clave__iexact=clave_producto)
-                except Producto.DoesNotExist:
-                    resultado.agregar_error(fila_num, 'producto', 
-                        f'Clave "{clave_producto}" no encontrada en el catálogo de productos. '
-                        f'Nombre: {nombre_producto}. Verifique que el producto exista.')
-                    continue
-                
-                # VERIFICACIÓN CRÍTICA: El nombre en Excel debe coincidir con el nombre en BD
-                nombre_bd_normalizado = producto.nombre.strip().lower()
-                nombre_excel_normalizado = nombre_producto.strip().lower()
-                
-                # Verificar si el nombre coincide (completo o parcialmente al inicio)
-                if not (nombre_bd_normalizado == nombre_excel_normalizado or 
-                        nombre_bd_normalizado.startswith(nombre_excel_normalizado) or
-                        nombre_excel_normalizado.startswith(nombre_bd_normalizado)):
-                    resultado.agregar_error(fila_num, 'producto', 
-                        f'DISCREPANCIA: Clave "{clave_producto}" corresponde a '
-                        f'"{producto.nombre}" en BD, pero Excel dice "{nombre_producto}". '
-                        f'Verifique que clave y nombre sean correctos.')
-                    continue
-                
-                # ========== NUMERO LOTE (requerido) ==========
-                numero_lote = get_val('numero_lote')
-                if not numero_lote:
-                    resultado.agregar_error(fila_num, 'lote', 
-                        'Producto y numero de lote son obligatorios')
-                    continue
-                
-                # ========== FILTRO DE CENTRO/UBICACIÓN ==========
-                # ISS-FIX: Si el Excel tiene columna Ubicación o Centro, y la fila
-                # pertenece a un centro penitenciario (no Farmacia Central), OMITIR
-                # ya que los lotes de centros se gestionan vía transferencias, no importación.
-                ubicacion_excel = get_val('ubicacion', '')
-                centro_excel = get_val('centro', '')
-                ubicacion_or_centro = (ubicacion_excel or centro_excel or '').strip().lower()
-                
-                if not centro and ubicacion_or_centro:
-                    # Importando a Farmacia Central: omitir filas de centros penitenciarios
-                    es_almacen_central = (
-                        not ubicacion_or_centro or
-                        'almac' in ubicacion_or_centro or
-                        'central' in ubicacion_or_centro or
-                        'farmacia' in ubicacion_or_centro
+                producto = Producto.objects.get(clave__iexact=clave_producto)
+            except Producto.DoesNotExist:
+                resultado.agregar_error(fila_num, 'producto', 
+                    f'Clave "{clave_producto}" no encontrada en el catálogo de productos. '
+                    f'Nombre: {nombre_producto}. Verifique que el producto exista.')
+                continue
+            
+            nombre_bd_normalizado = producto.nombre.strip().lower()
+            nombre_excel_normalizado = nombre_producto.strip().lower()
+            if not (nombre_bd_normalizado == nombre_excel_normalizado or 
+                    nombre_bd_normalizado.startswith(nombre_excel_normalizado) or
+                    nombre_excel_normalizado.startswith(nombre_bd_normalizado)):
+                resultado.agregar_error(fila_num, 'producto', 
+                    f'DISCREPANCIA: Clave "{clave_producto}" corresponde a '
+                    f'"{producto.nombre}" en BD, pero Excel dice "{nombre_producto}". '
+                    f'Verifique que clave y nombre sean correctos.')
+                continue
+            
+            # ========== NUMERO LOTE (requerido) ==========
+            numero_lote = get_val('numero_lote')
+            if not numero_lote:
+                resultado.agregar_error(fila_num, 'lote', 
+                    'Producto y numero de lote son obligatorios')
+                continue
+            
+            # ========== FILTRO DE CENTRO/UBICACIÓN ==========
+            ubicacion_excel = get_val('ubicacion', '')
+            centro_excel = get_val('centro', '')
+            ubicacion_or_centro = (ubicacion_excel or centro_excel or '').strip().lower()
+            
+            if not centro and ubicacion_or_centro:
+                es_almacen_central = (
+                    not ubicacion_or_centro or
+                    'almac' in ubicacion_or_centro or
+                    'central' in ubicacion_or_centro or
+                    'farmacia' in ubicacion_or_centro
+                )
+                if not es_almacen_central:
+                    logger.info(
+                        f"Fila {fila_num}: OMITIDA - lote {numero_lote} pertenece a "
+                        f"'{ubicacion_excel or centro_excel}', no a Farmacia Central"
                     )
-                    if not es_almacen_central:
-                        logger.info(
-                            f"Fila {fila_num}: OMITIDA - lote {numero_lote} pertenece a "
-                            f"'{ubicacion_excel or centro_excel}', no a Farmacia Central"
-                        )
-                        # No contar como error ni éxito, simplemente omitir
-                        omitidos_centro += 1
-                        continue
-                
-                # ========== CANTIDAD INICIAL (requerido) - Leer primero ==========
-                cant_raw = get_val('cantidad_inicial', '0')
-                try:
-                    cantidad_inicial = int(float(cant_raw))
-                except:
-                    resultado.agregar_error(fila_num, 'cantidad', f'Cantidad inválida: {cant_raw}')
+                    omitidos_centro += 1
                     continue
-                
-                # Validar cantidad_inicial > 0 (CHECK constraint en Supabase)
-                if cantidad_inicial <= 0:
-                    # ISS-INV-001: Si hay cantidad_contrato, dar mensaje sobre flujo parcial
-                    cant_contrato_preview = get_val('cantidad_contrato')
-                    if cant_contrato_preview and int(float(cant_contrato_preview)) > 0:
-                        resultado.agregar_error(fila_num, 'cantidad', 
-                            f'Cantidad Inicial es 0 pero Contrato dice {cant_contrato_preview}. '
-                            f'Importe este lote cuando llegue la primera entrega con la cantidad real recibida. '
-                            f'Ejemplo: si llegan 5 de {cant_contrato_preview}, ponga Cantidad Inicial=5.')
-                    else:
-                        resultado.agregar_error(fila_num, 'cantidad', 
-                            'Cantidad Inicial debe ser mayor a 0. No se puede registrar un lote sin unidades recibidas.')
-                    continue
-                
-                # ========== FECHA CADUCIDAD (requerido) - Leer primero ==========
-                idx_cad = col_map['caducidad']
-                fecha_cad_raw = fila[idx_cad].value if idx_cad < len(fila) else None
-                
-                fecha_caducidad = None
-                try:
-                    if isinstance(fecha_cad_raw, (datetime, date)):
-                        fecha_caducidad = fecha_cad_raw.date() if isinstance(fecha_cad_raw, datetime) else fecha_cad_raw
-                    elif fecha_cad_raw:
-                        fecha_str = str(fecha_cad_raw).strip()
-                        for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y', '%m/%d/%Y', '%Y/%m/%d']:
-                            try:
-                                fecha_caducidad = datetime.strptime(fecha_str, fmt).date()
-                                break
-                            except:
-                                continue
-                        if not fecha_caducidad:
-                            raise ValueError(f'Formato no reconocido: {fecha_cad_raw}')
-                    else:
-                        raise ValueError('Fecha vacía')
-                except Exception as e:
-                    resultado.agregar_error(fila_num, 'caducidad', f'Fecha inválida: {e}')
-                    continue
-                
-                # ========== CAMPOS OPCIONALES - Leer antes de verificar duplicados ==========
-                numero_contrato = get_val('contrato')
-                marca = get_val('marca')
-                
-                # ISS-INV-001: Leer cantidad_contrato si viene en el Excel
-                cantidad_contrato = None
-                if 'cantidad_contrato' in col_map:
-                    cant_contrato_raw = get_val('cantidad_contrato')
-                    if cant_contrato_raw:
+            
+            # ========== CANTIDAD INICIAL (requerido) ==========
+            cant_raw = get_val('cantidad_inicial', '0')
+            try:
+                cantidad_inicial = int(float(cant_raw))
+            except:
+                resultado.agregar_error(fila_num, 'cantidad', f'Cantidad inválida: {cant_raw}')
+                continue
+            
+            if cantidad_inicial <= 0:
+                cant_contrato_preview = get_val('cantidad_contrato')
+                if cant_contrato_preview and int(float(cant_contrato_preview)) > 0:
+                    resultado.agregar_error(fila_num, 'cantidad', 
+                        f'Cantidad Inicial es 0 pero Contrato dice {cant_contrato_preview}. '
+                        f'Importe este lote cuando llegue la primera entrega con la cantidad real recibida. '
+                        f'Ejemplo: si llegan 5 de {cant_contrato_preview}, ponga Cantidad Inicial=5.')
+                else:
+                    resultado.agregar_error(fila_num, 'cantidad', 
+                        'Cantidad Inicial debe ser mayor a 0. No se puede registrar un lote sin unidades recibidas.')
+                continue
+            
+            # ========== FECHA CADUCIDAD (requerido) ==========
+            idx_cad = col_map['caducidad']
+            fecha_cad_raw = fila[idx_cad].value if idx_cad < len(fila) else None
+            
+            fecha_caducidad = None
+            try:
+                if isinstance(fecha_cad_raw, (datetime, date)):
+                    fecha_caducidad = fecha_cad_raw.date() if isinstance(fecha_cad_raw, datetime) else fecha_cad_raw
+                elif fecha_cad_raw:
+                    fecha_str = str(fecha_cad_raw).strip()
+                    for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y', '%m/%d/%Y', '%Y/%m/%d']:
                         try:
-                            cantidad_contrato = int(float(cant_contrato_raw))
+                            fecha_caducidad = datetime.strptime(fecha_str, fmt).date()
+                            break
                         except:
-                            pass  # Si no se puede parsear, se deja como NULL
+                            continue
+                    if not fecha_caducidad:
+                        raise ValueError(f'Formato no reconocido: {fecha_cad_raw}')
+                else:
+                    raise ValueError('Fecha vacía')
+            except Exception as e:
+                resultado.agregar_error(fila_num, 'caducidad', f'Fecha inválida: {e}')
+                continue
+            
+            # ========== CAMPOS OPCIONALES ==========
+            numero_contrato = get_val('contrato')
+            marca = get_val('marca')
+            
+            # ISS-INV-002: cantidad_contrato es OPCIONAL.
+            # Si la columna no existe o el valor es vacío, se guarda como NULL.
+            cantidad_contrato = None
+            if 'cantidad_contrato' in col_map:
+                cant_contrato_raw = get_val('cantidad_contrato')
+                if cant_contrato_raw:
+                    try:
+                        cantidad_contrato = int(float(cant_contrato_raw))
+                        if cantidad_contrato < 0:
+                            cantidad_contrato = None  # No negativos
+                    except:
+                        pass  # Si no se puede parsear, se deja como NULL
+            
+            # Fecha fabricación
+            fecha_fabricacion = None
+            if 'fabricacion' in col_map:
+                idx_fab = col_map['fabricacion']
+                fecha_fab_raw = fila[idx_fab].value if idx_fab < len(fila) else None
+                if fecha_fab_raw:
+                    try:
+                        if isinstance(fecha_fab_raw, (datetime, date)):
+                            fecha_fabricacion = fecha_fab_raw.date() if isinstance(fecha_fab_raw, datetime) else fecha_fab_raw
+                        else:
+                            for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y']:
+                                try:
+                                    fecha_fabricacion = datetime.strptime(str(fecha_fab_raw).strip(), fmt).date()
+                                    break
+                                except:
+                                    continue
+                    except:
+                        pass
+            
+            # Precio
+            precio_raw = get_val('precio', '0')
+            try:
+                precio_str = str(precio_raw).replace(',', '.').replace('$', '').replace(' ', '')
+                precio_unitario = max(Decimal('0'), Decimal(precio_str))
+            except:
+                precio_unitario = Decimal('0')
+            
+            # Activo
+            activo = True
+            if 'activo' in col_map:
+                activo_raw = get_val('activo', 'activo')
+                activo = _parse_bool(activo_raw)
+            
+            # Acumular fila parseada para consolidación
+            filas_parseadas.append({
+                'fila_num': fila_num,
+                'producto': producto,
+                'producto_id': producto.pk,
+                'clave_producto': clave_producto,
+                'lote_base': numero_lote,       # Número de lote original del Excel
+                'numero_lote': numero_lote,      # Puede cambiar tras consolidación con sufijo
+                'cantidad_inicial': cantidad_inicial,
+                'cantidad_contrato': cantidad_contrato,
+                'fecha_caducidad': fecha_caducidad,
+                'fecha_fabricacion': fecha_fabricacion,
+                'precio_unitario': precio_unitario,
+                'numero_contrato': numero_contrato,
+                'marca': marca,
+                'ubicacion_excel': ubicacion_excel,
+                'activo': activo,
+            })
+            
+        except Exception as exc:
+            logger.exception(f"Error parseando fila {fila_num}: {exc}")
+            resultado.agregar_error(fila_num, 'general', str(exc))
+    
+    # ========================================================================
+    # FASE 2: CONSOLIDACIÓN - Agrupar parcialidades y diferenciar caducidades
+    # ========================================================================
+    filas_consolidadas = _consolidar_filas_importacion(filas_parseadas)
+    
+    total_pre_consolidacion = len(filas_parseadas)
+    total_post_consolidacion = len(filas_consolidadas)
+    if total_pre_consolidacion != total_post_consolidacion:
+        consolidados_archivo = total_pre_consolidacion - total_post_consolidacion
+        logger.info(
+            f"ISS-IMPORT-CONSOLIDATION: {total_pre_consolidacion} filas → "
+            f"{total_post_consolidacion} lotes consolidados "
+            f"({consolidados_archivo} filas combinadas por parcialidades)"
+        )
+    
+    # Verificar sufijos contra BD existente para evitar colisiones
+    for fila in filas_consolidadas:
+        numero_lote = fila['numero_lote']
+        producto = fila['producto']
+        
+        # Si el lote ya tiene sufijo asignado por consolidación, verificar que no colisione con BD
+        if numero_lote != fila['lote_base']:
+            existente_bd = Lote.objects.filter(
+                producto=producto,
+                numero_lote__iexact=numero_lote,
+                activo=True
+            )
+            if centro:
+                existente_bd = existente_bd.filter(centro=centro)
+            else:
+                existente_bd = existente_bd.filter(centro__isnull=True)
+            
+            if existente_bd.exists():
+                # Colisión: buscar siguiente sufijo disponible
+                sufijo = 2
+                while True:
+                    candidato = f"{fila['lote_base']}.{sufijo}"
+                    existe = Lote.objects.filter(
+                        producto=producto,
+                        numero_lote__iexact=candidato,
+                        activo=True
+                    )
+                    if centro:
+                        existe = existe.filter(centro=centro)
+                    else:
+                        existe = existe.filter(centro__isnull=True)
+                    
+                    if not existe.exists():
+                        fila['numero_lote'] = candidato
+                        break
+                    sufijo += 1
+                    if sufijo > 100:  # Seguridad contra loops infinitos
+                        break
+    
+    # ========================================================================
+    # FASE 3: PERSISTENCIA - Crear/actualizar lotes en BD (atómico)
+    # ========================================================================
+    with transaction.atomic():
+        for fila in filas_consolidadas:
+            try:
+                producto = fila['producto']
+                numero_lote = fila['numero_lote']
+                cantidad_inicial = fila['cantidad_inicial']
+                cantidad_contrato = fila['cantidad_contrato']
+                fecha_caducidad = fila['fecha_caducidad']
+                numero_contrato = fila.get('numero_contrato')
+                marca = fila.get('marca')
                 
-                # ========== VERIFICAR DUPLICADO Y CONSOLIDAR ==========
-                # Buscar lote existente con los mismos datos clave
+                # ========== VERIFICAR DUPLICADO EN BD Y CONSOLIDAR ==========
                 lote_existente_activo = Lote.objects.filter(
                     producto=producto, 
                     numero_lote__iexact=numero_lote,
@@ -686,8 +878,6 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                 if lote_existente_activo.exists():
                     lote = lote_existente_activo.first()
                     
-                    # Verificar si los datos clave coinciden para consolidar
-                    # Normalizar valores para comparación
                     contrato_igual = (
                         (not numero_contrato and not lote.numero_contrato) or
                         (numero_contrato and lote.numero_contrato and 
@@ -701,39 +891,35 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                     fecha_igual = (lote.fecha_caducidad == fecha_caducidad)
                     
                     if contrato_igual and marca_igual and fecha_igual:
-                        # ========== CONSOLIDAR: Sumar cantidades al lote existente ==========
-                        # ISS-INV-001: Al consolidar, cantidad_contrato NO se modifica (se mantiene original)
-                        cantidad_anterior = lote.cantidad_actual
+                        # CONSOLIDAR: Sumar cantidades al lote existente
                         cantidad_inicial_anterior = lote.cantidad_inicial
                         cantidad_contrato_lote = lote.cantidad_contrato
                         
-                        # Actualizar lote existente (NO tocar cantidad_contrato)
                         lote.cantidad_actual += cantidad_inicial
                         lote.cantidad_inicial += cantidad_inicial
                         lote.save(update_fields=['cantidad_actual', 'cantidad_inicial', 'updated_at'])
                         
-                        # Actualizar stock del producto
                         Producto.objects.filter(pk=producto.pk).update(
                             stock_actual=F('stock_actual') + cantidad_inicial
                         )
                         
-                        # ISS-INV-001: Log mejorado con información de contrato
                         pendiente_str = ""
                         if cantidad_contrato_lote:
                             pendiente = cantidad_contrato_lote - lote.cantidad_inicial
                             pendiente_str = f", contrato: {cantidad_contrato_lote}, pendiente: {pendiente}"
                         
+                        filas_origen = fila.get('filas_origen', [fila.get('fila_num', '?')])
                         logger.info(
-                            f"Fila {fila_num}: CONSOLIDADO lote {numero_lote} producto {clave_producto} - "
+                            f"Filas {filas_origen}: CONSOLIDADO CON BD lote {numero_lote} "
+                            f"producto {fila['clave_producto']} - "
                             f"surtido anterior: {cantidad_inicial_anterior}, sumado: +{cantidad_inicial}, "
                             f"nuevo surtido: {lote.cantidad_inicial}, stock: {lote.cantidad_actual}{pendiente_str}"
                         )
                         
-                        creados += 1  # Contar como éxito (consolidación)
+                        creados += 1
                         resultado.agregar_exito()
                         continue
                     else:
-                        # Los datos NO coinciden - dar error descriptivo
                         diferencias = []
                         if not fecha_igual:
                             diferencias.append(f"caducidad BD:{lote.fecha_caducidad} vs Excel:{fecha_caducidad}")
@@ -742,8 +928,8 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                         if not marca_igual:
                             diferencias.append(f"marca BD:'{lote.marca}' vs Excel:'{marca}'")
                         
-                        resultado.agregar_error(fila_num, 'lote', 
-                            f'Lote {numero_lote} ya existe para producto {clave_producto} '
+                        resultado.agregar_error(fila.get('fila_num', 0), 'lote', 
+                            f'Lote {numero_lote} ya existe para producto {fila["clave_producto"]} '
                             f'pero con datos diferentes: {", ".join(diferencias)}. '
                             f'Corrija el Excel o use otro número de lote.')
                         continue
@@ -759,66 +945,26 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                     
                 if lote_existente_inactivo.exists():
                     lote_inact = lote_existente_inactivo.first()
-                    logger.info(f"Fila {fila_num}: Lote {numero_lote} existía inactivo (ID: {lote_inact.id}), "
+                    logger.info(f"Lote {numero_lote} existía inactivo (ID: {lote_inact.id}), "
                                f"se creará nuevo registro activo")
                 
-                # ========== FECHA FABRICACION (opcional) ==========
-                fecha_fabricacion = None
-                if 'fabricacion' in col_map:
-                    idx_fab = col_map['fabricacion']
-                    fecha_fab_raw = fila[idx_fab].value if idx_fab < len(fila) else None
-                    if fecha_fab_raw:
-                        try:
-                            if isinstance(fecha_fab_raw, (datetime, date)):
-                                fecha_fabricacion = fecha_fab_raw.date() if isinstance(fecha_fab_raw, datetime) else fecha_fab_raw
-                            else:
-                                for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y']:
-                                    try:
-                                        fecha_fabricacion = datetime.strptime(str(fecha_fab_raw).strip(), fmt).date()
-                                        break
-                                    except:
-                                        continue
-                        except:
-                            pass
-                
-                # ========== PRECIO (opcional) ==========
-                precio_raw = get_val('precio', '0')
-                try:
-                    precio_str = str(precio_raw).replace(',', '.').replace('$', '').replace(' ', '')
-                    precio_unitario = max(Decimal('0'), Decimal(precio_str))
-                except:
-                    precio_unitario = Decimal('0')
-                
-                # numero_contrato y marca ya se leyeron arriba para verificar duplicados
-                
-                # Centro ya está asignado automáticamente a FARMACIA
-                centro_lote = centro
-                
-                # ========== ACTIVO (opcional) ==========
-                activo = True
-                if 'activo' in col_map:
-                    activo_raw = get_val('activo', 'activo')
-                    activo = _parse_bool(activo_raw)
-                
                 # Crear lote
-                # ISS-INV-001: Incluir cantidad_contrato si fue proporcionada
                 Lote.objects.create(
                     producto=producto,
-                    centro=centro_lote,
+                    centro=centro,
                     numero_lote=numero_lote,
                     cantidad_inicial=cantidad_inicial,
                     cantidad_actual=cantidad_inicial,
-                    cantidad_contrato=cantidad_contrato,  # ISS-INV-001: Total según contrato (puede ser NULL)
+                    cantidad_contrato=cantidad_contrato,  # NULL si no se proporcionó
                     fecha_caducidad=fecha_caducidad,
-                    fecha_fabricacion=fecha_fabricacion,
-                    precio_unitario=precio_unitario,
+                    fecha_fabricacion=fila.get('fecha_fabricacion'),
+                    precio_unitario=fila.get('precio_unitario', Decimal('0')),
                     numero_contrato=numero_contrato,
                     marca=marca,
-                    ubicacion='Almacén Central',  # Todo llega a Farmacia
-                    activo=activo,
+                    ubicacion='Almacén Central',
+                    activo=fila.get('activo', True),
                 )
                 
-                # Actualizar stock del producto
                 Producto.objects.filter(pk=producto.pk).update(
                     stock_actual=F('stock_actual') + cantidad_inicial
                 )
@@ -827,11 +973,17 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                 resultado.agregar_exito()
                 
             except Exception as exc:
-                logger.exception(f"Error lote fila {fila_num}: {exc}")
-                resultado.agregar_error(fila_num, 'general', str(exc))
+                logger.exception(f"Error creando lote {fila.get('numero_lote', '?')}: {exc}")
+                resultado.agregar_error(fila.get('fila_num', 0), 'general', str(exc))
 
     result = resultado.get_dict()
     result['creados'] = creados
+    if consolidados_archivo > 0:
+        result['consolidados_archivo'] = consolidados_archivo
+        result['nota_consolidacion'] = (
+            f'{consolidados_archivo} fila(s) consolidada(s) en el archivo '
+            f'(parcialidades con mismo lote+producto+caducidad se sumaron).'
+        )
     # ISS-FIX: Informar sobre filas omitidas por pertenecer a otros centros
     if omitidos_centro > 0:
         result['omitidos_centro'] = omitidos_centro
