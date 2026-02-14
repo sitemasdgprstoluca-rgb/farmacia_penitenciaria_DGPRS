@@ -1,3 +1,7 @@
+/**
+ * ConfiguracionTema - Módulo de personalización del tema del sistema
+ * @version 2.0.0 - ColorInput movido antes del componente principal (fix hoisting)
+ */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTheme } from '../hooks/useTheme';
 import { usePermissions } from '../hooks/usePermissions';
