@@ -585,10 +585,10 @@ const ConfiguracionTema = () => {
 
   /**
    * Restablece completamente al tema institucional (TemaGlobal)
-   * Restaura colores, tipograf├¡as, logos y fondos oficiales
+   * Restaura colores, tipografías, logos y fondos oficiales
+   * ISS-SEC: Ahora usa confirmación en 2 pasos con escritura obligatoria
    */
-  const handleRestablecerInstitucional = async () => {
-  // ISS-SEC: Funci├│n de ejecuci├│n para restablecer tema institucional
+  // ISS-SEC: Función de ejecución para restablecer tema institucional
   const executeRestablecerInstitucional = async () => {
     const resultado = await ejecutarOperacion(
       'restablecerInstitucional',
