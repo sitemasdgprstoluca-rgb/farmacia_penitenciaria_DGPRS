@@ -183,6 +183,31 @@ const IMPORT_CONFIGS = {
 };
 
 /**
+ * Formatea un valor de celda para mostrar en UI
+ * Evita el error de React al intentar renderizar objetos Date directamente
+ */
+const formatearCelda = (valor) => {
+  if (valor === null || valor === undefined || valor === '') {
+    return '';
+  }
+  // Si es objeto Date, formatear como string
+  if (valor instanceof Date) {
+    if (isNaN(valor.getTime())) return '(fecha inválida)';
+    // Formato YYYY-MM-DD
+    return valor.toISOString().split('T')[0];
+  }
+  // Si es objeto con propiedad result (fórmula de Excel), usar el resultado
+  if (typeof valor === 'object' && valor !== null) {
+    if (valor.result !== undefined) return formatearCelda(valor.result);
+    if (valor.text !== undefined) return valor.text;
+    if (valor.richText) return valor.richText.map(rt => rt.text).join('');
+    // Otros objetos: convertir a string
+    return JSON.stringify(valor);
+  }
+  return String(valor);
+};
+
+/**
  * Normaliza un header para comparación
  */
 const normalizarHeader = (header) => {
@@ -304,7 +329,8 @@ const ImportadorModerno = ({
         row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
           // Expandir array si es necesario
           while (rowData.length < colNumber - 1) rowData.push('');
-          rowData.push(cell.value ?? '');
+          // Formatear el valor para evitar objetos Date crudos
+          rowData.push(formatearCelda(cell.value));
         });
         jsonData.push(rowData);
       });
@@ -919,7 +945,7 @@ const ImportadorModerno = ({
                         </td>
                         {row.datos.map((cell, cellIdx) => (
                           <td key={cellIdx} className="px-2 py-1.5 text-gray-700 border-r truncate max-w-[150px]">
-                            {cell ?? ''}
+                            {formatearCelda(cell)}
                           </td>
                         ))}
                       </tr>

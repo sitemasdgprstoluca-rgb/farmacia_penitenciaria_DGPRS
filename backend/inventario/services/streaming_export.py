@@ -324,7 +324,7 @@ class ReportExporter:
             {'field': 'precio_unitario', 'header': 'Precio'},
             {'field': 'stock_minimo', 'header': 'Stock Mínimo'},
             {'field': 'activo', 'header': 'Activo'},
-            {'field': 'created_at', 'header': 'Fecha Creación'},
+            {'field': 'created_at', 'header': 'Fecha Ingreso'},
         ]
         
         filename = f"productos_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
