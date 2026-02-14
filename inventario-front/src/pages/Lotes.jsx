@@ -26,6 +26,8 @@ import { puedeVerGlobal as checkPuedeVerGlobal, esFarmaciaAdmin as checkEsFarmac
 // ISS-SEC: Componentes para confirmación en 2 pasos
 import TwoStepConfirmModal from '../components/TwoStepConfirmModal';
 import { useConfirmation } from '../hooks/useConfirmation';
+// ISS-IMPORT: Componente moderno de importación
+import ImportadorModerno from '../components/ImportadorModerno';
 
 const MOCK_PRODUCTOS = Array.from({ length: 40 }).map((_, index) => ({
   id: index + 1,
@@ -2001,87 +2003,36 @@ const handleImportar = async (e) => {
         </div>
       )}
 
-      {/* Modal Importar */}
+      {/* Modal Importar - Usando ImportadorModerno */}
       {showImportModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
-            <div className="px-6 py-4 bg-theme-gradient rounded-t-2xl flex items-center justify-between">
-              <h2 className="text-xl font-bold text-white">Importar Lotes desde Excel</h2>
-              <button onClick={() => setShowImportModal(false)} className="text-white/70 hover:text-white">
-                <FaTimes size={24} />
-              </button>
-            </div>
-            
-            <div className="p-6">
-              <div className="mb-4">
-                <p className="text-sm text-gray-600 mb-2">
-                  El archivo debe contener las siguientes columnas:
-                </p>
-                <ul className="text-sm text-gray-600 list-disc list-inside space-y-1">
-                  <li><strong>Clave Producto</strong> - Requerido</li>
-                  <li><strong>Nombre Producto</strong> - Requerido (debe coincidir con clave)</li>
-                  <li><strong>Número Lote</strong> - Requerido</li>
-                  <li><strong>Fecha Caducidad</strong> (YYYY-MM-DD) - Requerido</li>
-                  <li><strong>Cantidad Inicial</strong> - Requerido (unidades recibidas)</li>
-                  <li><strong className="text-blue-600">Cantidad Contrato</strong> - Opcional (total según contrato)</li>
-                  <li>Fecha Fabricación (opcional, YYYY-MM-DD)</li>
-                  <li>Precio Unitario (opcional, default = 0)</li>
-                  <li>Número Contrato (opcional)</li>
-                  <li>Marca (opcional)</li>
-                </ul>
-                <div className="mt-3 p-2 bg-blue-50 rounded-lg border border-blue-200">
-                  <p className="text-xs text-blue-700 font-medium">📦 Entregas Parciales:</p>
-                  <p className="text-xs text-blue-600 mt-1">
-                    Si el contrato dice 100 pero llegaron 80: use Cantidad Inicial=80, Cantidad Contrato=100.
-                    El sistema calculará automáticamente las unidades pendientes.
-                  </p>
-                  <p className="text-xs text-blue-600 mt-1">
-                    Para completar entregas, reimporte con mismos datos clave y el sistema sumará las cantidades.
-                  </p>
-                </div>
-                <p className="text-xs text-amber-600 mt-2">
-                  Nota: Clave y Nombre del producto deben coincidir con el catálogo. Descargue la plantilla para ver el formato correcto.
-                </p>
-                {/* Botón de descarga de plantilla */}
-                <button
-                  onClick={handleDescargarPlantilla}
-                  className="mt-3 flex items-center gap-2 text-sm text-theme-primary hover:text-theme-secondary transition"
-                >
-                  <FaDownload />
-                  Descargar plantilla de ejemplo
-                </button>
-              </div>
-              
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-2">
-                  Seleccionar archivo Excel (.xlsx, .xls)
-                </label>
-                <input
-                  type="file"
-                  accept=".xlsx,.xls"
-                  onChange={handleImportar}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-theme-primary disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={importLoading}
-                />
-              </div>
-              
-              {importLoading && (
-                <div className="mb-4 text-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-4 border-t-transparent spinner-institucional mx-auto"></div>
-                  <p className="text-sm text-gray-600 mt-2">Procesando archivo...</p>
-                </div>
-              )}
-              
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={() => setShowImportModal(false)}
-                  className="px-4 py-2 border rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={importLoading}
-                >
-                  Cerrar
-                </button>
-              </div>
-            </div>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="relative w-full max-w-4xl my-8">
+            <button 
+              onClick={() => setShowImportModal(false)} 
+              className="absolute -top-2 -right-2 z-10 bg-white rounded-full p-2 shadow-lg hover:bg-gray-100 transition"
+            >
+              <FaTimes className="text-gray-600" size={20} />
+            </button>
+            <ImportadorModerno
+              tipo="lotes"
+              onImportar={async (formData) => {
+                setImportLoading(true);
+                try {
+                  // Incluir centro del usuario para trazabilidad si no tiene permisos globales
+                  if (!puedeVerGlobal && centroUsuario) {
+                    formData.append('centro', centroUsuario);
+                  }
+                  const response = await lotesAPI.importar(formData);
+                  // Recargar lotes después de importar
+                  await cargarLotes();
+                  return response;
+                } finally {
+                  setImportLoading(false);
+                }
+              }}
+              onDescargarPlantilla={handleDescargarPlantilla}
+              permiteImportar={puede.importar}
+            />
           </div>
         </div>
       )}

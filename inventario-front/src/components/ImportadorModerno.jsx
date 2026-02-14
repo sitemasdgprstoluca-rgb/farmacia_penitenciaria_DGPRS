@@ -1,0 +1,1055 @@
+/**
+ * ImportadorModerno - Componente reutilizable para importación de datos desde Excel
+ * 
+ * Características:
+ * - Drag & drop + selección de archivo
+ * - Validación previa (extensión, tamaño, columnas)
+ * - Vista previa de datos con errores resaltados
+ * - Barra de progreso durante importación
+ * - Reporte de errores descargable
+ * - Guía integrada en UI (sin archivos .md)
+ * 
+ * @version 2.0.0 - Febrero 2026
+ */
+import { useState, useRef, useCallback } from 'react';
+import { toast } from 'react-hot-toast';
+import ExcelJS from 'exceljs';
+import {
+  FaCloudUploadAlt,
+  FaDownload,
+  FaFileExcel,
+  FaTimes,
+  FaCheckCircle,
+  FaExclamationTriangle,
+  FaExclamationCircle,
+  FaInfoCircle,
+  FaSpinner,
+  FaFileDownload,
+  FaEye,
+  FaChevronDown,
+  FaChevronUp,
+  FaTrash,
+  FaSync
+} from 'react-icons/fa';
+
+// Constantes de validación
+const MAX_FILE_SIZE_MB = 10;
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+const ALLOWED_EXTENSIONS = ['.xlsx', '.xls'];
+const MAX_PREVIEW_ROWS = 50;
+const PLANTILLA_VERSION = '2.0.0';
+
+/**
+ * Configuraciones por tipo de importación
+ */
+const IMPORT_CONFIGS = {
+  lotes: {
+    titulo: 'Lotes de Inventario',
+    descripcion: 'Importar lotes de productos al almacén',
+    columnasRequeridas: ['Clave Producto', 'Nombre Producto', 'Número Lote', 'Fecha Caducidad', 'Cantidad Inicial'],
+    columnasOpcionales: ['Cantidad Contrato', 'Fecha Fabricación', 'Precio Unitario', 'Número Contrato', 'Marca', 'Activo'],
+    formatos: {
+      'Fecha Caducidad': 'YYYY-MM-DD o DD/MM/YYYY',
+      'Fecha Fabricación': 'YYYY-MM-DD o DD/MM/YYYY',
+      'Cantidad Inicial': 'Número entero positivo',
+      'Cantidad Contrato': 'Número entero positivo (opcional)',
+      'Precio Unitario': 'Número decimal (ej: 15.50)',
+      'Activo': 'Activo / Inactivo'
+    },
+    sinonimosCols: {
+      'clave producto': ['clave', 'codigo', 'sku', 'key', 'clave producto'],
+      'nombre producto': ['nombre', 'articulo', 'descripcion', 'nombre producto'],
+      'número lote': ['lote', 'numero lote', 'num lote', 'batch'],
+      'fecha caducidad': ['caducidad', 'vencimiento', 'fecha caducidad', 'expiracion'],
+      'cantidad inicial': ['cantidad', 'cantidad inicial', 'cant', 'stock', 'existencia', 'qty']
+    },
+    limites: {
+      maxFilas: 5000,
+      maxTamanio: '10 MB'
+    },
+    pasos: [
+      { numero: 1, titulo: 'Descargar plantilla', descripcion: 'Descarga la plantilla actualizada con el formato correcto' },
+      { numero: 2, titulo: 'Llenar datos', descripcion: 'Completa tus datos en Excel. Elimina las filas de ejemplo marcadas con [EJEMPLO]' },
+      { numero: 3, titulo: 'Importar', descripcion: 'Arrastra el archivo o selecciónalo. El sistema validará antes de importar' }
+    ],
+    ejemploRegistro: {
+      'Clave Producto': 'MED001',
+      'Nombre Producto': 'Paracetamol 500mg',
+      'Número Lote': 'LOT-2026-001',
+      'Fecha Caducidad': '2027-12-31',
+      'Cantidad Inicial': 100,
+      'Cantidad Contrato': 100,
+      'Precio Unitario': 15.50
+    }
+  },
+  productos: {
+    titulo: 'Catálogo de Productos',
+    descripcion: 'Importar productos al catálogo',
+    columnasRequeridas: ['Clave', 'Nombre'],
+    columnasOpcionales: ['Nombre Comercial', 'Unidad', 'Stock Mínimo', 'Categoría', 'Sustancia Activa', 'Presentación', 'Concentración', 'Vía Admin', 'Requiere Receta', 'Controlado', 'Estado'],
+    formatos: {
+      'Stock Mínimo': 'Número entero',
+      'Requiere Receta': 'Sí / No',
+      'Controlado': 'Sí / No',
+      'Estado': 'Activo / Inactivo'
+    },
+    sinonimosCols: {
+      'clave': ['clave', 'codigo', 'sku'],
+      'nombre': ['nombre', 'descripcion', 'producto']
+    },
+    limites: {
+      maxFilas: 2000,
+      maxTamanio: '10 MB'
+    },
+    pasos: [
+      { numero: 1, titulo: 'Descargar plantilla', descripcion: 'Descarga la plantilla con el formato correcto' },
+      { numero: 2, titulo: 'Llenar datos', descripcion: 'Completa los productos. Elimina los ejemplos' },
+      { numero: 3, titulo: 'Importar', descripcion: 'Sube el archivo y el sistema validará los datos' }
+    ],
+    ejemploRegistro: {
+      'Clave': 'MED001',
+      'Nombre': 'Paracetamol 500mg',
+      'Unidad': 'CAJA',
+      'Stock Mínimo': 50
+    }
+  },
+  usuarios: {
+    titulo: 'Usuarios del Sistema',
+    descripcion: 'Importar usuarios para acceso al sistema',
+    columnasRequeridas: ['Username', 'Email', 'Nombre', 'Apellidos', 'Password', 'Rol'],
+    columnasOpcionales: ['Centro ID', 'Adscripción', 'Teléfono', 'Activo'],
+    formatos: {
+      'Username': '3-150 caracteres, único',
+      'Email': 'Formato válido, único',
+      'Password': 'Mínimo 8 caracteres',
+      'Rol': 'farmacia_admin, centro_admin, medico, enfermero, almacenista, auditor',
+      'Activo': 'Si / No'
+    },
+    sinonimosCols: {
+      'username': ['username', 'usuario', 'user'],
+      'email': ['email', 'correo', 'mail'],
+      'nombre': ['nombre', 'first_name', 'nombres'],
+      'apellidos': ['apellidos', 'last_name', 'apellido']
+    },
+    limites: {
+      maxFilas: 500,
+      maxTamanio: '5 MB'
+    },
+    pasos: [
+      { numero: 1, titulo: 'Descargar plantilla', descripcion: 'Obtén la plantilla con roles disponibles' },
+      { numero: 2, titulo: 'Llenar datos', descripcion: 'Completa usuarios con contraseñas seguras' },
+      { numero: 3, titulo: 'Importar', descripcion: 'Los usuarios recibirán acceso inmediato' }
+    ],
+    ejemploRegistro: {
+      'Username': 'jperez',
+      'Email': 'jperez@ejemplo.com',
+      'Nombre': 'Juan',
+      'Apellidos': 'Pérez García',
+      'Rol': 'medico'
+    }
+  },
+  pacientes: {
+    titulo: 'Pacientes PPL',
+    descripcion: 'Importar población privada de libertad',
+    columnasRequeridas: ['NUC', 'Nombre', 'Apellido Paterno'],
+    columnasOpcionales: ['Apellido Materno', 'Fecha Nacimiento', 'Sexo', 'Dormitorio', 'Estatus', 'Centro'],
+    formatos: {
+      'NUC': 'Número Único de Control',
+      'Fecha Nacimiento': 'YYYY-MM-DD',
+      'Sexo': '1 = Masculino, 2 = Femenino',
+      'Estatus': 'activo / inactivo / trasladado / liberado'
+    },
+    sinonimosCols: {
+      'nuc': ['nuc', 'numero unico', 'id'],
+      'nombre': ['nombre', 'nombres', 'first_name'],
+      'apellido paterno': ['apellido paterno', 'paterno', 'primer apellido']
+    },
+    limites: {
+      maxFilas: 10000,
+      maxTamanio: '10 MB'
+    },
+    pasos: [
+      { numero: 1, titulo: 'Descargar plantilla', descripcion: 'Plantilla con campos del censo' },
+      { numero: 2, titulo: 'Llenar datos', descripcion: 'Completa datos de PPL' },
+      { numero: 3, titulo: 'Importar', descripcion: 'El sistema validará NUCs duplicados' }
+    ],
+    ejemploRegistro: {
+      'NUC': '12345678',
+      'Nombre': 'Juan',
+      'Apellido Paterno': 'Pérez',
+      'Sexo': '1'
+    }
+  }
+};
+
+/**
+ * Normaliza un header para comparación
+ */
+const normalizarHeader = (header) => {
+  if (!header) return '';
+  return String(header)
+    .toLowerCase()
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // Quitar acentos
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, ' ');
+};
+
+/**
+ * Verifica si una columna coincide con algún sinónimo
+ */
+const columnaCoincide = (header, columnaBuscada, sinonimos) => {
+  const headerNorm = normalizarHeader(header);
+  const columnaKey = normalizarHeader(columnaBuscada);
+  
+  // Coincidencia directa
+  if (headerNorm === columnaKey || headerNorm.includes(columnaKey) || columnaKey.includes(headerNorm)) {
+    return true;
+  }
+  
+  // Buscar en sinónimos
+  if (sinonimos && sinonimos[columnaKey]) {
+    return sinonimos[columnaKey].some(sin => {
+      const sinNorm = normalizarHeader(sin);
+      return headerNorm === sinNorm || headerNorm.includes(sinNorm) || sinNorm.includes(headerNorm);
+    });
+  }
+  
+  return false;
+};
+
+/**
+ * Componente principal del importador
+ */
+const ImportadorModerno = ({
+  tipo = 'lotes',
+  onImportar,
+  onDescargarPlantilla,
+  permiteImportar = true,
+  className = ''
+}) => {
+  const config = IMPORT_CONFIGS[tipo] || IMPORT_CONFIGS.lotes;
+  
+  // Estados
+  const [archivo, setArchivo] = useState(null);
+  const [arrastrando, setArrastrando] = useState(false);
+  const [validando, setValidando] = useState(false);
+  const [importando, setImportando] = useState(false);
+  const [progreso, setProgreso] = useState(0);
+  const [preview, setPreview] = useState(null);
+  const [erroresValidacion, setErroresValidacion] = useState([]);
+  const [resultadoImportacion, setResultadoImportacion] = useState(null);
+  const [mostrarGuia, setMostrarGuia] = useState(false);
+  const [mostrarFormatos, setMostrarFormatos] = useState(false);
+  
+  const inputRef = useRef(null);
+  const dropZoneRef = useRef(null);
+
+  /**
+   * Maneja la selección de archivo
+   */
+  const handleArchivoSeleccionado = useCallback(async (file) => {
+    if (!file) return;
+    
+    setErroresValidacion([]);
+    setPreview(null);
+    setResultadoImportacion(null);
+    
+    // Validar extensión
+    const ext = '.' + file.name.split('.').pop().toLowerCase();
+    if (!ALLOWED_EXTENSIONS.includes(ext)) {
+      setErroresValidacion([{
+        tipo: 'critico',
+        mensaje: `Extensión no permitida: ${ext}`,
+        detalle: `Use archivos ${ALLOWED_EXTENSIONS.join(' o ')}`
+      }]);
+      return;
+    }
+    
+    // Validar tamaño
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      setErroresValidacion([{
+        tipo: 'critico',
+        mensaje: `Archivo muy grande: ${(file.size / 1024 / 1024).toFixed(2)} MB`,
+        detalle: `Tamaño máximo: ${MAX_FILE_SIZE_MB} MB`
+      }]);
+      return;
+    }
+    
+    setArchivo(file);
+    setValidando(true);
+    
+    try {
+      // Leer y validar contenido con ExcelJS
+      const data = await file.arrayBuffer();
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(data);
+      
+      const worksheet = workbook.worksheets[0];
+      if (!worksheet) {
+        setErroresValidacion([{
+          tipo: 'critico',
+          mensaje: 'Archivo vacío o sin hojas',
+          detalle: 'El archivo Excel debe tener al menos una hoja con datos'
+        }]);
+        setValidando(false);
+        return;
+      }
+      
+      // Convertir hoja a array de arrays
+      const jsonData = [];
+      worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+        const rowData = [];
+        row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+          // Expandir array si es necesario
+          while (rowData.length < colNumber - 1) rowData.push('');
+          rowData.push(cell.value ?? '');
+        });
+        jsonData.push(rowData);
+      });
+      
+      if (jsonData.length < 2) {
+        setErroresValidacion([{
+          tipo: 'critico',
+          mensaje: 'Archivo vacío o sin datos',
+          detalle: 'El archivo debe tener encabezados y al menos una fila de datos'
+        }]);
+        setValidando(false);
+        return;
+      }
+      
+      // Detectar fila de encabezados (puede estar en fila 1, 2 o hasta 6)
+      let headerRowIndex = 0;
+      const buscarKeywords = ['clave', 'nombre', 'lote', 'producto', 'nuc', 'username'];
+      
+      for (let i = 0; i < Math.min(10, jsonData.length); i++) {
+        const row = jsonData[i];
+        const rowText = row.map(c => normalizarHeader(c)).join(' ');
+        if (buscarKeywords.some(kw => rowText.includes(kw))) {
+          headerRowIndex = i;
+          break;
+        }
+      }
+      
+      const headers = jsonData[headerRowIndex].map(h => String(h || '').trim());
+      const dataRows = jsonData.slice(headerRowIndex + 1).filter(row => 
+        row.some(cell => cell !== '' && cell !== null && cell !== undefined)
+      );
+      
+      // Filtrar filas de ejemplo
+      const dataRowsSinEjemplos = dataRows.filter(row => {
+        const rowText = row.join(' ').toLowerCase();
+        return !rowText.includes('[ejemplo]') && !rowText.includes('eliminar');
+      });
+      
+      // Validar columnas requeridas
+      const errores = [];
+      const columnasEncontradas = [];
+      const columnasFaltantes = [];
+      
+      config.columnasRequeridas.forEach(colReq => {
+        const encontrada = headers.some(h => columnaCoincide(h, colReq, config.sinonimosCols));
+        if (encontrada) {
+          columnasEncontradas.push(colReq);
+        } else {
+          columnasFaltantes.push(colReq);
+          errores.push({
+            tipo: 'critico',
+            mensaje: `Falta columna requerida: ${colReq}`,
+            detalle: 'Esta columna es obligatoria para la importación'
+          });
+        }
+      });
+      
+      // Validar filas de datos
+      const erroresPorFila = [];
+      const filasValidas = [];
+      const filasDuplicadas = [];
+      const keysVistos = new Set();
+      
+      dataRowsSinEjemplos.forEach((row, idx) => {
+        const filaNum = headerRowIndex + idx + 2; // +2 porque Excel es 1-indexed y saltamos header
+        const erroresFila = [];
+        
+        // Construir objeto de la fila
+        const rowObj = {};
+        headers.forEach((h, i) => {
+          rowObj[h] = row[i];
+        });
+        
+        // Validar campos vacíos requeridos
+        config.columnasRequeridas.forEach(colReq => {
+          const headerCol = headers.find(h => columnaCoincide(h, colReq, config.sinonimosCols));
+          if (headerCol) {
+            const valor = rowObj[headerCol];
+            if (valor === '' || valor === null || valor === undefined) {
+              erroresFila.push({
+                columna: colReq,
+                mensaje: `Campo vacío en columna "${colReq}"`
+              });
+            }
+          }
+        });
+        
+        // Detectar duplicados (usando primeras columnas como key)
+        const keyFields = headers.slice(0, Math.min(3, headers.length));
+        const key = keyFields.map(h => String(rowObj[h] || '').toLowerCase().trim()).join('|');
+        if (key && key !== '||' && keysVistos.has(key)) {
+          filasDuplicadas.push(filaNum);
+        } else if (key && key !== '||') {
+          keysVistos.add(key);
+        }
+        
+        if (erroresFila.length > 0) {
+          erroresPorFila.push({ fila: filaNum, errores: erroresFila, datos: rowObj });
+        } else {
+          filasValidas.push({ fila: filaNum, datos: rowObj });
+        }
+      });
+      
+      // Agregar advertencias de duplicados
+      if (filasDuplicadas.length > 0) {
+        errores.push({
+          tipo: 'advertencia',
+          mensaje: `${filasDuplicadas.length} posibles duplicados detectados`,
+          detalle: `Filas: ${filasDuplicadas.slice(0, 10).join(', ')}${filasDuplicadas.length > 10 ? '...' : ''}`
+        });
+      }
+      
+      // Agregar errores de filas individuales
+      if (erroresPorFila.length > 0) {
+        erroresPorFila.slice(0, 10).forEach(({ fila, errores: errs }) => {
+          errs.forEach(e => {
+            errores.push({
+              tipo: 'error',
+              mensaje: `Fila ${fila}: ${e.mensaje}`,
+              detalle: e.columna
+            });
+          });
+        });
+        
+        if (erroresPorFila.length > 10) {
+          errores.push({
+            tipo: 'error',
+            mensaje: `... y ${erroresPorFila.length - 10} errores más`,
+            detalle: 'Revise el archivo completo'
+          });
+        }
+      }
+      
+      // Crear preview
+      const previewData = {
+        headers,
+        rows: dataRowsSinEjemplos.slice(0, MAX_PREVIEW_ROWS).map((row, idx) => ({
+          numero: headerRowIndex + idx + 2,
+          datos: row,
+          tieneError: erroresPorFila.some(e => e.fila === headerRowIndex + idx + 2),
+          esDuplicado: filasDuplicadas.includes(headerRowIndex + idx + 2)
+        })),
+        totalFilas: dataRowsSinEjemplos.length,
+        filasValidas: filasValidas.length,
+        filasConError: erroresPorFila.length,
+        filasDuplicadas: filasDuplicadas.length,
+        columnasEncontradas,
+        columnasFaltantes,
+        headerRowIndex
+      };
+      
+      setPreview(previewData);
+      setErroresValidacion(errores);
+      
+    } catch (error) {
+      console.error('Error al leer archivo:', error);
+      setErroresValidacion([{
+        tipo: 'critico',
+        mensaje: 'Error al leer el archivo',
+        detalle: error.message || 'El archivo puede estar corrupto o en formato incorrecto'
+      }]);
+    } finally {
+      setValidando(false);
+    }
+  }, [config]);
+
+  /**
+   * Maneja el drag & drop
+   */
+  const handleDragOver = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setArrastrando(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setArrastrando(false);
+  }, []);
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setArrastrando(false);
+    
+    const files = e.dataTransfer?.files;
+    if (files && files.length > 0) {
+      handleArchivoSeleccionado(files[0]);
+    }
+  }, [handleArchivoSeleccionado]);
+
+  /**
+   * Ejecuta la importación
+   */
+  const ejecutarImportacion = useCallback(async () => {
+    if (!archivo || !onImportar) return;
+    
+    const tieneCriticos = erroresValidacion.some(e => e.tipo === 'critico');
+    if (tieneCriticos) {
+      toast.error('Corrija los errores críticos antes de importar');
+      return;
+    }
+    
+    setImportando(true);
+    setProgreso(0);
+    setResultadoImportacion(null);
+    
+    // Simular progreso inicial
+    const intervalId = setInterval(() => {
+      setProgreso(prev => Math.min(prev + 5, 90));
+    }, 200);
+    
+    try {
+      const formData = new FormData();
+      formData.append('file', archivo);
+      
+      const resultado = await onImportar(formData);
+      
+      clearInterval(intervalId);
+      setProgreso(100);
+      
+      // Procesar resultado
+      const res = resultado?.data || resultado;
+      setResultadoImportacion({
+        exitoso: res.exitosa !== false && !res.error,
+        mensaje: res.mensaje || (res.exitosa ? 'Importación completada' : 'Error en importación'),
+        creados: res.creados || res.total_creados || 0,
+        actualizados: res.actualizados || res.total_actualizados || 0,
+        errores: res.errores || res.total_errores || 0,
+        omitidos: res.omitidos || 0,
+        detalleErrores: res.detalle_errores || res.errores_detalle || []
+      });
+      
+      if (res.exitosa !== false && !res.error) {
+        toast.success(`Importación completada: ${res.creados || 0} creados`);
+      } else {
+        toast.error(res.mensaje || 'Error durante la importación');
+      }
+      
+    } catch (error) {
+      clearInterval(intervalId);
+      console.error('Error en importación:', error);
+      
+      const errorMsg = error.response?.data?.mensaje || 
+                       error.response?.data?.error || 
+                       error.message || 
+                       'Error de conexión';
+      
+      setResultadoImportacion({
+        exitoso: false,
+        mensaje: errorMsg,
+        creados: 0,
+        actualizados: 0,
+        errores: 1,
+        detalleErrores: [{ mensaje: errorMsg }]
+      });
+      
+      toast.error(errorMsg);
+    } finally {
+      setImportando(false);
+    }
+  }, [archivo, erroresValidacion, onImportar]);
+
+  /**
+   * Descarga reporte de errores como CSV
+   */
+  const descargarReporteErrores = useCallback(() => {
+    if (!resultadoImportacion?.detalleErrores?.length) return;
+    
+    const errores = resultadoImportacion.detalleErrores;
+    const csvContent = [
+      ['Fila', 'Campo', 'Error'].join(','),
+      ...errores.map(e => [
+        e.fila || '',
+        e.campo || '',
+        `"${(e.mensaje || e.error || '').replace(/"/g, '""')}"`
+      ].join(','))
+    ].join('\n');
+    
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `errores_importacion_${tipo}_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    toast.success('Reporte descargado');
+  }, [resultadoImportacion, tipo]);
+
+  /**
+   * Reinicia el importador
+   */
+  const reiniciar = useCallback(() => {
+    setArchivo(null);
+    setPreview(null);
+    setErroresValidacion([]);
+    setResultadoImportacion(null);
+    setProgreso(0);
+    if (inputRef.current) inputRef.current.value = '';
+  }, []);
+
+  const tieneCriticos = erroresValidacion.some(e => e.tipo === 'critico');
+  const puedeImportar = archivo && !tieneCriticos && !importando && !validando && permiteImportar;
+
+  return (
+    <div className={`bg-white rounded-2xl shadow-lg overflow-hidden ${className}`}>
+      {/* Header */}
+      <div className="px-6 py-4 bg-theme-gradient">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <FaFileExcel /> Importar {config.titulo}
+            </h2>
+            <p className="text-white/80 text-sm mt-1">{config.descripcion}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-white/60 text-xs">v{PLANTILLA_VERSION}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="p-6">
+        {/* Pasos del proceso - Guía integrada */}
+        <div className="mb-6">
+          <button 
+            onClick={() => setMostrarGuia(!mostrarGuia)}
+            className="flex items-center gap-2 text-sm font-medium text-theme-primary hover:text-theme-secondary transition"
+          >
+            <FaInfoCircle />
+            ¿Cómo funciona? 
+            {mostrarGuia ? <FaChevronUp /> : <FaChevronDown />}
+          </button>
+          
+          {mostrarGuia && (
+            <div className="mt-4 p-4 bg-blue-50 rounded-xl border border-blue-200">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {config.pasos.map((paso) => (
+                  <div key={paso.numero} className="flex gap-3">
+                    <div className="flex-shrink-0 w-8 h-8 bg-theme-primary text-white rounded-full flex items-center justify-center font-bold text-sm">
+                      {paso.numero}
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-gray-800 text-sm">{paso.titulo}</h4>
+                      <p className="text-xs text-gray-600 mt-1">{paso.descripcion}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              {/* Ejemplo de registro correcto */}
+              <div className="mt-4 pt-4 border-t border-blue-200">
+                <h4 className="font-semibold text-gray-800 text-sm mb-2 flex items-center gap-2">
+                  <FaEye /> Ejemplo de registro correcto:
+                </h4>
+                <div className="bg-white rounded-lg p-3 text-xs overflow-x-auto">
+                  <table className="min-w-full">
+                    <thead>
+                      <tr>
+                        {Object.keys(config.ejemploRegistro).map(key => (
+                          <th key={key} className="px-2 py-1 text-left font-semibold text-gray-700 border-b">
+                            {key}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        {Object.values(config.ejemploRegistro).map((val, i) => (
+                          <td key={i} className="px-2 py-1 text-gray-600">{val}</td>
+                        ))}
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              
+              {/* Límites */}
+              <div className="mt-3 flex flex-wrap gap-4 text-xs text-gray-600">
+                <span>📊 Máx. {config.limites.maxFilas.toLocaleString()} filas</span>
+                <span>📁 Máx. {config.limites.maxTamanio}</span>
+                <span>📄 Formatos: .xlsx, .xls</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Columnas y formatos */}
+        <div className="mb-6">
+          <button 
+            onClick={() => setMostrarFormatos(!mostrarFormatos)}
+            className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-800 transition"
+          >
+            <FaFileExcel />
+            Ver columnas y formatos requeridos
+            {mostrarFormatos ? <FaChevronUp /> : <FaChevronDown />}
+          </button>
+          
+          {mostrarFormatos && (
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Columnas requeridas */}
+              <div className="p-4 bg-red-50 rounded-xl border border-red-200">
+                <h4 className="font-semibold text-red-800 text-sm mb-2 flex items-center gap-2">
+                  <FaExclamationCircle /> Columnas Obligatorias
+                </h4>
+                <ul className="space-y-1">
+                  {config.columnasRequeridas.map(col => (
+                    <li key={col} className="text-xs text-red-700 flex items-start gap-2">
+                      <span className="text-red-500">•</span>
+                      <span><strong>{col}</strong> {config.formatos[col] && <span className="text-red-500">({config.formatos[col]})</span>}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              
+              {/* Columnas opcionales */}
+              <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                <h4 className="font-semibold text-gray-700 text-sm mb-2">Columnas Opcionales</h4>
+                <ul className="space-y-1">
+                  {config.columnasOpcionales.map(col => (
+                    <li key={col} className="text-xs text-gray-600 flex items-start gap-2">
+                      <span className="text-gray-400">•</span>
+                      <span>{col} {config.formatos[col] && <span className="text-gray-400">({config.formatos[col]})</span>}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Botón descargar plantilla */}
+        <div className="mb-6 flex flex-wrap gap-3">
+          <button
+            onClick={onDescargarPlantilla}
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium text-sm"
+          >
+            <FaDownload /> Descargar plantilla actualizada
+          </button>
+          
+          {archivo && (
+            <button
+              onClick={reiniciar}
+              className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition font-medium text-sm"
+            >
+              <FaTrash /> Limpiar
+            </button>
+          )}
+        </div>
+
+        {/* Zona de carga (Drag & Drop) */}
+        {!resultadoImportacion && (
+          <div
+            ref={dropZoneRef}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onClick={() => inputRef.current?.click()}
+            className={`
+              border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all
+              ${arrastrando 
+                ? 'border-theme-primary bg-theme-primary/5' 
+                : archivo 
+                  ? 'border-green-400 bg-green-50' 
+                  : 'border-gray-300 hover:border-theme-primary hover:bg-gray-50'
+              }
+            `}
+          >
+            <input
+              ref={inputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={(e) => handleArchivoSeleccionado(e.target.files?.[0])}
+              className="hidden"
+            />
+            
+            {validando ? (
+              <div className="flex flex-col items-center">
+                <FaSpinner className="animate-spin text-4xl text-theme-primary mb-3" />
+                <p className="text-gray-600">Validando archivo...</p>
+              </div>
+            ) : archivo ? (
+              <div className="flex flex-col items-center">
+                <FaFileExcel className="text-4xl text-green-500 mb-3" />
+                <p className="text-gray-800 font-medium">{archivo.name}</p>
+                <p className="text-gray-500 text-sm mt-1">
+                  {(archivo.size / 1024 / 1024).toFixed(2)} MB
+                </p>
+                <p className="text-gray-400 text-xs mt-2">
+                  Click o arrastra otro archivo para reemplazar
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center">
+                <FaCloudUploadAlt className="text-5xl text-gray-400 mb-3" />
+                <p className="text-gray-600 font-medium">
+                  Arrastra tu archivo Excel aquí
+                </p>
+                <p className="text-gray-400 text-sm mt-1">
+                  o click para seleccionar
+                </p>
+                <p className="text-gray-400 text-xs mt-3">
+                  Formatos: .xlsx, .xls | Máximo: {MAX_FILE_SIZE_MB}MB
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Errores de validación */}
+        {erroresValidacion.length > 0 && (
+          <div className="mt-4 space-y-2">
+            {erroresValidacion.map((error, idx) => (
+              <div 
+                key={idx}
+                className={`
+                  p-3 rounded-lg flex items-start gap-3 text-sm
+                  ${error.tipo === 'critico' 
+                    ? 'bg-red-50 border border-red-200 text-red-800' 
+                    : error.tipo === 'error'
+                      ? 'bg-orange-50 border border-orange-200 text-orange-800'
+                      : 'bg-yellow-50 border border-yellow-200 text-yellow-800'
+                  }
+                `}
+              >
+                {error.tipo === 'critico' 
+                  ? <FaExclamationCircle className="text-red-500 mt-0.5 flex-shrink-0" />
+                  : error.tipo === 'error'
+                    ? <FaExclamationTriangle className="text-orange-500 mt-0.5 flex-shrink-0" />
+                    : <FaInfoCircle className="text-yellow-500 mt-0.5 flex-shrink-0" />
+                }
+                <div>
+                  <p className="font-medium">{error.mensaje}</p>
+                  {error.detalle && <p className="text-xs opacity-80 mt-1">{error.detalle}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Vista previa de datos */}
+        {preview && !resultadoImportacion && (
+          <div className="mt-6">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                <FaEye /> Vista previa
+              </h3>
+              <div className="flex gap-4 text-sm">
+                <span className="text-gray-600">
+                  Total: <strong>{preview.totalFilas}</strong>
+                </span>
+                <span className="text-green-600">
+                  Válidas: <strong>{preview.filasValidas}</strong>
+                </span>
+                {preview.filasConError > 0 && (
+                  <span className="text-red-600">
+                    Con error: <strong>{preview.filasConError}</strong>
+                  </span>
+                )}
+                {preview.filasDuplicadas > 0 && (
+                  <span className="text-yellow-600">
+                    Duplicadas: <strong>{preview.filasDuplicadas}</strong>
+                  </span>
+                )}
+              </div>
+            </div>
+            
+            {/* Tabla de preview */}
+            <div className="border rounded-lg overflow-hidden">
+              <div className="overflow-x-auto max-h-80">
+                <table className="min-w-full text-xs">
+                  <thead className="bg-gray-100 sticky top-0">
+                    <tr>
+                      <th className="px-2 py-2 text-left font-semibold text-gray-700 border-r">#</th>
+                      {preview.headers.map((h, i) => (
+                        <th 
+                          key={i} 
+                          className={`
+                            px-2 py-2 text-left font-semibold border-r
+                            ${preview.columnasFaltantes.some(cf => normalizarHeader(cf) === normalizarHeader(h)) 
+                              ? 'bg-red-100 text-red-800' 
+                              : preview.columnasEncontradas.some(ce => columnaCoincide(h, ce, config.sinonimosCols))
+                                ? 'text-green-800'
+                                : 'text-gray-700'
+                            }
+                          `}
+                        >
+                          {h || '(vacío)'}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.rows.map((row, rowIdx) => (
+                      <tr 
+                        key={rowIdx}
+                        className={`
+                          border-b
+                          ${row.tieneError 
+                            ? 'bg-red-50' 
+                            : row.esDuplicado 
+                              ? 'bg-yellow-50' 
+                              : rowIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                          }
+                        `}
+                      >
+                        <td className="px-2 py-1.5 text-gray-500 border-r font-mono">
+                          {row.numero}
+                          {row.tieneError && <FaExclamationCircle className="inline ml-1 text-red-500" />}
+                          {row.esDuplicado && <FaExclamationTriangle className="inline ml-1 text-yellow-500" />}
+                        </td>
+                        {row.datos.map((cell, cellIdx) => (
+                          <td key={cellIdx} className="px-2 py-1.5 text-gray-700 border-r truncate max-w-[150px]">
+                            {cell ?? ''}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              
+              {preview.totalFilas > MAX_PREVIEW_ROWS && (
+                <div className="px-3 py-2 bg-gray-100 text-xs text-gray-600 text-center">
+                  Mostrando {MAX_PREVIEW_ROWS} de {preview.totalFilas} filas
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Progreso de importación */}
+        {importando && (
+          <div className="mt-6">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-gray-700">Importando...</span>
+              <span className="text-sm font-medium text-theme-primary">{progreso}%</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+              <div 
+                className="h-full bg-theme-gradient rounded-full transition-all duration-300"
+                style={{ width: `${progreso}%` }}
+              />
+            </div>
+            <p className="text-xs text-gray-500 mt-2 text-center">
+              No cierre esta ventana. El proceso puede tardar según el volumen de datos.
+            </p>
+          </div>
+        )}
+
+        {/* Resultado de importación */}
+        {resultadoImportacion && (
+          <div className={`
+            mt-6 p-6 rounded-xl border-2
+            ${resultadoImportacion.exitoso 
+              ? 'bg-green-50 border-green-300' 
+              : 'bg-red-50 border-red-300'
+            }
+          `}>
+            <div className="flex items-start gap-4">
+              {resultadoImportacion.exitoso 
+                ? <FaCheckCircle className="text-3xl text-green-500 flex-shrink-0" />
+                : <FaExclamationCircle className="text-3xl text-red-500 flex-shrink-0" />
+              }
+              <div className="flex-1">
+                <h3 className={`font-bold text-lg ${resultadoImportacion.exitoso ? 'text-green-800' : 'text-red-800'}`}>
+                  {resultadoImportacion.exitoso ? 'Importación Exitosa' : 'Error en Importación'}
+                </h3>
+                <p className={`text-sm mt-1 ${resultadoImportacion.exitoso ? 'text-green-700' : 'text-red-700'}`}>
+                  {resultadoImportacion.mensaje}
+                </p>
+                
+                {/* Resumen de conteos */}
+                <div className="flex flex-wrap gap-4 mt-4">
+                  {resultadoImportacion.creados > 0 && (
+                    <div className="px-4 py-2 bg-green-100 rounded-lg">
+                      <span className="text-green-800 font-bold text-lg">{resultadoImportacion.creados}</span>
+                      <span className="text-green-700 text-sm ml-2">creados</span>
+                    </div>
+                  )}
+                  {resultadoImportacion.actualizados > 0 && (
+                    <div className="px-4 py-2 bg-blue-100 rounded-lg">
+                      <span className="text-blue-800 font-bold text-lg">{resultadoImportacion.actualizados}</span>
+                      <span className="text-blue-700 text-sm ml-2">actualizados</span>
+                    </div>
+                  )}
+                  {resultadoImportacion.errores > 0 && (
+                    <div className="px-4 py-2 bg-red-100 rounded-lg">
+                      <span className="text-red-800 font-bold text-lg">{resultadoImportacion.errores}</span>
+                      <span className="text-red-700 text-sm ml-2">con error</span>
+                    </div>
+                  )}
+                  {resultadoImportacion.omitidos > 0 && (
+                    <div className="px-4 py-2 bg-gray-100 rounded-lg">
+                      <span className="text-gray-800 font-bold text-lg">{resultadoImportacion.omitidos}</span>
+                      <span className="text-gray-700 text-sm ml-2">omitidos</span>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Botones de acción */}
+                <div className="flex flex-wrap gap-3 mt-4">
+                  {resultadoImportacion.detalleErrores?.length > 0 && (
+                    <button
+                      onClick={descargarReporteErrores}
+                      className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm font-medium"
+                    >
+                      <FaFileDownload /> Descargar reporte de errores
+                    </button>
+                  )}
+                  <button
+                    onClick={reiniciar}
+                    className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition text-sm font-medium"
+                  >
+                    <FaSync /> Nueva importación
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Botón de importar */}
+        {!resultadoImportacion && archivo && !importando && (
+          <div className="mt-6 flex justify-end">
+            <button
+              onClick={ejecutarImportacion}
+              disabled={!puedeImportar}
+              className={`
+                flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-white transition
+                ${puedeImportar 
+                  ? 'bg-theme-gradient hover:opacity-90 cursor-pointer' 
+                  : 'bg-gray-400 cursor-not-allowed'
+                }
+              `}
+            >
+              <FaCloudUploadAlt />
+              Importar {preview?.filasValidas || 0} registros
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default ImportadorModerno;

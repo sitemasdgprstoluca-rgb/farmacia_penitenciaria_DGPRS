@@ -168,22 +168,30 @@ def generar_plantilla_lotes(centro=None):
     Genera plantilla Excel para carga masiva de lotes/inventario inicial.
     Basado en tabla: public.lotes
     
-    Columnas:
-    - Clave Producto* (o ID Producto*): Identificador del producto
-    - Nombre Producto: Referencia (opcional si se usa Clave/ID)
+    Versión de plantilla: 2.0.0 (Febrero 2026)
+    
+    Columnas OBLIGATORIAS:
+    - Clave Producto*: Código único del producto en el catálogo
+    - Nombre Producto*: Nombre del producto (debe coincidir con la clave)
     - Número Lote*: Identificador único del lote
-    - Fecha Fabricación: Fecha de fabricación (opcional)
-    - Fecha Caducidad*: Fecha de caducidad (obligatorio)
-    - Cantidad Inicial*: Cantidad de unidades (obligatorio)
-    - Precio Unitario*: Precio por unidad (default 0)
-    - Número Contrato: Número de contrato (opcional)
-    - Marca: Marca o laboratorio (opcional)
-    - Activo: Estado del lote (opcional, default Activo)
+    - Fecha Caducidad*: Fecha de vencimiento (YYYY-MM-DD)
+    - Cantidad Inicial*: Unidades recibidas/surtidas
+    
+    Columnas OPCIONALES:
+    - Cantidad Contrato: Total según contrato (para entregas parciales)
+    - Fecha Fabricación: Fecha de elaboración
+    - Precio Unitario: Precio por unidad (default 0)
+    - Número Contrato: Referencia del contrato
+    - Marca: Laboratorio o fabricante
+    - Activo: Estado del lote (default: Activo)
     
     NOTA: La ubicación se asigna automáticamente como "Almacén Central"
     y el centro queda NULL (representa Farmacia Central).
     """
     from datetime import date, timedelta
+    
+    PLANTILLA_VERSION = "2.0.0"
+    FECHA_GENERACION = date.today().strftime('%Y-%m-%d')
     
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -249,11 +257,17 @@ def generar_plantilla_lotes(centro=None):
     ws_inst = wb.create_sheet("INSTRUCCIONES")
     instrucciones = [
         ["╔════════════════════════════════════════════════════════════════════╗"],
-        ["║    INSTRUCCIONES PARA IMPORTACIÓN DE LOTES                        ║"],
+        ["║    PLANTILLA DE IMPORTACIÓN DE LOTES                              ║"],
         ["╚════════════════════════════════════════════════════════════════════╝"],
         [""],
-        ["⚠️  IMPORTANTE: Las filas de ejemplo (texto gris con [EJEMPLO]) son de muestra."],
-        ["    ELIMÍNELAS antes de cargar sus datos reales."],
+        [f"📋 Versión: {PLANTILLA_VERSION}"],
+        [f"📅 Generada: {FECHA_GENERACION}"],
+        [""],
+        ["════════════════════════════════════════════════════════════════════════"],
+        ["⚠️  IMPORTANTE: ELIMINE LAS FILAS DE EJEMPLO"],
+        ["════════════════════════════════════════════════════════════════════════"],
+        ["Las filas marcadas con [EJEMPLO] y texto gris son de muestra."],
+        ["ELIMÍNELAS antes de cargar sus datos reales."],
         [""],
         ["════════════════════════════════════════════════════════════════════════"],
         ["⚠️  VERIFICACIÓN DE DOBLE CAMPO: CLAVE + NOMBRE"],

@@ -33,6 +33,8 @@ class ResultadoImportacion:
         self.total_procesados = 0
         self.exitosos = 0
         self.fallidos = 0
+        self.actualizados = 0  # Para consolidaciones/actualizaciones
+        self.omitidos = 0      # Para filas omitidas (ej: otro centro)
         self.errores = []
 
     def agregar_error(self, fila, campo, error):
@@ -43,21 +45,50 @@ class ResultadoImportacion:
         })
         self.fallidos += 1
 
-    def agregar_exito(self):
+    def agregar_exito(self, es_actualizacion=False):
         self.exitosos += 1
+        if es_actualizacion:
+            self.actualizados += 1
+    
+    def agregar_omitido(self):
+        self.omitidos += 1
 
     def incrementar_procesados(self):
         self.total_procesados += 1
 
     def get_dict(self):
+        creados = self.exitosos - self.actualizados
         return {
-            'exitosa': self.fallidos == 0,
+            'exitosa': self.fallidos == 0 and self.exitosos > 0,
+            'mensaje': self._generar_mensaje(),
             'total_registros': self.total_procesados,
             'registros_exitosos': self.exitosos,
             'registros_fallidos': self.fallidos,
+            'creados': creados,
+            'actualizados': self.actualizados,
+            'omitidos': self.omitidos,
+            'total_errores': self.fallidos,
             'tasa_exito': round((self.exitosos / self.total_procesados * 100) if self.total_procesados else 0, 2),
             'errores': self.errores[:100],
+            'detalle_errores': self.errores[:100],  # Alias para compatibilidad con frontend
         }
+    
+    def _generar_mensaje(self):
+        """Genera mensaje descriptivo del resultado."""
+        if self.fallidos == 0 and self.exitosos > 0:
+            partes = []
+            creados = self.exitosos - self.actualizados
+            if creados > 0:
+                partes.append(f"{creados} creados")
+            if self.actualizados > 0:
+                partes.append(f"{self.actualizados} actualizados")
+            if self.omitidos > 0:
+                partes.append(f"{self.omitidos} omitidos")
+            return f"Importación exitosa: {', '.join(partes)}"
+        elif self.exitosos > 0:
+            return f"Importación parcial: {self.exitosos} exitosos, {self.fallidos} errores"
+        else:
+            return f"Error en importación: {self.fallidos} errores"
 
 
 def cargar_excel(archivo):
@@ -701,6 +732,7 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                         f"'{ubicacion_excel or centro_excel}', no a Farmacia Central"
                     )
                     omitidos_centro += 1
+                    resultado.agregar_omitido()
                     continue
             
             # ========== CANTIDAD INICIAL (requerido) ==========
@@ -942,7 +974,7 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                         )
                         
                         creados += 1
-                        resultado.agregar_exito()
+                        resultado.agregar_exito(es_actualizacion=True)  # Es actualización/consolidación
                         continue
                     else:
                         diferencias = []
