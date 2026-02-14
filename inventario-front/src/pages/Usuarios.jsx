@@ -7,6 +7,9 @@ import { COLORS } from '../constants/theme';
 import { usePermissions } from '../hooks/usePermissions';
 import { UsuariosSkeleton } from '../components/skeletons';
 import Pagination from '../components/Pagination';
+// ISS-SEC: Componentes para confirmación en 2 pasos
+import TwoStepConfirmModal from '../components/TwoStepConfirmModal';
+import { useConfirmation } from '../hooks/useConfirmation';
 
 const PAGE_SIZE = 25;
 
@@ -89,6 +92,14 @@ function Usuarios() {
   const [editingUsuario, setEditingUsuario] = useState(null);
   const fileInputRef = useRef(null);
   const { user, permisos, getRolPrincipal } = usePermissions();
+  
+  // ISS-SEC: Hook para confirmación en 2 pasos
+  const {
+    confirmState,
+    requestDeleteConfirmation,
+    executeWithConfirmation,
+    cancelConfirmation,
+  } = useConfirmation();
   
   // Paginación
   const [currentPage, setCurrentPage] = useState(1);
@@ -441,27 +452,35 @@ function Usuarios() {
       return;
     }
 
-    // Validar escalamiento de privilegios
+    // ISS-SEC: Validar escalamiento de privilegios con confirmación en 2 pasos
     if (editingUsuario) {
       const rolAnterior = editingUsuario.rol;
       const rolNuevo = formData.rol;
       const jerarquiaAnterior = ROL_JERARQUIA[rolAnterior] || 99;
       const jerarquiaNueva = ROL_JERARQUIA[rolNuevo] || 99;
       
-      // Si está elevando privilegios, confirmar
+      // Si está elevando privilegios, pedir confirmación en 2 pasos
       if (jerarquiaNueva < jerarquiaAnterior) {
         if (!puedeAsignarRol(rolNuevo)) {
           toast.error('No tiene permisos para asignar ese rol');
           return;
         }
-        const confirmElevacion = window.confirm(
-          `⚠️ ADVERTENCIA DE SEGURIDAD\n\n` +
-          `Está elevando los privilegios de "${editingUsuario.username}":\n` +
-          `• Rol anterior: ${ROLES.find(r => r.value === rolAnterior)?.label || rolAnterior}\n` +
-          `• Rol nuevo: ${ROLES.find(r => r.value === rolNuevo)?.label || rolNuevo}\n\n` +
-          `¿Confirma este cambio de privilegios?`
-        );
-        if (!confirmElevacion) return;
+        
+        // Solicitar confirmación en 2 pasos para elevación de privilegios
+        requestDeleteConfirmation({
+          title: '⚠️ Elevación de Privilegios',
+          message: `Está elevando los privilegios de "${editingUsuario.username}". Esta es una operación sensible de seguridad.`,
+          itemInfo: {
+            'Usuario': editingUsuario.username,
+            'Rol anterior': ROLES.find(r => r.value === rolAnterior)?.label || rolAnterior,
+            'Rol nuevo': ROLES.find(r => r.value === rolNuevo)?.label || rolNuevo
+          },
+          onConfirm: () => doSaveUser(),
+          isCritical: true,
+          confirmPhrase: 'ELEVAR',
+          confirmText: 'Confirmar elevación'
+        });
+        return; // No continuar hasta que se confirme
       }
     } else {
       // Validar que puede crear usuario con ese rol
@@ -471,6 +490,12 @@ function Usuarios() {
       }
     }
     
+    // Si no hay elevación de privilegios, guardar directamente
+    doSaveUser();
+  };
+  
+  // ISS-SEC: Función interna para guardar el usuario (después de confirmaciones)
+  const doSaveUser = async () => {
     setSavingUser(true);
     try {
       const payload = {
@@ -534,7 +559,28 @@ function Usuarios() {
     }
   };
   
-  const handleDelete = async (usuario) => {
+  // ISS-SEC: Función auxiliar para ejecutar eliminación de usuario con confirmación
+  const executeDeleteUsuario = async ({ confirmed, actionData }) => {
+    const { usuario } = actionData;
+    
+    setActionLoading(usuario.id);
+    try {
+      await usuariosAPI.delete(usuario.id, { confirmed });
+      toast.success('Usuario eliminado correctamente');
+      cargarUsuarios();
+    } catch (error) {
+      const errorMsg = error.response?.data?.error ||
+                       error.response?.data?.detail ||
+                       'Error al eliminar usuario';
+      toast.error(errorMsg);
+      throw error;
+    } finally {
+      setActionLoading(null);
+    }
+  };
+  
+  // ISS-SEC: handleDelete ahora inicia el flujo de confirmación en 2 pasos
+  const handleDelete = (usuario) => {
     // Prevenir auto-eliminación (validación robusta)
     if (!currentUserId) {
       toast.error('Espere a que se cargue la sesión antes de eliminar usuarios');
@@ -553,44 +599,35 @@ function Usuarios() {
       return;
     }
 
-    const mensaje = `⚠️ ELIMINAR USUARIO\n\n` +
-      `Usuario: ${usuario.username}\n` +
-      `Nombre: ${usuario.first_name} ${usuario.last_name}\n` +
-      `Rol: ${ROLES.find(r => r.value === usuario.rol)?.label || usuario.rol}\n\n` +
-      `Esta acción no se puede deshacer. ¿Confirma la eliminación?`;
-    
-    if (!window.confirm(mensaje)) return;
-    
-    setActionLoading(usuario.id);
-    try {
-      await usuariosAPI.delete(usuario.id);
-      toast.success('Usuario eliminado correctamente');
-      cargarUsuarios();
-    } catch (error) {
-      const errorMsg = error.response?.data?.error ||
-                       error.response?.data?.detail ||
-                       'Error al eliminar usuario';
-      toast.error(errorMsg);
-    } finally {
-      setActionLoading(null);
-    }
+    // Solicitar confirmación en 2 pasos con escritura de "ELIMINAR"
+    requestDeleteConfirmation({
+      title: 'Confirmar Eliminación de Usuario',
+      message: '¿Confirma ELIMINAR PERMANENTEMENTE este usuario?',
+      warnings: [
+        'Esta acción NO se puede deshacer',
+        'El usuario perderá todo acceso al sistema',
+        'Se eliminarán las credenciales y configuración del usuario'
+      ],
+      itemInfo: {
+        'Usuario': usuario.username,
+        'Nombre': `${usuario.first_name} ${usuario.last_name}`.trim() || 'N/A',
+        'Rol': ROLES.find(r => r.value === usuario.rol)?.label || usuario.rol,
+        'Email': usuario.email || 'N/A'
+      },
+      isCritical: true,
+      confirmPhrase: 'ELIMINAR',
+      confirmText: 'Eliminar Usuario',
+      cancelText: 'Cancelar',
+      tone: 'danger',
+      onConfirm: executeDeleteUsuario,
+      actionData: { usuario }
+    });
   };
 
-  // Toggle activar/desactivar usuario rápidamente
-  const handleToggleActivo = async (usuario) => {
-    // Prevenir auto-desactivación
-    if (usuario.id === currentUserId) {
-      toast.error('No puede desactivarse a sí mismo');
-      return;
-    }
-
-    const nuevoEstado = !usuario.is_active;
-    const accion = nuevoEstado ? 'activar' : 'desactivar';
+  // ISS-SEC: Función auxiliar para ejecutar toggle de usuario
+  const executeToggleUsuario = async ({ actionData }) => {
+    const { usuario, nuevoEstado, accion } = actionData;
     
-    if (!window.confirm(`¿Está seguro de ${accion} al usuario "${usuario.username}"?`)) {
-      return;
-    }
-
     setActionLoading(usuario.id);
     try {
       await usuariosAPI.update(usuario.id, { is_active: nuevoEstado });
@@ -601,9 +638,37 @@ function Usuarios() {
                        error.response?.data?.detail ||
                        `Error al ${accion} usuario`;
       toast.error(errorMsg);
+      throw error;
     } finally {
       setActionLoading(null);
     }
+  };
+
+  // ISS-SEC: Toggle activar/desactivar usuario ahora usa confirmación en 2 pasos
+  const handleToggleActivo = (usuario) => {
+    // Prevenir auto-desactivación
+    if (usuario.id === currentUserId) {
+      toast.error('No puede desactivarse a sí mismo');
+      return;
+    }
+
+    const nuevoEstado = !usuario.is_active;
+    const accion = nuevoEstado ? 'activar' : 'desactivar';
+    
+    requestDeleteConfirmation({
+      title: `${nuevoEstado ? 'Activar' : 'Desactivar'} usuario`,
+      message: `¿Está seguro de ${accion} al usuario "${usuario.username}"?`,
+      itemInfo: {
+        'Usuario': usuario.username,
+        'Nombre': `${usuario.first_name} ${usuario.last_name}`.trim() || 'N/A',
+        'Estado actual': usuario.is_active ? 'Activo' : 'Inactivo',
+        'Nuevo estado': nuevoEstado ? 'Activo' : 'Inactivo'
+      },
+      onConfirm: executeToggleUsuario,
+      actionData: { usuario, nuevoEstado, accion },
+      isCritical: false,
+      confirmText: nuevoEstado ? 'Activar' : 'Desactivar'
+    });
   };
   
   const handleOpenPasswordModal = (usuario) => {
@@ -1588,6 +1653,22 @@ function Usuarios() {
           </div>
         </div>
       )}
+      
+      {/* ISS-SEC: Modal de confirmación en 2 pasos */}
+      <TwoStepConfirmModal
+        open={confirmState.isOpen}
+        title={confirmState.title}
+        message={confirmState.message}
+        warnings={confirmState.warnings}
+        confirmText={confirmState.confirmText}
+        cancelText={confirmState.cancelText}
+        tone={confirmState.tone}
+        confirmPhrase={confirmState.confirmPhrase}
+        itemInfo={confirmState.itemInfo}
+        loading={confirmState.loading}
+        onConfirm={executeWithConfirmation}
+        onCancel={cancelConfirmation}
+      />
     </div>
   );
 }

@@ -23,6 +23,9 @@ import Pagination from '../components/Pagination';
 import { LotesSkeleton } from '../components/skeletons';
 import { usePermissions } from '../hooks/usePermissions';
 import { puedeVerGlobal as checkPuedeVerGlobal, esFarmaciaAdmin as checkEsFarmaciaAdmin } from '../utils/roles';
+// ISS-SEC: Componentes para confirmación en 2 pasos
+import TwoStepConfirmModal from '../components/TwoStepConfirmModal';
+import { useConfirmation } from '../hooks/useConfirmation';
 
 const MOCK_PRODUCTOS = Array.from({ length: 40 }).map((_, index) => ({
   id: index + 1,
@@ -77,6 +80,15 @@ const Lotes = () => {
   const centroUsuario = user?.centro?.id || user?.centro || user?.centro_id;
   // Solo ADMIN y FARMACIA pueden ver campos de contrato (para auditoría)
   const puedeVerContrato = checkEsFarmaciaAdmin(user);
+  
+  // ISS-SEC: Hook para confirmación en 2 pasos
+  const {
+    confirmState,
+    requestDeleteConfirmation,
+    requestSaveConfirmation,
+    executeWithConfirmation,
+    cancelConfirmation,
+  } = useConfirmation();
   
   // Permisos específicos para acciones - usar permisos finos del backend
   const esFarmaciaAdmin = checkEsFarmaciaAdmin(user);
@@ -515,23 +527,12 @@ const Lotes = () => {
     setShowModal(true);
   };
 
-  const handleDelete = async (id, lote) => {
-    if (!puede.eliminar) {
-      toast.error('No tiene permisos para eliminar lotes');
-      return;
-    }
-    
-    if (actionLoading === id) return; // Evitar múltiples clics
-    
-    const confirmMsg = `¿Está seguro de DESACTIVAR el lote ${lote?.numero_lote || id}?\n\n` +
-      `⚠️ El lote quedará marcado como eliminado (soft delete).\n` +
-      `Nota: Esta acción es reversible por un administrador.`;
-    
-    if (!window.confirm(confirmMsg)) return;
-    
+  // ISS-SEC: Función auxiliar para ejecutar eliminación de lote con confirmación
+  const executeDeleteLote = async ({ confirmed, actionData }) => {
+    const { id } = actionData;
     try {
       setActionLoading(id);
-      await lotesAPI.delete(id);
+      await lotesAPI.delete(id, { confirmed });
       toast.success('Lote desactivado correctamente');
       cargarLotes();
     } catch (error) {
@@ -543,9 +544,41 @@ const Lotes = () => {
         errorMsg = errorData.error;
       }
       toast.error(errorMsg);
+      throw error; // Re-lanzar para que el modal maneje el estado
     } finally {
       setActionLoading(null);
     }
+  };
+
+  // ISS-SEC: handleDelete ahora inicia el flujo de confirmación en 2 pasos
+  const handleDelete = (id, lote) => {
+    if (!puede.eliminar) {
+      toast.error('No tiene permisos para eliminar lotes');
+      return;
+    }
+    
+    if (actionLoading === id) return; // Evitar múltiples clics
+    
+    // Solicitar confirmación en 2 pasos
+    requestDeleteConfirmation({
+      title: 'Confirmar Desactivación de Lote',
+      message: `¿Está seguro de DESACTIVAR el lote?`,
+      warnings: [
+        'El lote quedará marcado como eliminado (soft delete)',
+        'Los movimientos asociados se conservarán para auditoría',
+        'Esta acción es reversible por un administrador'
+      ],
+      itemInfo: {
+        'Número de Lote': lote?.numero_lote || id,
+        'Producto': lote?.producto_nombre || lote?.producto_clave || 'N/A',
+        'Stock Actual': lote?.cantidad_actual ?? 'N/A'
+      },
+      confirmText: 'Sí, Desactivar',
+      cancelText: 'Cancelar',
+      tone: 'warning', // warning porque es soft delete (reversible)
+      onConfirm: executeDeleteLote,
+      actionData: { id }
+    });
   };
 
   const handleDocumentoModal = async (lote) => {
@@ -606,20 +639,15 @@ const Lotes = () => {
     }
   };
 
-  const handleEliminarDocumento = async (docId) => {
-    if (!puede.subirDocumento) {
-      toast.error('No tiene permisos para eliminar documentos');
-      return;
-    }
-    
-    if (!window.confirm('¿Está seguro de eliminar el documento?')) return;
-    
+  // ISS-SEC: Función auxiliar para ejecutar eliminación de documento con confirmación
+  const executeDeleteDocumento = async ({ confirmed, actionData }) => {
+    const { docId, loteId } = actionData;
     try {
-      setActionLoading(selectedLoteDoc.id);
-      await lotesAPI.eliminarDocumento(selectedLoteDoc.id, docId);
+      setActionLoading(loteId);
+      await lotesAPI.eliminarDocumento(loteId, docId, { confirmed });
       toast.success('Documento eliminado');
       // Recargar documentos del modal
-      const response = await lotesAPI.listarDocumentos(selectedLoteDoc.id);
+      const response = await lotesAPI.listarDocumentos(loteId);
       setSelectedLoteDoc(prev => ({
         ...prev,
         documentos_cargados: response.data.documentos || [],
@@ -628,9 +656,39 @@ const Lotes = () => {
       cargarLotes();
     } catch (error) {
       toast.error(error.response?.data?.error || 'Error al eliminar documento');
+      throw error;
     } finally {
       setActionLoading(null);
     }
+  };
+
+  // ISS-SEC: handleEliminarDocumento ahora usa confirmación en 2 pasos
+  const handleEliminarDocumento = (docId) => {
+    if (!puede.subirDocumento) {
+      toast.error('No tiene permisos para eliminar documentos');
+      return;
+    }
+    
+    const doc = selectedLoteDoc?.documentos_cargados?.find(d => d.id === docId);
+    
+    requestDeleteConfirmation({
+      title: 'Confirmar Eliminación de Documento',
+      message: '¿Está seguro de eliminar este documento?',
+      warnings: [
+        'El archivo será eliminado permanentemente',
+        'Esta acción no se puede deshacer'
+      ],
+      itemInfo: {
+        'Tipo': doc?.tipo_documento || 'Documento',
+        'Archivo': doc?.nombre_archivo || docId,
+        'Lote': selectedLoteDoc?.numero_lote || 'N/A'
+      },
+      confirmText: 'Sí, Eliminar',
+      cancelText: 'Cancelar',
+      tone: 'danger',
+      onConfirm: executeDeleteDocumento,
+      actionData: { docId, loteId: selectedLoteDoc.id }
+    });
   };
 
   const resetForm = () => {
@@ -2130,6 +2188,22 @@ const handleImportar = async (e) => {
           </div>
         </div>
       )}
+      
+      {/* ISS-SEC: Modal de confirmación en 2 pasos */}
+      <TwoStepConfirmModal
+        open={confirmState.isOpen}
+        title={confirmState.title}
+        message={confirmState.message}
+        warnings={confirmState.warnings}
+        confirmText={confirmState.confirmText}
+        cancelText={confirmState.cancelText}
+        tone={confirmState.tone}
+        confirmPhrase={confirmState.confirmPhrase}
+        itemInfo={confirmState.itemInfo}
+        loading={confirmState.loading}
+        onConfirm={executeWithConfirmation}
+        onCancel={cancelConfirmation}
+      />
     </div>
   );
 };

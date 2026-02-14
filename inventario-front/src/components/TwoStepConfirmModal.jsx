@@ -5,6 +5,30 @@
  * Paso 1: Muestra advertencias y consecuencias
  * Paso 2: Solicita confirmación explícita escribiendo texto
  * 
+ * IMPORTANTE: Este componente implementa el requerimiento de confirmación
+ * obligatoria en 2 pasos para todas las operaciones de guardar/eliminar.
+ * Sin el Paso 2, NO se ejecuta ninguna acción.
+ * 
+ * Integración con useConfirmation hook:
+ * @example
+ * const { confirmState, executeWithConfirmation, cancelConfirmation } = useConfirmation();
+ * 
+ * <TwoStepConfirmModal
+ *   open={confirmState.isOpen}
+ *   onCancel={cancelConfirmation}
+ *   onConfirm={executeWithConfirmation}
+ *   title={confirmState.title}
+ *   message={confirmState.message}
+ *   warnings={confirmState.warnings}
+ *   confirmText={confirmState.confirmText}
+ *   cancelText={confirmState.cancelText}
+ *   tone={confirmState.tone}
+ *   confirmPhrase={confirmState.confirmPhrase}
+ *   itemInfo={confirmState.itemInfo}
+ *   loading={confirmState.loading}
+ * />
+ * 
+ * Uso directo:
  * @example
  * <TwoStepConfirmModal
  *   open={showModal}
@@ -20,9 +44,9 @@
  * />
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import PropTypes from 'prop-types';
-import { FaExclamationTriangle, FaCheckCircle, FaTimesCircle, FaShieldAlt } from 'react-icons/fa';
+import { FaExclamationTriangle, FaCheckCircle, FaTimesCircle, FaShieldAlt, FaSave, FaTrash } from 'react-icons/fa';
 
 function TwoStepConfirmModal({
   open,
@@ -37,6 +61,8 @@ function TwoStepConfirmModal({
   tone = "warning",
   confirmPhrase = null, // Si se proporciona, requiere escribir este texto
   itemInfo = null, // Información adicional del item (folio, nombre, etc.)
+  actionType = null, // 'save' | 'delete' | null - para mostrar icono apropiado
+  summaryTitle = null, // Título para la sección de resumen
 }) {
   const [step, setStep] = useState(1);
   const [inputValue, setInputValue] = useState('');
@@ -267,6 +293,8 @@ TwoStepConfirmModal.propTypes = {
   tone: PropTypes.oneOf(['danger', 'warning', 'info']),
   confirmPhrase: PropTypes.string,
   itemInfo: PropTypes.object,
+  actionType: PropTypes.oneOf(['save', 'delete', null]),
+  summaryTitle: PropTypes.string,
 };
 
 export default TwoStepConfirmModal;

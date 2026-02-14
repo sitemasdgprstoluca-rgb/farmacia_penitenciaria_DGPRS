@@ -62,8 +62,11 @@ from core.serializers import LoteSerializer, LoteDocumentoSerializer
 # Permisos
 from core.permissions import IsFarmaciaAdminOrReadOnly, IsFarmaciaRole, IsCentroRole
 
+# ISS-SEC: Mixin de confirmación
+from core.mixins import ConfirmationRequiredMixin
 
-class LoteViewSet(viewsets.ModelViewSet):
+
+class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
     """
     ViewSet para gestionar lotes.
     
@@ -73,11 +76,16 @@ class LoteViewSet(viewsets.ModelViewSet):
     - Filtrado por estado de caducidad
     - Busqueda por numero de lote
     - Validaciones de integridad
+    
+    ISS-SEC: Requiere confirmación para operaciones de eliminación
     """
     queryset = Lote.objects.select_related('producto').all()
     serializer_class = LoteSerializer
     permission_classes = [IsFarmaciaAdminOrReadOnly]
     pagination_class = CustomPagination
+    
+    # ISS-SEC: Configuración de confirmación
+    require_delete_confirmation = True
 
     def get_queryset(self):
         """

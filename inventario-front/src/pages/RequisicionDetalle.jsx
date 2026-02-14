@@ -2,12 +2,14 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { requisicionesAPI, hojasRecoleccionAPI, descargarArchivo, lotesAPI } from '../services/api';
 import { usePermissions } from '../hooks/usePermissions';
+import { useConfirmation } from '../hooks/useConfirmation';
 import { getEstadoBadgeClasses, getEstadoLabel } from '../components/EstadoBadge';
 import RequisicionHistorial from '../components/RequisicionHistorial';
 import { RequisicionAcciones } from '../components/RequisicionAcciones';
 import { toast } from 'react-hot-toast';
 import InputModal from '../components/InputModal';
 import ConfirmModal from '../components/ConfirmModal';
+import TwoStepConfirmModal from '../components/TwoStepConfirmModal';
 import {
   FaArrowLeft,
   FaPaperPlane,
@@ -60,6 +62,14 @@ const RequisicionDetalle = () => {
   const [showFechaRecoleccionModal, setShowFechaRecoleccionModal] = useState(false);
   const [fechaRecoleccion, setFechaRecoleccion] = useState('');
   const [esParcialPendiente, setEsParcialPendiente] = useState(false);
+  
+  // ISS-SEC: Hook de confirmación en 2 pasos
+  const {
+    confirmState,
+    requestDeleteConfirmation,
+    executeWithConfirmation,
+    cancelConfirmation
+  } = useConfirmation();
   
   // Hoja de recolección
   const [hojaRecoleccion, setHojaRecoleccion] = useState(null);
@@ -857,11 +867,8 @@ const RequisicionDetalle = () => {
     }
   };
 
-  // Marcar hoja como verificada por farmacia
-  // eslint-disable-next-line no-unused-vars
-  const handleMarcarVerificada = async () => {
-    if (!hojaRecoleccion) return;
-    if (!window.confirm('¿Confirmar que la hoja impresa por el centro coincide con lo autorizado?')) return;
+  // ISS-SEC: Función auxiliar para ejecutar verificación de hoja
+  const executeVerificarHoja = async () => {
     try {
       setProcesando(true);
       await hojasRecoleccionAPI.verificar(hojaRecoleccion.id);
@@ -869,9 +876,28 @@ const RequisicionDetalle = () => {
       cargarHojaRecoleccion();
     } catch (error) {
       toast.error(error.response?.data?.error || 'Error al verificar hoja');
+      throw error;
     } finally {
       setProcesando(false);
     }
+  };
+
+  // ISS-SEC: Marcar hoja como verificada por farmacia - con confirmación en 2 pasos
+  // eslint-disable-next-line no-unused-vars
+  const handleMarcarVerificada = () => {
+    if (!hojaRecoleccion) return;
+    
+    requestDeleteConfirmation({
+      title: 'Verificar Hoja de Recolección',
+      message: '¿Confirmar que la hoja impresa por el centro coincide exactamente con lo autorizado digitalmente?',
+      itemInfo: {
+        'Requisición': `#${requisicion?.numero_requisicion || id}`,
+        'Centro': requisicion?.centro_nombre || 'N/A'
+      },
+      onConfirm: executeVerificarHoja,
+      isCritical: false,
+      confirmText: 'Confirmar verificación'
+    });
   };
 
   // Detectar si es Farmacia/Admin
@@ -1909,7 +1935,21 @@ const RequisicionDetalle = () => {
         </div>
       )}
 
-
+      {/* Modal de confirmación en dos pasos */}
+      <TwoStepConfirmModal
+        isOpen={confirmState.isOpen}
+        onClose={cancelConfirmation}
+        onConfirm={() => executeWithConfirmation(confirmState.onConfirm)}
+        title={confirmState.title}
+        message={confirmState.message}
+        itemInfo={confirmState.itemInfo}
+        confirmText={confirmState.confirmText}
+        cancelText={confirmState.cancelText}
+        actionType={confirmState.actionType}
+        isCritical={confirmState.isCritical}
+        confirmPhrase={confirmState.confirmPhrase}
+        isLoading={confirmState.isLoading}
+      />
     </div>
   );
 };

@@ -11,6 +11,9 @@ import {
 } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import { COLORS, SECONDARY_GRADIENT } from '../constants/theme';
+// ISS-SEC: Componentes para confirmación en 2 pasos
+import TwoStepConfirmModal from '../components/TwoStepConfirmModal';
+import { useConfirmation } from '../hooks/useConfirmation';
 
 const PAGE_SIZE = 25;
 
@@ -49,6 +52,14 @@ const Centros = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('');
   const [showFiltersMenu, setShowFiltersMenu] = useState(false);
+  
+  // ISS-SEC: Hook para confirmación en 2 pasos
+  const {
+    confirmState,
+    requestDeleteConfirmation,
+    executeWithConfirmation,
+    cancelConfirmation,
+  } = useConfirmation();
   
   // Permisos derivados
   const puedeEditar = permisos.isFarmaciaAdmin || permisos.isAdmin || permisos.isSuperuser;
@@ -169,17 +180,12 @@ const Centros = () => {
     setShowModal(true);
   };
 
-  const handleToggleActivo = async (centro) => {
-    if (actionLoading) return; // Prevenir doble clic
-    
-    const nuevoEstado = !centro.activo;
-    const accion = nuevoEstado ? 'activar' : 'desactivar';
-    
-    if (!window.confirm(`¿Está seguro de ${accion} el centro "${centro.nombre}"?`)) return;
+  // ISS-SEC: Función auxiliar para ejecutar toggle activo con confirmación
+  const executeToggleActivo = async ({ actionData }) => {
+    const { centro, nuevoEstado } = actionData;
     
     setActionLoading(centro.id);
     try {
-      // Usar endpoint específico que solo cambia el estado activo
       const response = await centrosAPI.toggleActivo(centro.id);
       toast.success(response.data?.mensaje || `Centro ${nuevoEstado ? 'activado' : 'desactivado'}`);
       cargarCentros();
@@ -188,31 +194,41 @@ const Centros = () => {
                        error.response?.data?.detail ||
                        'Error al cambiar estado';
       toast.error(errorMsg);
+      throw error;
     } finally {
       setActionLoading(null);
     }
   };
 
-  const handleDelete = async (centro) => {
-    if (actionLoading) return; // Prevenir doble clic
+  // ISS-SEC: handleToggleActivo ahora usa confirmación en 2 pasos
+  const handleToggleActivo = (centro) => {
+    if (actionLoading) return;
     
-    // Verificar si tiene dependencias
-    const tieneRequisiciones = (centro.total_requisiciones || 0) > 0;
-    const tieneUsuarios = (centro.total_usuarios || 0) > 0;
+    const nuevoEstado = !centro.activo;
+    const accion = nuevoEstado ? 'activar' : 'desactivar';
     
-    let mensaje = `¿Está seguro de eliminar el centro "${centro.nombre}"?`;
-    if (tieneRequisiciones || tieneUsuarios) {
-      mensaje += `\n\n⚠️ Advertencia: Este centro tiene:\n`;
-      if (tieneRequisiciones) mensaje += `- ${centro.total_requisiciones} requisiciones asociadas\n`;
-      if (tieneUsuarios) mensaje += `- ${centro.total_usuarios} usuarios asignados\n`;
-      mensaje += `\nEs posible que el sistema impida la eliminación.`;
-    }
-    
-    if (!window.confirm(mensaje)) return;
+    requestDeleteConfirmation({
+      title: `${nuevoEstado ? 'Activar' : 'Desactivar'} centro`,
+      message: `¿Está seguro de ${accion} el centro "${centro.nombre}"?`,
+      itemInfo: {
+        'Nombre': centro.nombre,
+        'Estado actual': centro.activo ? 'Activo' : 'Inactivo',
+        'Nuevo estado': nuevoEstado ? 'Activo' : 'Inactivo'
+      },
+      onConfirm: executeToggleActivo,
+      actionData: { centro, nuevoEstado },
+      isCritical: false,
+      confirmText: nuevoEstado ? 'Activar' : 'Desactivar'
+    });
+  };
+
+  // ISS-SEC: Función auxiliar para ejecutar eliminación de centro con confirmación
+  const executeDeleteCentro = async ({ confirmed, actionData }) => {
+    const { centro } = actionData;
     
     setActionLoading(centro.id);
     try {
-      await centrosAPI.delete(centro.id);
+      await centrosAPI.delete(centro.id, { confirmed });
       toast.success('Centro eliminado correctamente');
       cargarCentros();
     } catch (error) {
@@ -228,9 +244,54 @@ const Centros = () => {
         errorMsg = 'No se puede eliminar: el centro tiene requisiciones o usuarios asociados';
       }
       toast.error(errorMsg);
+      throw error;
     } finally {
       setActionLoading(null);
     }
+  };
+
+  // ISS-SEC: handleDelete ahora inicia el flujo de confirmación en 2 pasos
+  const handleDelete = (centro) => {
+    if (actionLoading) return; // Prevenir doble clic
+    
+    // Verificar si tiene dependencias para construir advertencias
+    const tieneRequisiciones = (centro.total_requisiciones || 0) > 0;
+    const tieneUsuarios = (centro.total_usuarios || 0) > 0;
+    
+    const warnings = [
+      'Esta acción eliminará permanentemente el centro',
+      'Esta acción no se puede deshacer'
+    ];
+    
+    if (tieneRequisiciones) {
+      warnings.push(`⚠️ Tiene ${centro.total_requisiciones} requisiciones asociadas`);
+    }
+    if (tieneUsuarios) {
+      warnings.push(`⚠️ Tiene ${centro.total_usuarios} usuarios asignados`);
+    }
+    if (tieneRequisiciones || tieneUsuarios) {
+      warnings.push('Es posible que el sistema impida la eliminación');
+    }
+    
+    // Solicitar confirmación en 2 pasos con escritura de "ELIMINAR"
+    requestDeleteConfirmation({
+      title: 'Confirmar Eliminación de Centro',
+      message: '¿Está seguro de ELIMINAR PERMANENTEMENTE este centro penitenciario?',
+      warnings,
+      itemInfo: {
+        'Nombre': centro.nombre,
+        'Dirección': centro.direccion || 'N/A',
+        'Requisiciones': centro.total_requisiciones || 0,
+        'Usuarios': centro.total_usuarios || 0
+      },
+      isCritical: true,
+      confirmPhrase: 'ELIMINAR',
+      confirmText: 'Eliminar Centro',
+      cancelText: 'Cancelar',
+      tone: 'danger',
+      onConfirm: executeDeleteCentro,
+      actionData: { centro }
+    });
   };
 
   const resetForm = () => {
@@ -785,6 +846,22 @@ const Centros = () => {
           </div>
         </div>
       )}
+
+      {/* Modal de confirmación en dos pasos */}
+      <TwoStepConfirmModal
+        isOpen={confirmState.isOpen}
+        onClose={cancelConfirmation}
+        onConfirm={() => executeWithConfirmation(confirmState.onConfirm)}
+        title={confirmState.title}
+        message={confirmState.message}
+        itemInfo={confirmState.itemInfo}
+        confirmText={confirmState.confirmText}
+        cancelText={confirmState.cancelText}
+        actionType={confirmState.actionType}
+        isCritical={confirmState.isCritical}
+        confirmPhrase={confirmState.confirmPhrase}
+        isLoading={confirmState.isLoading}
+      />
     </div>
   );
 };

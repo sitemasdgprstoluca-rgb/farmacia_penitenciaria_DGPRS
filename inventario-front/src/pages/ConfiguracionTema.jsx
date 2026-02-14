@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTheme } from '../hooks/useTheme';
 import { usePermissions } from '../hooks/usePermissions';
+import { useConfirmation } from '../hooks/useConfirmation';
+import TwoStepConfirmModal from '../components/TwoStepConfirmModal';
 import { toast } from 'react-hot-toast';
 import { 
   FaPalette, 
@@ -138,6 +140,14 @@ const ConfiguracionTema = () => {
   // Usa el permiso 'configurarTema' que incluye ADMIN y FARMACIA
   const tienePermisoTema = permisos?.configurarTema || user?.is_superuser || permisos?.esSuperusuario;
   const permisosResueltos = !cargandoPermisos && user !== undefined;
+  
+  // ISS-SEC: Hook de confirmación en dos pasos
+  const {
+    confirmState,
+    requestDeleteConfirmation,
+    executeWithConfirmation,
+    cancelConfirmation
+  } = useConfirmation();
   
   // Agrupar operaciones por tipo para permitir concurrencia entre grupos diferentes
   const operacionesBloqueantes = ['aplicandoTema', 'guardandoColores', 'restableciendo', 'restablecerInstitucional'];
@@ -507,14 +517,8 @@ const ConfiguracionTema = () => {
     }
   };
 
-  /**
-   * Restablece el tema a valores por defecto (legacy)
-   */
-  const handleRestablecer = async () => {
-    if (!window.confirm('¿Estás seguro de restablecer a los valores por defecto?\n\nEsto restablecerá todos los colores pero mantendrá los logos e información institucional.')) {
-      return;
-    }
-
+  // ISS-SEC: Función de ejecución para restablecer tema
+  const executeRestablecer = async () => {
     const resultado = await ejecutarOperacion(
       'restableciendo',
       restablecerTema,
@@ -529,22 +533,27 @@ const ConfiguracionTema = () => {
   };
 
   /**
+   * Restablece el tema a valores por defecto (legacy)
+   * ISS-SEC: Ahora usa confirmación en 2 pasos
+   */
+  const handleRestablecer = () => {
+    requestDeleteConfirmation({
+      title: 'Restablecer colores',
+      message: 'Esto restablecerá todos los colores pero mantendrá los logos e información institucional.',
+      itemInfo: { 'Acción': 'Restablecer a valores por defecto' },
+      onConfirm: executeRestablecer,
+      isCritical: false,
+      confirmText: 'Restablecer'
+    });
+  };
+
+  /**
    * Restablece completamente al tema institucional (TemaGlobal)
    * Restaura colores, tipografías, logos y fondos oficiales
    */
   const handleRestablecerInstitucional = async () => {
-    if (!window.confirm(
-      '¿Estás seguro de restablecer TODO al tema institucional?\n\n' +
-      'Esta acción restaurará:\n' +
-      '• Todos los colores oficiales\n' +
-      '• Tipografías por defecto\n' +
-      '• Logos institucionales\n' +
-      '• Fondos y configuración de reportes\n\n' +
-      'Esta acción no se puede deshacer.'
-    )) {
-      return;
-    }
-
+  // ISS-SEC: Función de ejecución para restablecer tema institucional
+  const executeRestablecerInstitucional = async () => {
     const resultado = await ejecutarOperacion(
       'restablecerInstitucional',
       restablecerTemaInstitucional,
@@ -556,6 +565,26 @@ const ConfiguracionTema = () => {
       setModoEdicion(false);
       setErroresColor({});
     }
+  };
+
+  /**
+   * Restablece completamente al tema institucional (TemaGlobal)
+   * Restaura colores, tipografías, logos y fondos oficiales
+   * ISS-SEC: Ahora usa confirmación en 2 pasos con escritura obligatoria
+   */
+  const handleRestablecerInstitucional = () => {
+    requestDeleteConfirmation({
+      title: 'Restablecer tema institucional',
+      message: 'Esta acción restaurará todos los colores oficiales, tipografías, logos institucionales y fondos. Esta acción no se puede deshacer.',
+      itemInfo: {
+        'Afectará': 'Colores, tipografías, logos y fondos',
+        'Advertencia': 'Los cambios personalizados se perderán'
+      },
+      onConfirm: executeRestablecerInstitucional,
+      isCritical: true,
+      confirmPhrase: 'RESTABLECER',
+      confirmText: 'Restablecer todo'
+    });
   };
 
   /**
@@ -616,12 +645,8 @@ const ConfiguracionTema = () => {
     if (logoPdfRef.current) logoPdfRef.current.value = '';
   };
 
-  /**
-   * Elimina el logo del header
-   */
-  const handleEliminarLogoHeader = async () => {
-    if (!window.confirm('¿Eliminar el logo del header?')) return;
-
+  // ISS-SEC: Función de ejecución para eliminar logo header
+  const executeEliminarLogoHeader = async () => {
     await ejecutarOperacion(
       'eliminandoLogoHeader',
       eliminarLogoHeader,
@@ -631,17 +656,43 @@ const ConfiguracionTema = () => {
   };
 
   /**
-   * Elimina el logo para PDFs
+   * Elimina el logo del header
+   * ISS-SEC: Ahora usa confirmación en 2 pasos
    */
-  const handleEliminarLogoPdf = async () => {
-    if (!window.confirm('¿Eliminar el logo para PDFs?')) return;
+  const handleEliminarLogoHeader = () => {
+    requestDeleteConfirmation({
+      title: 'Eliminar logo del header',
+      message: '¿Está seguro de eliminar el logo del header? Esta acción no se puede deshacer.',
+      itemInfo: { 'Tipo': 'Logo de encabezado' },
+      onConfirm: executeEliminarLogoHeader,
+      isCritical: false,
+      confirmText: 'Eliminar'
+    });
+  };
 
+  // ISS-SEC: Función de ejecución para eliminar logo PDF
+  const executeEliminarLogoPdf = async () => {
     await ejecutarOperacion(
       'eliminandoLogoPdf',
       eliminarLogoPdf,
       'Logo para PDFs eliminado',
       'logo'
     );
+  };
+
+  /**
+   * Elimina el logo para PDFs
+   * ISS-SEC: Ahora usa confirmación en 2 pasos
+   */
+  const handleEliminarLogoPdf = () => {
+    requestDeleteConfirmation({
+      title: 'Eliminar logo para PDFs',
+      message: '¿Está seguro de eliminar el logo para PDFs? Los reportes se generarán sin logo.',
+      itemInfo: { 'Tipo': 'Logo de PDFs/Reportes' },
+      onConfirm: executeEliminarLogoPdf,
+      isCritical: false,
+      confirmText: 'Eliminar'
+    });
   };
 
   /**
@@ -675,16 +726,26 @@ const ConfiguracionTema = () => {
 
   /**
    * Handler genérico para eliminar logos usando TemaGlobal API
+   * ISS-SEC: Ahora usa confirmación en 2 pasos
    */
-  const handleEliminarLogoTema = async (tipo, nombreOperacion, mensaje) => {
-    if (!window.confirm(`¿Eliminar ${mensaje}?`)) return;
+  const handleEliminarLogoTema = (tipo, nombreOperacion, mensaje) => {
+    const executeEliminar = async () => {
+      await ejecutarOperacion(
+        nombreOperacion,
+        () => eliminarLogoTema(tipo),
+        `${mensaje} eliminado`,
+        'logo'
+      );
+    };
 
-    await ejecutarOperacion(
-      nombreOperacion,
-      () => eliminarLogoTema(tipo),
-      `${mensaje} eliminado`,
-      'logo'
-    );
+    requestDeleteConfirmation({
+      title: `Eliminar ${mensaje}`,
+      message: `¿Está seguro de eliminar ${mensaje.toLowerCase()}? Esta acción no se puede deshacer.`,
+      itemInfo: { 'Tipo': mensaje },
+      onConfirm: executeEliminar,
+      isCritical: false,
+      confirmText: 'Eliminar'
+    });
   };
 
   // Handlers específicos para cada tipo de logo/imagen del TemaGlobal
@@ -1574,6 +1635,22 @@ const ConfiguracionTema = () => {
           )}
         </div>
       </div>
+
+      {/* Modal de confirmación en dos pasos */}
+      <TwoStepConfirmModal
+        isOpen={confirmState.isOpen}
+        onClose={cancelConfirmation}
+        onConfirm={() => executeWithConfirmation(confirmState.onConfirm)}
+        title={confirmState.title}
+        message={confirmState.message}
+        itemInfo={confirmState.itemInfo}
+        confirmText={confirmState.confirmText}
+        cancelText={confirmState.cancelText}
+        actionType={confirmState.actionType}
+        isCritical={confirmState.isCritical}
+        confirmPhrase={confirmState.confirmPhrase}
+        isLoading={confirmState.isLoading}
+      />
     </div>
   );
 };

@@ -936,6 +936,97 @@ export const descargarArchivo = (blob, nombreArchivo) => {
   }
 };
 
+// ============================================================================
+// ISS-SEC: HELPERS PARA CONFIRMACIÓN EN 2 PASOS
+// ============================================================================
+
+/**
+ * Header HTTP para confirmar acciones destructivas
+ * El backend valida este header para permitir DELETE/UPDATE críticos
+ */
+const CONFIRMATION_HEADER = 'X-Confirm-Action';
+
+/**
+ * Crea una configuración de axios con el flag de confirmación
+ * @param {boolean} confirmed - Si la acción está confirmada
+ * @returns {Object} Config de axios con header de confirmación
+ */
+export const withConfirmation = (confirmed = false) => ({
+  headers: confirmed ? { [CONFIRMATION_HEADER]: 'true' } : {},
+});
+
+/**
+ * Ejecuta una petición DELETE con confirmación obligatoria
+ * @param {string} url - URL del endpoint
+ * @param {Object} options - Opciones adicionales
+ * @param {boolean} options.confirmed - Si está confirmado (requerido)
+ * @param {Object} options.config - Config adicional de axios
+ * @returns {Promise} Promesa de axios
+ * @throws {Error} Si no hay confirmación
+ */
+export const deleteWithConfirmation = (url, options = {}) => {
+  const { confirmed = false, config = {} } = options;
+  
+  if (!confirmed) {
+    console.warn('[API] Intento de DELETE sin confirmación:', url);
+    return Promise.reject(new Error('CONFIRMATION_REQUIRED'));
+  }
+  
+  return apiClient.delete(url, {
+    ...config,
+    headers: {
+      ...(config.headers || {}),
+      [CONFIRMATION_HEADER]: 'true',
+    },
+  });
+};
+
+/**
+ * Ejecuta una petición PUT/PATCH con confirmación obligatoria
+ * @param {string} method - 'put' o 'patch'
+ * @param {string} url - URL del endpoint
+ * @param {Object} data - Datos a enviar
+ * @param {Object} options - Opciones adicionales
+ * @param {boolean} options.confirmed - Si está confirmado (requerido)
+ * @param {Object} options.config - Config adicional de axios
+ * @returns {Promise} Promesa de axios
+ * @throws {Error} Si no hay confirmación
+ */
+export const updateWithConfirmation = (method, url, data, options = {}) => {
+  const { confirmed = false, config = {} } = options;
+  
+  if (!confirmed) {
+    console.warn('[API] Intento de UPDATE sin confirmación:', url);
+    return Promise.reject(new Error('CONFIRMATION_REQUIRED'));
+  }
+  
+  const axiosMethod = method === 'patch' ? apiClient.patch : apiClient.put;
+  
+  return axiosMethod(url, data, {
+    ...config,
+    headers: {
+      ...(config.headers || {}),
+      [CONFIRMATION_HEADER]: 'true',
+    },
+  });
+};
+
+/**
+ * Verifica si un error es por falta de confirmación
+ * @param {Error} error - Error de axios
+ * @returns {boolean} true si es error de confirmación
+ */
+export const isConfirmationError = (error) => {
+  if (error.message === 'CONFIRMATION_REQUIRED') return true;
+  
+  const status = error.response?.status;
+  const code = error.response?.data?.code;
+  
+  return status === 409 && code === 'CONFIRMATION_REQUIRED';
+};
+
+// ============================================================================
+
 /**
  * ISS-005 FIX (audit33): Wrapper para peticiones de exportación con manejo de errores
  * @param {Promise} peticion - Promesa de axios con responseType: 'blob'
@@ -1014,7 +1105,8 @@ export const productosAPI = {
     const config = isFormData ? { headers: { 'Content-Type': 'multipart/form-data' } } : {};
     return apiClient.patch(`/productos/${id}/`, data, config);
   },
-  delete: (id) => apiClient.delete(`/productos/${id}/`),
+  // ISS-SEC: DELETE con confirmación obligatoria
+  delete: (id, options = {}) => deleteWithConfirmation(`/productos/${id}/`, options),
   toggleActivo: (id) => apiClient.post(`/productos/${id}/toggle-activo/`),
   // ISS-SEC: Endpoints removidos - usar filtros en getAll() o reportesAPI en su lugar
   // nuevos: usar getAll({ ordenar: 'created_at', dias: 7 })
@@ -1043,7 +1135,8 @@ export const lotesAPI = {
   getById: (id, params = {}) => apiClient.get(`/lotes/${id}/`, { params }),
   create: (data) => apiClient.post('/lotes/', data),
   update: (id, data) => apiClient.put(`/lotes/${id}/`, data),
-  delete: (id) => apiClient.delete(`/lotes/${id}/`),
+  // ISS-SEC: DELETE con confirmación obligatoria
+  delete: (id, options = {}) => deleteWithConfirmation(`/lotes/${id}/`, options),
   porCaducar: (dias = 90) => apiClient.get(`/lotes/por-caducar/?dias=${dias}`),
   vencidos: () => apiClient.get('/lotes/vencidos/'),
   ajustarStock: (id, data) => apiClient.post(`/lotes/${id}/ajustar-stock/`, data),
@@ -1053,7 +1146,8 @@ export const lotesAPI = {
   subirDocumento: (id, formData) => apiClient.post(`/lotes/${id}/subir-documento/`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
-  eliminarDocumento: (loteId, docId) => apiClient.delete(`/lotes/${loteId}/eliminar-documento/${docId}/`),
+  // ISS-SEC: DELETE de documento con confirmación obligatoria
+  eliminarDocumento: (loteId, docId, options = {}) => deleteWithConfirmation(`/lotes/${loteId}/eliminar-documento/${docId}/`, options),
   // Exportaciones
   exportar: (params) => apiClient.get('/lotes/exportar-excel/', { 
     params, 
@@ -1075,7 +1169,8 @@ export const centrosAPI = {
   getById: (id) => apiClient.get(`/centros/${id}/`),
   create: (data) => apiClient.post('/centros/', data),
   update: (id, data) => apiClient.put(`/centros/${id}/`, data),
-  delete: (id) => apiClient.delete(`/centros/${id}/`),
+  // ISS-SEC: DELETE con confirmación obligatoria
+  delete: (id, options = {}) => deleteWithConfirmation(`/centros/${id}/`, options),
   toggleActivo: (id) => apiClient.post(`/centros/${id}/toggle-activo/`),
   plantilla: () => apiClient.get('/centros/plantilla/', { responseType: 'blob' }),
   exportar: (params) => apiClient.get('/centros/exportar-excel/', { params, responseType: 'blob' }),
@@ -1091,7 +1186,8 @@ export const usuariosAPI = {
   getById: (id) => apiClient.get(`/usuarios/${id}/`),
   create: (data) => apiClient.post('/usuarios/', data),
   update: (id, data) => apiClient.put(`/usuarios/${id}/`, data),
-  delete: (id) => apiClient.delete(`/usuarios/${id}/`),
+  // ISS-SEC: DELETE con confirmación obligatoria
+  delete: (id, options = {}) => deleteWithConfirmation(`/usuarios/${id}/`, options),
   cambiarPassword: (id, data) => apiClient.post(`/usuarios/${id}/cambiar-password/`, data),
   me: () => apiClient.get('/usuarios/me/'),
   actualizarPerfil: (data) => apiClient.patch('/usuarios/me/', data),
@@ -1192,7 +1288,8 @@ export const requisicionesAPI = {
   getById: (id) => apiClient.get(`/requisiciones/${id}/`),
   create: (data) => apiClient.post('/requisiciones/', data),
   update: (id, data) => apiClient.put(`/requisiciones/${id}/`, data),
-  delete: (id) => apiClient.delete(`/requisiciones/${id}/`),
+  // ISS-SEC: DELETE con confirmación obligatoria
+  delete: (id, options = {}) => deleteWithConfirmation(`/requisiciones/${id}/`, options),
   
   // ISS-002: Flujo de estados (legacy - compatibilidad, usar V2 preferentemente)
   enviar: (id) => apiClient.post(`/requisiciones/${id}/enviar/`),
@@ -1591,7 +1688,8 @@ export const notificacionesAPI = {
   marcarLeida: (id) => apiClient.post(`/notificaciones/${id}/marcar-leida/`),
   // Pasar filtros para respetar el contexto actual (tipo, desde, hasta, leida)
   marcarTodasLeidas: (params) => apiClient.post('/notificaciones/marcar-todas-leidas/', null, { params }),
-  delete: (id) => apiClient.delete(`/notificaciones/${id}/`),
+  // ISS-SEC: DELETE con confirmación obligatoria
+  delete: (id, options = {}) => deleteWithConfirmation(`/notificaciones/${id}/`, options),
   noLeidasCount: () => apiClient.get('/notificaciones/no-leidas-count/'),
 };
 
@@ -1613,10 +1711,10 @@ export const configuracionAPI = {
   subirLogoPdf: (formData) => apiClient.post('/configuracion/tema/subir-logo-pdf/', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
-  // Eliminar logo del header
-  eliminarLogoHeader: () => apiClient.delete('/configuracion/tema/eliminar-logo-header/'),
-  // Eliminar logo para PDFs
-  eliminarLogoPdf: () => apiClient.delete('/configuracion/tema/eliminar-logo-pdf/'),
+  // ISS-SEC: DELETE con confirmación obligatoria para logos
+  eliminarLogoHeader: (options = {}) => deleteWithConfirmation('/configuracion/tema/eliminar-logo-header/', options),
+  // ISS-SEC: DELETE con confirmación obligatoria para logos
+  eliminarLogoPdf: (options = {}) => deleteWithConfirmation('/configuracion/tema/eliminar-logo-pdf/', options),
 };
 
 // API de Tema Global (personalización completa)

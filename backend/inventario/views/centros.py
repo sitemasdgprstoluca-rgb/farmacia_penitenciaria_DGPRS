@@ -22,6 +22,7 @@ import logging
 from core.models import Centro, Lote, Movimiento, Producto
 from core.serializers import CentroSerializer
 from core.permissions import IsFarmaciaAdminOrReadOnly
+from core.mixins import ConfirmationRequiredMixin
 from .base import (
     CustomPagination,
     is_farmacia_or_admin,
@@ -33,7 +34,7 @@ from .base import (
 logger = logging.getLogger(__name__)
 
 
-class CentroViewSet(viewsets.ModelViewSet):
+class CentroViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
     """
     ViewSet para gestionar centros penitenciarios.
     
@@ -44,11 +45,16 @@ class CentroViewSet(viewsets.ModelViewSet):
     - Exportar a Excel con formato profesional
     - Importar desde Excel con validaciones
     - Obtener requisiciones por centro
+    
+    ISS-SEC: Requiere confirmación para operaciones de eliminación
     """
     queryset = Centro.objects.all()
     serializer_class = CentroSerializer
     permission_classes = [IsFarmaciaAdminOrReadOnly]
     pagination_class = CustomPagination
+    
+    # ISS-SEC: Configuración de confirmación
+    require_delete_confirmation = True
 
     def _user_centro(self, user):
         return getattr(user, 'centro', None) or getattr(getattr(user, 'profile', None), 'centro', None)
@@ -154,10 +160,19 @@ class CentroViewSet(viewsets.ModelViewSet):
         """
         Elimina un centro.
         
+        ISS-SEC: Requiere confirmación en 2 pasos.
+        
         Validaciones:
+        - Confirmación obligatoria (ISS-SEC)
         - No puede eliminarse si tiene requisiciones asociadas (como origen o destino)
         - No puede eliminarse si tiene usuarios asignados
         """
+        # ISS-SEC: Primero verificar confirmación (heredado del mixin)
+        if self.require_delete_confirmation:
+            if not self._is_confirmation_valid(request):
+                instance = self.get_object()
+                return self._get_confirmation_error_response('delete', instance)
+        
         instance = self.get_object()
         
         try:

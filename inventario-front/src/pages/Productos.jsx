@@ -42,6 +42,9 @@ import { ProtectedButton } from '../components/ProtectedAction';
 import Pagination from '../components/Pagination';
 import { ProductosSkeleton } from '../components/skeletons';
 import LimpiarInventario from '../components/LimpiarInventario';
+// ISS-SEC: Componentes para confirmación en 2 pasos
+import TwoStepConfirmModal from '../components/TwoStepConfirmModal';
+import { useConfirmation } from '../hooks/useConfirmation';
 
 import { COLORS } from '../constants/theme';
 
@@ -347,6 +350,15 @@ const MOCK_PRODUCTS = Array.from({ length: 124 }).map((_, index) => {
 const Productos = () => {
 
   const { user, permisos, getRolPrincipal } = usePermissions();
+  
+  // ISS-SEC: Hook para confirmación en 2 pasos
+  const {
+    confirmState,
+    requestDeleteConfirmation,
+    requestSaveConfirmation,
+    executeWithConfirmation,
+    cancelConfirmation,
+  } = useConfirmation();
   
   // ISS-002 FIX (audit31): Cargar catálogos dinámicos desde API
   // IMPORTANTE: Si el catálogo no carga, se bloquea la edición para evitar inconsistencias
@@ -1058,21 +1070,10 @@ const Productos = () => {
 
   };
 
-
-
-  const handleDelete = async (producto) => {
-
-    if (!puede.eliminar) return;
-    if (actionLoading === producto.id) return; // Evitar clics repetidos
-
-    const confirm = window.confirm(
-      `¿Confirma ELIMINAR DEFINITIVAMENTE el producto ${producto.clave}?\n\n` +
-      `⚠️ Esta acción no se puede deshacer.\n` +
-      `Nota: Si el producto tiene lotes asociados, no podrá eliminarse.`
-    );
-
-    if (!confirm) return;
-
+  // ISS-SEC: Función auxiliar para ejecutar eliminación de producto con confirmación
+  const executeDeleteProducto = async ({ confirmed, actionData }) => {
+    const { producto } = actionData;
+    
     setActionLoading(producto.id);
 
     try {
@@ -1085,13 +1086,13 @@ const Productos = () => {
 
         applyMockProductos();
 
-        setActionLoading(null); // Limpiar antes de return
+        setActionLoading(null);
 
         return;
 
       }
 
-      await productosAPI.delete(producto.id);
+      await productosAPI.delete(producto.id, { confirmed });
 
       toast.success('Producto eliminado correctamente');
 
@@ -1110,10 +1111,41 @@ const Productos = () => {
         errorMsg = errorData.error;
       }
       toast.error(errorMsg);
+      throw err; // Re-lanzar para que el modal maneje el estado
 
     } finally {
       setActionLoading(null);
     }
+  };
+
+  // ISS-SEC: handleDelete ahora inicia el flujo de confirmación en 2 pasos
+  const handleDelete = (producto) => {
+
+    if (!puede.eliminar) return;
+    if (actionLoading === producto.id) return; // Evitar clics repetidos
+
+    // Solicitar confirmación en 2 pasos con escritura de "ELIMINAR"
+    requestDeleteConfirmation({
+      title: 'Confirmar Eliminación de Producto',
+      message: '¿Confirma ELIMINAR DEFINITIVAMENTE este producto?',
+      warnings: [
+        'Esta acción NO se puede deshacer',
+        'Si el producto tiene lotes asociados, no podrá eliminarse',
+        'Se eliminarán todos los datos del producto'
+      ],
+      itemInfo: {
+        'Clave': producto.clave,
+        'Nombre': producto.nombre,
+        'Stock': formatInventario(producto)
+      },
+      isCritical: true, // Eliminación permanente = crítica
+      confirmPhrase: 'ELIMINAR', // Requiere escribir para confirmar
+      confirmText: 'Eliminar Permanentemente',
+      cancelText: 'Cancelar',
+      tone: 'danger',
+      onConfirm: executeDeleteProducto,
+      actionData: { producto }
+    });
 
   };
 
@@ -2694,6 +2726,22 @@ const Productos = () => {
           </div>
         </div>
       )}
+
+      {/* ISS-SEC: Modal de confirmación en 2 pasos */}
+      <TwoStepConfirmModal
+        open={confirmState.isOpen}
+        title={confirmState.title}
+        message={confirmState.message}
+        warnings={confirmState.warnings}
+        confirmText={confirmState.confirmText}
+        cancelText={confirmState.cancelText}
+        tone={confirmState.tone}
+        confirmPhrase={confirmState.confirmPhrase}
+        itemInfo={confirmState.itemInfo}
+        loading={confirmState.loading}
+        onConfirm={executeWithConfirmation}
+        onCancel={cancelConfirmation}
+      />
 
     </div>
 

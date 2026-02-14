@@ -49,6 +49,8 @@ from core.permissions import (
     CanViewProfile, IsVistaRole, IsSuperuserOnly, CanManageDispensaciones,
     CanManageComprasCajaChica
 )
+# ISS-SEC: Mixin de confirmación obligatoria
+from core.mixins import ConfirmationRequiredMixin
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
@@ -121,8 +123,12 @@ def get_role_level(user, rol=None):
     return ROLE_HIERARCHY.get(target_rol, 99)
 
 
-class UserViewSet(viewsets.ModelViewSet):
-    """ViewSet para gestion de usuarios"""
+class UserViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
+    """
+    ViewSet para gestion de usuarios.
+    
+    ISS-SEC: Requiere confirmación para operaciones de eliminación
+    """
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]
@@ -131,6 +137,9 @@ class UserViewSet(viewsets.ModelViewSet):
     search_fields = ['username', 'email', 'first_name', 'last_name', 'adscripcion']
     ordering_fields = ['username', 'date_joined']
     ordering = ['-date_joined']
+    
+    # ISS-SEC: Configuración de confirmación
+    require_delete_confirmation = True
     
     def _apply_filters(self, queryset, params):
         """Aplica filtros comunes a queryset de usuarios"""

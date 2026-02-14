@@ -25,6 +25,7 @@ from core.models import Producto
 from core.serializers import ProductoSerializer
 from core.constants import UNIDADES_MEDIDA
 from core.permissions import HasProductosPermission, IsFarmaciaRole
+from core.mixins import ConfirmationRequiredMixin
 from .base import (
     CustomPagination,
     is_farmacia_or_admin,
@@ -38,11 +39,19 @@ from .base import (
 logger = logging.getLogger(__name__)
 
 
-class ProductoViewSet(viewsets.ModelViewSet):
+class ProductoViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
+    """
+    ViewSet para gestionar productos farmacéuticos.
+    
+    ISS-SEC: Requiere confirmación para operaciones de eliminación
+    """
     queryset = Producto.objects.all()
     serializer_class = ProductoSerializer
     permission_classes = [IsAuthenticated, HasProductosPermission]
     pagination_class = CustomPagination
+    
+    # ISS-SEC: Configuración de confirmación
+    require_delete_confirmation = True
 
     def get_permissions(self):
         """
