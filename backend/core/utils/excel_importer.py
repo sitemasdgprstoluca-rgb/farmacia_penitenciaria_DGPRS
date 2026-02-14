@@ -508,10 +508,15 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
     
     # IMPORTANTE: Los sinónimos más específicos primero para evitar conflictos
     # 'nombre producto' debe mapearse a producto_nombre, NO a producto_clave
+    # ISS-FORMATO-OFICIAL: Agregar sinónimos del formato "Control de Inventarios" oficial
     SINONIMOS_LOTE = {
-        'producto_nombre': ['nombre producto', 'nombre del producto', 'producto nombre', 'descripcion'],
+        # Producto - nombre y clave son OBLIGATORIOS
+        # NOTA: "NO. PARTIDA" es número de fila, NO clave de producto - no incluir
+        'producto_nombre': ['nombre producto', 'nombre del producto', 'producto nombre', 'descripcion',
+                            'articulo', 'nombre articulo'],  # Formato oficial usa ARTÍCULO
         'producto_clave': ['clave producto', 'clave', 'codigo producto', 'codigo', 'sku', 'key'],
         'producto_id': ['id producto', 'producto id', 'id_producto'],
+        # Lote
         'numero_lote': ['numero lote', 'lote', 'num lote', 'no lote', 'numero de lote', 
                         'n lote', 'nro lote', 'batch'],
         # ISS-INV-001: Separar cantidad_contrato (total esperado) de cantidad_inicial (recibido)
@@ -521,13 +526,22 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                              'qty', 'unidades', 'piezas', 'cant', 'cantidad recibida', 
                              'cantidad surtida', 'cant recibida', 'cant surtida'],
         'cantidad_actual': ['cantidad actual', 'cant actual', 'stock actual'],
+        # Fechas - ISS-FORMATO-OFICIAL: "VENCIMIENTO/FECHA DE CADUCIDAD" del formato oficial
         'caducidad': ['fecha caducidad', 'caducidad', 'vencimiento', 'fecha vencimiento', 
-                      'expira', 'fec cad', 'expiracion', 'fecha expiracion'],
+                      'expira', 'fec cad', 'expiracion', 'fecha expiracion',
+                      'vencimiento fecha de caducidad'],  # Formato oficial combinado
         'fabricacion': ['fecha fabricacion', 'fabricacion', 'elaboracion', 
                         'fecha elaboracion', 'fec fab'],
+        'fecha_ingreso': ['fecha ingreso', 'fecha de ingreso', 'ingreso', 'fecha entrada', 
+                          'fecha recepcion', 'fec ing'],  # Formato oficial
+        # Otros campos
         'precio': ['precio unitario', 'precio', 'costo', 'valor', 'precio unit', 'pu'],
         'contrato': ['numero contrato', 'contrato', 'no contrato', 'num contrato'],
-        'marca': ['marca', 'laboratorio', 'fabricante', 'proveedor', 'lab'],
+        # ISS-FORMATO-OFICIAL: "NOMBRE COMERCIAL O GENÉRICO" se usa como marca/laboratorio
+        'marca': ['marca', 'laboratorio', 'fabricante', 'proveedor', 'lab',
+                  'nombre comercial', 'nombre comercial o generico', 'nombre generico'],
+        'concentracion': ['concentracion', 'conc', 'dosis'],  # Campo informativo
+        'presentacion': ['presentacion', 'pres', 'envase', 'empaque'],  # Campo informativo
         'ubicacion': ['ubicacion', 'almacen', 'bodega', 'estante', 'localizacion'],
         'centro': ['centro', 'centro nombre', 'nombre centro', 'centro destino'],
         'activo': ['activo', 'estado', 'status', 'active'],
@@ -640,8 +654,19 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                     f'Nombre: {nombre_producto}. Verifique que el producto exista.')
                 continue
             
-            nombre_bd_normalizado = producto.nombre.strip().lower()
-            nombre_excel_normalizado = nombre_producto.strip().lower()
+            # ISS-NOMBRES-TOLERANTES: Normalizar nombres para comparación flexible
+            # Esto maneja variaciones como "KETOCONAZOL /CLINDAMICINA" vs "KETOCONAZOL / CLINDAMICINA"
+            def normalizar_nombre_comparacion(nombre):
+                """Normaliza nombre para comparación tolerante."""
+                n = nombre.strip().lower()
+                # Normalizar separadores con espacios inconsistentes
+                n = re.sub(r'\s*/\s*', '/', n)  # "/ " → "/"
+                n = re.sub(r'\s*-\s*', '-', n)  # " - " → "-"
+                n = re.sub(r'\s+', ' ', n)      # espacios múltiples → uno
+                return n
+            
+            nombre_bd_normalizado = normalizar_nombre_comparacion(producto.nombre)
+            nombre_excel_normalizado = normalizar_nombre_comparacion(nombre_producto)
             if not (nombre_bd_normalizado == nombre_excel_normalizado or 
                     nombre_bd_normalizado.startswith(nombre_excel_normalizado) or
                     nombre_excel_normalizado.startswith(nombre_bd_normalizado)):

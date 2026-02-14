@@ -156,8 +156,8 @@ const Lotes = () => {
     numero_lote: '',
     fecha_fabricacion: '',    // Campo real en DB
     fecha_caducidad: '',
-    cantidad_contrato: '',    // ISS-INV-001: Total según contrato (obligatorio)
-    cantidad_inicial: '',      // Se auto-calcula desde cantidad_contrato
+    cantidad_contrato: '',    // ISS-INV-001: Total según contrato (OPCIONAL)
+    cantidad_inicial: '',      // Unidades realmente recibidas (obligatorio)
     precio_unitario: '',      // Nombre real en DB (antes precio_compra)
     numero_contrato: '',
     marca: '',
