@@ -65,6 +65,38 @@ const generarColorHover = (hexColor) => {
 };
 
 /**
+ * Componente de input de color mejorado con validación
+ */
+const ColorInput = ({ label, name, value, onChange, error, disabled }) => (
+  <div>
+    <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
+    <div className="flex items-center gap-2">
+      <input
+        type="color"
+        id={name}
+        name={name}
+        value={value && /^#[0-9A-Fa-f]{6}$/.test(value) ? value : '#000000'}
+        onChange={onChange}
+        disabled={disabled}
+        className="w-10 h-10 rounded cursor-pointer border-0 disabled:opacity-50 disabled:cursor-not-allowed"
+      />
+      <input
+        type="text"
+        value={value || ''}
+        onChange={onChange}
+        name={name}
+        placeholder="#000000"
+        disabled={disabled}
+        className={`flex-1 px-3 py-2 border rounded text-sm font-mono disabled:opacity-50 disabled:bg-gray-100 ${
+          error ? 'border-red-500 bg-red-50' : 'border-gray-300'
+        }`}
+      />
+    </div>
+    {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
+  </div>
+);
+
+/**
  * Página de configuración del tema del sistema
  * Solo accesible por superusuarios
  * 
@@ -1654,37 +1686,5 @@ const ConfiguracionTema = () => {
     </div>
   );
 };
-
-/**
- * Componente de input de color mejorado con validación
- */
-const ColorInput = ({ label, name, value, onChange, error, disabled }) => (
-  <div>
-    <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
-    <div className="flex items-center gap-2">
-      <input
-        type="color"
-        id={name}
-        name={name}
-        value={value && /^#[0-9A-Fa-f]{6}$/.test(value) ? value : '#000000'}
-        onChange={onChange}
-        disabled={disabled}
-        className="w-10 h-10 rounded cursor-pointer border-0 disabled:opacity-50 disabled:cursor-not-allowed"
-      />
-      <input
-        type="text"
-        value={value || ''}
-        onChange={onChange}
-        name={name}
-        placeholder="#000000"
-        disabled={disabled}
-        className={`flex-1 px-3 py-2 border rounded text-sm font-mono disabled:opacity-50 disabled:bg-gray-100 ${
-          error ? 'border-red-500 bg-red-50' : 'border-gray-300'
-        }`}
-      />
-    </div>
-    {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
-  </div>
-);
 
 export default ConfiguracionTema;
