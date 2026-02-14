@@ -359,14 +359,29 @@ const ImportadorModerno = ({
       }
       
       const headers = jsonData[headerRowIndex].map(h => String(h || '').trim());
-      const dataRows = jsonData.slice(headerRowIndex + 1).filter(row => 
-        row.some(cell => cell !== '' && cell !== null && cell !== undefined)
-      );
+      const numColumnasRequeridas = config.columnasRequeridas.length;
       
-      // Filtrar filas de ejemplo
+      // Filtrar filas vacías o con muy pocos datos (menos de la mitad de columnas requeridas)
+      const dataRows = jsonData.slice(headerRowIndex + 1).filter(row => {
+        // Contar celdas con datos reales (no vacíos)
+        const celdasConDatos = row.filter(cell => 
+          cell !== '' && cell !== null && cell !== undefined && String(cell).trim() !== ''
+        ).length;
+        // Una fila válida debe tener al menos la mitad de las columnas requeridas con datos
+        // o al menos 2 celdas con datos (lo que sea mayor)
+        const minCeldas = Math.max(2, Math.floor(numColumnasRequeridas / 2));
+        return celdasConDatos >= minCeldas;
+      });
+      
+      // Filtrar filas de ejemplo y separadores
       const dataRowsSinEjemplos = dataRows.filter(row => {
         const rowText = row.join(' ').toLowerCase();
-        return !rowText.includes('[ejemplo]') && !rowText.includes('eliminar');
+        // Ignorar filas de ejemplo, separadores o instrucciones
+        if (rowText.includes('[ejemplo]') || rowText.includes('eliminar') || 
+            rowText.includes('---') || rowText.includes('***')) {
+          return false;
+        }
+        return true;
       });
       
       // Validar columnas requeridas
@@ -443,25 +458,29 @@ const ImportadorModerno = ({
         });
       }
       
-      // Agregar errores de filas individuales
+      // Agregar resumen de errores de filas (agrupado para mejor legibilidad)
       if (erroresPorFila.length > 0) {
-        erroresPorFila.slice(0, 10).forEach(({ fila, errores: errs }) => {
+        // Agrupar errores por tipo de error
+        const erroresPorTipo = {};
+        erroresPorFila.forEach(({ fila, errores: errs }) => {
           errs.forEach(e => {
-            errores.push({
-              tipo: 'error',
-              mensaje: `Fila ${fila}: ${e.mensaje}`,
-              detalle: e.columna
-            });
+            const key = e.columna;
+            if (!erroresPorTipo[key]) {
+              erroresPorTipo[key] = [];
+            }
+            erroresPorTipo[key].push(fila);
           });
         });
         
-        if (erroresPorFila.length > 10) {
+        // Mostrar resumen agrupado
+        Object.entries(erroresPorTipo).forEach(([columna, filas]) => {
+          const filasStr = filas.slice(0, 5).join(', ') + (filas.length > 5 ? ` (+${filas.length - 5} más)` : '');
           errores.push({
             tipo: 'error',
-            mensaje: `... y ${erroresPorFila.length - 10} errores más`,
-            detalle: 'Revise el archivo completo'
+            mensaje: `${filas.length} fila(s) sin "${columna}"`,
+            detalle: `Filas: ${filasStr}`
           });
-        }
+        });
       }
       
       // Crear preview
@@ -899,23 +918,52 @@ const ImportadorModerno = ({
               </div>
             </div>
             
+            {/* Encabezados de columnas detectadas */}
+            <div className="mb-3 p-3 bg-gray-50 rounded-lg border">
+              <div className="flex flex-wrap gap-2 text-xs">
+                <span className="font-semibold text-gray-700">Columnas detectadas:</span>
+                {preview.headers.filter(h => h && h.trim()).map((h, i) => {
+                  const esRequerida = preview.columnasEncontradas.some(ce => columnaCoincide(h, ce, config.sinonimosCols));
+                  const falta = preview.columnasFaltantes.some(cf => normalizarHeader(cf) === normalizarHeader(h));
+                  return (
+                    <span 
+                      key={i}
+                      className={`px-2 py-1 rounded-full ${
+                        falta ? 'bg-red-100 text-red-700' :
+                        esRequerida ? 'bg-green-100 text-green-700 font-medium' :
+                        'bg-gray-200 text-gray-600'
+                      }`}
+                    >
+                      {h}
+                      {esRequerida && ' ✓'}
+                    </span>
+                  );
+                })}
+              </div>
+              {preview.columnasFaltantes.length > 0 && (
+                <div className="mt-2 text-xs text-red-600">
+                  <strong>Faltan:</strong> {preview.columnasFaltantes.join(', ')}
+                </div>
+              )}
+            </div>
+            
             {/* Tabla de preview */}
             <div className="border rounded-lg overflow-hidden">
-              <div className="overflow-x-auto max-h-80">
-                <table className="min-w-full text-xs">
-                  <thead className="bg-gray-100 sticky top-0">
+              <div className="overflow-x-auto" style={{ maxHeight: '400px' }}>
+                <table className="min-w-full text-xs" style={{ tableLayout: 'auto' }}>
+                  <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
                     <tr>
-                      <th className="px-2 py-2 text-left font-semibold text-gray-700 border-r">#</th>
+                      <th className="px-3 py-2 text-left font-bold text-gray-700 border-r bg-gray-100 whitespace-nowrap">#</th>
                       {preview.headers.map((h, i) => (
                         <th 
                           key={i} 
                           className={`
-                            px-2 py-2 text-left font-semibold border-r
+                            px-3 py-2 text-left font-bold border-r whitespace-nowrap
                             ${preview.columnasFaltantes.some(cf => normalizarHeader(cf) === normalizarHeader(h)) 
                               ? 'bg-red-100 text-red-800' 
                               : preview.columnasEncontradas.some(ce => columnaCoincide(h, ce, config.sinonimosCols))
-                                ? 'text-green-800'
-                                : 'text-gray-700'
+                                ? 'bg-green-50 text-green-800'
+                                : 'bg-gray-100 text-gray-700'
                             }
                           `}
                         >
@@ -938,16 +986,27 @@ const ImportadorModerno = ({
                           }
                         `}
                       >
-                        <td className="px-2 py-1.5 text-gray-500 border-r font-mono">
-                          {row.numero}
-                          {row.tieneError && <FaExclamationCircle className="inline ml-1 text-red-500" />}
-                          {row.esDuplicado && <FaExclamationTriangle className="inline ml-1 text-yellow-500" />}
+                        <td className="px-3 py-1.5 text-gray-500 border-r font-mono bg-gray-50 whitespace-nowrap sticky left-0">
+                          <span className="font-bold">{row.numero}</span>
+                          {row.tieneError && <FaExclamationCircle className="inline ml-1 text-red-500" title="Fila con errores" />}
+                          {row.esDuplicado && <FaExclamationTriangle className="inline ml-1 text-yellow-500" title="Posible duplicado" />}
                         </td>
-                        {row.datos.map((cell, cellIdx) => (
-                          <td key={cellIdx} className="px-2 py-1.5 text-gray-700 border-r truncate max-w-[150px]">
-                            {formatearCelda(cell)}
-                          </td>
-                        ))}
+                        {row.datos.map((cell, cellIdx) => {
+                          const valorFormateado = formatearCelda(cell);
+                          const estaVacio = !valorFormateado || valorFormateado.trim() === '';
+                          return (
+                            <td 
+                              key={cellIdx} 
+                              className={`px-3 py-1.5 border-r whitespace-nowrap ${
+                                estaVacio ? 'text-gray-300 italic' : 'text-gray-700'
+                              }`}
+                              style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                              title={valorFormateado}
+                            >
+                              {estaVacio ? '—' : valorFormateado}
+                            </td>
+                          );
+                        })}
                       </tr>
                     ))}
                   </tbody>
