@@ -3450,7 +3450,9 @@ class InventarioCajaChicaSerializer(serializers.ModelSerializer):
             'ubicacion', 'activo', 'estado',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        # ISS-SEC-005: cantidad_actual y cantidad_inicial son read_only.
+        # Solo se modifican vía recepción de compra o movimientos de caja chica.
+        read_only_fields = ['id', 'created_at', 'updated_at', 'cantidad_actual', 'cantidad_inicial']
     
     def get_centro_nombre(self, obj):
         return obj.centro.nombre if obj.centro else None

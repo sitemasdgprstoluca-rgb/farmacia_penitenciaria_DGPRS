@@ -14,7 +14,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from django.utils import timezone
 from django.http import HttpResponse
 from django.db import transaction
-from django.db.models import Q, Sum
+from django.db.models import Q, Sum, F
 from django.db.models.functions import Coalesce
 from django.views.decorators.cache import cache_page
 from django.utils.decorators import method_decorator
@@ -7531,9 +7531,11 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                     # Guardar stock antes de descontar para la validación del movimiento
                     stock_antes = lote.cantidad_actual
                     
-                    # Descontar del lote
-                    lote.cantidad_actual -= cantidad
-                    lote.save()
+                    # ISS-SEC-006: Descontar del lote con F() atómico (defensa en profundidad)
+                    Lote.objects.filter(pk=lote.pk).update(
+                        cantidad_actual=F('cantidad_actual') - cantidad
+                    )
+                    lote.refresh_from_db()
                     
                     # Crear movimiento de salida
                     # ISS-FIX: Establecer _stock_pre_movimiento para que el validador
