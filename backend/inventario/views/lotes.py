@@ -77,15 +77,22 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
     - Busqueda por numero de lote
     - Validaciones de integridad
     
-    ISS-SEC: Requiere confirmación para operaciones de eliminación
+    ISS-SEC: Requiere confirmación para operaciones destructivas y de escritura.
+    
+    Reglas de negocio blindadas:
+    - cantidad_inicial: Solo en CREATE, NUNCA editable vía UPDATE
+    - cantidad_actual: SOLO se modifica vía Movimiento (read_only en API)
+    - cantidad_contrato: Solo editable por Farmacia/Admin, con auditoría
+    - Doble confirmación obligatoria para crear y actualizar lotes
     """
     queryset = Lote.objects.select_related('producto').all()
     serializer_class = LoteSerializer
     permission_classes = [IsFarmaciaAdminOrReadOnly]
     pagination_class = CustomPagination
     
-    # ISS-SEC: Configuración de confirmación
+    # ISS-SEC: Configuración de confirmación obligatoria
     require_delete_confirmation = True
+    require_update_confirmation = True  # Doble confirmación para edición
 
     def get_queryset(self):
         """

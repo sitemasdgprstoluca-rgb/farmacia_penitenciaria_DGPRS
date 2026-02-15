@@ -158,8 +158,8 @@ const Lotes = () => {
     numero_lote: '',
     fecha_fabricacion: '',    // Campo real en DB
     fecha_caducidad: '',
-    cantidad_contrato: '',    // ISS-INV-001: Total según contrato (OPCIONAL)
-    cantidad_inicial: '',      // Unidades realmente recibidas (obligatorio)
+    cantidad_contrato: '',    // ISS-INV-001: Lo acordado en contrato (OPCIONAL)
+    cantidad_inicial: '',      // Primera entrega registrada (obligatorio al crear)
     precio_unitario: '',      // Nombre real en DB (antes precio_compra)
     numero_contrato: '',
     marca: '',
@@ -380,30 +380,34 @@ const Lotes = () => {
     }
 
     // cantidad_inicial: cantidad realmente recibida (puede ser parcial vs contrato)
-    const cantidadInicial = parseInt(formData.cantidad_inicial, 10);
-    
-    // Validación: cantidad debe ser un número válido
-    if (isNaN(cantidadInicial)) {
-      toast.error('La cantidad inicial debe ser un número válido');
-      return;
-    }
-    
-    // Validación: cantidad no puede ser negativa
-    if (cantidadInicial < 0) {
-      toast.error('La cantidad inicial no puede ser negativa');
-      return;
-    }
-    
-    // Validación: cantidad no puede ser cero para nuevos lotes
-    if (!editingLote && cantidadInicial === 0) {
-      toast.error('La cantidad inicial debe ser mayor a cero');
-      return;
-    }
-    
-    // Validación: cantidad_inicial no puede superar cantidad_contrato (solo si contrato está definido)
-    if (!editingLote && cantidadContrato !== null && cantidadInicial > cantidadContrato) {
-      toast.error('La cantidad inicial recibida no puede superar la cantidad del contrato');
-      return;
+    // Solo se valida al CREAR lotes nuevos. En edición, cantidad_inicial no se modifica.
+    let cantidadInicial = null;
+    if (!editingLote) {
+      cantidadInicial = parseInt(formData.cantidad_inicial, 10);
+      
+      // Validación: cantidad debe ser un número válido
+      if (isNaN(cantidadInicial)) {
+        toast.error('La cantidad inicial debe ser un número válido');
+        return;
+      }
+      
+      // Validación: cantidad no puede ser negativa
+      if (cantidadInicial < 0) {
+        toast.error('La cantidad inicial no puede ser negativa');
+        return;
+      }
+      
+      // Validación: cantidad no puede ser cero para nuevos lotes
+      if (cantidadInicial === 0) {
+        toast.error('La cantidad inicial debe ser mayor a cero');
+        return;
+      }
+      
+      // Validación: cantidad_inicial no puede superar cantidad_contrato (solo si contrato está definido)
+      if (cantidadContrato !== null && cantidadInicial > cantidadContrato) {
+        toast.error('La cantidad inicial recibida no puede superar la cantidad del contrato');
+        return;
+      }
     }
     
     // ISS-INV-002: cantidad_contrato es opcional, puede ser null
@@ -417,94 +421,140 @@ const Lotes = () => {
       return;
     }
     
-    setSavingLote(true);
+    // =====================================================================
+    // ISS-SEC: Construir payload limpio según modo (crear vs editar)
+    // NUNCA enviar cantidad_actual (read_only en backend)
+    // NUNCA enviar cantidad_inicial en edición
+    // =====================================================================
+    const dataToSend = {};
     
-    try {
-      // NOTA: La presentación es propiedad del PRODUCTO, no del lote
-      // El campo presentacion_producto es solo lectura y NO se actualiza desde aquí
-      // Si necesita otra presentación, debe crear un nuevo producto
-      
-      const dataToSend = {
-        ...formData,
-        cantidad_inicial: cantidadInicial,
-        cantidad_contrato: cantContratoFinal,  // ISS-INV-001: Cantidad del contrato
-        precio_unitario: precioUnitario,
-      };
-      
-      // Remover presentacion_producto ya que no es campo del modelo Lote
-      delete dataToSend.presentacion_producto;
-      
-      // CANTIDAD INICIAL: Solo se establece al crear, nunca al editar
-      // Para reabastecer un lote existente, usar Movimientos → Entrada
-      if (!editingLote) {
-        dataToSend.cantidad_actual = cantidadInicial;
-      } else {
-        // En edición, NO enviar cantidad_inicial para evitar inconsistencias
-        delete dataToSend.cantidad_inicial;
-      }
-      // Si no hay centro explícito y el usuario tiene uno asignado, usarlo
-      if (!dataToSend.centro && centroUsuario && !puedeVerGlobal) {
-        dataToSend.centro = centroUsuario;
-      }
-      
-      // Limpiar campos vacíos para evitar enviar strings vacíos
-      // ISS-SEC FIX: EXCEPTO fecha_caducidad que es obligatoria
-      Object.keys(dataToSend).forEach(key => {
-        if (dataToSend[key] === '' && key !== 'fecha_caducidad') {
-          dataToSend[key] = null;
+    // Campos siempre enviados
+    dataToSend.producto = formData.producto;
+    dataToSend.numero_lote = formData.numero_lote;
+    dataToSend.fecha_caducidad = formData.fecha_caducidad;
+    dataToSend.precio_unitario = precioUnitario;
+    
+    // Campos opcionales (solo si tienen valor)
+    if (formData.fecha_fabricacion) dataToSend.fecha_fabricacion = formData.fecha_fabricacion;
+    if (formData.numero_contrato) dataToSend.numero_contrato = formData.numero_contrato;
+    if (formData.marca) dataToSend.marca = formData.marca;
+    if (formData.ubicacion) dataToSend.ubicacion = formData.ubicacion;
+    if (formData.centro) dataToSend.centro = formData.centro;
+    
+    // ISS-SEC: cantidad_contrato solo si el usuario tiene permisos (Farmacia/Admin)
+    if (esFarmaciaAdmin) {
+      dataToSend.cantidad_contrato = cantContratoFinal;
+    }
+    
+    if (!editingLote) {
+      // CREAR: incluir cantidad_inicial (backend calcula cantidad_actual = cantidad_inicial)
+      dataToSend.cantidad_inicial = cantidadInicial;
+    }
+    // En edición: NO enviar cantidad_inicial ni cantidad_actual (blindado en backend)
+    
+    // Si no hay centro explícito y el usuario tiene uno asignado, usarlo
+    if (!dataToSend.centro && centroUsuario && !puedeVerGlobal) {
+      dataToSend.centro = centroUsuario;
+    }
+    
+    // =====================================================================
+    // ISS-SEC: Doble confirmación para crear/editar lotes
+    // El backend exige confirmed=true para operaciones de escritura
+    // =====================================================================
+    const ejecutarGuardado = async () => {
+      setSavingLote(true);
+      try {
+        if (editingLote) {
+          // PATCH con confirmed=true (doble confirmación)
+          await lotesAPI.update(editingLote.id, { ...dataToSend, confirmed: true });
+          toast.success('Lote actualizado correctamente');
+        } else {
+          await lotesAPI.create(dataToSend);
+          toast.success('Lote creado correctamente');
         }
-      });
-      
-      if (editingLote) {
-        await lotesAPI.update(editingLote.id, dataToSend);
-        toast.success('Lote actualizado correctamente');
-      } else {
-        await lotesAPI.create(dataToSend);
-        toast.success('Lote creado correctamente');
-      }
-      
-      setShowModal(false);
-      resetForm();
-      cargarLotes();
-    } catch (error) {
-      // Extraer mensajes de error detallados del backend
-      const respData = error.response?.data;
-      let errorMsg = 'Error al guardar lote';
-      
-      if (respData) {
-        // Priorizar detalles específicos de validación
-        if (respData.detalles) {
-          const detalles = respData.detalles;
-          // detalles puede ser un objeto { campo: ["msg"] } o { campo: "msg" }
-          const mensajes = [];
-          if (typeof detalles === 'object' && !Array.isArray(detalles)) {
-            Object.entries(detalles).forEach(([campo, msgs]) => {
-              const campoLabel = campo === '__all__' || campo === 'non_field_errors' ? '' : `${campo}: `;
-              if (Array.isArray(msgs)) {
-                msgs.forEach(m => mensajes.push(`${campoLabel}${typeof m === 'object' ? m.message || JSON.stringify(m) : m}`));
-              } else if (typeof msgs === 'string') {
-                mensajes.push(`${campoLabel}${msgs}`);
-              } else if (typeof msgs === 'object' && msgs.message) {
-                mensajes.push(`${campoLabel}${msgs.message}`);
-              }
-            });
-          } else if (Array.isArray(detalles)) {
-            detalles.forEach(m => mensajes.push(typeof m === 'string' ? m : JSON.stringify(m)));
+        
+        setShowModal(false);
+        resetForm();
+        cargarLotes();
+      } catch (error) {
+        // Extraer mensajes de error detallados del backend
+        const respData = error.response?.data;
+        let errorMsg = 'Error al guardar lote';
+        
+        // ISS-SEC: Manejar respuesta 409 (confirmación requerida)
+        if (error.response?.status === 409 && respData?.code === 'CONFIRMATION_REQUIRED') {
+          // El backend pide confirmación — reenviar con confirmed=true
+          try {
+            if (editingLote) {
+              await lotesAPI.update(editingLote.id, { ...dataToSend, confirmed: true });
+            } else {
+              await lotesAPI.create({ ...dataToSend, confirmed: true });
+            }
+            toast.success(editingLote ? 'Lote actualizado correctamente' : 'Lote creado correctamente');
+            setShowModal(false);
+            resetForm();
+            cargarLotes();
+            return;
+          } catch (retryError) {
+            const retryData = retryError.response?.data;
+            errorMsg = retryData?.error || retryData?.mensaje || 'Error al confirmar operación';
           }
-          errorMsg = mensajes.length > 0 ? mensajes.join(' | ') : (respData.error || errorMsg);
-        } else if (respData.numero_lote?.[0]) {
-          errorMsg = respData.numero_lote[0];
-        } else if (respData.error) {
-          errorMsg = respData.error;
-        } else if (respData.mensaje) {
-          errorMsg = respData.mensaje;
+        } else if (respData) {
+          if (respData.detalles) {
+            const detalles = respData.detalles;
+            const mensajes = [];
+            if (typeof detalles === 'object' && !Array.isArray(detalles)) {
+              Object.entries(detalles).forEach(([campo, msgs]) => {
+                const campoLabel = campo === '__all__' || campo === 'non_field_errors' ? '' : `${campo}: `;
+                if (Array.isArray(msgs)) {
+                  msgs.forEach(m => mensajes.push(`${campoLabel}${typeof m === 'object' ? m.message || JSON.stringify(m) : m}`));
+                } else if (typeof msgs === 'string') {
+                  mensajes.push(`${campoLabel}${msgs}`);
+                } else if (typeof msgs === 'object' && msgs.message) {
+                  mensajes.push(`${campoLabel}${msgs.message}`);
+                }
+              });
+            } else if (Array.isArray(detalles)) {
+              detalles.forEach(m => mensajes.push(typeof m === 'string' ? m : JSON.stringify(m)));
+            }
+            errorMsg = mensajes.length > 0 ? mensajes.join(' | ') : (respData.error || errorMsg);
+          } else if (respData.numero_lote?.[0]) {
+            errorMsg = respData.numero_lote[0];
+          } else if (respData.error) {
+            errorMsg = respData.error;
+          } else if (respData.mensaje) {
+            errorMsg = respData.mensaje;
+          }
         }
+        
+        toast.error(errorMsg);
+        console.error(error);
+      } finally {
+        setSavingLote(false);
       }
-      
-      toast.error(errorMsg);
-      console.error(error);
-    } finally {
-      setSavingLote(false);
+    };
+
+    // ISS-SEC: Para edición, usar doble confirmación visual
+    if (editingLote) {
+      requestSaveConfirmation({
+        title: 'Confirmar Actualización de Lote',
+        message: `¿Está seguro de actualizar el lote ${editingLote.numero_lote}?`,
+        warnings: [
+          'Los cambios quedarán registrados en auditoría',
+          'La cantidad inicial y cantidad actual NO se modifican desde aquí',
+        ],
+        itemInfo: {
+          'Lote': editingLote.numero_lote,
+          'Producto': editingLote.producto_nombre || 'N/A',
+        },
+        confirmText: 'Sí, Actualizar',
+        cancelText: 'Cancelar',
+        tone: 'warning',
+        onConfirm: ejecutarGuardado,
+      });
+    } else {
+      // Para creación, ejecutar directamente (ya se validó arriba)
+      ejecutarGuardado();
     }
   };
 
@@ -1721,8 +1771,8 @@ const handleImportar = async (e) => {
                       {editingLote && !esFarmaciaAdmin
                         ? 'Solo editable por Farmacia'
                         : editingLote && esFarmaciaAdmin
-                          ? '✏️ Editable. Cantidad total establecida por contrato (opcional)'
-                          : 'Opcional. Total de unidades según contrato de adquisición'}
+                          ? '✏️ Editable. Lo acordado en el contrato de adquisición'
+                          : 'Opcional. Cantidad total acordada en el contrato'}
                     </p>
                   </div>
                   
@@ -1755,12 +1805,12 @@ const handleImportar = async (e) => {
                       required={!editingLote}
                       disabled={editingLote}
                       readOnly={editingLote}
-                      placeholder="Cantidad recibida"
+                      placeholder="Cantidad de la primera entrega"
                     />
                     <p className="text-xs text-gray-500 italic mt-1">
                       {editingLote 
-                        ? 'No editable. Use Movimientos → Entrada para reabastecer' 
-                        : 'Unidades realmente recibidas (puede ser parcial del contrato)'}
+                        ? '🔒 Inmutable. Para reabastecer use Movimientos → Entrada' 
+                        : 'Cantidad de la primera entrega que se registra al crear el lote'}
                     </p>
                   </div>
                 </div>

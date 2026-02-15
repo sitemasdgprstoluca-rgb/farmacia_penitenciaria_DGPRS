@@ -1012,7 +1012,7 @@ class LoteSerializer(serializers.ModelSerializer):
     # ISS-TRAZ: Indicar si el lote tiene movimientos (para bloquear edición de campos críticos)
     tiene_movimientos = serializers.SerializerMethodField()
     # ISS-INV-001: Campo cantidad_contrato y cálculo de pendiente
-    cantidad_contrato = serializers.IntegerField(required=False, allow_null=True, help_text='Cantidad total según contrato')
+    cantidad_contrato = serializers.IntegerField(required=False, allow_null=True, help_text='Lo acordado en el contrato de adquisición (total esperado)')
     cantidad_pendiente = serializers.SerializerMethodField(help_text='Cantidad pendiente por recibir (contrato - surtido)')
     
     class Meta:
@@ -1022,20 +1022,25 @@ class LoteSerializer(serializers.ModelSerializer):
             'producto_info',  # Información adicional del producto
             'centro', 'centro_nombre',
             'numero_lote', 'fecha_caducidad', 'fecha_fabricacion',
-            # ISS-INV-001: Campos de cantidades para control de contratos
-            'cantidad_contrato',  # Total según contrato (ej: 100)
-            'cantidad_inicial',   # Total surtido/recibido (ej: 80, se acumula)
-            'cantidad_actual',    # Stock disponible (ej: 75)
-            'cantidad_pendiente', # Calculado: contrato - inicial (ej: 20)
+            # ISS-INV-001: Campos de cantidades (definiciones oficiales)
+            'cantidad_contrato',  # Lo acordado en contrato (total esperado)
+            'cantidad_inicial',   # Primera entrega registrada (inmutable)
+            'cantidad_actual',    # Existencia real tras movimientos (read-only)
+            'cantidad_pendiente', # Calculado: contrato - inicial
             'precio_unitario', 'precio_compra',
             'numero_contrato', 'marca', 'ubicacion', 'activo', 'estado',
             'dias_para_caducar', 'alerta_caducidad', 'porcentaje_consumido',
             'documentos', 'tiene_documentos', 'tiene_movimientos',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['created_at', 'updated_at', 'estado', 'documentos', 'tiene_documentos', 'tiene_movimientos', 'cantidad_pendiente']
+        # ISS-SEC-001: cantidad_actual es read_only — SOLO se modifica vía Movimiento.aplicar_movimiento_a_lote
+        # Esto impide que cualquier cliente (frontend, Postman, integración) corrompa existencias
+        read_only_fields = [
+            'created_at', 'updated_at', 'estado', 'documentos', 'tiene_documentos',
+            'tiene_movimientos', 'cantidad_pendiente', 'cantidad_actual',
+        ]
         extra_kwargs = {
-            'cantidad_actual': {'required': False, 'default': 0},
+            'cantidad_inicial': {'required': False},  # Requerido solo en creación (validate_cantidad_inicial)
             'cantidad_contrato': {'required': False, 'allow_null': True},
             'numero_contrato': {'required': False, 'allow_null': True, 'allow_blank': True},
             'marca': {'required': False, 'allow_null': True, 'allow_blank': True},
@@ -1083,15 +1088,28 @@ class LoteSerializer(serializers.ModelSerializer):
     
     def validate_cantidad_inicial(self, value):
         """
-        Cantidad inicial debe ser un número positivo.
-        Solo es requerido en creación, no en actualización.
+        ISS-SEC-002: cantidad_inicial SOLO se establece al CREAR un lote.
+        
+        En UPDATE se rechaza explícitamente: la cantidad inicial no es editable.
+        Para reabastecer un lote, usar Movimientos → Entrada.
         """
-        # En actualización (instance existe), cantidad_inicial es opcional
-        if self.instance is None:  # Solo en creación
-            if value is None:
-                raise serializers.ValidationError('La cantidad inicial es requerida')
-        if value is not None and value < 0:
-            raise serializers.ValidationError('La cantidad inicial no puede ser negativa')
+        if self.instance is not None:
+            # UPDATE: rechazar explícitamente cualquier intento de modificar
+            if value is not None and value != self.instance.cantidad_inicial:
+                raise serializers.ValidationError(
+                    'La cantidad inicial no es editable. '
+                    'Para reabastecer un lote, registre un Movimiento de Entrada.'
+                )
+            # Si envían el mismo valor, simplemente ignorar (no es un cambio)
+            return self.instance.cantidad_inicial
+        
+        # CREATE: es obligatorio y debe ser > 0
+        if value is None:
+            raise serializers.ValidationError('La cantidad inicial es requerida al crear un lote.')
+        if value < 0:
+            raise serializers.ValidationError('La cantidad inicial no puede ser negativa.')
+        if value == 0:
+            raise serializers.ValidationError('La cantidad inicial debe ser mayor a cero.')
         return value
     
     def validate_precio_unitario(self, value):
@@ -1157,27 +1175,81 @@ class LoteSerializer(serializers.ModelSerializer):
         
         return super().validate(attrs)
     
+    def create(self, validated_data):
+        """
+        ISS-SEC-004: Al crear un lote, cantidad_actual = cantidad_inicial.
+        
+        El cliente NO puede establecer cantidad_actual directamente.
+        Siempre se calcula internamente para evitar inconsistencias.
+        """
+        cantidad_inicial = validated_data.get('cantidad_inicial', 0)
+        # cantidad_actual siempre = cantidad_inicial en la creación
+        validated_data['cantidad_actual'] = cantidad_inicial
+        return super().create(validated_data)
+    
     def update(self, instance, validated_data):
         """
-        ISS-TRAZ: Proteger campos críticos en lotes con movimientos.
+        ISS-SEC-003: Protección integral en actualización de lotes.
         
-        Si el lote ya tiene movimientos registrados, no se pueden modificar:
-        - producto: Cambiar el producto rompería la trazabilidad
-        - numero_lote: El código de lote es identificador único
-        - cantidad_inicial: Solo se modifica vía movimientos de entrada
-        - fecha_caducidad: Afecta reportes de caducidad históricos
-        - numero_contrato: Clave para auditoría de adquisiciones
+        Reglas de negocio blindadas:
+        1. cantidad_inicial: NUNCA editable (se ignora silenciosamente)
+        2. cantidad_actual: read_only (ya protegido en Meta)
+        3. cantidad_contrato: Solo editable por Farmacia/Admin, con auditoría
+        4. Campos protegidos si hay movimientos: producto, numero_lote, fecha_caducidad, numero_contrato
         """
         from .models import Movimiento
+        from .signals import registrar_auditoria
         
-        # Verificar si el lote tiene movimientos
+        # =====================================================================
+        # PASO 1: Remover cantidad_inicial — NUNCA editable vía API
+        # Para reabastecer, usar Movimiento de Entrada
+        # =====================================================================
+        validated_data.pop('cantidad_inicial', None)
+        
+        # =====================================================================
+        # PASO 2: Verificar permisos para cantidad_contrato
+        # Solo Farmacia/Admin pueden modificar cantidad_contrato
+        # =====================================================================
+        request = self.context.get('request')
+        user = getattr(request, 'user', None) if request else None
+        
+        if 'cantidad_contrato' in validated_data:
+            nuevo_contrato = validated_data['cantidad_contrato']
+            viejo_contrato = instance.cantidad_contrato
+            
+            if nuevo_contrato != viejo_contrato:
+                # Verificar permiso: solo farmacia/admin
+                from .permissions import RoleHelper
+                if not user or not RoleHelper.is_farmacia_or_admin(user):
+                    raise serializers.ValidationError({
+                        'cantidad_contrato': 'Solo usuarios de Farmacia o Admin pueden modificar la cantidad del contrato.'
+                    })
+                
+                # ISS-AUDIT: Registrar cambio de cantidad_contrato con detalle
+                registrar_auditoria(
+                    modelo='Lote',
+                    objeto=instance,
+                    accion='modificar_contrato',
+                    cambios={
+                        'cantidad_contrato': {
+                            'anterior': viejo_contrato,
+                            'nuevo': nuevo_contrato,
+                        },
+                        'numero_lote': instance.numero_lote,
+                        'producto': str(instance.producto),
+                        'usuario': user.username if user else 'sistema',
+                    }
+                )
+        
+        # =====================================================================
+        # PASO 3: Proteger campos críticos si hay movimientos
+        # =====================================================================
         tiene_movimientos = Movimiento.objects.filter(lote=instance).exists()
         
         if tiene_movimientos:
             campos_protegidos = {
                 'producto': 'producto',
                 'numero_lote': 'código de lote', 
-                'cantidad_inicial': 'cantidad inicial',
                 'fecha_caducidad': 'fecha de caducidad',
                 'numero_contrato': 'número de contrato',
             }
@@ -1188,7 +1260,6 @@ class LoteSerializer(serializers.ModelSerializer):
                     valor_nuevo = validated_data[campo]
                     valor_actual = getattr(instance, campo)
                     
-                    # Comparar valores (manejar FKs correctamente)
                     if campo == 'producto':
                         valor_actual_id = valor_actual.id if valor_actual else None
                         valor_nuevo_id = valor_nuevo.id if valor_nuevo else None
@@ -1200,11 +1271,42 @@ class LoteSerializer(serializers.ModelSerializer):
             if errores:
                 raise serializers.ValidationError(errores)
             
-            # Remover campos protegidos del validated_data para evitar cambios accidentales
             for campo in campos_protegidos.keys():
                 validated_data.pop(campo, None)
         
-        return super().update(instance, validated_data)
+        # =====================================================================
+        # PASO 4: Auditoría completa con datos anteriores/nuevos
+        # =====================================================================
+        datos_anteriores = {}
+        datos_nuevos = {}
+        for campo, valor_nuevo in validated_data.items():
+            valor_actual = getattr(instance, campo, None)
+            # Manejar FKs
+            if hasattr(valor_actual, 'pk'):
+                valor_actual = valor_actual.pk
+            if hasattr(valor_nuevo, 'pk'):
+                valor_nuevo = valor_nuevo.pk
+            if valor_actual != valor_nuevo:
+                datos_anteriores[campo] = str(valor_actual) if valor_actual is not None else None
+                datos_nuevos[campo] = str(valor_nuevo) if valor_nuevo is not None else None
+        
+        result = super().update(instance, validated_data)
+        
+        # Solo registrar auditoría si hubo cambios reales
+        if datos_anteriores:
+            registrar_auditoria(
+                modelo='Lote',
+                objeto=instance,
+                accion='actualizar',
+                cambios={
+                    'datos_anteriores': datos_anteriores,
+                    'datos_nuevos': datos_nuevos,
+                    'usuario': user.username if user else 'sistema',
+                    'numero_lote': instance.numero_lote,
+                }
+            )
+        
+        return result
     
     def get_dias_para_caducar(self, obj):
         if obj.fecha_caducidad:

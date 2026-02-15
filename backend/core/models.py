@@ -1047,14 +1047,17 @@ class Lote(models.Model):
     
     Constraints: lote_producto_unique (numero_lote, producto_id)
     
-    ISS-INV-001: Sistema de cantidades para contratos:
-    ==================================================
-    - cantidad_contrato: Total según contrato (ej: 100 unidades)
-    - cantidad_inicial:  Total que ha llegado/surtido (se acumula con re-imports)
-    - cantidad_actual:   Stock disponible (cantidad_inicial - salidas)
-    - Pendiente:         cantidad_contrato - cantidad_inicial (calculado)
+    ISS-INV-001: Definición oficial de campos de cantidad:
+    ======================================================
+    - cantidad_contrato: Lo acordado en el contrato de adquisición (total esperado).
+                         Opcional. Solo editable por Farmacia/Admin.
+    - cantidad_inicial:  Cantidad de la primera entrega registrada al crear el lote.
+                         INMUTABLE después de la creación. Para reabastecer → Movimiento Entrada.
+    - cantidad_actual:   Existencia real después de todos los movimientos (entradas, salidas, ajustes).
+                         READ-ONLY vía API. Solo se modifica vía Movimiento.aplicar_movimiento_a_lote().
+    - Pendiente:         cantidad_contrato - cantidad_inicial (calculado, SerializerMethodField).
     
-    Ejemplo: Contrato dice 100, llegaron 80, salieron 5 a centros
+    Ejemplo: Contrato dice 100, primera entrega 80, salieron 5 a centros
     → cantidad_contrato=100, cantidad_inicial=80, cantidad_actual=75, pendiente=20
     
     ISS-001: Validaciones de negocio implementadas:
@@ -1080,7 +1083,7 @@ class Lote(models.Model):
     cantidad_inicial = models.IntegerField()
     cantidad_actual = models.IntegerField(default=0)
     # ISS-INV-001: cantidad_contrato = Total según contrato (puede diferir de lo que realmente llegó)
-    cantidad_contrato = models.IntegerField(null=True, blank=True, help_text='Cantidad total según contrato. NULL si no aplica.')
+    cantidad_contrato = models.IntegerField(null=True, blank=True, help_text='Lo acordado en el contrato de adquisición (total esperado). NULL si no aplica.')
     fecha_fabricacion = models.DateField(null=True, blank=True)
     fecha_caducidad = models.DateField()
     precio_unitario = models.DecimalField(max_digits=12, decimal_places=2, default=0)

@@ -1134,7 +1134,7 @@ export const lotesAPI = {
   // ISS-FIX: getById acepta params opcionales (ej: para_requisicion=true)
   getById: (id, params = {}) => apiClient.get(`/lotes/${id}/`, { params }),
   create: (data) => apiClient.post('/lotes/', data),
-  update: (id, data) => apiClient.put(`/lotes/${id}/`, data),
+  update: (id, data) => apiClient.patch(`/lotes/${id}/`, data),
   // ISS-SEC: DELETE con confirmación obligatoria
   delete: (id, options = {}) => deleteWithConfirmation(`/lotes/${id}/`, options),
   porCaducar: (dias = 90) => apiClient.get(`/lotes/por-caducar/?dias=${dias}`),

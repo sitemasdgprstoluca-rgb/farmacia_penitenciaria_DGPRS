@@ -559,24 +559,87 @@ def auditar_cambios_producto(sender, instance, created, **kwargs):
         )
 
 
+@receiver(pre_save, sender=Lote)
+def snapshot_lote(sender, instance, **kwargs):
+    """
+    ISS-AUDIT: Conserva estado previo del lote para detectar cambios reales.
+    Permite registrar datos_anteriores vs datos_nuevos en auditoría.
+    """
+    if not instance.pk:
+        instance._previous_state = None
+        return
+    try:
+        instance._previous_state = sender.objects.get(pk=instance.pk)
+    except sender.DoesNotExist:
+        instance._previous_state = None
+
+
 @receiver(post_save, sender=Lote)
 def auditar_lote(sender, instance, created, **kwargs):
-    """Audita creación y actualización de lotes."""
-    accion = 'crear' if created else 'actualizar'
-    registrar_auditoria(
-        modelo='Lote',
-        objeto=instance,
-        accion=accion,
-        cambios={
-            'numero_lote': instance.numero_lote,
-            'producto': instance.producto.nombre,
-            'producto_id': instance.producto_id,
-            'cantidad_actual': instance.cantidad_actual,
-            'activo': instance.activo,
-            'fecha_caducidad': instance.fecha_caducidad.isoformat() if instance.fecha_caducidad else None,
-            'centro': instance.centro.nombre if instance.centro else None
-        }
-    )
+    """
+    ISS-AUDIT: Audita creación y actualización de lotes con diff completo.
+    
+    En creación: registra todos los campos iniciales.
+    En actualización: registra solo los campos que cambiaron (antes/después).
+    """
+    if created:
+        registrar_auditoria(
+            modelo='Lote',
+            objeto=instance,
+            accion='crear',
+            cambios={
+                'numero_lote': instance.numero_lote,
+                'producto': instance.producto.nombre if instance.producto else None,
+                'producto_id': instance.producto_id,
+                'cantidad_inicial': instance.cantidad_inicial,
+                'cantidad_actual': instance.cantidad_actual,
+                'cantidad_contrato': instance.cantidad_contrato,
+                'precio_unitario': str(instance.precio_unitario) if instance.precio_unitario else '0',
+                'numero_contrato': instance.numero_contrato,
+                'activo': instance.activo,
+                'fecha_caducidad': instance.fecha_caducidad.isoformat() if instance.fecha_caducidad else None,
+                'centro': instance.centro.nombre if instance.centro else 'Farmacia Central',
+            }
+        )
+        return
+    
+    # Actualización: registrar diff real
+    anterior = getattr(instance, '_previous_state', None)
+    if not anterior:
+        return
+    
+    # Campos a comparar para auditoría
+    campos_auditar = [
+        'cantidad_contrato', 'precio_unitario', 'marca', 'ubicacion',
+        'activo', 'numero_contrato', 'fecha_fabricacion',
+    ]
+    
+    cambios_anteriores = {}
+    cambios_nuevos = {}
+    
+    for campo in campos_auditar:
+        val_anterior = getattr(anterior, campo, None)
+        val_nuevo = getattr(instance, campo, None)
+        if val_anterior != val_nuevo:
+            cambios_anteriores[campo] = str(val_anterior) if val_anterior is not None else None
+            cambios_nuevos[campo] = str(val_nuevo) if val_nuevo is not None else None
+    
+    # También detectar cambios en cantidad_actual (por movimientos)
+    if anterior.cantidad_actual != instance.cantidad_actual:
+        cambios_anteriores['cantidad_actual'] = anterior.cantidad_actual
+        cambios_nuevos['cantidad_actual'] = instance.cantidad_actual
+    
+    if cambios_anteriores:
+        registrar_auditoria(
+            modelo='Lote',
+            objeto=instance,
+            accion='actualizar',
+            cambios={
+                'numero_lote': instance.numero_lote,
+                'datos_anteriores': cambios_anteriores,
+                'datos_nuevos': cambios_nuevos,
+            }
+        )
 
 
 @receiver(post_delete, sender=Producto)
