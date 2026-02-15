@@ -947,13 +947,14 @@ const ImportadorModerno = ({
               )}
             </div>
             
-            {/* Tabla de preview */}
+            {/* Tabla de preview - estructura para sticky header funcional */}
             <div className="border rounded-lg overflow-hidden">
-              <div className="overflow-x-auto" style={{ maxHeight: '400px' }}>
+              {/* Header fijo fuera del scroll */}
+              <div className="overflow-x-auto bg-gray-100">
                 <table className="min-w-full text-xs" style={{ tableLayout: 'auto' }}>
-                  <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
+                  <thead>
                     <tr>
-                      <th className="px-3 py-2 text-left font-bold text-gray-700 border-r bg-gray-100 whitespace-nowrap">#</th>
+                      <th className="px-3 py-2 text-left font-bold text-gray-700 border-r bg-gray-100 whitespace-nowrap" style={{ minWidth: '60px' }}>#</th>
                       {preview.headers.map((h, i) => (
                         <th 
                           key={i} 
@@ -962,16 +963,22 @@ const ImportadorModerno = ({
                             ${preview.columnasFaltantes.some(cf => normalizarHeader(cf) === normalizarHeader(h)) 
                               ? 'bg-red-100 text-red-800' 
                               : preview.columnasEncontradas.some(ce => columnaCoincide(h, ce, config.sinonimosCols))
-                                ? 'bg-green-50 text-green-800'
+                                ? 'bg-green-100 text-green-800'
                                 : 'bg-gray-100 text-gray-700'
                             }
                           `}
+                          style={{ minWidth: '120px' }}
                         >
                           {h || '(vacío)'}
                         </th>
                       ))}
                     </tr>
                   </thead>
+                </table>
+              </div>
+              {/* Body con scroll */}
+              <div className="overflow-x-auto overflow-y-auto" style={{ maxHeight: '350px' }}>
+                <table className="min-w-full text-xs" style={{ tableLayout: 'auto' }}>
                   <tbody>
                     {preview.rows.map((row, rowIdx) => (
                       <tr 
@@ -986,7 +993,7 @@ const ImportadorModerno = ({
                           }
                         `}
                       >
-                        <td className="px-3 py-1.5 text-gray-500 border-r font-mono bg-gray-50 whitespace-nowrap sticky left-0">
+                        <td className="px-3 py-1.5 text-gray-500 border-r font-mono bg-gray-50 whitespace-nowrap" style={{ minWidth: '60px' }}>
                           <span className="font-bold">{row.numero}</span>
                           {row.tieneError && <FaExclamationCircle className="inline ml-1 text-red-500" title="Fila con errores" />}
                           {row.esDuplicado && <FaExclamationTriangle className="inline ml-1 text-yellow-500" title="Posible duplicado" />}
@@ -1000,7 +1007,7 @@ const ImportadorModerno = ({
                               className={`px-3 py-1.5 border-r whitespace-nowrap ${
                                 estaVacio ? 'text-gray-300 italic' : 'text-gray-700'
                               }`}
-                              style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                              style={{ minWidth: '120px', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}
                               title={valorFormateado}
                             >
                               {estaVacio ? '—' : valorFormateado}

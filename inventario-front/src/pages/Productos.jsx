@@ -24,6 +24,8 @@ import {
 
   FaHistory,
 
+  FaTimes,
+
   FaLayerGroup,
 
   FaCalendarAlt
@@ -45,6 +47,7 @@ import LimpiarInventario from '../components/LimpiarInventario';
 // ISS-SEC: Componentes para confirmación en 2 pasos
 import TwoStepConfirmModal from '../components/TwoStepConfirmModal';
 import { useConfirmation } from '../hooks/useConfirmation';
+import ImportadorModerno from '../components/ImportadorModerno';
 
 import { COLORS } from '../constants/theme';
 
@@ -426,13 +429,12 @@ const Productos = () => {
   const [savingProduct, setSavingProduct] = useState(false); // Estado separado para guardar en modal
   const [exportLoading, setExportLoading] = useState(false); // Estado separado para exportar
   const [importLoading, setImportLoading] = useState(false); // Estado separado para importar
+  const [showImportModal, setShowImportModal] = useState(false); // Modal de ImportadorModerno
   const [actionLoading, setActionLoading] = useState(null); // ID del producto en acción (toggle/delete)
 
   const [error, setError] = useState(null);
 
   const [showModal, setShowModal] = useState(false);
-
-  const fileInputRef = useRef(null);
 
   const mockProductosRef = useRef([...MOCK_PRODUCTS]);
 
@@ -1790,46 +1792,34 @@ const Productos = () => {
                 </button>
               )}
 
-              {/* Importar - Solo Farmacia/Admin */}
+              {/* Importar - Solo Farmacia/Admin - Abre modal con ImportadorModerno */}
               {puede.importar && (
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={importLoading}
-                  className="flex items-center gap-1 sm:gap-2 rounded-full px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed bg-theme-gradient"
-                >
-                  {importLoading ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent inline-block" />
-                  ) : (
-                    <FaFileUpload />
-                  )}
-                  <span className="hidden sm:inline">{importLoading ? 'Importando...' : 'Importar'}</span>
-                </button>
-              )}
-              
-              {/* Botón de descarga de plantilla - Solo si puede importar */}
-              {puede.importar && (
-                <button
-                  type="button"
-                  onClick={handleDescargarPlantilla}
-                  className="flex items-center gap-1 sm:gap-2 rounded-full px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-theme-primary bg-white/90 hover:bg-white transition"
-                  title="Descargar plantilla Excel para importación"
-                >
-                  <FaDownload />
-                  <span className="hidden sm:inline">Plantilla</span>
-                </button>
-              )}
-              
-              {/* Input file oculto - Solo si puede importar */}
-              {puede.importar && (
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".xlsx,.xls"
-                  className="hidden"
-                  style={{ display: 'none' }}
-                  onChange={handleImportar}
-                />
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setShowImportModal(true)}
+                    disabled={importLoading}
+                    className="flex items-center gap-1 sm:gap-2 rounded-full px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed bg-theme-gradient"
+                  >
+                    {importLoading ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent inline-block" />
+                    ) : (
+                      <FaFileUpload />
+                    )}
+                    <span className="hidden sm:inline">{importLoading ? 'Importando...' : 'Importar'}</span>
+                  </button>
+                  
+                  {/* Botón de descarga de plantilla */}
+                  <button
+                    type="button"
+                    onClick={handleDescargarPlantilla}
+                    className="flex items-center gap-1 sm:gap-2 rounded-full px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-theme-primary bg-white/90 hover:bg-white transition"
+                    title="Descargar plantilla Excel para importación"
+                  >
+                    <FaDownload />
+                    <span className="hidden sm:inline">Plantilla</span>
+                  </button>
+                </>
               )}
 
               {/* Nuevo Producto - Solo Farmacia/Admin */}
@@ -2723,6 +2713,36 @@ const Productos = () => {
                 Cerrar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Importar - Usando ImportadorModerno (homologado con Lotes) */}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="relative w-full max-w-4xl my-8">
+            <button 
+              onClick={() => setShowImportModal(false)} 
+              className="absolute -top-2 -right-2 z-10 bg-white rounded-full p-2 shadow-lg hover:bg-gray-100 transition"
+            >
+              <FaTimes className="text-gray-600" size={20} />
+            </button>
+            <ImportadorModerno
+              tipo="productos"
+              onImportar={async (formData) => {
+                setImportLoading(true);
+                try {
+                  const response = await productosAPI.importar(formData);
+                  // Recargar productos después de importar
+                  await fetchProductos();
+                  return response;
+                } finally {
+                  setImportLoading(false);
+                }
+              }}
+              onDescargarPlantilla={handleDescargarPlantilla}
+              permiteImportar={puede.importar}
+            />
           </div>
         </div>
       )}
