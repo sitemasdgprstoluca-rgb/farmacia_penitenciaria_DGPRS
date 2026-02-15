@@ -2721,14 +2721,9 @@ const Productos = () => {
       {showImportModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
           <div className="relative w-full max-w-4xl my-8">
-            <button 
-              onClick={() => setShowImportModal(false)} 
-              className="absolute -top-2 -right-2 z-10 bg-white rounded-full p-2 shadow-lg hover:bg-gray-100 transition"
-            >
-              <FaTimes className="text-gray-600" size={20} />
-            </button>
             <ImportadorModerno
               tipo="productos"
+              onCerrar={() => setShowImportModal(false)}
               onImportar={async (formData) => {
                 setImportLoading(true);
                 try {

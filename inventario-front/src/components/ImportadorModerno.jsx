@@ -28,16 +28,19 @@ import {
   FaEye,
   FaChevronDown,
   FaChevronUp,
+  FaChevronLeft,
+  FaChevronRight,
   FaTrash,
-  FaSync
+  FaSync,
+  FaList
 } from 'react-icons/fa';
 
 // Constantes de validación
 const MAX_FILE_SIZE_MB = 10;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 const ALLOWED_EXTENSIONS = ['.xlsx', '.xls'];
-const MAX_PREVIEW_ROWS = 50;
-const PLANTILLA_VERSION = '2.0.0';
+const ROWS_PER_PAGE = 25; // Paginación en lugar de límite fijo
+const PLANTILLA_VERSION = '2.1.0';
 
 /**
  * Configuraciones por tipo de importación
@@ -251,6 +254,7 @@ const ImportadorModerno = ({
   tipo = 'lotes',
   onImportar,
   onDescargarPlantilla,
+  onCerrar, // Callback para cerrar el modal
   permiteImportar = true,
   className = ''
 }) => {
@@ -267,6 +271,9 @@ const ImportadorModerno = ({
   const [resultadoImportacion, setResultadoImportacion] = useState(null);
   const [mostrarGuia, setMostrarGuia] = useState(false);
   const [mostrarFormatos, setMostrarFormatos] = useState(false);
+  const [mostrarTodosErrores, setMostrarTodosErrores] = useState(false);
+  // Paginación para vista previa
+  const [paginaActual, setPaginaActual] = useState(1);
   
   const inputRef = useRef(null);
   const dropZoneRef = useRef(null);
@@ -483,10 +490,10 @@ const ImportadorModerno = ({
         });
       }
       
-      // Crear preview
+      // Crear preview con TODAS las filas (paginación se aplica en render)
       const previewData = {
         headers,
-        rows: dataRowsSinEjemplos.slice(0, MAX_PREVIEW_ROWS).map((row, idx) => ({
+        rows: dataRowsSinEjemplos.map((row, idx) => ({
           numero: headerRowIndex + idx + 2,
           datos: row,
           tieneError: erroresPorFila.some(e => e.fila === headerRowIndex + idx + 2),
@@ -498,7 +505,8 @@ const ImportadorModerno = ({
         filasDuplicadas: filasDuplicadas.length,
         columnasEncontradas,
         columnasFaltantes,
-        headerRowIndex
+        headerRowIndex,
+        erroresPorFila // Guardar errores detallados para mostrar al usuario
       };
       
       setPreview(previewData);
@@ -650,16 +658,24 @@ const ImportadorModerno = ({
     setErroresValidacion([]);
     setResultadoImportacion(null);
     setProgreso(0);
+    setPaginaActual(1);
+    setMostrarTodosErrores(false);
     if (inputRef.current) inputRef.current.value = '';
   }, []);
 
   const tieneCriticos = erroresValidacion.some(e => e.tipo === 'critico');
   const puedeImportar = archivo && !tieneCriticos && !importando && !validando && permiteImportar;
+  
+  // Cálculos de paginación
+  const totalPaginas = preview ? Math.ceil(preview.rows.length / ROWS_PER_PAGE) : 1;
+  const filasPaginadas = preview 
+    ? preview.rows.slice((paginaActual - 1) * ROWS_PER_PAGE, paginaActual * ROWS_PER_PAGE)
+    : [];
 
   return (
-    <div className={`bg-white rounded-2xl shadow-lg overflow-hidden ${className}`}>
-      {/* Header */}
-      <div className="px-6 py-4 bg-theme-gradient">
+    <div className={`bg-white rounded-2xl shadow-lg overflow-hidden flex flex-col max-h-[90vh] ${className}`}>
+      {/* Header fijo con botón cerrar */}
+      <div className="px-6 py-4 bg-theme-gradient flex-shrink-0">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-xl font-bold text-white flex items-center gap-2">
@@ -667,13 +683,22 @@ const ImportadorModerno = ({
             </h2>
             <p className="text-white/80 text-sm mt-1">{config.descripcion}</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <span className="text-white/60 text-xs">v{PLANTILLA_VERSION}</span>
+            {onCerrar && (
+              <button
+                onClick={onCerrar}
+                className="p-2 rounded-full bg-white/20 hover:bg-white/30 transition text-white"
+                title="Cerrar importador"
+              >
+                <FaTimes size={18} />
+              </button>
+            )}
           </div>
         </div>
       </div>
 
-      <div className="p-6">
+      <div className="p-6 overflow-y-auto flex-1">
         {/* Pasos del proceso - Guía integrada */}
         <div className="mb-6">
           <button 
@@ -860,10 +885,10 @@ const ImportadorModerno = ({
           </div>
         )}
 
-        {/* Errores de validación */}
+        {/* Errores de validación - Agrupados con lista expandible */}
         {erroresValidacion.length > 0 && (
           <div className="mt-4 space-y-2">
-            {erroresValidacion.map((error, idx) => (
+            {erroresValidacion.slice(0, mostrarTodosErrores ? erroresValidacion.length : 3).map((error, idx) => (
               <div 
                 key={idx}
                 className={`
@@ -882,12 +907,55 @@ const ImportadorModerno = ({
                     ? <FaExclamationTriangle className="text-orange-500 mt-0.5 flex-shrink-0" />
                     : <FaInfoCircle className="text-yellow-500 mt-0.5 flex-shrink-0" />
                 }
-                <div>
+                <div className="flex-1">
                   <p className="font-medium">{error.mensaje}</p>
                   {error.detalle && <p className="text-xs opacity-80 mt-1">{error.detalle}</p>}
                 </div>
               </div>
             ))}
+            
+            {/* Botón para ver más/menos errores */}
+            {erroresValidacion.length > 3 && (
+              <button
+                onClick={() => setMostrarTodosErrores(!mostrarTodosErrores)}
+                className="w-full py-2 px-4 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium text-gray-600 flex items-center justify-center gap-2 transition"
+              >
+                <FaList />
+                {mostrarTodosErrores 
+                  ? 'Ocultar errores' 
+                  : `Ver todos los errores (${erroresValidacion.length})`
+                }
+                {mostrarTodosErrores ? <FaChevronUp /> : <FaChevronDown />}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Lista detallada de filas con error - expandible */}
+        {preview && preview.erroresPorFila && preview.erroresPorFila.length > 0 && !resultadoImportacion && (
+          <div className="mt-4 border border-red-200 rounded-lg overflow-hidden">
+            <button
+              onClick={() => setMostrarTodosErrores(!mostrarTodosErrores)}
+              className="w-full px-4 py-3 bg-red-50 text-red-800 font-medium text-sm flex items-center justify-between hover:bg-red-100 transition"
+            >
+              <span className="flex items-center gap-2">
+                <FaList /> Detalle de {preview.erroresPorFila.length} filas con errores
+              </span>
+              {mostrarTodosErrores ? <FaChevronUp /> : <FaChevronDown />}
+            </button>
+            
+            {mostrarTodosErrores && (
+              <div className="max-h-60 overflow-y-auto bg-white">
+                {preview.erroresPorFila.map((item, idx) => (
+                  <div key={idx} className="px-4 py-2 border-b last:border-b-0 text-sm">
+                    <span className="font-mono font-bold text-red-600">Fila {item.fila}:</span>
+                    <span className="ml-2 text-gray-700">
+                      {item.errores.map(e => e.mensaje).join(', ')}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -947,7 +1015,7 @@ const ImportadorModerno = ({
               )}
             </div>
             
-            {/* Tabla de preview - estructura para sticky header funcional */}
+            {/* Tabla de preview - con paginación */}
             <div className="border rounded-lg overflow-hidden">
               {/* Header fijo fuera del scroll */}
               <div className="overflow-x-auto bg-gray-100">
@@ -976,11 +1044,11 @@ const ImportadorModerno = ({
                   </thead>
                 </table>
               </div>
-              {/* Body con scroll */}
-              <div className="overflow-x-auto overflow-y-auto" style={{ maxHeight: '350px' }}>
+              {/* Body con scroll horizontal */}
+              <div className="overflow-x-auto" style={{ maxHeight: '320px', overflowY: 'auto' }}>
                 <table className="min-w-full text-xs" style={{ tableLayout: 'auto' }}>
                   <tbody>
-                    {preview.rows.map((row, rowIdx) => (
+                    {filasPaginadas.map((row, rowIdx) => (
                       <tr 
                         key={rowIdx}
                         className={`
@@ -1020,9 +1088,76 @@ const ImportadorModerno = ({
                 </table>
               </div>
               
-              {preview.totalFilas > MAX_PREVIEW_ROWS && (
-                <div className="px-3 py-2 bg-gray-100 text-xs text-gray-600 text-center">
-                  Mostrando {MAX_PREVIEW_ROWS} de {preview.totalFilas} filas
+              {/* Paginación elegante */}
+              {totalPaginas > 1 && (
+                <div className="px-4 py-3 bg-gray-50 border-t flex items-center justify-between">
+                  <div className="text-xs text-gray-600">
+                    Mostrando {((paginaActual - 1) * ROWS_PER_PAGE) + 1}-{Math.min(paginaActual * ROWS_PER_PAGE, preview.totalFilas)} de {preview.totalFilas} filas
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setPaginaActual(1)}
+                      disabled={paginaActual === 1}
+                      className="px-2 py-1 rounded text-xs font-medium text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                      title="Primera página"
+                    >
+                      ««
+                    </button>
+                    <button
+                      onClick={() => setPaginaActual(p => Math.max(1, p - 1))}
+                      disabled={paginaActual === 1}
+                      className="p-1.5 rounded hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                      title="Página anterior"
+                    >
+                      <FaChevronLeft className="text-gray-600" size={12} />
+                    </button>
+                    
+                    {/* Números de página */}
+                    <div className="flex items-center gap-1 mx-2">
+                      {Array.from({ length: Math.min(5, totalPaginas) }, (_, i) => {
+                        let pageNum;
+                        if (totalPaginas <= 5) {
+                          pageNum = i + 1;
+                        } else if (paginaActual <= 3) {
+                          pageNum = i + 1;
+                        } else if (paginaActual >= totalPaginas - 2) {
+                          pageNum = totalPaginas - 4 + i;
+                        } else {
+                          pageNum = paginaActual - 2 + i;
+                        }
+                        return (
+                          <button
+                            key={pageNum}
+                            onClick={() => setPaginaActual(pageNum)}
+                            className={`w-7 h-7 rounded text-xs font-medium transition ${
+                              paginaActual === pageNum
+                                ? 'bg-theme-primary text-white'
+                                : 'text-gray-600 hover:bg-gray-200'
+                            }`}
+                          >
+                            {pageNum}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    
+                    <button
+                      onClick={() => setPaginaActual(p => Math.min(totalPaginas, p + 1))}
+                      disabled={paginaActual === totalPaginas}
+                      className="p-1.5 rounded hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                      title="Página siguiente"
+                    >
+                      <FaChevronRight className="text-gray-600" size={12} />
+                    </button>
+                    <button
+                      onClick={() => setPaginaActual(totalPaginas)}
+                      disabled={paginaActual === totalPaginas}
+                      className="px-2 py-1 rounded text-xs font-medium text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                      title="Última página"
+                    >
+                      »»
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
