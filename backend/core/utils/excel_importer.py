@@ -948,13 +948,15 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                     fecha_igual = (lote.fecha_caducidad == fecha_caducidad)
                     
                     if contrato_igual and marca_igual and fecha_igual:
-                        # CONSOLIDAR: Sumar cantidades al lote existente
+                        # CONSOLIDAR: Sumar cantidades al lote existente (atómico con F())
                         cantidad_inicial_anterior = lote.cantidad_inicial
                         cantidad_contrato_lote = lote.cantidad_contrato
                         
-                        lote.cantidad_actual += cantidad_inicial
-                        lote.cantidad_inicial += cantidad_inicial
-                        lote.save(update_fields=['cantidad_actual', 'cantidad_inicial', 'updated_at'])
+                        Lote.objects.filter(pk=lote.pk).update(
+                            cantidad_actual=F('cantidad_actual') + cantidad_inicial,
+                            cantidad_inicial=F('cantidad_inicial') + cantidad_inicial,
+                        )
+                        lote.refresh_from_db()
                         
                         Producto.objects.filter(pk=producto.pk).update(
                             stock_actual=F('stock_actual') + cantidad_inicial
