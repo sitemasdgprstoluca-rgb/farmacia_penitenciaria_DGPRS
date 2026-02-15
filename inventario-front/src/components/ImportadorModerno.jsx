@@ -623,31 +623,115 @@ const ImportadorModerno = ({
   }, [archivo, erroresValidacion, onImportar]);
 
   /**
-   * Descarga reporte de errores como CSV
+   * Descarga reporte de errores como Excel con mejor diseño
    */
-  const descargarReporteErrores = useCallback(() => {
+  const descargarReporteErrores = useCallback(async () => {
     if (!resultadoImportacion?.detalleErrores?.length) return;
     
-    const errores = resultadoImportacion.detalleErrores;
-    const csvContent = [
-      ['Fila', 'Campo', 'Error'].join(','),
-      ...errores.map(e => [
-        e.fila || '',
-        e.campo || '',
-        `"${(e.mensaje || e.error || '').replace(/"/g, '""')}"`
-      ].join(','))
-    ].join('\n');
-    
-    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `errores_importacion_${tipo}_${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    
-    toast.success('Reporte descargado');
-  }, [resultadoImportacion, tipo]);
+    try {
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'Sistema de Farmacia Penitenciaria';
+      workbook.created = new Date();
+      
+      const worksheet = workbook.addWorksheet('Errores de Importación', {
+        properties: { tabColor: { argb: 'FF9F2241' } }
+      });
+      
+      // Título principal
+      worksheet.mergeCells('A1:E1');
+      const titleCell = worksheet.getCell('A1');
+      titleCell.value = `📋 REPORTE DE ERRORES - Importación de ${config.titulo}`;
+      titleCell.font = { bold: true, size: 16, color: { argb: 'FF9F2241' } };
+      titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+      worksheet.getRow(1).height = 30;
+      
+      // Fecha y resumen
+      worksheet.mergeCells('A2:E2');
+      const dateCell = worksheet.getCell('A2');
+      dateCell.value = `Fecha: ${new Date().toLocaleDateString('es-MX')} ${new Date().toLocaleTimeString('es-MX')}`;
+      dateCell.font = { size: 10, color: { argb: 'FF666666' } };
+      
+      // Resumen de resultados
+      worksheet.mergeCells('A3:E3');
+      const summaryCell = worksheet.getCell('A3');
+      summaryCell.value = `Total errores: ${resultadoImportacion.detalleErrores.length} | Creados: ${resultadoImportacion.creados || 0} | Actualizados: ${resultadoImportacion.actualizados || 0}`;
+      summaryCell.font = { size: 11, bold: true };
+      summaryCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3CD' } };
+      
+      // Espacio
+      worksheet.getRow(4).height = 10;
+      
+      // Headers de la tabla
+      const headerRow = worksheet.getRow(5);
+      const headers = ['#', 'Fila Excel', 'Campo', 'Valor', 'Descripción del Error'];
+      headers.forEach((h, i) => {
+        const cell = headerRow.getCell(i + 1);
+        cell.value = h;
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF9F2241' } };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        cell.border = {
+          top: { style: 'thin' }, bottom: { style: 'thin' },
+          left: { style: 'thin' }, right: { style: 'thin' }
+        };
+      });
+      headerRow.height = 25;
+      
+      // Anchos de columna
+      worksheet.getColumn(1).width = 6;   // #
+      worksheet.getColumn(2).width = 12;  // Fila Excel
+      worksheet.getColumn(3).width = 20;  // Campo
+      worksheet.getColumn(4).width = 25;  // Valor
+      worksheet.getColumn(5).width = 60;  // Error
+      
+      // Datos de errores
+      resultadoImportacion.detalleErrores.forEach((error, idx) => {
+        const row = worksheet.getRow(6 + idx);
+        row.getCell(1).value = idx + 1;
+        row.getCell(2).value = error.fila || '-';
+        row.getCell(3).value = error.campo || '-';
+        row.getCell(4).value = error.valor || '-';
+        row.getCell(5).value = error.mensaje || error.error || 'Error desconocido';
+        
+        // Estilo alternado
+        const fillColor = idx % 2 === 0 ? 'FFFFFFFF' : 'FFF8F8F8';
+        row.eachCell((cell) => {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fillColor } };
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+            bottom: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+            left: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+            right: { style: 'thin', color: { argb: 'FFE0E0E0' } }
+          };
+          cell.alignment = { vertical: 'middle', wrapText: true };
+        });
+        row.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+        row.getCell(2).alignment = { horizontal: 'center', vertical: 'middle' };
+      });
+      
+      // Footer con instrucciones
+      const footerRow = 6 + resultadoImportacion.detalleErrores.length + 1;
+      worksheet.mergeCells(`A${footerRow}:E${footerRow}`);
+      const footerCell = worksheet.getCell(`A${footerRow}`);
+      footerCell.value = '💡 Corrija los errores en su archivo original y vuelva a importar.';
+      footerCell.font = { italic: true, size: 10, color: { argb: 'FF666666' } };
+      
+      // Generar archivo
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Errores_Importacion_${tipo}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      
+      toast.success('Reporte de errores descargado');
+    } catch (error) {
+      console.error('Error al generar reporte:', error);
+      toast.error('Error al generar el reporte');
+    }
+  }, [resultadoImportacion, tipo, config.titulo]);
 
   /**
    * Reinicia el importador

@@ -1082,16 +1082,26 @@ class LoteSerializer(serializers.ModelSerializer):
         return value.strip()
     
     def validate_cantidad_inicial(self, value):
-        """Cantidad inicial debe ser un número positivo."""
-        if value is None:
-            raise serializers.ValidationError('La cantidad inicial es requerida')
-        if value < 0:
+        """
+        Cantidad inicial debe ser un número positivo.
+        Solo es requerido en creación, no en actualización.
+        """
+        # En actualización (instance existe), cantidad_inicial es opcional
+        if self.instance is None:  # Solo en creación
+            if value is None:
+                raise serializers.ValidationError('La cantidad inicial es requerida')
+        if value is not None and value < 0:
             raise serializers.ValidationError('La cantidad inicial no puede ser negativa')
         return value
     
     def validate_precio_unitario(self, value):
-        """Precio unitario debe ser no negativo."""
-        if value is not None and value < 0:
+        """
+        Precio unitario debe ser no negativo.
+        Si es None, se usa el default 0.
+        """
+        if value is None:
+            return 0  # Default a 0 si no se proporciona
+        if value < 0:
             raise serializers.ValidationError('El precio unitario no puede ser negativo')
         return value
     

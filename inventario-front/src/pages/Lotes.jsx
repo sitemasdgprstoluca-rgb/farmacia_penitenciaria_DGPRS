@@ -410,7 +410,8 @@ const Lotes = () => {
     let cantContratoFinal = cantidadContrato;
     
     // Parsear precio si existe (campo real: precio_unitario)
-    const precioUnitario = formData.precio_unitario ? parseFloat(formData.precio_unitario) : null;
+    // Si no hay precio, usar 0 como default (requerido por backend)
+    const precioUnitario = formData.precio_unitario ? parseFloat(formData.precio_unitario) : 0;
     if (formData.precio_unitario && (isNaN(precioUnitario) || precioUnitario < 0)) {
       toast.error('El precio unitario debe ser un número válido y no negativo');
       return;
