@@ -998,9 +998,9 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
             # Headers claros y profesionales
             headers = [
                 'Clave', 'Producto', 'Presentación', 'Código de Lote', 'Fecha de Caducidad',
-                'Contrato Lote', 'Recibido Lote', 'Stock Lote',
-                'Contrato Global', 'Stock Global', 'Pendiente Global',
-                'Precio Unitario', 'Fecha de Fabricación',
+                'Contrato Lote', 'Recibido Lote', 'Inventario Lote',
+                'Contrato Global', 'Inventario Global', 'Pendiente Global',
+                'Precio Unitario', 'Fecha de Entrega',
                 'Ubicación', 'Número de Contrato', 'Marca / Laboratorio', 'Activo'
             ]
             ws.append(headers)
