@@ -94,10 +94,6 @@ const Lotes = () => {
   
   // Permisos específicos para acciones - usar permisos finos del backend
   const esFarmaciaAdmin = checkEsFarmaciaAdmin(user);
-  
-  // DEBUG: Log para diagnóstico (eliminar después)
-  console.log('🔐 Lotes - Usuario:', user?.username, 'rol:', user?.rol, 'rol_efectivo:', user?.rol_efectivo, 'is_superuser:', user?.is_superuser, '→ esFarmaciaAdmin:', esFarmaciaAdmin);
-  
   const puede = {
     // Usar permisos finos si existen, sino fallback al rol
     crear: permisos?.crearLote === true || (esFarmaciaAdmin && permisos?.crearLote !== false),
@@ -446,17 +442,14 @@ const Lotes = () => {
     if (formData.ubicacion) dataToSend.ubicacion = formData.ubicacion;
     if (formData.centro) dataToSend.centro = formData.centro;
     
-    // ISS-SEC: cantidad_contrato solo si el usuario tiene permisos (Farmacia/Admin)
-    if (esFarmaciaAdmin) {
-      dataToSend.cantidad_contrato = cantContratoFinal;
-      // ISS-INV-003: cantidad_contrato_global también editable por admin/farmacia
-      if (formData.cantidad_contrato_global) {
-        dataToSend.cantidad_contrato_global = parseInt(formData.cantidad_contrato_global) || null;
-      }
-    }
+    // ISS-FIX: SIEMPRE enviar cantidad_contrato al backend
+    // El backend valida permisos y rechaza si no es farmacia/admin
+    dataToSend.cantidad_contrato = cantContratoFinal;
     
-    // DEBUG: Log para diagnóstico (eliminar después)
-    console.log('📤 Guardando lote - esFarmaciaAdmin:', esFarmaciaAdmin, 'cantidad_contrato enviado:', dataToSend.cantidad_contrato, 'formData.cantidad_contrato:', formData.cantidad_contrato);
+    // ISS-INV-003: cantidad_contrato_global también enviado siempre (backend valida)
+    if (formData.cantidad_contrato_global) {
+      dataToSend.cantidad_contrato_global = parseInt(formData.cantidad_contrato_global) || null;
+    }
     
     if (!editingLote) {
       // CREAR: incluir cantidad_inicial (backend calcula cantidad_actual = cantidad_inicial)
@@ -581,9 +574,6 @@ const Lotes = () => {
   };
 
   const handleEdit = (lote) => {
-    // DEBUG: Log para diagnóstico (eliminar después)
-    console.log('✏️ handleEdit - Lote:', lote.id, 'tiene_movimientos:', lote.tiene_movimientos, 'cantidad_contrato:', lote.cantidad_contrato);
-    
     setEditingLote(lote);
     // Obtener presentación del producto si está disponible
     const productoInfo = lote.producto_info || {};
@@ -1836,7 +1826,7 @@ const handleImportar = async (e) => {
                   <div>
                     <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
                       📦 CANTIDAD CONTRATO LOTE
-                      {(editingLote && !esFarmaciaAdmin) || editingLote?.tiene_movimientos ? <span className="text-red-500 text-xs ml-1">🔒</span> : null}
+                      {editingLote?.tiene_movimientos && <span className="text-red-500 text-xs ml-1">🔒</span>}
                       <span className="text-gray-500 text-xs ml-2 font-normal">(Solo para este lote)</span>
                     </label>
                     <input
@@ -1844,20 +1834,18 @@ const handleImportar = async (e) => {
                       min="0"
                       value={formData.cantidad_contrato}
                       onChange={(e) => {
-                        // NO editable si: tiene movimientos, o no es farmacia/admin
-                        const puedeEditar = !editingLote?.tiene_movimientos && (!editingLote || esFarmaciaAdmin);
-                        if (puedeEditar) {
+                        // Solo bloquear si tiene movimientos - backend valida permisos
+                        if (!editingLote?.tiene_movimientos) {
                           setFormData({...formData, cantidad_contrato: e.target.value});
                         }
                       }}
                       className={`w-full px-4 py-3 border-2 rounded-xl transition-all focus:outline-none ${
-                        (editingLote && !esFarmaciaAdmin) || editingLote?.tiene_movimientos
+                        editingLote?.tiene_movimientos
                           ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed' 
                           : 'border-gray-200'
                       }`}
                       onFocus={(e) => {
-                        const puedeEditar = !editingLote?.tiene_movimientos && (!editingLote || esFarmaciaAdmin);
-                        if (puedeEditar) {
+                        if (!editingLote?.tiene_movimientos) {
                           e.target.style.borderColor = '#9F2241';
                           e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
                         }
@@ -1866,18 +1854,14 @@ const handleImportar = async (e) => {
                         e.target.style.borderColor = '#E5E7EB';
                         e.target.style.boxShadow = 'none';
                       }}
-                      disabled={(editingLote && !esFarmaciaAdmin) || editingLote?.tiene_movimientos}
-                      readOnly={(editingLote && !esFarmaciaAdmin) || editingLote?.tiene_movimientos}
+                      disabled={editingLote?.tiene_movimientos}
+                      readOnly={editingLote?.tiene_movimientos}
                       placeholder={formData.cantidad_contrato === '' || formData.cantidad_contrato === null ? 'Sin definir (opcional)' : 'Total para este lote'}
                     />
                     <p className="text-xs text-gray-500 italic mt-1">
                       {editingLote?.tiene_movimientos
                         ? '🔒 No editable - Lote con movimientos registrados'
-                        : editingLote && !esFarmaciaAdmin
-                          ? '🔒 Solo editable por Farmacia'
-                          : editingLote && esFarmaciaAdmin
-                            ? '✏️ Editable. Cantidad acordada para ESTE lote específico'
-                            : 'Opcional. Cantidad acordada solo para este lote'}
+                        : 'Opcional. Cantidad acordada solo para este lote'}
                     </p>
                   </div>
                   
