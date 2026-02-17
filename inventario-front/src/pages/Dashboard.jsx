@@ -650,8 +650,9 @@ const Dashboard = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [movimientosExpanded, setMovimientosExpanded] = useState(true);
-  const [selectedCentro, setSelectedCentro] = useState(esCentroRestringido ? centroUsuario : null);
-  const [centroNombre, setCentroNombre] = useState('');
+  // ISS-FIX: Default a 'central' (Farmacia Central) para usuarios con acceso global
+  const [selectedCentro, setSelectedCentro] = useState(esCentroRestringido ? centroUsuario : 'central');
+  const [centroNombre, setCentroNombre] = useState(esCentroRestringido ? '' : 'Farmacia Central');
   const [lastUpdate, setLastUpdate] = useState(null);
   
   const isMountedRef = useRef(true);
