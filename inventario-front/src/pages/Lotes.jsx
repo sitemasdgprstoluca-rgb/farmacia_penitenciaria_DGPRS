@@ -1479,16 +1479,16 @@ const handleImportar = async (e) => {
                         <span className="text-gray-400 italic">Sin marca</span>
                       )}
                     </td>
-                    {/* ISS-INV-003: Columna de Inventario - Diseño elegante y minimalista */}
+                    {/* ISS-INV-003: Columna de Inventario - Diseño limpio con tooltip */}
                     <td className="px-4 py-3 text-sm">
-                      {/* Inventario actual del lote - Número principal */}
-                      <div className="flex items-baseline gap-1.5">
-                        <span className={`text-xl font-semibold tabular-nums ${
+                      {/* Inventario actual del lote */}
+                      <div className="flex items-baseline gap-1">
+                        <span className={`text-lg font-semibold tabular-nums ${
                           lote.cantidad_actual === 0 
                             ? 'text-red-500' 
                             : lote.cantidad_actual < (lote.cantidad_inicial * 0.2) 
                               ? 'text-amber-500' 
-                              : 'text-slate-800'
+                              : 'text-slate-700'
                         }`}>
                           {lote.cantidad_actual?.toLocaleString()}
                         </span>
@@ -1497,81 +1497,93 @@ const handleImportar = async (e) => {
                         </span>
                       </div>
                       
-                      {/* Número de contrato - badge compacto */}
-                      {lote.numero_contrato && (
-                        <div 
-                          className="mt-1.5 inline-flex items-center gap-1 text-xs text-indigo-600 cursor-help"
-                          title={`Contrato: ${lote.numero_contrato}`}
-                        >
-                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                          <span className="font-medium truncate max-w-[100px]">{lote.numero_contrato}</span>
-                        </div>
-                      )}
-                      
-                      {/* Panel de Contrato Global - Solo si existe */}
+                      {/* Badge de contrato con tooltip - Solo si existe contrato global */}
                       {lote.cantidad_contrato_global != null && (
-                        <div className="mt-2 pt-2 border-t border-slate-100">
-                          {/* Indicador visual compacto */}
-                          <div className="flex items-center justify-between text-xs mb-1.5">
-                            <span className="text-slate-500 font-medium">Contrato Global</span>
-                            <span className={`font-semibold ${
-                              lote.cantidad_pendiente_global <= 0 
-                                ? 'text-emerald-600' 
-                                : lote.cantidad_pendiente_global < 0 
-                                  ? 'text-rose-600'
-                                  : 'text-amber-600'
-                            }`}>
-                              {lote.total_inventario_global?.toLocaleString()} / {lote.cantidad_contrato_global?.toLocaleString()}
+                        <div className="relative group mt-1">
+                          {/* Badge compacto visible */}
+                          <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs cursor-pointer transition-colors ${
+                            lote.cantidad_pendiente_global <= 0 
+                              ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' 
+                              : lote.cantidad_pendiente_global < 0 
+                                ? 'bg-rose-50 text-rose-700 hover:bg-rose-100'
+                                : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                          }`}>
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            <span className="font-medium">
+                              {lote.cantidad_pendiente_global > 0 
+                                ? `Pend: ${lote.cantidad_pendiente_global.toLocaleString()}`
+                                : lote.cantidad_pendiente_global < 0
+                                  ? `+${Math.abs(lote.cantidad_pendiente_global).toLocaleString()}`
+                                  : '✓ OK'
+                              }
                             </span>
                           </div>
                           
-                          {/* Barra de progreso minimalista */}
-                          <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                            <div 
-                              className={`h-full rounded-full transition-all duration-300 ${
-                                lote.cantidad_pendiente_global <= 0 
-                                  ? 'bg-emerald-500' 
-                                  : (lote.total_inventario_global / lote.cantidad_contrato_global) >= 0.7
-                                    ? 'bg-indigo-500'
-                                    : (lote.total_inventario_global / lote.cantidad_contrato_global) >= 0.3
+                          {/* Tooltip al hover */}
+                          <div className="invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-all duration-200 absolute z-50 left-0 top-full mt-1 w-56 bg-white rounded-lg shadow-lg border border-slate-200 p-3">
+                            {/* Header del tooltip */}
+                            <div className="text-xs font-semibold text-slate-700 mb-2 pb-2 border-b border-slate-100">
+                              Contrato Global
+                            </div>
+                            
+                            {/* Número de contrato */}
+                            {lote.numero_contrato && (
+                              <div className="text-xs text-slate-500 mb-2">
+                                <span className="font-medium">No.:</span> {lote.numero_contrato}
+                              </div>
+                            )}
+                            
+                            {/* Datos principales */}
+                            <div className="grid grid-cols-2 gap-2 text-xs mb-2">
+                              <div>
+                                <div className="text-slate-400">Contratado</div>
+                                <div className="font-semibold text-slate-700">{lote.cantidad_contrato_global?.toLocaleString()}</div>
+                              </div>
+                              <div>
+                                <div className="text-slate-400">En inventario</div>
+                                <div className="font-semibold text-indigo-600">{lote.total_inventario_global?.toLocaleString()}</div>
+                              </div>
+                            </div>
+                            
+                            {/* Barra de progreso */}
+                            <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden mb-2">
+                              <div 
+                                className={`h-full rounded-full ${
+                                  lote.cantidad_pendiente_global <= 0 
+                                    ? 'bg-emerald-500' 
+                                    : (lote.total_inventario_global / lote.cantidad_contrato_global) >= 0.5
                                       ? 'bg-amber-500'
                                       : 'bg-rose-400'
-                              }`}
-                              style={{ 
-                                width: `${Math.min(100, Math.max(2, (lote.total_inventario_global / lote.cantidad_contrato_global) * 100))}%` 
-                              }}
-                            />
-                          </div>
-                          
-                          {/* Estado en texto - una línea */}
-                          <div className={`mt-1 text-xs ${
-                            lote.cantidad_pendiente_global > 0 
-                              ? 'text-amber-600'
-                              : lote.cantidad_pendiente_global < 0 
-                                ? 'text-rose-600'
-                                : 'text-emerald-600'
-                          }`}>
-                            {lote.cantidad_pendiente_global > 0 
-                              ? `Pendiente: ${lote.cantidad_pendiente_global.toLocaleString()}`
-                              : lote.cantidad_pendiente_global < 0
-                                ? `Excedente: ${Math.abs(lote.cantidad_pendiente_global).toLocaleString()}`
-                                : '✓ Completo'
-                            }
+                                }`}
+                                style={{ width: `${Math.min(100, Math.max(3, (lote.total_inventario_global / lote.cantidad_contrato_global) * 100))}%` }}
+                              />
+                            </div>
+                            
+                            {/* Estado */}
+                            <div className={`text-xs font-medium ${
+                              lote.cantidad_pendiente_global > 0 
+                                ? 'text-amber-600'
+                                : lote.cantidad_pendiente_global < 0 
+                                  ? 'text-rose-600'
+                                  : 'text-emerald-600'
+                            }`}>
+                              {lote.cantidad_pendiente_global > 0 
+                                ? `⏳ Pendiente por recibir: ${lote.cantidad_pendiente_global.toLocaleString()}`
+                                : lote.cantidad_pendiente_global < 0
+                                  ? `📦 Excedente: ${Math.abs(lote.cantidad_pendiente_global).toLocaleString()}`
+                                  : '✅ Contrato completo'
+                              }
+                            </div>
                           </div>
                         </div>
                       )}
                       
-                      {/* Entregas parciales (sin contrato global) */}
-                      {lote.cantidad_contrato != null && lote.cantidad_contrato !== lote.cantidad_inicial && !lote.cantidad_contrato_global && (
-                        <div className="mt-1.5 text-xs text-slate-500">
-                          <span>Recibido: {lote.cantidad_inicial?.toLocaleString()}</span>
-                          {lote.cantidad_contrato > lote.cantidad_inicial && (
-                            <span className="text-amber-600 ml-2">
-                              (Pend: {(lote.cantidad_contrato - lote.cantidad_inicial)?.toLocaleString()})
-                            </span>
-                          )}
+                      {/* Solo número de contrato si no hay contrato global */}
+                      {!lote.cantidad_contrato_global && lote.numero_contrato && (
+                        <div className="mt-1 text-xs text-indigo-600 truncate max-w-[120px]" title={lote.numero_contrato}>
+                          📋 {lote.numero_contrato}
                         </div>
                       )}
                     </td>
