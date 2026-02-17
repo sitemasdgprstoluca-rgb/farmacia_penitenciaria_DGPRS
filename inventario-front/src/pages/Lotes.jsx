@@ -1826,42 +1826,26 @@ const handleImportar = async (e) => {
                   <div>
                     <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
                       📦 CANTIDAD CONTRATO LOTE
-                      {editingLote?.tiene_movimientos && <span className="text-red-500 text-xs ml-1">🔒</span>}
                       <span className="text-gray-500 text-xs ml-2 font-normal">(Solo para este lote)</span>
                     </label>
                     <input
                       type="number"
                       min="0"
                       value={formData.cantidad_contrato}
-                      onChange={(e) => {
-                        // Solo bloquear si tiene movimientos - backend valida permisos
-                        if (!editingLote?.tiene_movimientos) {
-                          setFormData({...formData, cantidad_contrato: e.target.value});
-                        }
-                      }}
-                      className={`w-full px-4 py-3 border-2 rounded-xl transition-all focus:outline-none ${
-                        editingLote?.tiene_movimientos
-                          ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed' 
-                          : 'border-gray-200'
-                      }`}
+                      onChange={(e) => setFormData({...formData, cantidad_contrato: e.target.value})}
+                      className="w-full px-4 py-3 border-2 rounded-xl transition-all focus:outline-none border-gray-200"
                       onFocus={(e) => {
-                        if (!editingLote?.tiene_movimientos) {
-                          e.target.style.borderColor = '#9F2241';
-                          e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
-                        }
+                        e.target.style.borderColor = '#9F2241';
+                        e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
                       }}
                       onBlur={(e) => {
                         e.target.style.borderColor = '#E5E7EB';
                         e.target.style.boxShadow = 'none';
                       }}
-                      disabled={editingLote?.tiene_movimientos}
-                      readOnly={editingLote?.tiene_movimientos}
                       placeholder={formData.cantidad_contrato === '' || formData.cantidad_contrato === null ? 'Sin definir (opcional)' : 'Total para este lote'}
                     />
                     <p className="text-xs text-gray-500 italic mt-1">
-                      {editingLote?.tiene_movimientos
-                        ? '🔒 No editable - Lote con movimientos registrados'
-                        : 'Opcional. Cantidad acordada solo para este lote'}
+                      Opcional. Cantidad acordada solo para este lote
                     </p>
                   </div>
                   
@@ -1871,7 +1855,6 @@ const handleImportar = async (e) => {
                       <div className="flex items-center justify-between mb-3">
                         <label className="text-sm font-semibold text-slate-700">
                           Contrato Global
-                          {editingLote?.tiene_movimientos && <span className="text-red-500 text-xs ml-2">🔒</span>}
                         </label>
                         <span className="text-xs text-slate-500">Aplica a todos los lotes</span>
                       </div>
@@ -1880,18 +1863,8 @@ const handleImportar = async (e) => {
                         type="number"
                         min="0"
                         value={formData.cantidad_contrato_global}
-                        onChange={(e) => {
-                          if (!editingLote?.tiene_movimientos) {
-                            setFormData({...formData, cantidad_contrato_global: e.target.value});
-                          }
-                        }}
-                        className={`w-full px-4 py-2.5 border rounded-lg text-base transition-all focus:outline-none ${
-                          editingLote?.tiene_movimientos
-                            ? 'border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed'
-                            : 'border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
-                        }`}
-                        disabled={editingLote?.tiene_movimientos}
-                        readOnly={editingLote?.tiene_movimientos}
+                        onChange={(e) => setFormData({...formData, cantidad_contrato_global: e.target.value})}
+                        className="w-full px-4 py-2.5 border rounded-lg text-base transition-all focus:outline-none border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
                         placeholder="Ej: 1000"
                       />
                       
@@ -1934,11 +1907,9 @@ const handleImportar = async (e) => {
                       )}
                       
                       {/* Nota breve */}
-                      {!editingLote?.tiene_movimientos && (
-                        <p className="text-xs text-slate-500 mt-2">
-                          Total contratado para esta clave. El sistema calcula automáticamente pendientes.
-                        </p>
-                      )}
+                      <p className="text-xs text-slate-500 mt-2">
+                        Total contratado para esta clave. El sistema calcula automáticamente pendientes.
+                      </p>
                       
                       {/* Advertencia si falta número de contrato */}
                       {!formData.numero_contrato && formData.cantidad_contrato_global && (
