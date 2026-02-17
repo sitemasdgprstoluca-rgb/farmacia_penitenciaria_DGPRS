@@ -8232,30 +8232,8 @@ def dashboard_resumen(request):
         
         if cached_kpi is None:
             # === PRODUCTOS ===
-            # ISS-FIX: Siempre contar productos CON STOCK (no catálogo completo)
-            if filtrar_por_centro == 'central':
-                # Productos con stock en Farmacia Central (centro=null)
-                total_productos = Producto.objects.filter(
-                    activo=True,
-                    lotes__centro__isnull=True,
-                    lotes__activo=True,
-                    lotes__cantidad_actual__gt=0
-                ).distinct().count()
-            elif filtrar_por_centro and user_centro:
-                # Productos con stock en el centro específico
-                total_productos = Producto.objects.filter(
-                    activo=True,
-                    lotes__centro=user_centro,
-                    lotes__activo=True,
-                    lotes__cantidad_actual__gt=0
-                ).distinct().count()
-            else:
-                # Global: Productos con stock en CUALQUIER lugar
-                total_productos = Producto.objects.filter(
-                    activo=True,
-                    lotes__activo=True,
-                    lotes__cantidad_actual__gt=0
-                ).distinct().count()
+            # Siempre mostrar catálogo completo (no depende del filtro)
+            total_productos = Producto.objects.filter(activo=True).count()
             
             # === LOTES ===
             lotes_query = Lote.objects.filter(
