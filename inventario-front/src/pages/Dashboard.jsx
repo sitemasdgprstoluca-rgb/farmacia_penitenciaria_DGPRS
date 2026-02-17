@@ -680,8 +680,9 @@ const Dashboard = () => {
 
       const centroEfectivo = esCentroRestringido ? centroUsuario : centroId;
       // ISS-FIX: Agregar refresh=true para forzar recarga sin caché cuando el usuario hace click en actualizar
+      // ISS-FIX: 'todos' significa global (sin filtro de centro), 'central' significa Farmacia Central
       const params = { 
-        ...(centroEfectivo ? { centro: centroEfectivo } : {}),
+        ...(centroEfectivo && centroEfectivo !== 'todos' ? { centro: centroEfectivo } : {}),
         ...(isRefresh ? { refresh: 'true' } : {})
       };
 

@@ -51,13 +51,13 @@ const CentroSelector = ({ onCentroChange, selectedValue = '', className = '' }) 
     let nombreCentro = '';
     if (value === 'central') {
       nombreCentro = 'Farmacia Central';
-    } else if (value === '') {
+    } else if (value === 'todos') {
       nombreCentro = 'Todos los centros';
     } else {
       const centroSeleccionado = centros.find(c => String(c.id) === value);
       nombreCentro = centroSeleccionado ? centroSeleccionado.nombre : '';
     }
-    onCentroChange?.(value === '' ? null : value, nombreCentro);
+    onCentroChange?.(value, nombreCentro);
   };
 
   // No renderizar si el usuario no tiene acceso global
@@ -96,7 +96,7 @@ const CentroSelector = ({ onCentroChange, selectedValue = '', className = '' }) 
         <option value="central">
           🏥 Farmacia Central
         </option>
-        <option value="">
+        <option value="todos">
           🌐 Todos los centros
         </option>
         {centros.map((centro) => (
