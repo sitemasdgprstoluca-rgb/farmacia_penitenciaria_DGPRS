@@ -1493,58 +1493,101 @@ const handleImportar = async (e) => {
                       
                       {/* ISS-INV-003: Mostrar número de contrato si existe */}
                       {lote.numero_contrato && (
-                        <div className="text-purple-700 font-semibold text-xs mt-1" title={`Número de contrato: ${lote.numero_contrato}`}>
-                          📋 {lote.numero_contrato.length > 15 ? lote.numero_contrato.substring(0, 15) + '...' : lote.numero_contrato}
+                        <div className="text-indigo-600 font-medium text-xs mt-1 flex items-center gap-1" title={`Contrato: ${lote.numero_contrato}`}>
+                          <span className="inline-block w-2 h-2 bg-indigo-400 rounded-full"></span>
+                          {lote.numero_contrato.length > 18 ? lote.numero_contrato.substring(0, 18) + '…' : lote.numero_contrato}
                         </div>
                       )}
                       
-                      {/* ISS-INV-003: Mostrar información de contrato global si existe */}
+                      {/* ISS-INV-003: Panel de Contrato Global - Diseño profesional */}
                       {lote.cantidad_contrato_global != null && (
-                        <div className="mt-2 p-2 bg-gradient-to-br from-purple-50 to-blue-50 border border-purple-300 rounded-lg shadow-sm">
-                          <div className="text-purple-900 font-bold text-xs mb-1.5 border-b border-purple-200 pb-1">
-                            📋 CONTRATO {lote.numero_contrato || 'N/A'}
+                        <div className="mt-3 bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+                          {/* Header compacto */}
+                          <div className="bg-slate-50 px-3 py-1.5 border-b border-slate-200">
+                            <span className="text-slate-700 font-semibold text-xs uppercase tracking-wide">
+                              Resumen Contrato
+                            </span>
                           </div>
-                          <div className="grid grid-cols-2 gap-1.5">
-                            <div className="text-purple-700 font-semibold text-xs" title="Total contratado para toda la clave del producto">
-                              <span className="text-gray-600">Contratado:</span> {lote.cantidad_contrato_global}
+                          
+                          {/* Contenido principal */}
+                          <div className="p-3 space-y-2">
+                            {/* Fila: Contratado / En stock */}
+                            <div className="flex justify-between items-center text-xs">
+                              <div className="flex-1">
+                                <span className="text-slate-500">Contratado</span>
+                                <div className="text-slate-800 font-bold text-base">{lote.cantidad_contrato_global?.toLocaleString()}</div>
+                              </div>
+                              {lote.total_inventario_global != null && (
+                                <div className="flex-1 text-right">
+                                  <span className="text-slate-500">En Stock</span>
+                                  <div className="text-indigo-600 font-bold text-base">{lote.total_inventario_global?.toLocaleString()}</div>
+                                </div>
+                              )}
                             </div>
-                            {lote.total_inventario_global != null && (
-                              <div className="text-blue-700 font-semibold text-xs" title="Total disponible en inventario de todos los lotes del contrato">
-                                <span className="text-gray-600">En stock:</span> {lote.total_inventario_global}
+                            
+                            {/* Barra de progreso visual */}
+                            {lote.total_inventario_global != null && lote.cantidad_contrato_global > 0 && (
+                              <div className="relative h-2 bg-slate-100 rounded-full overflow-hidden">
+                                <div 
+                                  className={`absolute left-0 top-0 h-full rounded-full transition-all ${
+                                    lote.cantidad_pendiente_global <= 0 
+                                      ? 'bg-emerald-500' 
+                                      : lote.total_inventario_global >= lote.cantidad_contrato_global * 0.7
+                                        ? 'bg-indigo-500'
+                                        : lote.total_inventario_global >= lote.cantidad_contrato_global * 0.3
+                                          ? 'bg-amber-500'
+                                          : 'bg-rose-500'
+                                  }`}
+                                  style={{ 
+                                    width: `${Math.min(100, (lote.total_inventario_global / lote.cantidad_contrato_global) * 100)}%` 
+                                  }}
+                                ></div>
+                              </div>
+                            )}
+                            
+                            {/* Estado del contrato */}
+                            {lote.cantidad_pendiente_global != null && (
+                              <div className={`flex items-center gap-1.5 text-xs font-medium pt-1 ${
+                                lote.cantidad_pendiente_global > 0 
+                                  ? 'text-amber-600'
+                                  : lote.cantidad_pendiente_global < 0 
+                                    ? 'text-rose-600'
+                                    : 'text-emerald-600'
+                              }`}>
+                                <span className={`inline-block w-1.5 h-1.5 rounded-full ${
+                                  lote.cantidad_pendiente_global > 0 
+                                    ? 'bg-amber-500'
+                                    : lote.cantidad_pendiente_global < 0 
+                                      ? 'bg-rose-500'
+                                      : 'bg-emerald-500'
+                                }`}></span>
+                                {lote.cantidad_pendiente_global > 0 
+                                  ? `Por recibir: ${lote.cantidad_pendiente_global.toLocaleString()}`
+                                  : lote.cantidad_pendiente_global < 0
+                                    ? `Excedente: ${Math.abs(lote.cantidad_pendiente_global).toLocaleString()}`
+                                    : 'Contrato completo'
+                                }
                               </div>
                             )}
                           </div>
-                          {lote.cantidad_pendiente_global != null && (
-                            <div className={`mt-1.5 pt-1.5 border-t border-purple-200 text-xs font-bold ${
-                              lote.cantidad_pendiente_global > 0 
-                                ? 'text-orange-600'  // Pendiente por recibir
-                                : lote.cantidad_pendiente_global < 0 
-                                  ? 'text-red-600'  // Exceso (se recibió más de lo contratado)
-                                  : 'text-green-600'  // Completo
-                            }`}>
-                              {lote.cantidad_pendiente_global > 0 
-                                ? `⏳ Por recibir: ${lote.cantidad_pendiente_global} unidades`
-                                : lote.cantidad_pendiente_global < 0
-                                  ? `⚠️ Exceso: ${Math.abs(lote.cantidad_pendiente_global)} unidades`
-                                  : '✅ Contrato completo'
-                              }
-                            </div>
-                          )}
                         </div>
                       )}
                       
                       {/* Mostrar desglose si hay entregas parciales en este lote */}
                       {lote.cantidad_contrato != null && lote.cantidad_contrato !== lote.cantidad_inicial && !lote.cantidad_contrato_global && (
-                        <div className="mt-1 text-xs">
-                          <div className="text-blue-600" title={`Contrato: ${lote.cantidad_contrato} | Recibido: ${lote.cantidad_inicial}`}>
-                            📄 Contrato: {lote.cantidad_contrato}
+                        <div className="mt-2 text-xs space-y-0.5">
+                          <div className="text-slate-600 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full"></span>
+                            Contrato: {lote.cantidad_contrato?.toLocaleString()}
                           </div>
-                          <div className="text-indigo-600" title={`Recibido inicialmente: ${lote.cantidad_inicial} unidades`}>
-                            📦 Recibido: {lote.cantidad_inicial}
+                          <div className="text-slate-600 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full"></span>
+                            Recibido: {lote.cantidad_inicial?.toLocaleString()}
                           </div>
                           {lote.cantidad_contrato > lote.cantidad_inicial && (
-                            <div className="text-orange-600" title={`Pendiente por recibir: ${lote.cantidad_contrato - lote.cantidad_inicial} unidades`}>
-                              ⏳ Pendiente lote: {lote.cantidad_contrato - lote.cantidad_inicial}
+                            <div className="text-amber-600 flex items-center gap-1 font-medium">
+                              <span className="w-1.5 h-1.5 bg-amber-500 rounded-full"></span>
+                              Pendiente: {(lote.cantidad_contrato - lote.cantidad_inicial)?.toLocaleString()}
                             </div>
                           )}
                         </div>
@@ -1552,8 +1595,8 @@ const handleImportar = async (e) => {
                       
                       {/* Indicador si no tiene ningún contrato definido */}
                       {lote.cantidad_contrato == null && lote.cantidad_contrato_global == null && !lote.numero_contrato && (
-                        <div className="text-gray-400 italic text-xs mt-0.5" title="Sin información de contrato">
-                          — Sin contrato
+                        <div className="text-slate-400 italic text-xs mt-1">
+                          Sin contrato
                         </div>
                       )}
                     </td>

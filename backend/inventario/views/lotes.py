@@ -956,28 +956,52 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
     def exportar_excel(self, request):
         """
         Exporta lotes aplicando los filtros de listado.
-        Incluye campos de contrato global (cantidad_contrato_global, total_inventario_global, cantidad_pendiente_global).
+        Incluye campos de contrato global calculados de forma eficiente.
         """
         try:
             # Reutilizar el queryset que ya aplica todos los filtros
-            lotes_queryset = self.get_queryset()
+            lotes_queryset = self.get_queryset().select_related('producto', 'centro')
+            lista_exportar = list(lotes_queryset)
             
-            # Serializar para obtener campos calculados
-            from core.serializers import LoteSerializer
-            serializer = LoteSerializer(lotes_queryset, many=True)
-            lista_exportar = serializer.data
+            # Precalcular totales globales por (producto_id, numero_contrato) para eficiencia
+            from collections import defaultdict
+            from django.db.models import Sum
+            
+            # Agrupar lotes por producto+contrato para calcular totales globales
+            contratos_data = {}
+            for lote in lista_exportar:
+                if lote.cantidad_contrato_global and lote.numero_contrato:
+                    key = (lote.producto_id, lote.numero_contrato)
+                    if key not in contratos_data:
+                        # Calcular una sola vez por grupo
+                        totales = Lote.objects.filter(
+                            producto_id=lote.producto_id,
+                            numero_contrato=lote.numero_contrato,
+                            cantidad_contrato_global__isnull=False,
+                            activo=True
+                        ).aggregate(
+                            total_inicial=Sum('cantidad_inicial'),
+                            total_actual=Sum('cantidad_actual')
+                        )
+                        total_recibido = totales['total_inicial'] or 0
+                        total_stock = totales['total_actual'] or 0
+                        pendiente = lote.cantidad_contrato_global - total_recibido
+                        contratos_data[key] = {
+                            'total_stock': total_stock,
+                            'pendiente': pendiente
+                        }
 
             wb = openpyxl.Workbook()
             ws = wb.active
             ws.title = 'Lotes'
 
-            # Headers exactos
+            # Headers claros y profesionales
             headers = [
                 'Clave', 'Producto', 'Presentación', 'Código de Lote', 'Fecha de Caducidad',
                 'Contrato Lote', 'Recibido Lote', 'Stock Lote',
                 'Contrato Global', 'Stock Global', 'Pendiente Global',
                 'Precio Unitario', 'Fecha de Fabricación',
-                'Ubicación', 'Número de Contrato', 'Marca / Laboratorio', 'Lote activo'
+                'Ubicación', 'Número de Contrato', 'Marca / Laboratorio', 'Activo'
             ]
             ws.append(headers)
             
@@ -988,40 +1012,40 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                 cell.font = header_font
                 cell.alignment = Alignment(horizontal='center', vertical='center')
 
-            for idx, lote_data in enumerate(lista_exportar, 1):
-                # Acceder a datos del producto (ya serializado)
-                producto = lote_data.get('producto') or {}
-                clave = producto.get('clave', '')
-                nom_prod = producto.get('nombre', 'Producto Desconocido')
-                presentacion = producto.get('presentacion', '')
+            for lote in lista_exportar:
+                # Datos del producto
+                clave = lote.producto.clave if lote.producto else ''
+                nom_prod = lote.producto.nombre if lote.producto else 'Producto Desconocido'
+                presentacion = lote.producto.presentacion if lote.producto else ''
 
                 # Datos del lote individual
-                cant_contrato_lote = lote_data.get('cantidad_contrato') or ''  # Contrato para este lote
-                cant_recibida_lote = lote_data.get('cantidad_inicial') or 0    # Lo que llegó en este lote
-                cant_stock_lote = lote_data.get('cantidad_actual') or 0        # Lo que queda en este lote
+                cant_contrato_lote = lote.cantidad_contrato or ''
+                cant_recibida_lote = lote.cantidad_inicial or 0
+                cant_stock_lote = lote.cantidad_actual or 0
                 
-                # Datos del contrato global (calculados en serializer)
-                cant_contrato_global = lote_data.get('cantidad_contrato_global') or ''
-                stock_global = lote_data.get('total_inventario_global') or ''
-                pendiente_global = lote_data.get('cantidad_pendiente_global') or ''
+                # Datos del contrato global (precalculados)
+                cant_contrato_global = ''
+                stock_global = ''
+                pendiente_global = ''
                 
-                activo_str = 'Sí' if lote_data.get('activo') else 'No'
+                if lote.cantidad_contrato_global and lote.numero_contrato:
+                    key = (lote.producto_id, lote.numero_contrato)
+                    cant_contrato_global = lote.cantidad_contrato_global
+                    if key in contratos_data:
+                        stock_global = contratos_data[key]['total_stock']
+                        pendiente_global = contratos_data[key]['pendiente']
                 
-                # Ubicación real del lote
-                centro = lote_data.get('centro') or {}
-                ubicacion_str = centro.get('nombre', 'Almacén Central') if centro else 'Almacén Central'
+                activo_str = 'Sí' if lote.activo else 'No'
+                ubicacion_str = lote.centro.nombre if lote.centro else 'Almacén Central'
                 
-                # Fechas
-                fecha_cad = lote_data.get('fecha_caducidad')
-                fecha_cad_str = fecha_cad if fecha_cad else ''
-                fecha_fab = lote_data.get('fecha_fabricacion')
-                fecha_fab_str = fecha_fab if fecha_fab else ''
+                fecha_cad_str = lote.fecha_caducidad.strftime('%d/%m/%Y') if lote.fecha_caducidad else ''
+                fecha_fab_str = lote.fecha_fabricacion.strftime('%d/%m/%Y') if lote.fecha_fabricacion else ''
 
                 ws.append([
                     clave,
                     nom_prod,
                     presentacion,
-                    lote_data.get('numero_lote') or '',
+                    lote.numero_lote or '',
                     fecha_cad_str,
                     cant_contrato_lote,
                     cant_recibida_lote,
@@ -1029,16 +1053,16 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                     cant_contrato_global,
                     stock_global,
                     pendiente_global,
-                    float(lote_data.get('precio_unitario') or 0),
+                    float(lote.precio_unitario) if lote.precio_unitario else 0.00,
                     fecha_fab_str,
                     ubicacion_str,
-                    lote_data.get('numero_contrato') or '',
-                    lote_data.get('marca') or '',
+                    lote.numero_contrato or '',
+                    lote.marca or '',
                     activo_str
                 ])
 
             # Ajustar anchos de columna
-            column_widths = [10, 40, 25, 15, 15, 15, 15, 12, 15, 12, 15, 15, 15, 25, 20, 20, 12]
+            column_widths = [10, 40, 25, 15, 15, 15, 15, 12, 15, 12, 15, 15, 15, 25, 20, 20, 10]
             for col_idx, width in enumerate(column_widths, 1):
                 ws.column_dimensions[get_column_letter(col_idx)].width = width
 
@@ -1047,7 +1071,8 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
             wb.save(response)
             return response
         except Exception as exc:
-            # traceback removido por seguridad (ISS-008)
+            import traceback
+            logger.error(f"Error exportando Excel: {exc}\n{traceback.format_exc()}")
             return Response({'error': 'Error al exportar lotes', 'mensaje': str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=['post'], url_path='importar-excel')
