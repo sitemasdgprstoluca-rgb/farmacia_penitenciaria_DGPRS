@@ -849,7 +849,22 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
         # Esto refleja que se recibió más mercancía del mismo contrato/lote
         # Ej: cantidad_inicial=84, entrada=50 → cantidad_inicial=134
         if tipo_normalizado == 'entrada':
-            # ISS-INV-003: Validar contra cantidad_contrato_global si existe
+            # ISS-INV-001: Validar contra cantidad_contrato del LOTE INDIVIDUAL
+            cant_contrato_lote = lote_ref.cantidad_contrato
+            if cant_contrato_lote is not None and cant_contrato_lote > 0:
+                nueva_inicial_lote = lote_ref.cantidad_inicial + abs(cantidad_int)
+                if nueva_inicial_lote > cant_contrato_lote:
+                    raise serializers.ValidationError({
+                        'cantidad': (
+                            f'La entrada excede el contrato de ESTE LOTE. '
+                            f'Contrato lote: {cant_contrato_lote}, '
+                            f'Ya recibido en lote: {lote_ref.cantidad_inicial}, '
+                            f'Intentando agregar: {abs(cantidad_int)}, '
+                            f'Excedente: {nueva_inicial_lote - cant_contrato_lote}'
+                        )
+                    })
+            
+            # ISS-INV-003: Validar contra cantidad_contrato_global (COMPARTIDA por clave)
             ccg = lote_ref.cantidad_contrato_global
             if ccg is not None and ccg > 0 and lote_ref.numero_contrato:
                 # Sumar todas las cantidades_iniciales de lotes hermanos (mismo producto + contrato)
@@ -860,14 +875,15 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
                     activo=True
                 ).aggregate(total=Sum('cantidad_inicial'))['total'] or 0
                 
-                nueva_total = total_recibido + abs(cantidad_int)
-                if nueva_total > ccg:
-                    # Solo advertencia, no bloquear (puede ser corrección o ajuste autorizado)
+                nueva_total_global = total_recibido + abs(cantidad_int)
+                if nueva_total_global > ccg:
+                    # Advertencia crítica pero NO bloquea (puede ser ajuste autorizado)
                     logger.warning(
-                        f'Entrada excede contrato global. CCG: {ccg}, '
-                        f'Total recibido: {total_recibido}, Agregando: {abs(cantidad_int)}, '
-                        f'Exceso: {nueva_total - ccg}'
+                        f'⚠️ ALERTA: Entrada excede contrato GLOBAL. '
+                        f'CCG: {ccg}, Total ya recibido: {total_recibido}, '
+                        f'Agregando: {abs(cantidad_int)}, Exceso: {nueva_total_global - ccg}'
                     )
+            
             update_dict['cantidad_inicial'] = F('cantidad_inicial') + abs(cantidad_int)
         
         Lote.objects.filter(pk=lote_ref.pk).update(**update_dict)

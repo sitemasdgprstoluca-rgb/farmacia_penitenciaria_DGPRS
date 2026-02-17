@@ -184,26 +184,33 @@ class TestLoteModelContratoGlobal:
         assert lote_post.cantidad_actual == cantidad_actual_antes - 50, \
             'cantidad_actual debe reducirse con salidas'
 
-    def test_entrada_incrementa_cantidad_inicial(self, lote_base, admin_ccg):
+    def test_entrada_incrementa_cantidad_inicial(self, lote_hermano, admin_ccg):
         """
         Las entradas incrementan cantidad_inicial (reabastecimiento del contrato).
+        Se usa lote_hermano que tiene 150/150 pero con espacio en contrato global (500 total).
         """
         from inventario.views_legacy import registrar_movimiento_stock
+        from core.models import Lote
         
-        cantidad_inicial_antes = lote_base.cantidad_inicial
+        # Actualizar lote_hermano para tener espacio (100 inicial en contrato de 150)
+        lote_hermano.cantidad_inicial = 100
+        lote_hermano.cantidad_actual = 100
+        lote_hermano.save()
+        
+        cantidad_inicial_antes = lote_hermano.cantidad_inicial
         
         _, lote_post = registrar_movimiento_stock(
-            lote=lote_base,
+            lote=lote_hermano,
             tipo='entrada',
-            cantidad=100,
+            cantidad=50,  # 100 + 50 = 150 (dentro del contrato de 150)
             usuario=admin_ccg,
             observaciones='Reabastecimiento contrato',
             skip_centro_check=True,
         )
         
-        assert lote_post.cantidad_inicial == cantidad_inicial_antes + 100, \
+        assert lote_post.cantidad_inicial == cantidad_inicial_antes + 50, \
             'cantidad_inicial debe incrementarse con entradas'
-        assert lote_post.cantidad_actual == lote_base.cantidad_actual + 100
+        assert lote_post.cantidad_actual == 100 + 50
 
 
 # ============================================================================
@@ -1808,3 +1815,156 @@ class TestFlujoUsuarioCompleto:
         
         # Pendiente global: 500 - 300 = 200 (NO 250)
         assert data['cantidad_pendiente_global'] == 200
+
+
+# ============================================================================
+# TESTS DE VALIDACIÓN DUAL (cantidad_contrato + cantidad_contrato_global)
+# ============================================================================
+
+
+@pytest.mark.django_db
+class TestValidacionDual:
+    """
+    Tests para verificar que AMBAS validaciones funcionen:
+    1. cantidad_contrato: límite del lote individual
+    2. cantidad_contrato_global: límite compartido por clave
+    """
+    
+    def test_entrada_rechazada_excede_contrato_lote(self, producto_ccg, centro_ccg, admin_ccg):
+        """
+        Rechazar entrada que excede cantidad_contrato del lote individual.
+        """
+        from core.models import Lote
+        from inventario.views_legacy import registrar_movimiento_stock
+        from rest_framework.exceptions import ValidationError
+        
+        lote = Lote.objects.create(
+            producto=producto_ccg,
+            numero_lote='LOT-DUAL-001',
+            centro=centro_ccg,
+            fecha_caducidad=date(2027, 12, 31),
+            cantidad_inicial=100,
+            cantidad_actual=100,
+            precio_unitario=Decimal('5.00'),
+            numero_contrato='CONTRATO-DUAL-001',
+            cantidad_contrato=150,  # Límite del lote individual
+            cantidad_contrato_global=1000,  # Límite global (mucho mayor)
+            activo=True,
+        )
+        
+        # Intentar agregar 60 unidades (100 + 60 = 160 > 150)
+        with pytest.raises(ValidationError) as exc_info:
+            registrar_movimiento_stock(
+                lote=lote,
+                tipo='entrada',
+                cantidad=60,
+                usuario=admin_ccg,
+                observaciones='Exceso lote individual',
+                skip_centro_check=True,
+            )
+        
+        assert 'excede el contrato de ESTE LOTE' in str(exc_info.value)
+    
+    def test_entrada_aceptada_dentro_ambos_limites(self, producto_ccg, centro_ccg, admin_ccg):
+        """
+        Aceptar entrada que cumple AMBOS límites.
+        """
+        from core.models import Lote
+        from inventario.views_legacy import registrar_movimiento_stock
+        
+        lote = Lote.objects.create(
+            producto=producto_ccg,
+            numero_lote='LOT-DUAL-002',
+            centro=centro_ccg,
+            fecha_caducidad=date(2027, 12, 31),
+            cantidad_inicial=100,
+            cantidad_actual=100,
+            precio_unitario=Decimal('5.00'),
+            numero_contrato='CONTRATO-DUAL-002',
+            cantidad_contrato=200,  # Límite del lote
+            cantidad_contrato_global=500,  # Límite global
+            activo=True,
+        )
+        
+        # Agregar 50 unidades (100 + 50 = 150, dentro de ambos límites)
+        _, lote_post = registrar_movimiento_stock(
+            lote=lote,
+            tipo='entrada',
+            cantidad=50,
+            usuario=admin_ccg,
+            observaciones='Dentro límites',
+            skip_centro_check=True,
+        )
+        
+        assert lote_post.cantidad_inicial == 150
+    
+    def test_crear_lote_rechaza_exceso_contrato_individual(self, producto_ccg, centro_ccg, admin_ccg):
+        """
+        Rechazar creación de lote con cantidad_inicial > cantidad_contrato.
+        """
+        from core.serializers import LoteSerializer
+        from rest_framework.exceptions import ValidationError
+        
+        data = {
+            'producto': producto_ccg.id,
+            'numero_lote': 'LOT-DUAL-003',
+            'centro': centro_ccg.id,
+            'fecha_caducidad': '2027-12-31',
+            'cantidad_inicial': 200,  # Mayor que cantidad_contrato
+            'precio_unitario': '5.00',
+            'numero_contrato': 'CONTRATO-DUAL-003',
+            'cantidad_contrato': 150,  # Límite del lote
+            'cantidad_contrato_global': 1000,
+            'activo': True,
+        }
+        
+        serializer = LoteSerializer(data=data)
+        with pytest.raises(ValidationError) as exc_info:
+            serializer.is_valid(raise_exception=True)
+        
+        assert 'cantidad_inicial' in exc_info.value.detail
+    
+    def test_multiples_lotes_respetan_limite_global(self, producto_ccg, centro_ccg, admin_ccg):
+        """
+        Varios lotes pueden tener cada uno su cantidad_contrato,
+        pero la suma no debe exceder cantidad_contrato_global.
+        """
+        from core.models import Lote
+        from core.serializers import LoteSerializer
+        
+        # Lote 1: 200/300 (lote) dentro de 500 (global)
+        lote1 = Lote.objects.create(
+            producto=producto_ccg,
+            numero_lote='LOT-DUAL-004A',
+            centro=centro_ccg,
+            fecha_caducidad=date(2027, 12, 31),
+            cantidad_inicial=200,
+            cantidad_actual=200,
+            precio_unitario=Decimal('5.00'),
+            numero_contrato='CONTRATO-DUAL-004',
+            cantidad_contrato=300,
+            cantidad_contrato_global=500,
+            activo=True,
+        )
+        
+        # Lote 2: Intentar agregar 350/400 → suma = 550, excede global (500)
+        data = {
+            'producto': producto_ccg.id,
+            'numero_lote': 'LOT-DUAL-004B',
+            'centro': centro_ccg.id,
+            'fecha_caducidad': '2027-12-31',
+            'cantidad_inicial': 350,
+            'precio_unitario': '5.00',
+            'numero_contrato': 'CONTRATO-DUAL-004',
+            'cantidad_contrato': 400,
+            'cantidad_contrato_global': 500,
+            'activo': True,
+        }
+        
+        serializer = LoteSerializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        
+        # Debe generar ALERTA pero no bloquear
+        assert hasattr(serializer, '_alerta_contrato_global')
+        assert '50 unidades' in serializer._alerta_contrato_global
+
