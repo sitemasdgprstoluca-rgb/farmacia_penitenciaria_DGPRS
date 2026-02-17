@@ -1138,7 +1138,7 @@ const Productos = () => {
       itemInfo: {
         'Clave': producto.clave,
         'Nombre': producto.nombre,
-        'Stock': formatInventario(producto)
+        'Inventario': formatInventario(producto)
       },
       isCritical: true, // Eliminación permanente = crítica
       confirmPhrase: 'ELIMINAR', // Requiere escribir para confirmar
