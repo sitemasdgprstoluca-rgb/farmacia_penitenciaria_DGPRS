@@ -1498,19 +1498,24 @@ const handleImportar = async (e) => {
                         </div>
                       )}
                       
-                      {/* ISS-INV-003: Mostrar cantidad_contrato_global si existe */}
+                      {/* ISS-INV-003: Mostrar información de contrato global si existe */}
                       {lote.cantidad_contrato_global != null && (
-                        <div className="mt-1 p-1 bg-purple-50 border border-purple-200 rounded">
-                          <div className="text-purple-700 font-bold text-xs" title={`Total contratado para toda la clave ${lote.producto?.clave_producto || ''}`}>
-                            🌐 Global: {lote.cantidad_contrato_global}
+                        <div className="mt-2 p-2 bg-gradient-to-br from-purple-50 to-blue-50 border border-purple-300 rounded-lg shadow-sm">
+                          <div className="text-purple-900 font-bold text-xs mb-1.5 border-b border-purple-200 pb-1">
+                            📋 CONTRATO {lote.numero_contrato || 'N/A'}
                           </div>
-                          {lote.total_inventario_global != null && (
-                            <div className="text-blue-700 font-semibold text-xs" title="Total en inventario actual de todos los lotes del contrato (suma cantidad_actual)">
-                              📊 Inventario: {lote.total_inventario_global}
+                          <div className="grid grid-cols-2 gap-1.5">
+                            <div className="text-purple-700 font-semibold text-xs" title="Total contratado para toda la clave del producto">
+                              <span className="text-gray-600">Contratado:</span> {lote.cantidad_contrato_global}
                             </div>
-                          )}
+                            {lote.total_inventario_global != null && (
+                              <div className="text-blue-700 font-semibold text-xs" title="Total disponible en inventario de todos los lotes del contrato">
+                                <span className="text-gray-600">En stock:</span> {lote.total_inventario_global}
+                              </div>
+                            )}
+                          </div>
                           {lote.cantidad_pendiente_global != null && (
-                            <div className={`text-xs font-semibold ${
+                            <div className={`mt-1.5 pt-1.5 border-t border-purple-200 text-xs font-bold ${
                               lote.cantidad_pendiente_global > 0 
                                 ? 'text-orange-600'  // Pendiente por recibir
                                 : lote.cantidad_pendiente_global < 0 
@@ -1518,10 +1523,10 @@ const handleImportar = async (e) => {
                                   : 'text-green-600'  // Completo
                             }`}>
                               {lote.cantidad_pendiente_global > 0 
-                                ? `⏳ Faltan: ${lote.cantidad_pendiente_global}`
+                                ? `⏳ Por recibir: ${lote.cantidad_pendiente_global} unidades`
                                 : lote.cantidad_pendiente_global < 0
-                                  ? `⚠️ Exceso: ${Math.abs(lote.cantidad_pendiente_global)}`
-                                  : '✅ Completo'
+                                  ? `⚠️ Exceso: ${Math.abs(lote.cantidad_pendiente_global)} unidades`
+                                  : '✅ Contrato completo'
                               }
                             </div>
                           )}
@@ -1866,17 +1871,25 @@ const handleImportar = async (e) => {
                       {/* Información de trazabilidad - Mostrar total global recibido */}
                       {editingLote && editingLote.cantidad_pendiente_global !== null && editingLote.cantidad_pendiente_global !== undefined && (
                         <div className="mt-3 p-3 bg-white rounded-lg border border-purple-300">
-                          <div className="text-sm font-bold text-purple-900 mb-2">📊 Información del Contrato Global:</div>
-                          <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div className="text-sm font-bold text-purple-900 mb-2">📊 Estado del Contrato Global:</div>
+                          <div className="grid grid-cols-3 gap-2 text-xs">
                             <div>
-                              <span className="text-gray-600">Total Contratado:</span>
+                              <span className="text-gray-600">Contratado:</span>
                               <span className="ml-1 font-bold text-purple-700">{editingLote.cantidad_contrato_global || 0}</span>
                             </div>
                             <div>
-                              <span className="text-gray-600">Total Inventario:</span>
+                              <span className="text-gray-600">En Stock:</span>
                               <span className="ml-1 font-bold text-blue-700">
                                 {editingLote.total_inventario_global != null 
                                   ? editingLote.total_inventario_global 
+                                  : 0}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-gray-600">Recibido:</span>
+                              <span className="ml-1 font-bold text-indigo-700">
+                                {editingLote.cantidad_recibido_global != null 
+                                  ? editingLote.cantidad_recibido_global 
                                   : 0}
                               </span>
                             </div>
