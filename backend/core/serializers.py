@@ -1061,18 +1061,27 @@ class LoteSerializer(serializers.ModelSerializer):
         """
         ISS-INV-003: Calcula cantidad pendiente GLOBAL por clave de producto.
         Suma todos los cantidad_inicial de lotes con mismo producto + numero_contrato.
-        Si cantidad_contrato_global es NULL, retorna NULL.
+        
+        Retorna:
+        - NULL si cantidad_contrato_global no está definido
+        - Positivo si faltan unidades por recibir
+        - Negativo si hay exceso (se recibió más de lo contratado)
+        - Cero si coincide exactamente
         """
-        if obj.cantidad_contrato_global is None:
+        if obj.cantidad_contrato_global is None or not obj.numero_contrato:
             return None
+        
         # Sumar todos los cantidad_inicial de lotes del mismo producto y contrato
         from django.db.models import Sum
         total_recibido = Lote.objects.filter(
             producto=obj.producto,
-            numero_contrato=obj.numero_contrato,
+            numero_contrato__iexact=obj.numero_contrato.strip(),
             activo=True
         ).aggregate(total=Sum('cantidad_inicial'))['total'] or 0
-        return max(0, obj.cantidad_contrato_global - total_recibido)
+        
+        # Retornar diferencia REAL (puede ser negativo si hay exceso)
+        pendiente = obj.cantidad_contrato_global - total_recibido
+        return pendiente
     
     def get_producto_info(self, obj):
         """Devuelve información adicional del producto para mostrar en tabla/formulario."""

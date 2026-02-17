@@ -1505,7 +1505,13 @@ const handleImportar = async (e) => {
                             🌐 Global: {lote.cantidad_contrato_global}
                           </div>
                           {lote.cantidad_pendiente_global != null && (
-                            <div className={`text-xs font-semibold ${lote.cantidad_pendiente_global > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                            <div className={`text-xs font-semibold ${
+                              lote.cantidad_pendiente_global > 0 
+                                ? 'text-orange-600'  // Pendiente por recibir
+                                : lote.cantidad_pendiente_global < 0 
+                                  ? 'text-red-600'  // Exceso (se recibió más de lo contratado)
+                                  : 'text-green-600'  // Completo
+                            }`}>
                               {lote.cantidad_pendiente_global > 0 
                                 ? `⏳ Faltan: ${lote.cantidad_pendiente_global}`
                                 : lote.cantidad_pendiente_global < 0

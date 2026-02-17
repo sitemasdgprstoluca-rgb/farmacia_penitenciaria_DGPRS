@@ -40,7 +40,9 @@ Tu Excel debe tener **ESTAS COLUMNAS** (ejemplo con clave 615):
 
 1. **El "Número Contrato" es OBLIGATORIO** para que el sistema pueda agrupar los lotes
 2. **La "Cantidad Contrato Global" debe ser LA MISMA en todas las filas** del mismo producto + contrato
-3. El sistema **NO suma** el Contrato Global, siempre toma el valor de 300
+3. El sistema **NO suma** el Contrato Global, siempre toma el **valor más reciente**
+   - ⚠️ Si pone 300 en una fila y 500 en otra, el sistema usará 500
+   - Por eso es CRÍTICO usar el mismo valor en todas las filas
 
 ---
 
@@ -108,11 +110,11 @@ Pendiente Global = Contrato Global - Σ(Cantidad Inicial de todos los lotes acti
 
 ## 🚨 Alertas Automáticas
 
-El sistema muestra alertas cuando:
+El sistema muestra alertas con código de colores:
 
-- **Cantidad Pendiente Global > 0**: "⏳ Faltan X unidades"
-- **Cantidad Pendiente Global < 0**: "⚠️ Exceso: X unidades" (se recibió más de lo contratado)
-- **Cantidad Pendiente Global = 0**: "✅ Completo"
+- **Cantidad Pendiente Global > 0**: "⏳ Faltan X unidades" (naranja)
+- **Cantidad Pendiente Global < 0**: "⚠️ Exceso: X unidades" (rojo - se recibió más de lo contratado)
+- **Cantidad Pendiente Global = 0**: "✅ Completo" (verde)
 
 ---
 
