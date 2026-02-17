@@ -1012,8 +1012,11 @@ class LoteSerializer(serializers.ModelSerializer):
     # ISS-TRAZ: Indicar si el lote tiene movimientos (para bloquear edición de campos críticos)
     tiene_movimientos = serializers.SerializerMethodField()
     # ISS-INV-001: Campo cantidad_contrato y cálculo de pendiente
-    cantidad_contrato = serializers.IntegerField(required=False, allow_null=True, help_text='Lo acordado en el contrato de adquisición (total esperado)')
-    cantidad_pendiente = serializers.SerializerMethodField(help_text='Cantidad pendiente por recibir (contrato - surtido)')
+    cantidad_contrato = serializers.IntegerField(required=False, allow_null=True, help_text='Cantidad según contrato para este lote')
+    # ISS-INV-003: Contrato global por clave de producto
+    cantidad_contrato_global = serializers.IntegerField(required=False, allow_null=True, help_text='Cantidad total del contrato global por clave de producto')
+    cantidad_pendiente = serializers.SerializerMethodField(help_text='Cantidad pendiente por recibir del lote (contrato_lote - surtido)')
+    cantidad_pendiente_global = serializers.SerializerMethodField(help_text='Cantidad pendiente global por clave (contrato_global - sum recibidos)')
     
     class Meta:
         model = Lote
@@ -1022,26 +1025,24 @@ class LoteSerializer(serializers.ModelSerializer):
             'producto_info',  # Información adicional del producto
             'centro', 'centro_nombre',
             'numero_lote', 'fecha_caducidad', 'fecha_fabricacion',
-            # ISS-INV-001: Campos de cantidades (definiciones oficiales)
-            'cantidad_contrato',  # Lo acordado en contrato (total esperado)
-            'cantidad_inicial',   # Primera entrega registrada (inmutable)
-            'cantidad_actual',    # Existencia real tras movimientos (read-only)
-            'cantidad_pendiente', # Calculado: contrato - inicial
+            # ISS-INV-001/003: Campos de cantidades para control de contratos
+            'cantidad_contrato',         # Total según contrato para ESTE LOTE (ej: 300)
+            'cantidad_contrato_global',  # Total según contrato GLOBAL por clave (ej: 1000)
+            'cantidad_inicial',          # Total surtido/recibido en este lote (ej: 84)
+            'cantidad_actual',           # Stock disponible (ej: 75)
+            'cantidad_pendiente',        # Calculado: contrato_lote - inicial (ej: 216)
+            'cantidad_pendiente_global', # Calculado: contrato_global - sum(inicial de todos los lotes del contrato)
             'precio_unitario', 'precio_compra',
             'numero_contrato', 'marca', 'ubicacion', 'activo', 'estado',
             'dias_para_caducar', 'alerta_caducidad', 'porcentaje_consumido',
             'documentos', 'tiene_documentos', 'tiene_movimientos',
             'created_at', 'updated_at'
         ]
-        # ISS-SEC-001: cantidad_actual es read_only — SOLO se modifica vía Movimiento.aplicar_movimiento_a_lote
-        # Esto impide que cualquier cliente (frontend, Postman, integración) corrompa existencias
-        read_only_fields = [
-            'created_at', 'updated_at', 'estado', 'documentos', 'tiene_documentos',
-            'tiene_movimientos', 'cantidad_pendiente', 'cantidad_actual',
-        ]
+        read_only_fields = ['created_at', 'updated_at', 'estado', 'documentos', 'tiene_documentos', 'tiene_movimientos', 'cantidad_pendiente', 'cantidad_pendiente_global']
         extra_kwargs = {
             'cantidad_inicial': {'required': False},  # Requerido solo en creación (validate_cantidad_inicial)
             'cantidad_contrato': {'required': False, 'allow_null': True},
+            'cantidad_contrato_global': {'required': False, 'allow_null': True},
             'numero_contrato': {'required': False, 'allow_null': True, 'allow_blank': True},
             'marca': {'required': False, 'allow_null': True, 'allow_blank': True},
             'ubicacion': {'required': False, 'allow_null': True, 'allow_blank': True},
@@ -1049,12 +1050,29 @@ class LoteSerializer(serializers.ModelSerializer):
     
     def get_cantidad_pendiente(self, obj):
         """
-        ISS-INV-001: Calcula cantidad pendiente por recibir del contrato.
+        ISS-INV-001: Calcula cantidad pendiente por recibir del contrato POR LOTE.
         Si cantidad_contrato es NULL, retorna NULL (no aplica).
         """
         if obj.cantidad_contrato is None:
             return None
         return max(0, obj.cantidad_contrato - (obj.cantidad_inicial or 0))
+    
+    def get_cantidad_pendiente_global(self, obj):
+        """
+        ISS-INV-003: Calcula cantidad pendiente GLOBAL por clave de producto.
+        Suma todos los cantidad_inicial de lotes con mismo producto + numero_contrato.
+        Si cantidad_contrato_global es NULL, retorna NULL.
+        """
+        if obj.cantidad_contrato_global is None:
+            return None
+        # Sumar todos los cantidad_inicial de lotes del mismo producto y contrato
+        from django.db.models import Sum
+        total_recibido = Lote.objects.filter(
+            producto=obj.producto,
+            numero_contrato=obj.numero_contrato,
+            activo=True
+        ).aggregate(total=Sum('cantidad_inicial'))['total'] or 0
+        return max(0, obj.cantidad_contrato_global - total_recibido)
     
     def get_producto_info(self, obj):
         """Devuelve información adicional del producto para mostrar en tabla/formulario."""
@@ -1173,11 +1191,50 @@ class LoteSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError(e.message_dict)
                 raise serializers.ValidationError({'numero_contrato': str(e)})
         
+        # ISS-INV-003: Validar contrato global por clave
+        # Si el lote tiene cantidad_contrato_global, verificar si la suma de
+        # todos los lotes del mismo producto+contrato excedería el global.
+        ccg = attrs.get('cantidad_contrato_global')
+        if ccg is None and numero_contrato and producto:
+            # Heredar ccg de lotes existentes con mismo producto+contrato
+            existing_ccg = Lote.objects.filter(
+                producto=producto,
+                numero_contrato__iexact=numero_contrato.strip(),
+                activo=True,
+                cantidad_contrato_global__isnull=False,
+            ).values_list('cantidad_contrato_global', flat=True).first()
+            if existing_ccg is not None:
+                ccg = existing_ccg
+                attrs['cantidad_contrato_global'] = ccg
+        
+        if ccg is not None and numero_contrato and producto and cantidad > 0:
+            # Sumar cantidad_inicial de lotes existentes con mismo producto+contrato
+            total_existente = Lote.objects.filter(
+                producto=producto,
+                numero_contrato__iexact=numero_contrato.strip(),
+                activo=True,
+            ).aggregate(total=Sum('cantidad_inicial'))['total'] or 0
+            
+            # Si estamos editando, restar la cantidad_inicial actual del lote
+            if self.instance:
+                total_existente -= (self.instance.cantidad_inicial or 0)
+            
+            total_proyectado = total_existente + cantidad
+            if total_proyectado > ccg:
+                excedente = total_proyectado - ccg
+                # Guardar alerta como atributo para que el ViewSet la incluya en respuesta
+                self._alerta_contrato_global = (
+                    f'⚠️ Se excede el contrato global por {excedente} unidades. '
+                    f'Total contratado: {ccg}, ya recibido: {total_existente}, '
+                    f'este lote agrega: {cantidad}, total proyectado: {total_proyectado}.'
+                )
+        
         return super().validate(attrs)
     
     def create(self, validated_data):
         """
         ISS-SEC-004: Al crear un lote, cantidad_actual = cantidad_inicial.
+        ISS-INV-003: Propagar cantidad_contrato_global a lotes hermanos.
         
         El cliente NO puede establecer cantidad_actual directamente.
         Siempre se calcula internamente para evitar inconsistencias.
@@ -1185,7 +1242,19 @@ class LoteSerializer(serializers.ModelSerializer):
         cantidad_inicial = validated_data.get('cantidad_inicial', 0)
         # cantidad_actual siempre = cantidad_inicial en la creación
         validated_data['cantidad_actual'] = cantidad_inicial
-        return super().create(validated_data)
+        
+        instance = super().create(validated_data)
+        
+        # Auto-propagar cantidad_contrato_global a otros lotes con mismo producto+contrato
+        ccg = instance.cantidad_contrato_global
+        if ccg is not None and instance.numero_contrato and instance.producto:
+            Lote.objects.filter(
+                producto=instance.producto,
+                numero_contrato__iexact=instance.numero_contrato.strip(),
+                activo=True,
+            ).exclude(pk=instance.pk).update(cantidad_contrato_global=ccg)
+        
+        return instance
     
     def update(self, instance, validated_data):
         """
@@ -1292,17 +1361,26 @@ class LoteSerializer(serializers.ModelSerializer):
         
         result = super().update(instance, validated_data)
         
+        # ISS-INV-003: Auto-propagar cantidad_contrato_global al editar
+        ccg = result.cantidad_contrato_global
+        if ccg is not None and result.numero_contrato and result.producto:
+            Lote.objects.filter(
+                producto=result.producto,
+                numero_contrato__iexact=result.numero_contrato.strip(),
+                activo=True,
+            ).exclude(pk=result.pk).update(cantidad_contrato_global=ccg)
+        
         # Solo registrar auditoría si hubo cambios reales
         if datos_anteriores:
             registrar_auditoria(
                 modelo='Lote',
-                objeto=instance,
+                objeto=result,
                 accion='actualizar',
                 cambios={
                     'datos_anteriores': datos_anteriores,
                     'datos_nuevos': datos_nuevos,
                     'usuario': user.username if user else 'sistema',
-                    'numero_lote': instance.numero_lote,
+                    'numero_lote': result.numero_lote,
                 }
             )
         

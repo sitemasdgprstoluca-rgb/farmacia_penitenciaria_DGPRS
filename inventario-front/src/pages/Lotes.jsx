@@ -158,8 +158,9 @@ const Lotes = () => {
     numero_lote: '',
     fecha_fabricacion: '',    // Campo real en DB
     fecha_caducidad: '',
-    cantidad_contrato: '',    // ISS-INV-001: Lo acordado en contrato (OPCIONAL)
-    cantidad_inicial: '',      // Primera entrega registrada (obligatorio al crear)
+    cantidad_contrato: '',    // ISS-INV-001: Total según contrato por lote (OPCIONAL)
+    cantidad_contrato_global: '', // ISS-INV-003: Total contrato para toda la clave de producto
+    cantidad_inicial: '',      // Unidades realmente recibidas (obligatorio)
     precio_unitario: '',      // Nombre real en DB (antes precio_compra)
     numero_contrato: '',
     marca: '',
@@ -444,6 +445,10 @@ const Lotes = () => {
     // ISS-SEC: cantidad_contrato solo si el usuario tiene permisos (Farmacia/Admin)
     if (esFarmaciaAdmin) {
       dataToSend.cantidad_contrato = cantContratoFinal;
+      // ISS-INV-003: cantidad_contrato_global también editable por admin/farmacia
+      if (formData.cantidad_contrato_global) {
+        dataToSend.cantidad_contrato_global = parseInt(formData.cantidad_contrato_global) || null;
+      }
     }
     
     if (!editingLote) {
@@ -464,13 +469,23 @@ const Lotes = () => {
     const ejecutarGuardado = async () => {
       setSavingLote(true);
       try {
+        let respData;
         if (editingLote) {
           // PATCH con confirmed=true (doble confirmación)
-          await lotesAPI.update(editingLote.id, { ...dataToSend, confirmed: true });
+          const resp = await lotesAPI.update(editingLote.id, { ...dataToSend, confirmed: true });
+          respData = resp.data || resp;
           toast.success('Lote actualizado correctamente');
         } else {
-          await lotesAPI.create(dataToSend);
+          const resp = await lotesAPI.create(dataToSend);
+          respData = resp.data || resp;
           toast.success('Lote creado correctamente');
+        }
+        
+        // ISS-INV-003: Mostrar alerta si se excedió el contrato global
+        if (respData?.alerta_contrato_global) {
+          setTimeout(() => {
+            toast(respData.alerta_contrato_global, { icon: '⚠️', duration: 8000 });
+          }, 500);
         }
         
         setShowModal(false);

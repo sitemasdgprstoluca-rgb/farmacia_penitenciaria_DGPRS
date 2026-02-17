@@ -178,8 +178,9 @@ def generar_plantilla_lotes(centro=None):
     - Cantidad Inicial*: Unidades recibidas/surtidas
     
     Columnas OPCIONALES:
-    - Cantidad Contrato: Total según contrato (para entregas parciales)
-    - Fecha Fabricación: Fecha de elaboración
+    - Cantidad Contrato Lote: Cantidad según contrato para este lote específico
+    - Cantidad Contrato Global: Total contratado para toda la clave del producto
+    - Fecha Recepción: Fecha de recepción del lote
     - Precio Unitario: Precio por unidad (default 0)
     - Número Contrato: Referencia del contrato
     - Marca: Laboratorio o fabricante
@@ -201,17 +202,18 @@ def generar_plantilla_lotes(centro=None):
         "Clave Producto",
         "Nombre Producto",
         "Número Lote",
-        "Fecha Fabricación",
+        "Fecha Recepción",
         "Fecha Caducidad",
         "Cantidad Inicial",
-        "Cantidad Contrato",  # ISS-INV-001: Total según contrato
+        "Cantidad Contrato Lote",
+        "Cantidad Contrato Global",
         "Precio Unitario",
         "Número Contrato",
         "Marca",
         "Activo"
     ]
 
-    column_widths = [15, 40, 20, 18, 18, 16, 18, 15, 18, 35, 12]
+    column_widths = [15, 40, 20, 18, 18, 16, 20, 22, 15, 18, 35, 12]
     
     for col_num, header in enumerate(headers, 1):
         ws.cell(row=1, column=col_num, value=header)
@@ -231,15 +233,15 @@ def generar_plantilla_lotes(centro=None):
     ejemplos = [
         # Ejemplo 1: Recepción completa (llegó todo lo del contrato)
         ["PRUEBA001", "[EJEMPLO] Paracetamol - ELIMINAR", "LOTE-PRUEBA-001",
-         fecha_fab, fecha_cad, 100, 100, 15.50, "CONT-PRUEBA-001",
+         fecha_fab, fecha_cad, 100, 100, 1000, 15.50, "CONT-PRUEBA-001",
          "[EJEMPLO] Laboratorio - ELIMINAR", "Activo"],
-        # Ejemplo 2: Recepción PARCIAL (contrato dice 100, llegaron solo 80)
+        # Ejemplo 2: Recepción PARCIAL (contrato lote dice 100, llegaron solo 80)
         ["PRUEBA002", "[EJEMPLO] Ibuprofeno - ELIMINAR", "LOTE-PRUEBA-002",
-         fecha_fab, fecha_cad, 80, 100, 18.75, "CONT-PRUEBA-002",
+         fecha_fab, fecha_cad, 80, 100, 500, 18.75, "CONT-PRUEBA-002",
          "[EJEMPLO] Farmacéutica - ELIMINAR", "Activo"],
         # Ejemplo 3: Sin contrato específico (dejar vacío)
         ["PRUEBA003", "[EJEMPLO] Jeringa - ELIMINAR", "LOTE-PRUEBA-003",
-         "", fecha_cad, 200, "", 5.00, "",
+         "", fecha_cad, 200, "", "", 5.00, "",
          "[EJEMPLO] Proveedor - ELIMINAR", "Activo"],
     ]
     
@@ -288,9 +290,11 @@ def generar_plantilla_lotes(centro=None):
         ["────────────────────────────────────────────────────────────────────────"],
         ["COLUMNAS OPCIONALES:"],
         ["────────────────────────────────────────────────────────────────────────"],
-        ["• Cantidad Contrato - Total según contrato (para entregas parciales)"],
-        ["                     Si llegan 80 de 100 contratados: Inicial=80, Contrato=100"],
-        ["• Fecha Fabricación - Formato: YYYY-MM-DD"],
+        ["• Cantidad Contrato Lote - Cantidad según contrato para ESTE lote"],
+        ["                     Si llegan 80 de 100 contratados: Inicial=80, Contrato Lote=100"],
+        ["• Cantidad Contrato Global - Total contratado para esta CLAVE de producto"],
+        ["                     Ej: Clave 615 tiene 1000 unidades totales en el contrato"],
+        ["• Fecha Recepción   - Formato: YYYY-MM-DD"],
         ["• Precio Unitario   - Precio por unidad (default: 0)"],
         ["• Número Contrato   - Referencia del contrato de adquisición"],
         ["• Marca             - Laboratorio o fabricante"],
@@ -299,10 +303,16 @@ def generar_plantilla_lotes(centro=None):
         ["════════════════════════════════════════════════════════════════════════"],
         ["📦 ENTREGAS PARCIALES Y REIMPORTACIÓN (ISS-INV-001):"],
         ["════════════════════════════════════════════════════════════════════════"],
-        ["Si el contrato establece 100 unidades pero solo llegan 80:"],
+        ["Si el contrato establece 100 unidades PARA ESTE LOTE pero solo llegan 80:"],
         ["  • Cantidad Inicial = 80 (lo que realmente llegó)"],
-        ["  • Cantidad Contrato = 100 (lo esperado según contrato)"],
-        ["  • El sistema calculará: Pendiente = 100 - 80 = 20"],
+        ["  • Cantidad Contrato Lote = 100 (lo esperado del lote según contrato)"],
+        ["  • El sistema calculará: Pendiente Lote = 100 - 80 = 20"],
+        [""],
+        ["CONTRATO GLOBAL POR CLAVE:"],
+        ["Si el contrato total para la clave 615 es de 1000 unidades:"],
+        ["  • Cantidad Contrato Global = 1000 (en TODOS los lotes de esa clave+contrato)"],
+        ["  • El sistema sumará las cantidades iniciales de todos los lotes"],
+        ["  • Pendiente Global = 1000 - (suma de lo recibido en todos los lotes)"],
         [""],
         ["Cuando llegue el resto, puede REIMPORTAR el Excel con:"],
         ["  - Misma Clave, Lote, Contrato, Marca y Fecha Caducidad"],

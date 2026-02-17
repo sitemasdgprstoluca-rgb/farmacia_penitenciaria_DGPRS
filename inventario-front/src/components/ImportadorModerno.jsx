@@ -50,12 +50,13 @@ const IMPORT_CONFIGS = {
     titulo: 'Lotes de Inventario',
     descripcion: 'Importar lotes de productos al almacén',
     columnasRequeridas: ['Clave Producto', 'Nombre Producto', 'Número Lote', 'Fecha Caducidad', 'Cantidad Inicial'],
-    columnasOpcionales: ['Cantidad Contrato', 'Fecha Fabricación', 'Precio Unitario', 'Número Contrato', 'Marca', 'Activo'],
+    columnasOpcionales: ['Cantidad Contrato Lote', 'Cantidad Contrato Global', 'Fecha Recepción', 'Precio Unitario', 'Número Contrato', 'Marca', 'Activo'],
     formatos: {
       'Fecha Caducidad': 'YYYY-MM-DD o DD/MM/YYYY',
-      'Fecha Fabricación': 'YYYY-MM-DD o DD/MM/YYYY',
+      'Fecha Recepción': 'YYYY-MM-DD o DD/MM/YYYY',
       'Cantidad Inicial': 'Número entero positivo',
-      'Cantidad Contrato': 'Número entero positivo (opcional)',
+      'Cantidad Contrato Lote': 'Número entero positivo (opcional) - esperado para este lote',
+      'Cantidad Contrato Global': 'Número entero positivo (opcional) - total contratado por clave',
       'Precio Unitario': 'Número decimal (ej: 15.50)',
       'Activo': 'Activo / Inactivo'
     },
@@ -81,7 +82,8 @@ const IMPORT_CONFIGS = {
       'Número Lote': 'LOT-2026-001',
       'Fecha Caducidad': '2027-12-31',
       'Cantidad Inicial': 100,
-      'Cantidad Contrato': 100,
+      'Cantidad Contrato Lote': 100,
+      'Cantidad Contrato Global': 1000,
       'Precio Unitario': 15.50
     }
   },
@@ -594,6 +596,14 @@ const ImportadorModerno = ({
       
       if (res.exitosa !== false && !res.error) {
         toast.success(`Importación completada: ${res.creados || 0} creados`);
+        // ISS-INV-003: Mostrar alertas de contrato global excedido
+        if (res.alertas_contrato_global && res.alertas_contrato_global.length > 0) {
+          setTimeout(() => {
+            res.alertas_contrato_global.forEach(alerta => {
+              toast(alerta, { icon: '⚠️', duration: 10000 });
+            });
+          }, 500);
+        }
       } else {
         toast.error(res.mensaje || 'Error durante la importación');
       }

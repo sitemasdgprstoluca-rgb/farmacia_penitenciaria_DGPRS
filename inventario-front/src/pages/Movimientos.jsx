@@ -1109,7 +1109,8 @@ const Movimientos = () => {
           }
         }
         
-        await movimientosAPI.create(payload);
+        const resp = await movimientosAPI.create(payload);
+        const respData = resp?.data || resp;
         
         // Mensaje según tipo y rol
         let mensajeExito = "";
@@ -1125,6 +1126,13 @@ const Movimientos = () => {
         }
         
         toast.success(mensajeExito);
+        
+        // ISS-INV-003: Alerta si la entrada excedió el contrato global
+        if (respData?.alerta_contrato_global) {
+          setTimeout(() => {
+            toast(respData.alerta_contrato_global, { icon: '⚠️', duration: 8000 });
+          }, 500);
+        }
       }
       
       // ISS-SEC FIX: Resetear modal de confirmación

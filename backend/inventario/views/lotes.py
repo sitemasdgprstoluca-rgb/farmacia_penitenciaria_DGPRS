@@ -297,15 +297,22 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
         return super().retrieve(request, *args, **kwargs)
     
     def create(self, request, *args, **kwargs):
-        """Crea un nuevo lote con validaciones"""
+        """Crea un nuevo lote con validaciones y alerta de contrato global"""
         try:
             serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
             self.perform_create(serializer)
             
             headers = self.get_success_headers(serializer.data)
+            response_data = dict(serializer.data)
+            
+            # ISS-INV-003: Incluir alerta de contrato global si existe
+            alerta = getattr(serializer, '_alerta_contrato_global', None)
+            if alerta:
+                response_data['alerta_contrato_global'] = alerta
+            
             return Response(
-                serializer.data, 
+                response_data, 
                 status=status.HTTP_201_CREATED, 
                 headers=headers
             )
@@ -361,7 +368,13 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
             serializer.is_valid(raise_exception=True)
             self.perform_update(serializer)
             
-            return Response(serializer.data)
+            response_data = dict(serializer.data)
+            # ISS-INV-003: Incluir alerta de contrato global si existe
+            alerta = getattr(serializer, '_alerta_contrato_global', None)
+            if alerta:
+                response_data['alerta_contrato_global'] = alerta
+            
+            return Response(response_data)
         except serializers.ValidationError as e:
             return Response(
                 {'error': 'Error de validacion', 'detalles': e.detail}, 
@@ -1330,11 +1343,29 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                 requisicion=None,
                 observaciones=observaciones
             )
-            return Response({
+            response_data = {
                 'mensaje': 'Stock ajustado correctamente',
                 'lote': self.get_serializer(lote_actualizado).data,
                 'movimiento_id': movimiento.id
-            })
+            }
+            
+            # ISS-INV-003: Advertir si la entrada excede el contrato global
+            if tipo.lower() == 'entrada' and lote_actualizado.cantidad_contrato_global is not None:
+                from django.db.models import Sum
+                total_recibido = Lote.objects.filter(
+                    producto=lote_actualizado.producto,
+                    numero_contrato=lote_actualizado.numero_contrato,
+                    activo=True,
+                ).aggregate(total=Sum('cantidad_inicial'))['total'] or 0
+                ccg = lote_actualizado.cantidad_contrato_global
+                if total_recibido > ccg:
+                    excedente = total_recibido - ccg
+                    response_data['alerta_contrato_global'] = (
+                        f'\u26a0\ufe0f Se excede el contrato global por {excedente} unidades. '
+                        f'Total contratado: {ccg}, total recibido: {total_recibido}.'
+                    )
+            
+            return Response(response_data)
         except serializers.ValidationError as exc:
             return Response({'error': 'Error de validacion', 'detalles': exc.detail}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as exc:
