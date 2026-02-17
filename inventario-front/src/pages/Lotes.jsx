@@ -1782,30 +1782,31 @@ const handleImportar = async (e) => {
                 </div>
               
                 <div className="grid grid-cols-2 gap-4">
-                  {/* ISS-INV-002: Cantidad del Contrato (OPCIONAL, editable por Farmacia) */}
+                  {/* ISS-INV-002: Cantidad del Contrato LOTE (solo para este lote específico) */}
                   <div>
                     <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                      CANTIDAD CONTRATO
-                      {editingLote && !esFarmaciaAdmin && <span className="text-red-500 text-xs ml-1">🔒</span>}
+                      📦 CANTIDAD CONTRATO LOTE
+                      {(editingLote && !esFarmaciaAdmin) || editingLote?.tiene_movimientos ? <span className="text-red-500 text-xs ml-1">🔒</span> : null}
+                      <span className="text-gray-500 text-xs ml-2 font-normal">(Solo para este lote)</span>
                     </label>
                     <input
                       type="number"
                       min="0"
                       value={formData.cantidad_contrato}
                       onChange={(e) => {
-                        // Editable al crear, y al editar SOLO para Farmacia/Admin
-                        const puedeEditar = !editingLote || esFarmaciaAdmin;
+                        // NO editable si: tiene movimientos, o no es farmacia/admin
+                        const puedeEditar = !editingLote?.tiene_movimientos && (!editingLote || esFarmaciaAdmin);
                         if (puedeEditar) {
                           setFormData({...formData, cantidad_contrato: e.target.value});
                         }
                       }}
                       className={`w-full px-4 py-3 border-2 rounded-xl transition-all focus:outline-none ${
-                        editingLote && !esFarmaciaAdmin
+                        (editingLote && !esFarmaciaAdmin) || editingLote?.tiene_movimientos
                           ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed' 
                           : 'border-gray-200'
                       }`}
                       onFocus={(e) => {
-                        const puedeEditar = !editingLote || esFarmaciaAdmin;
+                        const puedeEditar = !editingLote?.tiene_movimientos && (!editingLote || esFarmaciaAdmin);
                         if (puedeEditar) {
                           e.target.style.borderColor = '#9F2241';
                           e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
@@ -1815,16 +1816,18 @@ const handleImportar = async (e) => {
                         e.target.style.borderColor = '#E5E7EB';
                         e.target.style.boxShadow = 'none';
                       }}
-                      disabled={editingLote && !esFarmaciaAdmin}
-                      readOnly={editingLote && !esFarmaciaAdmin}
-                      placeholder={formData.cantidad_contrato === '' || formData.cantidad_contrato === null ? 'Sin definir (opcional)' : 'Total según contrato'}
+                      disabled={(editingLote && !esFarmaciaAdmin) || editingLote?.tiene_movimientos}
+                      readOnly={(editingLote && !esFarmaciaAdmin) || editingLote?.tiene_movimientos}
+                      placeholder={formData.cantidad_contrato === '' || formData.cantidad_contrato === null ? 'Sin definir (opcional)' : 'Total para este lote'}
                     />
                     <p className="text-xs text-gray-500 italic mt-1">
-                      {editingLote && !esFarmaciaAdmin
-                        ? 'Solo editable por Farmacia'
-                        : editingLote && esFarmaciaAdmin
-                          ? '✏️ Editable. Lo acordado en el contrato de adquisición'
-                          : 'Opcional. Cantidad total acordada en el contrato'}
+                      {editingLote?.tiene_movimientos
+                        ? '🔒 No editable - Lote con movimientos registrados'
+                        : editingLote && !esFarmaciaAdmin
+                          ? '🔒 Solo editable por Farmacia'
+                          : editingLote && esFarmaciaAdmin
+                            ? '✏️ Editable. Cantidad acordada para ESTE lote específico'
+                            : 'Opcional. Cantidad acordada solo para este lote'}
                     </p>
                   </div>
                   
@@ -1834,21 +1837,72 @@ const handleImportar = async (e) => {
                       <label className="block text-sm font-bold mb-2 text-purple-800">
                         🌐 CANTIDAD CONTRATO GLOBAL
                         <span className="text-purple-600 text-xs ml-2 font-normal">(Compartida entre todos los lotes)</span>
+                        {editingLote?.tiene_movimientos && <span className="text-red-500 text-xs ml-2">🔒</span>}
                       </label>
                       <input
                         type="number"
                         min="0"
                         value={formData.cantidad_contrato_global}
-                        onChange={(e) => setFormData({...formData, cantidad_contrato_global: e.target.value})}
-                        className="w-full px-4 py-3 border-2 border-purple-300 rounded-xl transition-all focus:outline-none focus:border-purple-600 focus:ring-2 focus:ring-purple-200"
+                        onChange={(e) => {
+                          if (!editingLote?.tiene_movimientos) {
+                            setFormData({...formData, cantidad_contrato_global: e.target.value});
+                          }
+                        }}
+                        className={`w-full px-4 py-3 border-2 rounded-xl transition-all focus:outline-none ${
+                          editingLote?.tiene_movimientos
+                            ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed'
+                            : 'border-purple-300 focus:border-purple-600 focus:ring-2 focus:ring-purple-200'
+                        }`}
+                        disabled={editingLote?.tiene_movimientos}
+                        readOnly={editingLote?.tiene_movimientos}
                         placeholder="Total para toda la clave del producto"
                       />
+                      
+                      {/* Información de trazabilidad - Mostrar total global recibido */}
+                      {editingLote && editingLote.cantidad_pendiente_global !== null && editingLote.cantidad_pendiente_global !== undefined && (
+                        <div className="mt-3 p-3 bg-white rounded-lg border border-purple-300">
+                          <div className="text-sm font-bold text-purple-900 mb-2">📊 Información del Contrato Global:</div>
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                              <span className="text-gray-600">Total Contratado:</span>
+                              <span className="ml-1 font-bold text-purple-700">{editingLote.cantidad_contrato_global || 0}</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-600">Total Recibido:</span>
+                              <span className="ml-1 font-bold text-blue-700">
+                                {editingLote.cantidad_contrato_global ? (editingLote.cantidad_contrato_global - editingLote.cantidad_pendiente_global) : 0}
+                              </span>
+                            </div>
+                            <div className="col-span-2">
+                              <span className="text-gray-600">Estado:</span>
+                              <span className={`ml-1 font-bold ${
+                                editingLote.cantidad_pendiente_global > 0 ? 'text-orange-600' :
+                                editingLote.cantidad_pendiente_global < 0 ? 'text-red-600' :
+                                'text-green-600'
+                              }`}>
+                                {editingLote.cantidad_pendiente_global > 0 
+                                  ? `⏳ Faltan ${editingLote.cantidad_pendiente_global} unidades`
+                                  : editingLote.cantidad_pendiente_global < 0
+                                    ? `⚠️ EXCESO de ${Math.abs(editingLote.cantidad_pendiente_global)} unidades`
+                                    : '✅ Completo'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      
                       <p className="text-xs text-purple-700 mt-2">
-                        <strong>⚡ Total para TODOS los lotes de la misma clave + contrato.</strong>
-                        <br />
-                        Ejemplo: Si el contrato dice 1000 unidades de Paracetamol, coloque 1000.
-                        <br />
-                        El sistema mostrará cuánto falta recibir del total contratado.
+                        {editingLote?.tiene_movimientos
+                          ? '🔒 No editable - Lote con movimientos registrados. Para validar excesos, revise la información arriba.'
+                          : (
+                            <>
+                              <strong>⚡ Total para TODOS los lotes de la misma clave + contrato.</strong>
+                              <br />
+                              Ejemplo: Si el contrato dice 1000 unidades de Paracetamol, coloque 1000.
+                              <br />
+                              El sistema mostrará cuánto falta recibir del total contratado.
+                            </>
+                          )}
                       </p>
                       {formData.numero_contrato && formData.cantidad_contrato_global && (
                         <div className="mt-2 p-2 bg-purple-100 rounded border border-purple-300">
