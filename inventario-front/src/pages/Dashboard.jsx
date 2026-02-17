@@ -1164,8 +1164,8 @@ const Dashboard = () => {
         </div>
       </header>
 
-      {/* Indicador de filtro activo para admins */}
-      {selectedCentro && puedeFiltrarPorCentro && (
+      {/* Indicador de filtro activo - solo mostrar cuando NO es Farmacia Central (el default) */}
+      {selectedCentro && selectedCentro !== 'central' && puedeFiltrarPorCentro && (
         <div 
           className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border text-sm"
           style={{ 
@@ -1178,11 +1178,11 @@ const Dashboard = () => {
             <span className="truncate">Filtrado por: <strong>{centroNombre}</strong></span>
           </span>
           <button 
-            onClick={() => handleCentroChange(null, '')}
+            onClick={() => handleCentroChange('central', 'Farmacia Central')}
             className="font-medium underline hover:no-underline whitespace-nowrap"
             style={{ color: 'var(--color-warning-hover, #D97706)' }}
           >
-            Ver todos
+            Volver a Farmacia Central
           </button>
         </div>
       )}
