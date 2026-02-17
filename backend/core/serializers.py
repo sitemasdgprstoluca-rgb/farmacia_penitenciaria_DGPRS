@@ -1200,7 +1200,19 @@ class LoteSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError(e.message_dict)
                 raise serializers.ValidationError({'numero_contrato': str(e)})
         
-        # ISS-INV-003: Validar contrato global por clave
+        # ISS-INV-001: Validar contrato del LOTE INDIVIDUAL
+        cantidad_contrato_lote = attrs.get('cantidad_contrato')
+        if cantidad_contrato_lote is not None and cantidad_contrato_lote > 0 and cantidad > 0:
+            # La cantidad_inicial del lote no debe exceder su cantidad_contrato
+            if cantidad > cantidad_contrato_lote:
+                raise serializers.ValidationError({
+                    'cantidad_inicial': (
+                        f'La cantidad inicial ({cantidad}) excede el contrato de ESTE lote ({cantidad_contrato_lote}). '
+                        f'Si es una entrega parcial, ajuste la cantidad inicial a lo recibido.'
+                    )
+                })
+        
+        # ISS-INV-003: Validar contrato GLOBAL por clave de producto
         # Si el lote tiene cantidad_contrato_global, verificar si la suma de
         # todos los lotes del mismo producto+contrato excedería el global.
         ccg = attrs.get('cantidad_contrato_global')
@@ -1233,8 +1245,8 @@ class LoteSerializer(serializers.ModelSerializer):
                 excedente = total_proyectado - ccg
                 # Guardar alerta como atributo para que el ViewSet la incluya en respuesta
                 self._alerta_contrato_global = (
-                    f'⚠️ Se excede el contrato global por {excedente} unidades. '
-                    f'Total contratado: {ccg}, ya recibido: {total_existente}, '
+                    f'⚠️ Se excede el contrato GLOBAL por {excedente} unidades. '
+                    f'Total contratado global: {ccg}, ya recibido: {total_existente}, '
                     f'este lote agrega: {cantidad}, total proyectado: {total_proyectado}.'
                 )
         
