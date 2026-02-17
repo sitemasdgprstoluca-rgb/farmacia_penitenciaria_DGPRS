@@ -485,7 +485,9 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
         queryset = Lote.objects.select_related('producto', 'centro').only(
             'id', 'numero_lote', 'fecha_caducidad', 'fecha_fabricacion',
             'precio_unitario', 'marca', 'numero_contrato', 'ubicacion',
-            'cantidad_inicial', 'cantidad_actual', 'cantidad_contrato', 'activo',
+            'cantidad_inicial', 'cantidad_actual', 'cantidad_contrato', 
+            'cantidad_contrato_global',  # ISS-INV-003: Incluir CCG en consolidados
+            'activo',
             'producto__id', 'producto__clave', 'producto__nombre', 
             'producto__descripcion', 'producto__presentacion', 'producto__unidad_medida',
             'centro__id', 'centro__nombre'
@@ -619,6 +621,7 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
             'centros_detalle': [],  # Lista con nombre y cantidad por centro
             'cantidad_contrato': None,  # Total de contrato (agregado de todos los lotes del grupo)
             'cantidad_contrato_total': 0,  # Suma de cantidades contrato
+            'cantidad_contrato_global': None,  # ISS-INV-003: Contrato global compartido
             'activo': True,
             'dias_para_caducar': 999,
             'alerta_caducidad': 'normal',
@@ -653,6 +656,8 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                 cons['precio_unitario'] = float(lote.precio_unitario or 0)
                 cons['marca'] = lote.marca or '-'
                 cons['numero_contrato'] = lote.numero_contrato
+                # ISS-INV-003: Incluir cantidad_contrato_global
+                cons['cantidad_contrato_global'] = lote.cantidad_contrato_global
                 
                 # Calcular días para caducar y alerta
                 if lote.fecha_caducidad:
@@ -704,6 +709,19 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                 cons['cantidad_pendiente'] = max(0, cons['cantidad_contrato'] - cons['cantidad_inicial_total'])
             else:
                 cons['cantidad_pendiente'] = 0
+            
+            # ISS-INV-003: Calcular cantidad_pendiente_global si hay CCG
+            if cons['cantidad_contrato_global'] and cons['numero_contrato']:
+                # Sumar TODAS las entregas del mismo producto+contrato en la BD
+                # (no solo las del queryset actual que pueden estar filtradas)
+                total_recibido_global = Lote.objects.filter(
+                    producto_id=cons['producto_id'],
+                    numero_contrato=cons['numero_contrato'],
+                    cantidad_contrato_global__isnull=False
+                ).aggregate(total=Sum('cantidad_inicial'))['total'] or 0
+                cons['cantidad_pendiente_global'] = cons['cantidad_contrato_global'] - total_recibido_global
+            else:
+                cons['cantidad_pendiente_global'] = None
             del cons['cantidad_contrato_total']  # No exponer campo auxiliar
             cons['centro_nombre'] = ', '.join(cons['centros'][:2]) + ('...' if len(cons['centros']) > 2 else '')
             
