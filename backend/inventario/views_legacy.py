@@ -849,19 +849,25 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
         # Esto refleja que se recibió más mercancía del mismo contrato/lote
         # Ej: cantidad_inicial=84, entrada=50 → cantidad_inicial=134
         if tipo_normalizado == 'entrada':
-            # ISS-SEC-007: Validar que la entrada no exceda cantidad_contrato
-            cant_contrato = lote_ref.cantidad_contrato
-            if cant_contrato is not None and cant_contrato > 0:
-                nueva_inicial = lote_ref.cantidad_inicial + abs(cantidad_int)
-                if nueva_inicial > cant_contrato:
-                    raise serializers.ValidationError({
-                        'cantidad': (
-                            f'La entrada excede la cantidad del contrato. '
-                            f'Contrato: {cant_contrato}, Ya recibido: {lote_ref.cantidad_inicial}, '
-                            f'Intentando agregar: {abs(cantidad_int)}, '
-                            f'Excedente: {nueva_inicial - cant_contrato}'
-                        )
-                    })
+            # ISS-INV-003: Validar contra cantidad_contrato_global si existe
+            ccg = lote_ref.cantidad_contrato_global
+            if ccg is not None and ccg > 0 and lote_ref.numero_contrato:
+                # Sumar todas las cantidades_iniciales de lotes hermanos (mismo producto + contrato)
+                from django.db.models import Sum
+                total_recibido = Lote.objects.filter(
+                    producto=lote_ref.producto,
+                    numero_contrato__iexact=lote_ref.numero_contrato.strip(),
+                    activo=True
+                ).aggregate(total=Sum('cantidad_inicial'))['total'] or 0
+                
+                nueva_total = total_recibido + abs(cantidad_int)
+                if nueva_total > ccg:
+                    # Solo advertencia, no bloquear (puede ser corrección o ajuste autorizado)
+                    logger.warning(
+                        f'Entrada excede contrato global. CCG: {ccg}, '
+                        f'Total recibido: {total_recibido}, Agregando: {abs(cantidad_int)}, '
+                        f'Exceso: {nueva_total - ccg}'
+                    )
             update_dict['cantidad_inicial'] = F('cantidad_inicial') + abs(cantidad_int)
         
         Lote.objects.filter(pk=lote_ref.pk).update(**update_dict)

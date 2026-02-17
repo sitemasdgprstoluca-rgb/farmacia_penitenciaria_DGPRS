@@ -292,7 +292,7 @@ class TestLoteSerializerContratoGlobal:
             'Las salidas NO deben afectar el cálculo de pendiente del contrato global'
 
     def test_pendiente_global_cero_cuando_excedido(self, lote_base):
-        """Si total_recibido >= ccg, pendiente debe ser 0 (no negativo)."""
+        """Si total_recibido >= ccg, pendiente debe ser negativo (mostrando exceso)."""
         from core.serializers import LoteSerializer
         
         # Poner cantidad_inicial mayor que ccg
@@ -302,7 +302,8 @@ class TestLoteSerializerContratoGlobal:
         serializer = LoteSerializer(lote_base)
         data = serializer.data
         
-        assert data['cantidad_pendiente_global'] == 0  # max(0, 500-600) = 0
+        # ISS-INV-003: Ahora mostramos el exceso como valor negativo
+        assert data['cantidad_pendiente_global'] == -100  # 500 - 600 = -100
 
     def test_auto_herencia_ccg_en_validate(self, lote_base, centro_ccg):
         """
@@ -431,23 +432,24 @@ class TestLoteSerializerContratoGlobal:
 
     def test_alerta_en_edicion_descuenta_lote_actual(self, lote_base, centro_ccg):
         """
-        Al editar un lote, el total_existente debe excluir la cantidad_inicial
-        del propio lote para no alertar falsamente.
+        Al editar un lote, cantidad_inicial es inmutable por seguridad.
+        La alerta se calcula correctamente con los valores actuales.
         """
         from core.serializers import LoteSerializer
         
         # lote_base: cantidad_inicial=200, ccg=500
-        # Editar cantidad_inicial a 450 → total=450 ≤ 500 → sin alerta
+        # Solo podemos editar campos permitidos como cantidad_contrato_global
         serializer = LoteSerializer(
             lote_base,
-            data={'cantidad_inicial': 450, 'cantidad_actual': 450},
+            data={'cantidad_contrato_global': 1000},  # Aumentar CCG
             partial=True,
         )
         assert serializer.is_valid(), f'Errores: {serializer.errors}'
         
+        # Con CCG=1000 y cantidad_inicial=200, no debe haber alerta
         alerta = getattr(serializer, '_alerta_contrato_global', None)
         assert alerta is None, \
-            'No debe alertar si el lote editado sigue dentro del límite'
+            'No debe alertar si el total recibido está dentro del nuevo límite'
 
 
 # ============================================================================
@@ -1710,19 +1712,21 @@ class TestFlujoUsuarioCompleto:
         data = response.json()
         assert data['cantidad_pendiente_global'] == 300
         
-        # 3. Editar lote (aumentar cantidad)
+        # 3. Editar lote (solo campos permitidos + confirmación doble)
+        # ISS-SEC: cantidad_inicial es inmutable, solo editamos campos permitidos
         response = auth_client_ccg.patch(
             f'/api/lotes/{lote_id}/',
-            {'cantidad_inicial': 350, 'cantidad_actual': 350},
+            {'cantidad_contrato_global': 800, 'confirmed': True},  # Aumentar CCG
             format='json'
         )
         assert response.status_code == 200
         
-        # 4. Verificar cambios
+        # 4. Verificar cambios (cantidad_inicial no cambia, CCG sí)
         response = auth_client_ccg.get(f'/api/lotes/{lote_id}/')
         data = response.json()
-        assert data['cantidad_inicial'] == 350
-        assert data['cantidad_pendiente_global'] == 150  # 500 - 350
+        assert data['cantidad_inicial'] == 200  # No cambia (inmutable)
+        assert data['cantidad_contrato_global'] == 800  # Actualizado
+        assert data['cantidad_pendiente_global'] == 600  # 800 - 200
 
     def test_flujo_multiples_lotes_mismo_contrato_via_api(
         self, auth_client_ccg, producto_ccg

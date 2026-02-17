@@ -224,25 +224,33 @@ def generar_plantilla_lotes(centro=None):
 
     # ============================================================
     # FILAS DE EJEMPLO - ELIMINAR ANTES DE USAR CON DATOS REALES
-    # Texto gris itálico para que sea obvio
+    # ISS-INV-003: Ejemplos con contrato global
     # ============================================================
     fecha_cad = (date.today() + timedelta(days=365)).strftime('%Y-%m-%d')
+    fecha_cad2 = (date.today() + timedelta(days=730)).strftime('%Y-%m-%d')
     fecha_fab = date.today().strftime('%Y-%m-%d')
     
-    # ISS-INV-001: Ejemplos con cantidad_contrato para mostrar entregas parciales
     ejemplos = [
-        # Ejemplo 1: Recepción completa (llegó todo lo del contrato)
-        ["PRUEBA001", "[EJEMPLO] Paracetamol - ELIMINAR", "LOTE-PRUEBA-001",
-         fecha_fab, fecha_cad, 100, 100, 1000, 15.50, "CONT-PRUEBA-001",
-         "[EJEMPLO] Laboratorio - ELIMINAR", "Activo"],
-        # Ejemplo 2: Recepción PARCIAL (contrato lote dice 100, llegaron solo 80)
-        ["PRUEBA002", "[EJEMPLO] Ibuprofeno - ELIMINAR", "LOTE-PRUEBA-002",
-         fecha_fab, fecha_cad, 80, 100, 500, 18.75, "CONT-PRUEBA-002",
-         "[EJEMPLO] Farmacéutica - ELIMINAR", "Activo"],
-        # Ejemplo 3: Sin contrato específico (dejar vacío)
-        ["PRUEBA003", "[EJEMPLO] Jeringa - ELIMINAR", "LOTE-PRUEBA-003",
-         "", fecha_cad, 200, "", "", 5.00, "",
-         "[EJEMPLO] Proveedor - ELIMINAR", "Activo"],
+        # EJEMPLO CONTRATO GLOBAL: Total contratado 1000, llega en 3 lotes
+        # Lote 1: 300 unidades, caducidad 1 año
+        ["615", "[EJEMPLO] PARACETAMOL 500MG - ELIMINAR", "LOTE-2026-001",
+         fecha_fab, fecha_cad, 300, "", 1000, 15.50, "CONT-2026-PAR-001",
+         "[EJEMPLO] Laboratorio A - ELIMINAR", "Activo"],
+        # Lote 2: 250 unidades, misma caducidad
+        ["615", "[EJEMPLO] PARACETAMOL 500MG - ELIMINAR", "LOTE-2026-002",
+         fecha_fab, fecha_cad, 250, "", 1000, 15.50, "CONT-2026-PAR-001",
+         "[EJEMPLO] Laboratorio A - ELIMINAR", "Activo"],
+        # Lote 3: 200 unidades, caducidad 2 años
+        ["615", "[EJEMPLO] PARACETAMOL 500MG - ELIMINAR", "LOTE-2026-003",
+         fecha_fab, fecha_cad2, 200, "", 1000, 15.50, "CONT-2026-PAR-001",
+         "[EJEMPLO] Laboratorio A - ELIMINAR", "Activo"],
+        # El sistema calculará: Pendiente Global = 1000 - (300+250+200) = 250
+        
+        # Ejemplo con Cantidad Contrato por Lote (entrega parcial)
+        ["616", "[EJEMPLO] IBUPROFENO 400MG - ELIMINAR", "LOTE-IBU-001",
+         fecha_fab, fecha_cad, 80, 100, "", 18.75, "CONT-2026-IBU-001",
+         "[EJEMPLO] Farmacéutica B - ELIMINAR", "Activo"],
+        # Llegaron solo 80 de 100 contratadas para este lote específico
     ]
     
     for ejemplo in ejemplos:
@@ -292,11 +300,20 @@ def generar_plantilla_lotes(centro=None):
         ["────────────────────────────────────────────────────────────────────────"],
         ["• Cantidad Contrato Lote - Cantidad según contrato para ESTE lote"],
         ["                     Si llegan 80 de 100 contratados: Inicial=80, Contrato Lote=100"],
-        ["• Cantidad Contrato Global - Total contratado para esta CLAVE de producto"],
-        ["                     Ej: Clave 615 tiene 1000 unidades totales en el contrato"],
+        [""],
+        ["• Cantidad Contrato Global - Total contratado para TODA LA CLAVE de producto"],
+        ["                     ⚠️ IMPORTANTE: Debe ser EL MISMO VALOR en todas las filas"],
+        ["                     del mismo producto + número de contrato."],
+        ["                     "],
+        ["                     Ejemplo: Si contratas 1000 unidades de Paracetamol (clave 615)"],
+        ["                     con el contrato CONT-2026-001, pon 1000 en TODAS las filas de"],
+        ["                     ese producto y contrato, aunque lleguen en múltiples lotes."],
+        ["                     "],
+        ["                     El sistema calculará automáticamente cuánto falta recibir."],
+        [""],
         ["• Fecha Recepción   - Formato: YYYY-MM-DD"],
         ["• Precio Unitario   - Precio por unidad (default: 0)"],
-        ["• Número Contrato   - Referencia del contrato de adquisición"],
+        ["• Número Contrato   - Referencia del contrato de adquisición (REQUERIDO si usas Contrato Global)"],
         ["• Marca             - Laboratorio o fabricante"],
         ["• Activo            - Activo/Inactivo (default: Activo)"],
         [""],
@@ -308,11 +325,22 @@ def generar_plantilla_lotes(centro=None):
         ["  • Cantidad Contrato Lote = 100 (lo esperado del lote según contrato)"],
         ["  • El sistema calculará: Pendiente Lote = 100 - 80 = 20"],
         [""],
-        ["CONTRATO GLOBAL POR CLAVE:"],
+        ["CONTRATO GLOBAL POR CLAVE (ISS-INV-003):"],
         ["Si el contrato total para la clave 615 es de 1000 unidades:"],
         ["  • Cantidad Contrato Global = 1000 (en TODOS los lotes de esa clave+contrato)"],
+        ["  • El Número de Contrato DEBE ser el mismo para agrupar los lotes"],
         ["  • El sistema sumará las cantidades iniciales de todos los lotes"],
         ["  • Pendiente Global = 1000 - (suma de lo recibido en todos los lotes)"],
+        [""],
+        ["⚠️ IMPORTANTE CONTRATO GLOBAL:"],
+        ["  • Ponga el MISMO valor en todas las filas del mismo producto+contrato"],
+        ["  • El sistema NO suma este valor, lo reemplaza con el más reciente"],
+        ["  • Si pone 1000 en una fila y 500 en otra, el sistema usará 500"],
+        [""],
+        ["ALERTAS AUTOMÁTICAS:"],
+        ["  • Total recibido < contrato: ⏳ FALTAN unidades (naranja)"],
+        ["  • Total recibido > contrato: ⚠️ EXCESO detectado (rojo)"],
+        ["  • Total recibido = contrato: ✅ COMPLETO (verde)"],
         [""],
         ["Cuando llegue el resto, puede REIMPORTAR el Excel con:"],
         ["  - Misma Clave, Lote, Contrato, Marca y Fecha Caducidad"],
