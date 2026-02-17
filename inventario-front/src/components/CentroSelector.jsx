@@ -80,7 +80,7 @@ const CentroSelector = ({ onCentroChange, selectedValue = '', className = '' }) 
         Centro:
       </label>
       <select
-        value={selectedValue || 'central'}
+        value={selectedValue}
         onChange={handleChange}
         className="px-3 py-2 border border-gray-200 rounded-xl shadow-sm text-sm min-w-[200px] bg-white
           focus:ring-2 focus:border-transparent transition-all appearance-none cursor-pointer

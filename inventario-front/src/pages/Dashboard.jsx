@@ -753,7 +753,12 @@ const Dashboard = () => {
     if (!cargandoPermisos && !permisosEnValidacion && esCentroRestringido && centroUsuario) {
       setSelectedCentro(centroUsuario);
     }
-  }, [cargandoPermisos, permisosEnValidacion, esCentroRestringido, centroUsuario]);
+    // ISS-FIX: Garantizar que usuarios con acceso global siempre tengan un valor válido
+    if (!cargandoPermisos && !permisosEnValidacion && !esCentroRestringido && !selectedCentro) {
+      setSelectedCentro('central');
+      setCentroNombre('Farmacia Central');
+    }
+  }, [cargandoPermisos, permisosEnValidacion, esCentroRestringido, centroUsuario, selectedCentro]);
 
   // Cargar datos
   useEffect(() => {
