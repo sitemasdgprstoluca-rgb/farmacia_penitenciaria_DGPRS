@@ -843,6 +843,22 @@ const Movimientos = () => {
     }
   }, [productoFiltro, lotes, formData.tipo, formData.subtipo_salida, esFarmacia]);
 
+  // Función para generar folio automático
+  const generarFolioAuto = useCallback(async (centroId, subtipo) => {
+    if (!centroId && subtipo !== 'merma' && subtipo !== 'caducidad') return;
+    try {
+      const response = await movimientosAPI.generarFolio({
+        centro_id: centroId || null,
+        subtipo: subtipo || 'transferencia'
+      });
+      if (response.data?.folio) {
+        setFormData(prev => ({ ...prev, folio_documento: response.data.folio }));
+      }
+    } catch (error) {
+      console.warn('No se pudo generar folio automático:', error);
+    }
+  }, []);
+
   const handleFormChange = (field, value) => {
     setFormData(prev => {
       const newState = { ...prev, [field]: value };
@@ -854,6 +870,7 @@ const Movimientos = () => {
           newState.centro = "";
           newState.subtipo_salida = "";
           newState.numero_expediente = "";
+          newState.folio_documento = ""; // Limpiar folio para entradas
         } else if (value === "salida") {
           // Para salidas: establecer subtipo por defecto
           newState.subtipo_salida = "transferencia";
@@ -865,6 +882,17 @@ const Movimientos = () => {
       // ISS-FIX: Limpiar lote y producto al cambiar subtipo (merma/caducidad filtran diferente)
       if (field === "subtipo_salida") {
         newState.lote = "";
+        // Generar folio automático al cambiar subtipo
+        const centroParaFolio = newState.centro || prev.centro;
+        if (value && (centroParaFolio || value === 'merma' || value === 'caducidad')) {
+          generarFolioAuto(centroParaFolio, value);
+        }
+      }
+      
+      // Generar folio automático al cambiar centro
+      if (field === "centro" && value) {
+        const subtipoActual = newState.subtipo_salida || prev.subtipo_salida || 'transferencia';
+        generarFolioAuto(value, subtipoActual);
       }
       
       return newState;
@@ -1992,21 +2020,21 @@ const Movimientos = () => {
                 />
               </div>
 
-              {/* FORMATO B: Folio del documento oficial */}
+              {/* FORMATO B: Folio del documento oficial - AUTO-GENERADO */}
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-gray-700">
-                  Folio Documento <span className="text-gray-400 text-xs">(opcional)</span>
+                  Folio Documento <span className="text-green-600 text-xs">(auto-generado)</span>
                 </label>
                 <input
                   type="text"
                   value={formData.folio_documento}
                   onChange={(e) => handleFormChange("folio_documento", e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Ej: FACT-2026-001, REQ-001, DON-2026"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+                  placeholder="Se genera automáticamente al seleccionar centro"
                   maxLength={100}
                 />
                 <p className="text-xs text-gray-500">
-                  📋 Número de factura, requisición o documento de referencia para trazabilidad oficial.
+                  🔢 Folio auto-generado con consecutivo por centro. Puede editarse si es necesario.
                 </p>
               </div>
 

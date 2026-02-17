@@ -1364,3 +1364,89 @@ class MovimientoViewSet(
                 'error': True,
                 'message': f'Error al confirmar entrega: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], url_path='generar-folio')
+    def generar_folio(self, request):
+        """
+        Genera automáticamente el siguiente folio de documento para un movimiento.
+        
+        Formato: {TIPO}-{CENTRO}-{AAMM}-{CONSECUTIVO:03d}
+        
+        Parámetros:
+        - centro_id: ID del centro destino (requerido para transferencias)
+        - subtipo: Tipo de salida (transferencia, receta, consumo_interno, merma, etc.)
+        
+        Ejemplos:
+        - TRF-SAN-2602-001: Transferencia a Santiaguito, febrero 2026, número 1
+        - REC-MOL-2602-015: Receta en Molino, febrero 2026, número 15
+        - CON-CEN-2602-003: Consumo interno en Centro, febrero 2026, número 3
+        """
+        from datetime import datetime
+        
+        centro_id = request.query_params.get('centro_id')
+        subtipo = request.query_params.get('subtipo', 'transferencia').lower()
+        
+        # Mapeo de subtipos a prefijos cortos
+        prefijos = {
+            'transferencia': 'TRF',
+            'receta': 'REC',
+            'consumo_interno': 'CON',
+            'merma': 'MRM',
+            'caducidad': 'CAD',
+            'donacion': 'DON',
+            'ajuste': 'AJU',
+            'devolucion': 'DEV',
+            'entrada': 'ENT',
+        }
+        prefijo = prefijos.get(subtipo, 'MOV')
+        
+        # Obtener abreviación del centro
+        centro_codigo = 'FAR'  # Default: Farmacia Central
+        if centro_id:
+            try:
+                centro = Centro.objects.get(pk=centro_id)
+                # Eliminar prefijos comunes para obtener nombre específico
+                nombre = centro.nombre.upper()
+                for prefijo_quitar in ['CENTRO PENITENCIARIO ', 'CENTRO DE INTERNAMIENTO ', 'C.P. ', 'CP ']:
+                    if nombre.startswith(prefijo_quitar):
+                        nombre = nombre[len(prefijo_quitar):]
+                        break
+                # Tomar las primeras 3 letras alfanuméricas
+                nombre_limpio = ''.join(c for c in nombre if c.isalnum())
+                centro_codigo = nombre_limpio[:3].upper() if nombre_limpio else 'CEN'
+            except Centro.DoesNotExist:
+                centro_codigo = 'CEN'
+        
+        # Año y mes actual en formato AAMM
+        ahora = datetime.now()
+        periodo = ahora.strftime('%y%m')
+        
+        # Contar movimientos existentes del mes/año para este centro y subtipo
+        # Usamos folio_documento para buscar folios con el mismo patrón
+        patron_folio = f'{prefijo}-{centro_codigo}-{periodo}-'
+        
+        # Buscar el último consecutivo de este patrón
+        ultimo_folio = Movimiento.objects.filter(
+            folio_documento__startswith=patron_folio
+        ).order_by('-folio_documento').values_list('folio_documento', flat=True).first()
+        
+        if ultimo_folio:
+            # Extraer el número del último folio
+            try:
+                ultimo_num = int(ultimo_folio.split('-')[-1])
+                siguiente_num = ultimo_num + 1
+            except (ValueError, IndexError):
+                siguiente_num = 1
+        else:
+            siguiente_num = 1
+        
+        # Generar el nuevo folio
+        nuevo_folio = f'{prefijo}-{centro_codigo}-{periodo}-{siguiente_num:03d}'
+        
+        return Response({
+            'folio': nuevo_folio,
+            'prefijo': prefijo,
+            'centro_codigo': centro_codigo,
+            'periodo': periodo,
+            'consecutivo': siguiente_num,
+        })

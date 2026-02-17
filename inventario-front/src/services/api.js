@@ -1523,6 +1523,8 @@ export const movimientosAPI = {
   }),
   // Confirmar entrega física de un movimiento individual
   confirmarEntrega: (movimientoId) => apiClient.post(`/movimientos/${movimientoId}/confirmar-entrega/`),
+  // Generar folio automático para un movimiento
+  generarFolio: (params) => apiClient.get('/movimientos/generar-folio/', { params }),
 };
 
 // Salida Masiva (solo Farmacia)
