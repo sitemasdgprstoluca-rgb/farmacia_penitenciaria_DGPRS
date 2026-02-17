@@ -1017,6 +1017,8 @@ class LoteSerializer(serializers.ModelSerializer):
     cantidad_contrato_global = serializers.IntegerField(required=False, allow_null=True, help_text='Cantidad total del contrato global por clave de producto')
     cantidad_pendiente = serializers.SerializerMethodField(help_text='Cantidad pendiente por recibir del lote (contrato_lote - surtido)')
     cantidad_pendiente_global = serializers.SerializerMethodField(help_text='Cantidad pendiente global por clave (contrato_global - sum recibidos)')
+    cantidad_recibido_global = serializers.SerializerMethodField(help_text='Total recibido del contrato global (usa cantidad_inicial, NO cantidad_actual)')
+    total_inventario_global = serializers.SerializerMethodField(help_text='Total en inventario actual de todos los lotes del contrato (suma cantidad_actual)')
     
     class Meta:
         model = Lote
@@ -1032,13 +1034,15 @@ class LoteSerializer(serializers.ModelSerializer):
             'cantidad_actual',           # Stock disponible (ej: 75)
             'cantidad_pendiente',        # Calculado: contrato_lote - inicial (ej: 216)
             'cantidad_pendiente_global', # Calculado: contrato_global - sum(inicial de todos los lotes del contrato)
+            'cantidad_recibido_global',  # Calculado: sum(inicial de todos los lotes del contrato)
+            'total_inventario_global',   # Calculado: sum(actual de todos los lotes del contrato) - LO QUE REALMENTE HAY
             'precio_unitario', 'precio_compra',
             'numero_contrato', 'marca', 'ubicacion', 'activo', 'estado',
             'dias_para_caducar', 'alerta_caducidad', 'porcentaje_consumido',
             'documentos', 'tiene_documentos', 'tiene_movimientos',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['created_at', 'updated_at', 'estado', 'documentos', 'tiene_documentos', 'tiene_movimientos', 'cantidad_pendiente', 'cantidad_pendiente_global']
+        read_only_fields = ['created_at', 'updated_at', 'estado', 'documentos', 'tiene_documentos', 'tiene_movimientos', 'cantidad_pendiente', 'cantidad_pendiente_global', 'cantidad_recibido_global', 'total_inventario_global']
         extra_kwargs = {
             'cantidad_inicial': {'required': False},  # Requerido solo en creación (validate_cantidad_inicial)
             'cantidad_contrato': {'required': False, 'allow_null': True},
@@ -1062,6 +1066,9 @@ class LoteSerializer(serializers.ModelSerializer):
         ISS-INV-003: Calcula cantidad pendiente GLOBAL por clave de producto.
         Suma todos los cantidad_inicial de lotes con mismo producto + numero_contrato.
         
+        CRÍTICO: Usa cantidad_inicial (recibido), NO cantidad_actual (disponible).
+        Las salidas NO afectan el contrato. Ej: Contrato 500, recibido 200, salió 100 → falta 300 (no 400).
+        
         Retorna:
         - NULL si cantidad_contrato_global no está definido
         - Positivo si faltan unidades por recibir
@@ -1082,6 +1089,59 @@ class LoteSerializer(serializers.ModelSerializer):
         # Retornar diferencia REAL (puede ser negativo si hay exceso)
         pendiente = obj.cantidad_contrato_global - total_recibido
         return pendiente
+    
+    def get_cantidad_recibido_global(self, obj):
+        """
+        ISS-INV-003: Calcula total RECIBIDO del contrato global.
+        
+        CRÍTICO: Usa cantidad_inicial (recibido), NO cantidad_actual (disponible).
+        Así las salidas NO afectan el total recibido del contrato.
+        
+        Retorna:
+        - NULL si no hay contrato global
+        - Total de cantidad_inicial sumada de todos los lotes del contrato
+        """
+        if obj.cantidad_contrato_global is None or not obj.numero_contrato:
+            return None
+        
+        from django.db.models import Sum
+        total_recibido = Lote.objects.filter(
+            producto=obj.producto,
+            numero_contrato__iexact=obj.numero_contrato.strip(),
+            activo=True
+        ).aggregate(total=Sum('cantidad_inicial'))['total'] or 0
+        
+        return total_recibido
+    
+    def get_total_inventario_global(self, obj):
+        """
+        ISS-INV-003: Calcula TOTAL EN INVENTARIO de todos los lotes del contrato.
+        
+        CRÍTICO: Usa cantidad_actual (disponible ahora), NO cantidad_inicial.
+        Esto muestra lo que REALMENTE hay en stock después de todas las salidas.
+        
+        Retorna:
+        - NULL si no hay contrato global
+        - Total de cantidad_actual sumada de todos los lotes del contrato
+        
+        Ejemplo:
+        - Contrato: 500
+        - Lote 1: inicial=200, actual=100 (salió 100)
+        - Lote 2: inicial=150, actual=150
+        - Total Inventario: 100 + 150 = 250
+        - Pendiente: 500 - 200 (inicial) = 300
+        """
+        if obj.cantidad_contrato_global is None or not obj.numero_contrato:
+            return None
+        
+        from django.db.models import Sum
+        total_inventario = Lote.objects.filter(
+            producto=obj.producto,
+            numero_contrato__iexact=obj.numero_contrato.strip(),
+            activo=True
+        ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
+        
+        return total_inventario
     
     def get_producto_info(self, obj):
         """Devuelve información adicional del producto para mostrar en tabla/formulario."""

@@ -1504,6 +1504,11 @@ const handleImportar = async (e) => {
                           <div className="text-purple-700 font-bold text-xs" title={`Total contratado para toda la clave ${lote.producto?.clave_producto || ''}`}>
                             🌐 Global: {lote.cantidad_contrato_global}
                           </div>
+                          {lote.total_inventario_global != null && (
+                            <div className="text-blue-700 font-semibold text-xs" title="Total en inventario actual de todos los lotes del contrato (suma cantidad_actual)">
+                              📊 Inventario: {lote.total_inventario_global}
+                            </div>
+                          )}
                           {lote.cantidad_pendiente_global != null && (
                             <div className={`text-xs font-semibold ${
                               lote.cantidad_pendiente_global > 0 
@@ -1868,9 +1873,11 @@ const handleImportar = async (e) => {
                               <span className="ml-1 font-bold text-purple-700">{editingLote.cantidad_contrato_global || 0}</span>
                             </div>
                             <div>
-                              <span className="text-gray-600">Total Recibido:</span>
+                              <span className="text-gray-600">Total Inventario:</span>
                               <span className="ml-1 font-bold text-blue-700">
-                                {editingLote.cantidad_contrato_global ? (editingLote.cantidad_contrato_global - editingLote.cantidad_pendiente_global) : 0}
+                                {editingLote.total_inventario_global != null 
+                                  ? editingLote.total_inventario_global 
+                                  : 0}
                               </span>
                             </div>
                             <div className="col-span-2">
