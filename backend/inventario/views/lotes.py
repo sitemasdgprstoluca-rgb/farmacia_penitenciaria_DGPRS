@@ -714,13 +714,28 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
             if cons['cantidad_contrato_global'] and cons['numero_contrato']:
                 # Sumar TODAS las entregas del mismo producto+contrato en la BD
                 # (no solo las del queryset actual que pueden estar filtradas)
+                # CRÍTICO: Usa cantidad_inicial (recibido), NO cantidad_actual (disponible)
+                # Las salidas NO afectan el contrato. Ej: Contrato 500, recibido 200, salió 100 → falta 300 (no 400)
                 total_recibido_global = Lote.objects.filter(
                     producto_id=cons['producto_id'],
                     numero_contrato=cons['numero_contrato'],
                     cantidad_contrato_global__isnull=False
                 ).aggregate(total=Sum('cantidad_inicial'))['total'] or 0
+                
+                # Total en INVENTARIO actual (cantidad_actual): Lo que REALMENTE hay en stock
+                total_inventario_global = Lote.objects.filter(
+                    producto_id=cons['producto_id'],
+                    numero_contrato=cons['numero_contrato'],
+                    cantidad_contrato_global__isnull=False,
+                    activo=True
+                ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
+                
+                cons['cantidad_recibido_global'] = total_recibido_global  # Total recibido (suma cantidad_inicial)
+                cons['total_inventario_global'] = total_inventario_global  # Total en inventario (suma cantidad_actual)
                 cons['cantidad_pendiente_global'] = cons['cantidad_contrato_global'] - total_recibido_global
             else:
+                cons['cantidad_recibido_global'] = None
+                cons['total_inventario_global'] = None
                 cons['cantidad_pendiente_global'] = None
             del cons['cantidad_contrato_total']  # No exponer campo auxiliar
             cons['centro_nombre'] = ', '.join(cons['centros'][:2]) + ('...' if len(cons['centros']) > 2 else '')
