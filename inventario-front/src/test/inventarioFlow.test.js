@@ -125,10 +125,10 @@ describe('Flujos de Inventario', () => {
       }
 
       if (lote.fecha_fabricacion && lote.fecha_caducidad) {
-        const fabricacion = new Date(lote.fecha_fabricacion);
+        const recepcion = new Date(lote.fecha_fabricacion);
         const caducidad = new Date(lote.fecha_caducidad);
-        if (fabricacion >= caducidad) {
-          errores.push('Fecha de fabricación debe ser anterior a caducidad');
+        if (recepcion >= caducidad) {
+          errores.push('Fecha de recepción debe ser anterior a caducidad');
         }
       }
 
@@ -173,7 +173,7 @@ describe('Flujos de Inventario', () => {
       };
       const { valido, errores } = validarLote(lote);
       expect(valido).toBe(false);
-      expect(errores).toContain('Fecha de fabricación debe ser anterior a caducidad');
+      expect(errores).toContain('Fecha de recepción debe ser anterior a caducidad');
     });
   });
 

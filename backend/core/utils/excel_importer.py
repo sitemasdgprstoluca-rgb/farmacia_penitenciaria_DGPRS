@@ -394,6 +394,88 @@ def importar_productos_desde_excel(archivo, usuario):
     return result
 
 
+def _propagar_contrato_global(filas_consolidadas, centro):
+    """
+    Propaga cantidad_contrato_global a todos los lotes activos del mismo
+    producto + numero_contrato cuando alguno de los lotes importados lo define.
+    """
+    # Recopilar valores de ccg por (producto_id, numero_contrato)
+    ccg_map = {}
+    for fila in filas_consolidadas:
+        ccg = fila.get('cantidad_contrato_global')
+        nc = fila.get('numero_contrato')
+        pid = fila.get('producto_id')
+        if ccg is not None and nc and pid:
+            key = (pid, str(nc).strip().upper())
+            ccg_map[key] = ccg
+    
+    if not ccg_map:
+        return
+    
+    for (pid, nc_upper), ccg_val in ccg_map.items():
+        qs = Lote.objects.filter(
+            producto_id=pid,
+            activo=True,
+        ).filter(numero_contrato__iexact=nc_upper)
+        if centro:
+            qs = qs.filter(centro=centro)
+        else:
+            qs = qs.filter(centro__isnull=True)
+        qs.update(cantidad_contrato_global=ccg_val)
+        logger.info(f"Propagado contrato global {ccg_val} a lotes de producto {pid} contrato {nc_upper}")
+
+
+def _verificar_contrato_global_excedido(filas_consolidadas, centro):
+    """
+    Después de crear lotes, verifica si algún contrato global fue excedido.
+    Retorna lista de alertas (strings) o lista vacía.
+    
+    NOTA: Se basa en cantidad_inicial (recibido), NO en cantidad_actual (stock).
+    Las salidas a centros NO afectan esta verificación.
+    """
+    from django.db.models import Sum
+    
+    alertas = []
+    # Recopilar combinaciones únicas de (producto_id, numero_contrato)
+    pares_verificados = set()
+    for fila in filas_consolidadas:
+        nc = fila.get('numero_contrato')
+        pid = fila.get('producto_id')
+        clave = fila.get('clave_producto', '?')
+        if nc and pid:
+            key = (pid, str(nc).strip().upper())
+            if key in pares_verificados:
+                continue
+            pares_verificados.add(key)
+            
+            # Buscar el ccg vigente en BD
+            qs = Lote.objects.filter(
+                producto_id=pid,
+                numero_contrato__iexact=key[1],
+                activo=True,
+            )
+            if centro:
+                qs = qs.filter(centro=centro)
+            else:
+                qs = qs.filter(centro__isnull=True)
+            
+            lote_ref = qs.filter(cantidad_contrato_global__isnull=False).first()
+            if not lote_ref or lote_ref.cantidad_contrato_global is None:
+                continue
+            
+            ccg = lote_ref.cantidad_contrato_global
+            total_recibido = qs.aggregate(total=Sum('cantidad_inicial'))['total'] or 0
+            
+            if total_recibido > ccg:
+                excedente = total_recibido - ccg
+                alertas.append(
+                    f'⚠️ Clave {clave} (contrato {nc}): se excede el contrato global por '
+                    f'{excedente} unidades. Contratado: {ccg}, total recibido: {total_recibido}.'
+                )
+    
+    return alertas
+
+
 def _consolidar_filas_importacion(filas_parseadas):
     """
     ISS-IMPORT-CONSOLIDATION: Pre-procesa filas parseadas y las consolida.
@@ -433,6 +515,10 @@ def _consolidar_filas_importacion(filas_parseadas):
                 grupo_completo[key]['cantidad_contrato'] = existing_cc + new_cc
             elif new_cc is not None:
                 grupo_completo[key]['cantidad_contrato'] = new_cc
+            # cantidad_contrato_global: mantener el valor más reciente (no sumar, es global)
+            new_ccg = fila.get('cantidad_contrato_global')
+            if new_ccg is not None:
+                grupo_completo[key]['cantidad_contrato_global'] = new_ccg
             # filas_origen: acumular para auditoría
             grupo_completo[key].setdefault('filas_origen', [fila.get('fila_num', '?')])
             grupo_completo[key]['filas_origen'].append(fila.get('fila_num', '?'))
@@ -481,7 +567,7 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
     - Precio Unitario: precio unitario (default 0)
     - Número Contrato: número de contrato
     - Marca: laboratorio (opcional)
-    - Fecha Fabricación: fecha de elaboración
+    - Fecha Recepción: fecha de recepción del lote
     - Activo: estado del lote (default Activo)
     
     ISS-INV-001: SOPORTE PARA CONTRATOS PARCIALES
@@ -550,9 +636,13 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
         # Lote
         'numero_lote': ['numero lote', 'lote', 'num lote', 'no lote', 'numero de lote', 
                         'n lote', 'nro lote', 'batch'],
-        # ISS-INV-001: Separar cantidad_contrato (total esperado) de cantidad_inicial (recibido)
-        'cantidad_contrato': ['cantidad contrato', 'cant contrato', 'total contrato', 
+        # ISS-INV-001: Separar cantidad_contrato (total esperado por lote) de cantidad_inicial (recibido)
+        'cantidad_contrato': ['cantidad contrato', 'cantidad contrato lote', 'cant contrato',
+                              'cant contrato lote', 'total contrato lote',
                               'cantidad esperada', 'qty contrato', 'cantidad por contrato'],
+        'cantidad_contrato_global': ['cantidad contrato global', 'contrato global',
+                                     'total contrato global', 'cantidad global contrato',
+                                     'cant contrato global', 'qty contrato global'],
         'cantidad_inicial': ['cantidad inicial', 'cantidad', 'cant inicial', 'stock', 'existencia', 
                              'qty', 'unidades', 'piezas', 'cant', 'cantidad recibida', 
                              'cantidad surtida', 'cant recibida', 'cant surtida'],
@@ -561,10 +651,11 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
         'caducidad': ['fecha caducidad', 'caducidad', 'vencimiento', 'fecha vencimiento', 
                       'expira', 'fec cad', 'expiracion', 'fecha expiracion',
                       'vencimiento fecha de caducidad'],  # Formato oficial combinado
-        'fabricacion': ['fecha fabricacion', 'fabricacion', 'elaboracion', 
-                        'fecha elaboracion', 'fec fab'],
+        'recepcion': ['fecha recepcion', 'recepcion', 'fecha de recepcion', 
+                      'fec recepcion', 'fecha fabricacion', 'fabricacion', 'elaboracion', 
+                      'fecha elaboracion', 'fec fab'],
         'fecha_ingreso': ['fecha ingreso', 'fecha de ingreso', 'ingreso', 'fecha entrada', 
-                          'fecha recepcion', 'fec ing'],  # Formato oficial
+                          'fec ing'],  # Formato oficial
         # Otros campos
         'precio': ['precio unitario', 'precio', 'costo', 'valor', 'precio unit', 'pu'],
         'contrato': ['numero contrato', 'contrato', 'no contrato', 'num contrato'],
@@ -795,11 +886,23 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                             cantidad_contrato = None  # No negativos
                     except:
                         pass  # Si no se puede parsear, se deja como NULL
+
+            # cantidad_contrato_global: total contratado para TODA la clave de producto
+            cantidad_contrato_global = None
+            if 'cantidad_contrato_global' in col_map:
+                cant_global_raw = get_val('cantidad_contrato_global')
+                if cant_global_raw:
+                    try:
+                        cantidad_contrato_global = int(float(cant_global_raw))
+                        if cantidad_contrato_global < 0:
+                            cantidad_contrato_global = None
+                    except:
+                        pass
             
-            # Fecha fabricación
+            # Fecha recepción
             fecha_fabricacion = None
-            if 'fabricacion' in col_map:
-                idx_fab = col_map['fabricacion']
+            if 'recepcion' in col_map:
+                idx_fab = col_map['recepcion']
                 fecha_fab_raw = fila[idx_fab].value if idx_fab < len(fila) else None
                 if fecha_fab_raw:
                     try:
@@ -839,6 +942,7 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                 'numero_lote': numero_lote,      # Puede cambiar tras consolidación con sufijo
                 'cantidad_inicial': cantidad_inicial,
                 'cantidad_contrato': cantidad_contrato,
+                'cantidad_contrato_global': cantidad_contrato_global,
                 'fecha_caducidad': fecha_caducidad,
                 'fecha_fabricacion': fecha_fabricacion,
                 'precio_unitario': precio_unitario,
@@ -1013,6 +1117,7 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                     cantidad_inicial=cantidad_inicial,
                     cantidad_actual=cantidad_inicial,
                     cantidad_contrato=cantidad_contrato,  # NULL si no se proporcionó
+                    cantidad_contrato_global=fila.get('cantidad_contrato_global'),
                     fecha_caducidad=fecha_caducidad,
                     fecha_fabricacion=fila.get('fecha_fabricacion'),
                     precio_unitario=fila.get('precio_unitario', Decimal('0')),
@@ -1033,8 +1138,19 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                 logger.exception(f"Error creando lote {fila.get('numero_lote', '?')}: {exc}")
                 resultado.agregar_error(fila.get('fila_num', 0), 'general', str(exc))
 
+        # Auto-propagar cantidad_contrato_global: para cada producto+contrato,
+        # si algún lote tiene ccg definido, propagarlo a todos los lotes del mismo grupo.
+        _propagar_contrato_global(filas_consolidadas, centro)
+        
+        # ISS-INV-003: Verificar si algún contrato global fue excedido
+        alertas_global = _verificar_contrato_global_excedido(filas_consolidadas, centro)
+
     result = resultado.get_dict()
     result['creados'] = creados
+    
+    # Incluir alertas de contrato global excedido
+    if alertas_global:
+        result['alertas_contrato_global'] = alertas_global
     if consolidados_archivo > 0:
         result['consolidados_archivo'] = consolidados_archivo
         result['nota_consolidacion'] = (

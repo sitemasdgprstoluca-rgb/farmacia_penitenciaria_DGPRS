@@ -1079,8 +1079,10 @@ class Lote(models.Model):
     producto = models.ForeignKey(Producto, on_delete=models.PROTECT, related_name='lotes', db_column='producto_id')
     cantidad_inicial = models.IntegerField()
     cantidad_actual = models.IntegerField(default=0)
-    # ISS-INV-001: cantidad_contrato = Total según contrato (puede diferir de lo que realmente llegó)
-    cantidad_contrato = models.IntegerField(null=True, blank=True, help_text='Cantidad total según contrato. NULL si no aplica.')
+    # ISS-INV-001: cantidad_contrato = Total según contrato por LOTE (puede diferir de lo que realmente llegó)
+    cantidad_contrato = models.IntegerField(null=True, blank=True, help_text='Cantidad según contrato para ESTE LOTE. NULL si no aplica.')
+    # ISS-INV-003: cantidad_contrato_global = Total contratado para toda la CLAVE/producto en este contrato
+    cantidad_contrato_global = models.IntegerField(null=True, blank=True, help_text='Cantidad total del contrato global por clave de producto. Compartida entre todos los lotes del mismo producto+contrato.')
     fecha_fabricacion = models.DateField(null=True, blank=True)
     fecha_caducidad = models.DateField()
     precio_unitario = models.DecimalField(max_digits=12, decimal_places=2, default=0)
@@ -1122,10 +1124,10 @@ class Lote(models.Model):
         if self.cantidad_actual is not None and self.cantidad_actual < 0:
             errors['cantidad_actual'] = 'La cantidad actual no puede ser negativa.'
         
-        # Validar que fecha_caducidad sea posterior a fecha_fabricacion
+        # Validar que fecha_caducidad sea posterior a fecha_fabricacion (fecha de recepción)
         if self.fecha_fabricacion and self.fecha_caducidad:
             if self.fecha_caducidad <= self.fecha_fabricacion:
-                errors['fecha_caducidad'] = 'La fecha de caducidad debe ser posterior a la fecha de fabricación.'
+                errors['fecha_caducidad'] = 'La fecha de caducidad debe ser posterior a la fecha de recepción.'
         
         # Validar que lotes nuevos no estén ya vencidos (solo en creación)
         if not self.pk and self.fecha_caducidad:  # Solo para nuevos registros

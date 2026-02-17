@@ -74,6 +74,36 @@ class MovimientoViewSet(
     pagination_class = CustomPagination
     http_method_names = ['get', 'post', 'head', 'options']
 
+    def create(self, request, *args, **kwargs):
+        """ISS-INV-003: Override para incluir alerta de contrato global en respuesta."""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        
+        response_data = dict(serializer.data)
+        
+        # Verificar contrato global después del movimiento tipo entrada
+        tipo = (request.data.get('tipo') or '').lower()
+        if tipo == 'entrada' and serializer.instance:
+            from django.db.models import Sum
+            lote_obj = serializer.instance.lote
+            if lote_obj and lote_obj.cantidad_contrato_global is not None and lote_obj.numero_contrato:
+                total_recibido = Lote.objects.filter(
+                    producto=lote_obj.producto,
+                    numero_contrato=lote_obj.numero_contrato,
+                    activo=True,
+                ).aggregate(total=Sum('cantidad_inicial'))['total'] or 0
+                ccg = lote_obj.cantidad_contrato_global
+                if total_recibido > ccg:
+                    excedente = total_recibido - ccg
+                    response_data['alerta_contrato_global'] = (
+                        f'\u26a0\ufe0f Se excede el contrato global por {excedente} unidades. '
+                        f'Total contratado: {ccg}, total recibido: {total_recibido}.'
+                    )
+        
+        return Response(response_data, status=status.HTTP_201_CREATED, headers=headers)
+
     def _get_producto_display(self, mov):
         """Helper para obtener display de producto de forma segura - SIN TRUNCAR."""
         if not mov.lote or not mov.lote.producto:

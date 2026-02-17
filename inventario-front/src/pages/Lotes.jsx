@@ -151,14 +151,15 @@ const Lotes = () => {
   
   // ISS-DB: Campos alineados con tabla lotes de Supabase
   // Campos reales: numero_lote, producto_id, cantidad_inicial, cantidad_actual, cantidad_contrato,
-  // fecha_fabricacion, fecha_caducidad, precio_unitario, numero_contrato, marca, ubicacion, centro_id, activo
+  // fecha_fabricacion (representa fecha de recepción), fecha_caducidad, precio_unitario, numero_contrato, marca, ubicacion, centro_id, activo
   const [formData, setFormData] = useState({
     producto: '',
     presentacion_producto: '', // Campo solo lectura - presentación viene del producto
     numero_lote: '',
-    fecha_fabricacion: '',    // Campo real en DB
+    fecha_fabricacion: '',    // Campo real en DB (representa fecha de recepción)
     fecha_caducidad: '',
-    cantidad_contrato: '',    // ISS-INV-001: Total según contrato (OPCIONAL)
+    cantidad_contrato: '',    // ISS-INV-001: Total según contrato por lote (OPCIONAL)
+    cantidad_contrato_global: '', // Total según contrato para toda la clave de producto
     cantidad_inicial: '',      // Unidades realmente recibidas (obligatorio)
     precio_unitario: '',      // Nombre real en DB (antes precio_compra)
     numero_contrato: '',
@@ -408,6 +409,19 @@ const Lotes = () => {
     
     // ISS-INV-002: cantidad_contrato es opcional, puede ser null
     let cantContratoFinal = cantidadContrato;
+
+    // cantidad_contrato_global: total contratado para toda la clave
+    let cantContratoGlobal = null;
+    if (formData.cantidad_contrato_global !== '' && formData.cantidad_contrato_global !== null && formData.cantidad_contrato_global !== undefined) {
+      cantContratoGlobal = parseInt(formData.cantidad_contrato_global, 10);
+      if (isNaN(cantContratoGlobal) || cantContratoGlobal < 0) {
+        toast.error('La cantidad del contrato global debe ser un número no negativo');
+        return;
+      }
+      if (cantContratoGlobal === 0) {
+        cantContratoGlobal = null;
+      }
+    }
     
     // Parsear precio si existe (campo real: precio_unitario)
     const precioUnitario = formData.precio_unitario ? parseFloat(formData.precio_unitario) : null;
@@ -426,7 +440,8 @@ const Lotes = () => {
       const dataToSend = {
         ...formData,
         cantidad_inicial: cantidadInicial,
-        cantidad_contrato: cantContratoFinal,  // ISS-INV-001: Cantidad del contrato
+        cantidad_contrato: cantContratoFinal,  // ISS-INV-001: Cantidad del contrato por lote
+        cantidad_contrato_global: cantContratoGlobal, // Total contrato por clave
         precio_unitario: precioUnitario,
       };
       
@@ -454,12 +469,22 @@ const Lotes = () => {
         }
       });
       
+      let respData;
       if (editingLote) {
-        await lotesAPI.update(editingLote.id, dataToSend);
+        const resp = await lotesAPI.update(editingLote.id, dataToSend);
+        respData = resp.data || resp;
         toast.success('Lote actualizado correctamente');
       } else {
-        await lotesAPI.create(dataToSend);
+        const resp = await lotesAPI.create(dataToSend);
+        respData = resp.data || resp;
         toast.success('Lote creado correctamente');
+      }
+      
+      // ISS-INV-003: Mostrar alerta si se excedió el contrato global
+      if (respData?.alerta_contrato_global) {
+        setTimeout(() => {
+          toast(respData.alerta_contrato_global, { icon: '⚠️', duration: 8000 });
+        }, 500);
       }
       
       setShowModal(false);
@@ -519,7 +544,8 @@ const Lotes = () => {
       fecha_fabricacion: lote.fecha_fabricacion || '',
       fecha_caducidad: lote.fecha_caducidad,
       cantidad_inicial: lote.cantidad_inicial,
-      cantidad_contrato: lote.cantidad_contrato || '',  // ISS-INV-001: Cantidad del contrato
+      cantidad_contrato: lote.cantidad_contrato || '',  // ISS-INV-001: Cantidad del contrato por lote
+      cantidad_contrato_global: lote.cantidad_contrato_global || '', // Total contrato por clave
       precio_unitario: lote.precio_unitario || lote.precio_compra || '',
       numero_contrato: lote.numero_contrato || '',
       marca: lote.marca || '',
@@ -701,7 +727,8 @@ const Lotes = () => {
       fecha_fabricacion: '',
       fecha_caducidad: '',
       cantidad_inicial: '',
-      cantidad_contrato: '',  // ISS-INV-001: Cantidad del contrato
+      cantidad_contrato: '',  // ISS-INV-001: Cantidad del contrato por lote
+      cantidad_contrato_global: '', // Total contrato por clave
       precio_unitario: '',
       numero_contrato: '',
       marca: '',
@@ -887,8 +914,8 @@ const handleImportar = async (e) => {
     const str = String(errorStr);
     
     // Errores de fecha de caducidad
-    if (str.includes('fecha de caducidad debe ser posterior a la fecha de fabricación')) {
-      return '⚠️ La fecha de caducidad es anterior a la fabricación (dato incorrecto en Excel)';
+    if (str.includes('fecha de caducidad debe ser posterior a la fecha de fabricación') || str.includes('fecha de caducidad debe ser posterior a la fecha de recepción')) {
+      return '⚠️ La fecha de caducidad es anterior a la recepción (dato incorrecto en Excel)';
     }
     if (str.includes('No se puede registrar un lote ya vencido') || str.includes('lote ya vencido')) {
       return '⚠️ Lote ya vencido - no se puede registrar inventario caducado';
@@ -1412,33 +1439,46 @@ const handleImportar = async (e) => {
                         <span className="text-gray-400 italic">Sin marca</span>
                       )}
                     </td>
-                    {/* ISS-INV-002: Columna de Inventario mejorada con info de contrato */}
+                    {/* ISS-INV-002: Columna de Inventario mejorada con info de contrato dual */}
                     <td className="px-3 py-2 text-xs">
                       <div className={`font-bold text-base ${lote.cantidad_actual === 0 ? 'text-red-600' : 'text-green-700'}`}>
                         {lote.cantidad_actual}
                       </div>
-                      {/* Mostrar "de X" con la referencia correcta: contrato si existe, sino inicial */}
+                      {/* Mostrar "de X" con la referencia correcta: contrato lote si existe, sino inicial */}
                       <div className="text-gray-500">
                         de {lote.cantidad_contrato != null ? lote.cantidad_contrato : lote.cantidad_inicial}
                       </div>
                       {/* Si no hay cantidad_contrato, mostrar indicador sutil */}
-                      {lote.cantidad_contrato == null && (
+                      {lote.cantidad_contrato == null && lote.cantidad_contrato_global == null && (
                         <div className="text-gray-400 italic text-xs mt-0.5" title="Total del contrato no definido">
                           — Sin contrato
                         </div>
                       )}
-                      {/* Mostrar desglose si contrato difiere de inicial (entrega parcial) */}
+                      {/* Desglose: contrato lote */}
                       {lote.cantidad_contrato != null && lote.cantidad_contrato !== lote.cantidad_inicial && (
                         <div className="mt-1 text-xs">
-                          <div className="text-blue-600" title={`Contrato: ${lote.cantidad_contrato} | Recibido: ${lote.cantidad_inicial}`}>
-                            📄 Contrato: {lote.cantidad_contrato}
+                          <div className="text-blue-600" title={`Contrato Lote: ${lote.cantidad_contrato} | Recibido: ${lote.cantidad_inicial}`}>
+                            📄 Contrato Lote: {lote.cantidad_contrato}
                           </div>
                           <div className="text-indigo-600" title={`Recibido inicialmente: ${lote.cantidad_inicial} unidades`}>
                             📦 Recibido: {lote.cantidad_inicial}
                           </div>
                           {lote.cantidad_contrato > lote.cantidad_inicial && (
-                            <div className="text-orange-600" title={`Pendiente por recibir: ${lote.cantidad_contrato - lote.cantidad_inicial} unidades`}>
-                              ⏳ Pendiente: {lote.cantidad_contrato - lote.cantidad_inicial}
+                            <div className="text-orange-600" title={`Pendiente lote: ${lote.cantidad_contrato - lote.cantidad_inicial} unidades`}>
+                              ⏳ Pendiente Lote: {lote.cantidad_contrato - lote.cantidad_inicial}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {/* Contrato Global por clave */}
+                      {lote.cantidad_contrato_global != null && (
+                        <div className="mt-1 text-xs border-t border-gray-200 pt-1">
+                          <div className="text-purple-600" title={`Contrato Global: ${lote.cantidad_contrato_global} unidades para toda la clave`}>
+                            📋 Global: {lote.cantidad_contrato_global}
+                          </div>
+                          {lote.cantidad_pendiente_global != null && lote.cantidad_pendiente_global > 0 && (
+                            <div className="text-amber-600" title={`Pendiente global: ${lote.cantidad_pendiente_global} unidades por recibir de toda la clave`}>
+                              ⏳ Pend. Global: {lote.cantidad_pendiente_global}
                             </div>
                           )}
                         </div>
@@ -1679,10 +1719,10 @@ const handleImportar = async (e) => {
                 </div>
               
                 <div className="grid grid-cols-2 gap-4">
-                  {/* ISS-INV-002: Cantidad del Contrato (OPCIONAL, editable por Farmacia) */}
+                  {/* ISS-INV-002: Cantidad del Contrato por Lote (OPCIONAL, editable por Farmacia) */}
                   <div>
                     <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                      CANTIDAD CONTRATO
+                      CONTRATO LOTE
                       {editingLote && !esFarmaciaAdmin && <span className="text-red-500 text-xs ml-1">🔒</span>}
                     </label>
                     <input
@@ -1714,14 +1754,12 @@ const handleImportar = async (e) => {
                       }}
                       disabled={editingLote && !esFarmaciaAdmin}
                       readOnly={editingLote && !esFarmaciaAdmin}
-                      placeholder={formData.cantidad_contrato === '' || formData.cantidad_contrato === null ? 'Sin definir (opcional)' : 'Total según contrato'}
+                      placeholder="Sin definir (opcional)"
                     />
                     <p className="text-xs text-gray-500 italic mt-1">
                       {editingLote && !esFarmaciaAdmin
                         ? 'Solo editable por Farmacia'
-                        : editingLote && esFarmaciaAdmin
-                          ? '✏️ Editable. Cantidad total establecida por contrato (opcional)'
-                          : 'Opcional. Total de unidades según contrato de adquisición'}
+                        : 'Cantidad esperada de ESTE lote según contrato'}
                     </p>
                   </div>
                   
@@ -1764,7 +1802,7 @@ const handleImportar = async (e) => {
                   </div>
                 </div>
 
-                {/* Precio Unitario */}
+                {/* Precio Unitario y Contrato Global */}
                 <div className="grid grid-cols-2 gap-4">
                   {/* Precio Unitario (nombre real en DB) */}
                   <div>
@@ -1800,13 +1838,55 @@ const handleImportar = async (e) => {
                       />
                     </div>
                   </div>
+                  {/* Contrato Global por Clave */}
+                  <div>
+                    <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
+                      CONTRATO GLOBAL (CLAVE)
+                      {editingLote && !esFarmaciaAdmin && <span className="text-red-500 text-xs ml-1">🔒</span>}
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={formData.cantidad_contrato_global}
+                      onChange={(e) => {
+                        const puedeEditar = !editingLote || esFarmaciaAdmin;
+                        if (puedeEditar) {
+                          setFormData({...formData, cantidad_contrato_global: e.target.value});
+                        }
+                      }}
+                      className={`w-full px-4 py-3 border-2 rounded-xl transition-all focus:outline-none ${
+                        editingLote && !esFarmaciaAdmin
+                          ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed' 
+                          : 'border-gray-200'
+                      }`}
+                      onFocus={(e) => {
+                        const puedeEditar = !editingLote || esFarmaciaAdmin;
+                        if (puedeEditar) {
+                          e.target.style.borderColor = '#9F2241';
+                          e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
+                        }
+                      }}
+                      onBlur={(e) => {
+                        e.target.style.borderColor = '#E5E7EB';
+                        e.target.style.boxShadow = 'none';
+                      }}
+                      disabled={editingLote && !esFarmaciaAdmin}
+                      readOnly={editingLote && !esFarmaciaAdmin}
+                      placeholder="Sin definir (opcional)"
+                    />
+                    <p className="text-xs text-gray-500 italic mt-1">
+                      {editingLote && !esFarmaciaAdmin
+                        ? 'Solo editable por Farmacia'
+                        : 'Total contratado para TODA la clave del producto'}
+                    </p>
+                  </div>
                 </div>
 
-                {/* Fecha de Fabricación y Ubicación */}
+                {/* Fecha de Recepción y Ubicación */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                      FECHA DE FABRICACIÓN {editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
+                      FECHA DE RECEPCIÓN {editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
                     </label>
                     <input
                       type="date"
@@ -1832,7 +1912,7 @@ const handleImportar = async (e) => {
                       max={new Date().toISOString().split('T')[0]}
                     />
                     <p className="text-xs text-gray-500 italic mt-1">
-                      {editingLote?.tiene_movimientos ? '🔒 No editable' : 'Opcional - Fecha de manufactura del lote'}
+                      {editingLote?.tiene_movimientos ? '🔒 No editable' : 'Opcional - Fecha de recepción del lote'}
                     </p>
                   </div>
                   
