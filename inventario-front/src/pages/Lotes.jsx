@@ -94,6 +94,10 @@ const Lotes = () => {
   
   // Permisos específicos para acciones - usar permisos finos del backend
   const esFarmaciaAdmin = checkEsFarmaciaAdmin(user);
+  
+  // DEBUG: Log para diagnóstico (eliminar después)
+  console.log('🔐 Lotes - Usuario:', user?.username, 'rol:', user?.rol, 'rol_efectivo:', user?.rol_efectivo, 'is_superuser:', user?.is_superuser, '→ esFarmaciaAdmin:', esFarmaciaAdmin);
+  
   const puede = {
     // Usar permisos finos si existen, sino fallback al rol
     crear: permisos?.crearLote === true || (esFarmaciaAdmin && permisos?.crearLote !== false),
@@ -451,6 +455,9 @@ const Lotes = () => {
       }
     }
     
+    // DEBUG: Log para diagnóstico (eliminar después)
+    console.log('📤 Guardando lote - esFarmaciaAdmin:', esFarmaciaAdmin, 'cantidad_contrato enviado:', dataToSend.cantidad_contrato, 'formData.cantidad_contrato:', formData.cantidad_contrato);
+    
     if (!editingLote) {
       // CREAR: incluir cantidad_inicial (backend calcula cantidad_actual = cantidad_inicial)
       dataToSend.cantidad_inicial = cantidadInicial;
@@ -574,6 +581,9 @@ const Lotes = () => {
   };
 
   const handleEdit = (lote) => {
+    // DEBUG: Log para diagnóstico (eliminar después)
+    console.log('✏️ handleEdit - Lote:', lote.id, 'tiene_movimientos:', lote.tiene_movimientos, 'cantidad_contrato:', lote.cantidad_contrato);
+    
     setEditingLote(lote);
     // Obtener presentación del producto si está disponible
     const productoInfo = lote.producto_info || {};
