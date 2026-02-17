@@ -8199,18 +8199,29 @@ def dashboard_resumen(request):
         filtrar_por_centro = not is_farmacia_or_admin(user)
         user_centro = get_user_centro(user) if filtrar_por_centro else None
         
-        # Admin/farmacia/vista puede filtrar por centro especfico
+        # Admin/farmacia/vista puede filtrar por centro específico
         centro_param = request.query_params.get('centro')
         if centro_param and centro_param not in ['', 'null', 'undefined', 'todos']:
             if is_farmacia_or_admin(user):
-                try:
-                    user_centro = Centro.objects.get(pk=int(centro_param))
-                    filtrar_por_centro = True
-                except (Centro.DoesNotExist, ValueError, TypeError):
-                    pass
+                # ISS-FIX: Manejar 'central' para filtrar solo Farmacia Central (centro=null)
+                if centro_param.lower() == 'central':
+                    user_centro = None  # Marcador especial
+                    filtrar_por_centro = 'central'  # Flag especial para Farmacia Central
+                else:
+                    try:
+                        user_centro = Centro.objects.get(pk=int(centro_param))
+                        filtrar_por_centro = True
+                    except (Centro.DoesNotExist, ValueError, TypeError):
+                        pass
         
         # ISS-005: Generar clave de caché única por usuario/centro
-        centro_id = user_centro.id if user_centro else 'global'
+        # ISS-FIX: 'central' tiene su propia clave de caché
+        if filtrar_por_centro == 'central':
+            centro_id = 'central'
+        elif user_centro:
+            centro_id = user_centro.id
+        else:
+            centro_id = 'global'
         cache_key = f'dashboard_resumen_{centro_id}'
         
         # ISS-FIX: Parámetro refresh para forzar recarga sin caché
@@ -8221,8 +8232,15 @@ def dashboard_resumen(request):
         
         if cached_kpi is None:
             # === PRODUCTOS ===
-            # ISS-FIX: Para usuarios de centro, contar solo productos que tienen lotes en SU centro
-            if filtrar_por_centro and user_centro:
+            # ISS-FIX: Para 'central', contar productos con lotes en Farmacia Central (centro=null)
+            if filtrar_por_centro == 'central':
+                total_productos = Producto.objects.filter(
+                    activo=True,
+                    lotes__centro__isnull=True,
+                    lotes__activo=True,
+                    lotes__cantidad_actual__gt=0
+                ).distinct().count()
+            elif filtrar_por_centro and user_centro:
                 # Contar productos distintos que tienen lotes activos con stock en el centro
                 total_productos = Producto.objects.filter(
                     activo=True,
@@ -8239,7 +8257,10 @@ def dashboard_resumen(request):
                 cantidad_actual__gt=0
             )
             
-            if filtrar_por_centro and user_centro:
+            # ISS-FIX: Filtrar por Farmacia Central (centro=null) o por centro específico
+            if filtrar_por_centro == 'central':
+                lotes_query = lotes_query.filter(centro__isnull=True)
+            elif filtrar_por_centro and user_centro:
                 lotes_query = lotes_query.filter(centro=user_centro)
             
             stock_total = lotes_query.aggregate(
@@ -8252,7 +8273,11 @@ def dashboard_resumen(request):
             inicio_mes = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
             
             movimientos_base = Movimiento.objects.all()
-            if filtrar_por_centro and user_centro:
+            # ISS-FIX: Filtrar movimientos por Farmacia Central o por centro específico
+            if filtrar_por_centro == 'central':
+                # Solo movimientos de lotes de Farmacia Central (centro=null)
+                movimientos_base = movimientos_base.filter(lote__centro__isnull=True)
+            elif filtrar_por_centro and user_centro:
                 # ISS-CENTRO FIX v2: Solo movimientos donde el lote pertenece al centro
                 # o donde el centro es el origen (no incluir salidas de otros centros hacia este)
                 movimientos_base = movimientos_base.filter(
@@ -8282,7 +8307,10 @@ def dashboard_resumen(request):
         
         # === ÚLTIMOS MOVIMIENTOS (siempre frescos, no cacheados) ===
         movimientos_base = Movimiento.objects.all()
-        if filtrar_por_centro and user_centro:
+        # ISS-FIX: Filtrar movimientos por Farmacia Central o por centro específico
+        if filtrar_por_centro == 'central':
+            movimientos_base = movimientos_base.filter(lote__centro__isnull=True)
+        elif filtrar_por_centro and user_centro:
             # ISS-CENTRO FIX v2: Solo movimientos donde el lote pertenece al centro
             # o donde el centro es el origen (no incluir salidas de otros centros hacia este)
             movimientos_base = movimientos_base.filter(

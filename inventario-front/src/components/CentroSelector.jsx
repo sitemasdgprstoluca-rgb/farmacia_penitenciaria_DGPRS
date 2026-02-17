@@ -48,9 +48,16 @@ const CentroSelector = ({ onCentroChange, selectedValue = '', className = '' }) 
   const handleChange = (e) => {
     const value = e.target.value;
     // Encontrar el nombre del centro seleccionado
-    const centroSeleccionado = centros.find(c => String(c.id) === value);
-    const nombreCentro = centroSeleccionado ? centroSeleccionado.nombre : '';
-    onCentroChange?.(value === '' ? null : value, nombreCentro); // null = global, ID string = centro específico
+    let nombreCentro = '';
+    if (value === 'central') {
+      nombreCentro = 'Farmacia Central';
+    } else if (value === '') {
+      nombreCentro = 'Todos los centros';
+    } else {
+      const centroSeleccionado = centros.find(c => String(c.id) === value);
+      nombreCentro = centroSeleccionado ? centroSeleccionado.nombre : '';
+    }
+    onCentroChange?.(value === '' ? null : value, nombreCentro);
   };
 
   // No renderizar si el usuario no tiene acceso global
@@ -73,7 +80,7 @@ const CentroSelector = ({ onCentroChange, selectedValue = '', className = '' }) 
         Centro:
       </label>
       <select
-        value={selectedValue || ''}
+        value={selectedValue || 'central'}
         onChange={handleChange}
         className="px-3 py-2 border border-gray-200 rounded-xl shadow-sm text-sm min-w-[200px] bg-white
           focus:ring-2 focus:border-transparent transition-all appearance-none cursor-pointer
@@ -86,6 +93,9 @@ const CentroSelector = ({ onCentroChange, selectedValue = '', className = '' }) 
           paddingRight: '30px'
         }}
       >
+        <option value="central">
+          🏥 Farmacia Central
+        </option>
         <option value="">
           🌐 Todos los centros
         </option>
