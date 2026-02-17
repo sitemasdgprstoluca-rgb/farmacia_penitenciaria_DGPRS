@@ -586,6 +586,7 @@ const Lotes = () => {
       fecha_caducidad: lote.fecha_caducidad,
       cantidad_inicial: lote.cantidad_inicial,
       cantidad_contrato: lote.cantidad_contrato || '',  // ISS-INV-001: Cantidad del contrato
+      cantidad_contrato_global: lote.cantidad_contrato_global || '',  // ISS-INV-003: Total compartido
       precio_unitario: lote.precio_unitario || lote.precio_compra || '',
       numero_contrato: lote.numero_contrato || '',
       marca: lote.marca || '',
@@ -1478,23 +1479,46 @@ const handleImportar = async (e) => {
                         <span className="text-gray-400 italic">Sin marca</span>
                       )}
                     </td>
-                    {/* ISS-INV-002: Columna de Inventario mejorada con info de contrato */}
+                    {/* ISS-INV-003: Columna de Inventario con trazabilidad de contratos */}
                     <td className="px-3 py-2 text-xs">
+                      {/* Existencia actual */}
                       <div className={`font-bold text-base ${lote.cantidad_actual === 0 ? 'text-red-600' : 'text-green-700'}`}>
                         {lote.cantidad_actual}
                       </div>
-                      {/* Mostrar "de X" con la referencia correcta: contrato si existe, sino inicial */}
+                      
+                      {/* Referencia del lote individual */}
                       <div className="text-gray-500">
                         de {lote.cantidad_contrato != null ? lote.cantidad_contrato : lote.cantidad_inicial}
                       </div>
-                      {/* Si no hay cantidad_contrato, mostrar indicador sutil */}
-                      {lote.cantidad_contrato == null && (
-                        <div className="text-gray-400 italic text-xs mt-0.5" title="Total del contrato no definido">
-                          — Sin contrato
+                      
+                      {/* ISS-INV-003: Mostrar número de contrato si existe */}
+                      {lote.numero_contrato && (
+                        <div className="text-purple-700 font-semibold text-xs mt-1" title={`Número de contrato: ${lote.numero_contrato}`}>
+                          📋 {lote.numero_contrato.length > 15 ? lote.numero_contrato.substring(0, 15) + '...' : lote.numero_contrato}
                         </div>
                       )}
-                      {/* Mostrar desglose si contrato difiere de inicial (entrega parcial) */}
-                      {lote.cantidad_contrato != null && lote.cantidad_contrato !== lote.cantidad_inicial && (
+                      
+                      {/* ISS-INV-003: Mostrar cantidad_contrato_global si existe */}
+                      {lote.cantidad_contrato_global != null && (
+                        <div className="mt-1 p-1 bg-purple-50 border border-purple-200 rounded">
+                          <div className="text-purple-700 font-bold text-xs" title={`Total contratado para toda la clave ${lote.producto?.clave_producto || ''}`}>
+                            🌐 Global: {lote.cantidad_contrato_global}
+                          </div>
+                          {lote.cantidad_pendiente_global != null && (
+                            <div className={`text-xs font-semibold ${lote.cantidad_pendiente_global > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                              {lote.cantidad_pendiente_global > 0 
+                                ? `⏳ Faltan: ${lote.cantidad_pendiente_global}`
+                                : lote.cantidad_pendiente_global < 0
+                                  ? `⚠️ Exceso: ${Math.abs(lote.cantidad_pendiente_global)}`
+                                  : '✅ Completo'
+                              }
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      
+                      {/* Mostrar desglose si hay entregas parciales en este lote */}
+                      {lote.cantidad_contrato != null && lote.cantidad_contrato !== lote.cantidad_inicial && !lote.cantidad_contrato_global && (
                         <div className="mt-1 text-xs">
                           <div className="text-blue-600" title={`Contrato: ${lote.cantidad_contrato} | Recibido: ${lote.cantidad_inicial}`}>
                             📄 Contrato: {lote.cantidad_contrato}
@@ -1504,9 +1528,16 @@ const handleImportar = async (e) => {
                           </div>
                           {lote.cantidad_contrato > lote.cantidad_inicial && (
                             <div className="text-orange-600" title={`Pendiente por recibir: ${lote.cantidad_contrato - lote.cantidad_inicial} unidades`}>
-                              ⏳ Pendiente: {lote.cantidad_contrato - lote.cantidad_inicial}
+                              ⏳ Pendiente lote: {lote.cantidad_contrato - lote.cantidad_inicial}
                             </div>
                           )}
+                        </div>
+                      )}
+                      
+                      {/* Indicador si no tiene ningún contrato definido */}
+                      {lote.cantidad_contrato == null && lote.cantidad_contrato_global == null && !lote.numero_contrato && (
+                        <div className="text-gray-400 italic text-xs mt-0.5" title="Sin información de contrato">
+                          — Sin contrato
                         </div>
                       )}
                     </td>
@@ -1790,6 +1821,45 @@ const handleImportar = async (e) => {
                           : 'Opcional. Cantidad total acordada en el contrato'}
                     </p>
                   </div>
+                  
+                  {/* ISS-INV-003: Cantidad Contrato Global - compartida entre todos los lotes */}
+                  {esFarmaciaAdmin && (
+                    <div className="bg-purple-50 p-4 rounded-xl border-2 border-purple-200">
+                      <label className="block text-sm font-bold mb-2 text-purple-800">
+                        🌐 CANTIDAD CONTRATO GLOBAL
+                        <span className="text-purple-600 text-xs ml-2 font-normal">(Compartida entre todos los lotes)</span>
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={formData.cantidad_contrato_global}
+                        onChange={(e) => setFormData({...formData, cantidad_contrato_global: e.target.value})}
+                        className="w-full px-4 py-3 border-2 border-purple-300 rounded-xl transition-all focus:outline-none focus:border-purple-600 focus:ring-2 focus:ring-purple-200"
+                        placeholder="Total para toda la clave del producto"
+                      />
+                      <p className="text-xs text-purple-700 mt-2">
+                        <strong>⚡ Total para TODOS los lotes de la misma clave + contrato.</strong>
+                        <br />
+                        Ejemplo: Si el contrato dice 1000 unidades de Paracetamol, coloque 1000.
+                        <br />
+                        El sistema mostrará cuánto falta recibir del total contratado.
+                      </p>
+                      {formData.numero_contrato && formData.cantidad_contrato_global && (
+                        <div className="mt-2 p-2 bg-purple-100 rounded border border-purple-300">
+                          <p className="text-xs text-purple-900">
+                            ✅ Se aplicará a todos los lotes activos de este producto con contrato: <strong>{formData.numero_contrato}</strong>
+                          </p>
+                        </div>
+                      )}
+                      {!formData.numero_contrato && formData.cantidad_contrato_global && (
+                        <div className="mt-2 p-2 bg-yellow-100 rounded border border-yellow-300">
+                          <p className="text-xs text-yellow-900">
+                            ⚠️ Debe especificar el <strong>Número de Contrato</strong> para que el sistema pueda propagar el valor global correctamente.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   
                   {/* Cantidad Inicial - cantidad realmente recibida (puede ser parcial) */}
                   <div>
