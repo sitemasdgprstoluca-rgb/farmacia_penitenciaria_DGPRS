@@ -149,6 +149,53 @@ const formatInventario = (producto) => {
   return formatStock(producto);
 };
 
+// ISS-UX: Generar tooltip informativo para el inventario del producto
+const generarTooltipInventario = (producto) => {
+  const inventario = getInventarioDisponible(producto);
+  const minimo = Number(producto.stock_minimo) || 0;
+  const nivelStock = calcularNivelStock(producto);
+  const estado = determinarEstadoProducto(producto);
+  
+  const nivelLabels = {
+    sin_stock: '🔴 Sin inventario',
+    critico: '🔴 Crítico',
+    bajo: '🟡 Bajo',
+    normal: '🟢 Normal',
+    alto: '🟢 Alto',
+  };
+  
+  const estadoEmojis = {
+    'Activo': '✅',
+    'Inactivo': '⛔',
+    'Sin inventario': '📭',
+    'Por surtir': '⚠️',
+  };
+  
+  const diferencia = inventario - minimo;
+  let lineaDiferencia = '';
+  if (minimo > 0) {
+    if (diferencia > 0) {
+      lineaDiferencia = `✨ Excedente: +${diferencia.toLocaleString()}`;
+    } else if (diferencia < 0) {
+      lineaDiferencia = `⏳ Faltante: ${diferencia.toLocaleString()}`;
+    } else {
+      lineaDiferencia = `⚖️ Justo en mínimo`;
+    }
+  }
+  
+  return [
+    `📦 Inventario de Producto`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `📊 Stock actual: ${inventario.toLocaleString()}`,
+    `📉 Stock mínimo: ${minimo > 0 ? minimo.toLocaleString() : 'No definido'}`,
+    minimo > 0 ? `━━━━━━━━━━━━━━━━━━━━` : null,
+    lineaDiferencia || null,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `${nivelLabels[nivelStock] || nivelStock}`,
+    `${estadoEmojis[estado.label] || '•'} ${estado.label}`,
+  ].filter(Boolean).join('\n');
+};
+
 
 
 const calcularNivelStock = (producto) => {
@@ -1594,21 +1641,42 @@ const Productos = () => {
 
                 <td className="px-2 sm:px-4 py-3 text-sm text-gray-600">{producto.presentacion || producto.unidad_medida || <span className="text-gray-400 italic text-xs">-</span>}</td>
 
-                <td className="px-2 sm:px-4 py-3 text-sm">{formatInventario(producto)}</td>
+                {/* Inventario con tooltip informativo */}
+                <td className="px-2 sm:px-4 py-3 text-sm">
+                  <span 
+                    className={`font-semibold tabular-nums cursor-help ${
+                      nivelStock === 'sin_stock' || nivelStock === 'critico'
+                        ? 'text-red-600'
+                        : nivelStock === 'bajo'
+                          ? 'text-amber-600'
+                          : 'text-slate-700'
+                    }`}
+                    title={generarTooltipInventario(producto)}
+                  >
+                    {formatInventario(producto)}
+                  </span>
+                </td>
 
                 <td className="px-2 sm:px-4 py-3 text-sm">
                   <button
                     type="button"
                     onClick={() => verLotesProducto(producto)}
                     className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors cursor-pointer"
-                    title="Ver detalle de lotes"
+                    title={`📦 Ver lotes de: ${producto.nombre}\n━━━━━━━━━━━━━━━━━━━━\n📋 Lotes activos: ${numLotes}\n💡 Click para ver detalle`}
                   >
                     <FaLayerGroup className="text-xs" />
                     <span className="font-semibold">{numLotes !== null ? numLotes : '?'}</span>
                   </button>
                 </td>
 
-                <td className="px-2 sm:px-4 py-3 text-sm">{producto.stock_minimo}</td>
+                <td 
+                  className="px-2 sm:px-4 py-3 text-sm cursor-help"
+                  title={`📉 Stock Mínimo\n━━━━━━━━━━━━━━━━━━━━\nCantidad: ${producto.stock_minimo || 'No definido'}\n💡 Cuando el inventario baja de este valor, el producto se marca como "Por surtir"`}
+                >
+                  <span className={producto.stock_minimo ? 'text-slate-700' : 'text-gray-400 italic'}>
+                    {producto.stock_minimo || '-'}
+                  </span>
+                </td>
 
                 <td className="px-2 sm:px-4 py-3 text-sm">{renderEstadoBadge(estadoInventario.label, estadoInventario.activo)}</td>
 
