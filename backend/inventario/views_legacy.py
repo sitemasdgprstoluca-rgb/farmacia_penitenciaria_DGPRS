@@ -8231,11 +8231,8 @@ def dashboard_resumen(request):
         cached_kpi = None if force_refresh else cache.get(cache_key)
         
         if cached_kpi is None:
-            # === PRODUCTOS ===
-            # Siempre mostrar catálogo completo (no depende del filtro)
-            total_productos = Producto.objects.filter(activo=True).count()
-            
             # === LOTES ===
+            # Primero construir query de lotes con filtros apropiados
             lotes_query = Lote.objects.filter(
                 activo=True,
                 cantidad_actual__gt=0
@@ -8252,6 +8249,19 @@ def dashboard_resumen(request):
             )['total']
             # ISS-FIX: Contar lotes ÚNICOS por numero_lote (no registros duplicados por centro)
             lotes_activos = lotes_query.values('numero_lote').distinct().count()
+            
+            # === PRODUCTOS ===
+            # ISS-FIX: Usuarios de centro ven solo productos que tienen lotes en su centro
+            # Admin/farmacia/vista ven el catálogo completo o productos con lotes según filtro
+            if filtrar_por_centro and user_centro:
+                # Usuario de centro: solo productos con lotes en su centro
+                total_productos = lotes_query.values('producto').distinct().count()
+            elif filtrar_por_centro == 'central':
+                # Filtrado por Farmacia Central: solo productos con lotes en central
+                total_productos = lotes_query.values('producto').distinct().count()
+            else:
+                # Admin/farmacia sin filtro: catálogo completo
+                total_productos = Producto.objects.filter(activo=True).count()
 
             # === MOVIMIENTOS DEL MES ===
             inicio_mes = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
