@@ -12,7 +12,7 @@ FORMATO EXCEL LOTES:
 
 import logging
 import re
-from datetime import datetime, date, timezone as dt_timezone
+from datetime import datetime, date, timezone as dt_timezone, timedelta
 from decimal import Decimal
 
 import openpyxl
@@ -29,10 +29,12 @@ def _parse_fecha_excel(fecha_raw):
     """
     Convierte una fecha de openpyxl a objeto date de Python sin conversión de timezone.
     
-    PROBLEMA: openpyxl puede devolver datetime con timezone, y Django con USE_TZ=True
-    puede aplicar conversiones que desplazan fechas (ej: 01/06/2027 → 31/05/2027).
+    PROBLEMA CRÍTICO: Excel + openpyxl + Django USE_TZ=True causan desfase de 1 día.
+    - Excel almacena fechas como números seriales
+    - openpyxl las convierte a datetime a medianoche (00:00:00)
+    - Django con timezone America/Mexico_City (UTC-6) puede restar horas y cambiar fecha
     
-    SOLUCIÓN: Extraer año/mes/día directamente y crear un date() naive.
+    SOLUCIÓN: Normalizar a mediodía (12:00:00) para que conversiones de ±6 horas no cambien fecha.
     """
     if not fecha_raw:
         return None
@@ -40,23 +42,25 @@ def _parse_fecha_excel(fecha_raw):
     # DEBUG: Log detallado para diagnosticar el problema
     logger.info(f"[DEBUG FECHA] Valor raw: {fecha_raw}, Tipo: {type(fecha_raw)}")
     if isinstance(fecha_raw, datetime):
-        logger.info(f"[DEBUG FECHA] datetime - year:{fecha_raw.year} month:{fecha_raw.month} day:{fecha_raw.day} tzinfo:{fecha_raw.tzinfo}")
+        logger.info(f"[DEBUG FECHA] datetime - year:{fecha_raw.year} month:{fecha_raw.month} day:{fecha_raw.day} hour:{fecha_raw.hour} tzinfo:{fecha_raw.tzinfo}")
     
     try:
         if isinstance(fecha_raw, datetime):
-            # Si es datetime con timezone, convertir primero a naive UTC
-            if fecha_raw.tzinfo is not None:
-                # Datetime timezone-aware: remover timezone forzando a UTC+0
-                fecha_utc = fecha_raw.astimezone(dt_timezone.utc)
-                # Ahora remover el tzinfo para hacerlo naive
-                fecha_naive = fecha_utc.replace(tzinfo=None)
-                logger.info(f"[DEBUG FECHA] TZ-aware convertido a naive UTC: {fecha_naive}")
-                resultado = date(fecha_naive.year, fecha_naive.month, fecha_naive.day)
-            else:
-                # Datetime naive: extraer directamente
-                resultado = date(fecha_raw.year, fecha_raw.month, fecha_raw.day)
+            # CRÍTICO: Normalizar a mediodía para evitar desfase por timezone
+            # Si viene a 00:00:00, movemos a 12:00:00 para que ±6 horas no cambie fecha
+            fecha_normalizada = fecha_raw.replace(hour=12, minute=0, second=0, microsecond=0)
+            logger.info(f"[DEBUG FECHA] Normalizado a mediodía: {fecha_normalizada}")
             
-            logger.info(f"[DEBUG FECHA] Convertido a: {resultado}")
+            if fecha_normalizada.tzinfo is not None:
+                # Si tiene timezone, convertir a la zona local de Django
+                fecha_local = timezone.localtime(fecha_normalizada)
+                logger.info(f"[DEBUG FECHA] Convertido a local: {fecha_local}")
+                resultado = fecha_local.date()
+            else:
+                # Datetime naive: extraer directamente después de normalizar
+                resultado = fecha_normalizada.date()
+            
+            logger.info(f"[DEBUG FECHA] Resultado final: {resultado}")
             return resultado
         elif isinstance(fecha_raw, date):
             # Ya es date, retornar directamente
@@ -69,7 +73,9 @@ def _parse_fecha_excel(fecha_raw):
             for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y', '%m/%d/%Y', '%Y/%m/%d']:
                 try:
                     dt = datetime.strptime(fecha_str, fmt)
-                    resultado = date(dt.year, dt.month, dt.day)
+                    # Normalizar a mediodía también para strings
+                    dt = dt.replace(hour=12, minute=0, second=0, microsecond=0)
+                    resultado = dt.date()
                     logger.info(f"[DEBUG FECHA] String parseado a: {resultado}")
                     return resultado
                 except:
