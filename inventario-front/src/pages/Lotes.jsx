@@ -29,6 +29,14 @@ import { useConfirmation } from '../hooks/useConfirmation';
 // ISS-IMPORT: Componente moderno de importación
 import ImportadorModerno from '../components/ImportadorModerno';
 
+// Formatear fecha YYYY-MM-DD sin conversión de timezone
+// Evita el bug de restar 1 día cuando JavaScript interpreta "2027-06-01" como UTC medianoche
+const formatFecha = (fechaStr) => {
+  if (!fechaStr) return '';
+  const [year, month, day] = fechaStr.split('-');
+  return `${day}/${month}/${year}`;
+};
+
 const MOCK_PRODUCTOS = Array.from({ length: 40 }).map((_, index) => ({
   id: index + 1,
   clave: `MED-${String(index + 1).padStart(3, '0')}`,
@@ -1513,7 +1521,7 @@ const handleImportar = async (e) => {
                       {lote.numero_lote}
                     </td>
                     <td className="px-3 py-2 text-xs">
-                      <div>{new Date(lote.fecha_caducidad).toLocaleDateString()}</div>
+                      <div>{formatFecha(lote.fecha_caducidad)}</div>
                       <div className="text-gray-500">{lote.dias_para_caducar}d</div>
                     </td>
                     <td className="px-3 py-2">
@@ -2287,7 +2295,7 @@ const handleImportar = async (e) => {
                         </p>
                         <p className="text-xs text-gray-500">
                           {doc.tipo_documento} {doc.numero_documento ? `• ${doc.numero_documento}` : ''}
-                          {doc.fecha_documento ? ` • ${new Date(doc.fecha_documento).toLocaleDateString()}` : ''}
+                          {doc.fecha_documento ? ` • ${formatFecha(doc.fecha_documento)}` : ''}
                         </p>
                       </div>
                       <div className="flex items-center gap-2 ml-2">
