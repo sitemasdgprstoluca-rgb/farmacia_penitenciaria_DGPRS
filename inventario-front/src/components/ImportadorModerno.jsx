@@ -1334,7 +1334,7 @@ const ImportadorModerno = ({
                       onClick={descargarReporteErrores}
                       className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm font-medium"
                     >
-                      <FaFileDownload /> Descargar reporte de errores
+                      <FaFileDownload /> Descargar reporte de errores ({resultadoImportacion.detalleErrores.length})
                     </button>
                   )}
                   <button
@@ -1344,6 +1344,75 @@ const ImportadorModerno = ({
                     <FaSync /> Nueva importación
                   </button>
                 </div>
+                
+                {/* Lista de errores detallados */}
+                {resultadoImportacion.detalleErrores?.length > 0 && (
+                  <div className="mt-6 bg-white rounded-xl border border-red-200 overflow-hidden">
+                    {/* Header de la sección de errores */}
+                    <button
+                      onClick={() => setMostrarTodosErrores(!mostrarTodosErrores)}
+                      className="w-full px-4 py-3 bg-red-100 flex items-center justify-between hover:bg-red-150 transition"
+                    >
+                      <div className="flex items-center gap-2">
+                        <FaExclamationTriangle className="text-red-500" />
+                        <span className="font-semibold text-red-800">
+                          Detalle de errores ({resultadoImportacion.detalleErrores.length})
+                        </span>
+                      </div>
+                      {mostrarTodosErrores ? <FaChevronUp className="text-red-500" /> : <FaChevronDown className="text-red-500" />}
+                    </button>
+                    
+                    {/* Lista de errores */}
+                    {mostrarTodosErrores && (
+                      <div className="max-h-80 overflow-y-auto">
+                        {resultadoImportacion.detalleErrores.map((error, idx) => (
+                          <div 
+                            key={idx} 
+                            className={`px-4 py-3 border-b border-red-100 last:border-b-0 ${idx % 2 === 0 ? 'bg-white' : 'bg-red-50/30'}`}
+                          >
+                            <div className="flex items-start gap-3">
+                              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-red-100 text-red-600 text-xs font-bold flex items-center justify-center">
+                                {idx + 1}
+                              </span>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                                  {error.fila && (
+                                    <span className="text-gray-600">
+                                      <span className="text-gray-400">Fila:</span> <strong>{error.fila}</strong>
+                                    </span>
+                                  )}
+                                  {error.campo && (
+                                    <span className="text-gray-600">
+                                      <span className="text-gray-400">Campo:</span> <strong className="text-blue-600">{error.campo}</strong>
+                                    </span>
+                                  )}
+                                  {error.valor !== undefined && error.valor !== null && error.valor !== '' && (
+                                    <span className="text-gray-600">
+                                      <span className="text-gray-400">Valor:</span> <code className="bg-gray-100 px-1 rounded text-xs">{String(error.valor).substring(0, 50)}{String(error.valor).length > 50 ? '...' : ''}</code>
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-red-700 text-sm mt-1 font-medium">
+                                  ⚠️ {error.mensaje || error.error || 'Error desconocido'}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {/* Resumen cuando está colapsado */}
+                    {!mostrarTodosErrores && (
+                      <div className="px-4 py-3 text-sm text-red-700">
+                        <p>
+                          Click para ver los {resultadoImportacion.detalleErrores.length} error(es) detallados. 
+                          También puede descargar el reporte completo en Excel.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
