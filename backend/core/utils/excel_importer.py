@@ -863,7 +863,12 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
             fecha_caducidad = None
             try:
                 if isinstance(fecha_cad_raw, (datetime, date)):
-                    fecha_caducidad = fecha_cad_raw.date() if isinstance(fecha_cad_raw, datetime) else fecha_cad_raw
+                    # ISS-FIX: Extraer fecha sin conversión de timezone para evitar desfase de días
+                    if isinstance(fecha_cad_raw, datetime):
+                        # Tomar año/mes/día directamente sin considerar timezone
+                        fecha_caducidad = date(fecha_cad_raw.year, fecha_cad_raw.month, fecha_cad_raw.day)
+                    else:
+                        fecha_caducidad = fecha_cad_raw
                 elif fecha_cad_raw:
                     fecha_str = str(fecha_cad_raw).strip()
                     for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y', '%m/%d/%Y', '%Y/%m/%d']:
@@ -917,7 +922,11 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                 if fecha_fab_raw:
                     try:
                         if isinstance(fecha_fab_raw, (datetime, date)):
-                            fecha_fabricacion = fecha_fab_raw.date() if isinstance(fecha_fab_raw, datetime) else fecha_fab_raw
+                            # ISS-FIX: Extraer fecha sin conversión de timezone
+                            if isinstance(fecha_fab_raw, datetime):
+                                fecha_fabricacion = date(fecha_fab_raw.year, fecha_fab_raw.month, fecha_fab_raw.day)
+                            else:
+                                fecha_fabricacion = fecha_fab_raw
                         else:
                             for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y']:
                                 try:
