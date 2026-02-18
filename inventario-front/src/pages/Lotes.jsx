@@ -1404,9 +1404,9 @@ const handleImportar = async (e) => {
       )}
 
       {/* Contenedor Tabla + Paginación */}
-      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-visible">
+      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
         {/* Tabla */}
-        <div className="w-full overflow-x-auto overflow-y-visible">
+        <div className="w-full overflow-x-auto">
           <table className="w-full min-w-[900px] divide-y divide-gray-200 table-fixed">
             <colgroup>
               <col className="w-10" /> {/* # */}
@@ -1497,87 +1497,35 @@ const handleImportar = async (e) => {
                         </span>
                       </div>
                       
-                      {/* Badge de contrato con tooltip - Solo si existe contrato global */}
+                      {/* Badge de contrato con tooltip nativo - Solo si existe contrato global */}
                       {lote.cantidad_contrato_global != null && (
-                        <div className="relative group mt-1">
-                          {/* Badge compacto visible */}
-                          <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs cursor-pointer transition-colors ${
+                        <div 
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs cursor-help mt-1 ${
                             lote.cantidad_pendiente_global <= 0 
-                              ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' 
+                              ? 'bg-emerald-50 text-emerald-700' 
                               : lote.cantidad_pendiente_global < 0 
-                                ? 'bg-rose-50 text-rose-700 hover:bg-rose-100'
-                                : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
-                          }`}>
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                            <span className="font-medium">
-                              {lote.cantidad_pendiente_global > 0 
-                                ? `Pend: ${lote.cantidad_pendiente_global.toLocaleString()}`
-                                : lote.cantidad_pendiente_global < 0
-                                  ? `+${Math.abs(lote.cantidad_pendiente_global).toLocaleString()}`
-                                  : '✓ OK'
-                              }
-                            </span>
-                          </div>
-                          
-                          {/* Tooltip al hover - posicionado hacia arriba y a la izquierda para evitar corte */}
-                          <div className="invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-all duration-200 absolute z-[9999] right-0 bottom-full mb-2 w-56 bg-white rounded-lg shadow-xl border border-slate-200 p-3"
-                            style={{ boxShadow: '0 -4px 20px rgba(0,0,0,0.15)' }}>
-                            {/* Header del tooltip */}
-                            <div className="text-xs font-semibold text-slate-700 mb-2 pb-2 border-b border-slate-100">
-                              Contrato Global
-                            </div>
-                            
-                            {/* Número de contrato */}
-                            {lote.numero_contrato && (
-                              <div className="text-xs text-slate-500 mb-2">
-                                <span className="font-medium">No.:</span> {lote.numero_contrato}
-                              </div>
-                            )}
-                            
-                            {/* Datos principales */}
-                            <div className="grid grid-cols-2 gap-2 text-xs mb-2">
-                              <div>
-                                <div className="text-slate-400">Contratado</div>
-                                <div className="font-semibold text-slate-700">{lote.cantidad_contrato_global?.toLocaleString()}</div>
-                              </div>
-                              <div>
-                                <div className="text-slate-400">En inventario</div>
-                                <div className="font-semibold text-indigo-600">{lote.total_inventario_global?.toLocaleString()}</div>
-                              </div>
-                            </div>
-                            
-                            {/* Barra de progreso */}
-                            <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden mb-2">
-                              <div 
-                                className={`h-full rounded-full ${
-                                  lote.cantidad_pendiente_global <= 0 
-                                    ? 'bg-emerald-500' 
-                                    : (lote.total_inventario_global / lote.cantidad_contrato_global) >= 0.5
-                                      ? 'bg-amber-500'
-                                      : 'bg-rose-400'
-                                }`}
-                                style={{ width: `${Math.min(100, Math.max(3, (lote.total_inventario_global / lote.cantidad_contrato_global) * 100))}%` }}
-                              />
-                            </div>
-                            
-                            {/* Estado */}
-                            <div className={`text-xs font-medium ${
-                              lote.cantidad_pendiente_global > 0 
-                                ? 'text-amber-600'
-                                : lote.cantidad_pendiente_global < 0 
-                                  ? 'text-rose-600'
-                                  : 'text-emerald-600'
-                            }`}>
-                              {lote.cantidad_pendiente_global > 0 
-                                ? `⏳ Pendiente por recibir: ${lote.cantidad_pendiente_global.toLocaleString()}`
-                                : lote.cantidad_pendiente_global < 0
-                                  ? `📦 Excedente: ${Math.abs(lote.cantidad_pendiente_global).toLocaleString()}`
-                                  : '✅ Contrato completo'
-                              }
-                            </div>
-                          </div>
+                                ? 'bg-rose-50 text-rose-700'
+                                : 'bg-amber-50 text-amber-700'
+                          }`}
+                          title={`Contrato Global${lote.numero_contrato ? ` (${lote.numero_contrato})` : ''}\nContratado: ${lote.cantidad_contrato_global?.toLocaleString()}\nEn inventario: ${lote.total_inventario_global?.toLocaleString()}\n${
+                            lote.cantidad_pendiente_global > 0 
+                              ? `Pendiente: ${lote.cantidad_pendiente_global.toLocaleString()}`
+                              : lote.cantidad_pendiente_global < 0
+                                ? `Excedente: ${Math.abs(lote.cantidad_pendiente_global).toLocaleString()}`
+                                : 'Contrato completo'
+                          }`}
+                        >
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          <span className="font-medium">
+                            {lote.cantidad_pendiente_global > 0 
+                              ? `Pend: ${lote.cantidad_pendiente_global.toLocaleString()}`
+                              : lote.cantidad_pendiente_global < 0
+                                ? `+${Math.abs(lote.cantidad_pendiente_global).toLocaleString()}`
+                                : '✓ OK'
+                            }
+                          </span>
                         </div>
                       )}
                       
