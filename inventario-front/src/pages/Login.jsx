@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
-import { FaUser, FaLock, FaSignInAlt, FaSpinner, FaEye, FaEyeSlash, FaShieldAlt, FaRoute } from 'react-icons/fa';
-import { authAPI } from '../services/api';
+import { FaUser, FaLock, FaSignInAlt, FaSpinner, FaEye, FaEyeSlash, FaShieldAlt, FaRoute, FaServer, FaCoffee } from 'react-icons/fa';
+import { authAPI, checkApiHealth } from '../services/api';
 import { usePermissions } from '../hooks/usePermissions';
 import { useTheme } from '../hooks/useTheme';
 import { setAccessToken, clearTokens } from '../services/tokenManager';
@@ -109,6 +109,37 @@ const PremiumInput = ({ icon: Icon, label, error, ...props }) => {
   );
 };
 
+// 🔄 Componente de banner de servidor iniciando
+const ServerWakingBanner = ({ retryCount, isChecking, onRetry }) => (
+  <div className="animate-pulse-slow rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 px-4 py-4 flex flex-col sm:flex-row items-center gap-3">
+    <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+      {isChecking ? (
+        <FaSpinner className="text-amber-600 animate-spin" size={18} />
+      ) : (
+        <FaCoffee className="text-amber-600" size={18} />
+      )}
+    </div>
+    <div className="flex-1 text-center sm:text-left">
+      <p className="text-sm text-amber-800 font-semibold">
+        {isChecking ? 'Conectando con el servidor...' : 'El servidor está despertando'}
+      </p>
+      <p className="text-xs text-amber-600 mt-0.5">
+        {isChecking 
+          ? `Verificando conexión${retryCount > 0 ? ` (intento ${retryCount})` : ''}...`
+          : 'Esto puede tomar unos segundos. Por favor espera.'}
+      </p>
+    </div>
+    {!isChecking && (
+      <button
+        onClick={onRetry}
+        className="text-xs bg-amber-100 hover:bg-amber-200 text-amber-700 px-3 py-1.5 rounded-lg transition-colors font-medium"
+      >
+        Reintentar
+      </button>
+    )}
+  </div>
+);
+
 function Login() {
   const [credentials, setCredentials] = useState({ username: '', password: '' });
   const [loading, setLoading] = useState(false);
@@ -116,9 +147,69 @@ function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [exiting, setExiting] = useState(false);
+  // Estados para verificación del servidor
+  const [serverStatus, setServerStatus] = useState('checking'); // 'checking' | 'ready' | 'waking' | 'error'
+  const [serverCheckRetry, setServerCheckRetry] = useState(0);
+  const serverCheckIntervalRef = useRef(null);
+  
   const navigate = useNavigate();
   const { recargarUsuario } = usePermissions();
   const { temaGlobal, logoLoginUrl, nombreSistema } = useTheme();
+
+  // Verificar salud del servidor
+  const checkServerHealth = useCallback(async (isRetry = false) => {
+    if (isRetry) {
+      setServerCheckRetry(prev => prev + 1);
+    }
+    setServerStatus('checking');
+    
+    try {
+      const health = await checkApiHealth({ retries: 2 });
+      
+      if (health.healthy) {
+        setServerStatus('ready');
+        setServerCheckRetry(0);
+        // Limpiar intervalo si existe
+        if (serverCheckIntervalRef.current) {
+          clearInterval(serverCheckIntervalRef.current);
+          serverCheckIntervalRef.current = null;
+        }
+        return true;
+      } else if (health.isServerStarting) {
+        setServerStatus('waking');
+        // Programar reintento automático si no hay uno ya
+        if (!serverCheckIntervalRef.current) {
+          serverCheckIntervalRef.current = setInterval(() => {
+            checkServerHealth(true);
+          }, 5000); // Reintentar cada 5 segundos
+        }
+        return false;
+      } else {
+        setServerStatus('error');
+        return false;
+      }
+    } catch (error) {
+      setServerStatus('waking');
+      // Programar reintento automático
+      if (!serverCheckIntervalRef.current) {
+        serverCheckIntervalRef.current = setInterval(() => {
+          checkServerHealth(true);
+        }, 5000);
+      }
+      return false;
+    }
+  }, []);
+
+  // Verificar servidor al montar componente
+  useEffect(() => {
+    checkServerHealth();
+    
+    return () => {
+      if (serverCheckIntervalRef.current) {
+        clearInterval(serverCheckIntervalRef.current);
+      }
+    };
+  }, [checkServerHealth]);
 
   // Animación de entrada
   useEffect(() => {
@@ -179,16 +270,23 @@ function Login() {
       } else if (error.response?.data?.detail) {
         setErrorMessage(error.response.data.detail);
         toast.error('No fue posible iniciar sesión');
-      } else if (error.isServerStarting || error.retriesExhausted) {
-        // ISS-FIX: Mensaje específico para cold starts de Render
-        setErrorMessage('El servidor está iniciando. Por favor espera unos segundos e intenta de nuevo.');
-        toast.error('El servidor está despertando, intenta de nuevo en unos segundos');
-      } else if (!error.response) {
-        // Error de red sin respuesta del servidor
-        setErrorMessage('No se puede conectar con el servidor. Verifica tu conexión a internet.');
-        toast.error('Error de conexión');
+      } else if (error.isServerStarting || error.retriesExhausted || !error.response) {
+        // ISS-FIX: El servidor está despertando - no mostrar error, cambiar estado
+        setServerStatus('waking');
+        setErrorMessage(''); // Limpiar error - el banner informativo es suficiente
+        toast('El servidor está iniciando, espera unos segundos...', { 
+          icon: '☕', 
+          duration: 4000,
+          style: { background: '#FFFBEB', color: '#92400E' }
+        });
+        // Programar verificación automática
+        if (!serverCheckIntervalRef.current) {
+          serverCheckIntervalRef.current = setInterval(() => {
+            checkServerHealth(true);
+          }, 5000);
+        }
       } else {
-        setErrorMessage('Error al conectar con el servidor');
+        setErrorMessage('Error al procesar la solicitud. Intenta de nuevo.');
         toast.error('No fue posible iniciar sesión');
       }
     } finally {
@@ -224,6 +322,15 @@ function Login() {
             
             {/* Formulario */}
             <form onSubmit={handleSubmit} className="space-y-5">
+              {/* Banner de servidor iniciando */}
+              {(serverStatus === 'checking' || serverStatus === 'waking') && (
+                <ServerWakingBanner 
+                  retryCount={serverCheckRetry}
+                  isChecking={serverStatus === 'checking'}
+                  onRetry={() => checkServerHealth(true)}
+                />
+              )}
+              
               {/* Mensaje de error */}
               {errorMessage && (
                 <div className="animate-shake rounded-xl bg-red-50 border border-red-200 px-4 py-3 flex items-center gap-3">
@@ -274,8 +381,12 @@ function Login() {
               {/* Botón de submit */}
               <button
                 type="submit"
-                disabled={loading}
-                className="relative w-full overflow-hidden text-white py-4 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed font-bold shadow-lg transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl active:scale-[0.98] group bg-theme-gradient"
+                disabled={loading || serverStatus === 'checking'}
+                className={`relative w-full overflow-hidden text-white py-4 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed font-bold shadow-lg transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl active:scale-[0.98] group ${
+                  serverStatus === 'waking' 
+                    ? 'bg-gradient-to-r from-amber-500 to-orange-500' 
+                    : 'bg-theme-gradient'
+                }`}
               >
                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
                 
@@ -284,6 +395,16 @@ function Login() {
                     <>
                       <FaSpinner className="animate-spin" size={18} />
                       <span>Verificando...</span>
+                    </>
+                  ) : serverStatus === 'checking' ? (
+                    <>
+                      <FaSpinner className="animate-spin" size={18} />
+                      <span>Conectando...</span>
+                    </>
+                  ) : serverStatus === 'waking' ? (
+                    <>
+                      <FaCoffee size={18} />
+                      <span>Iniciar Sesión (servidor despertando)</span>
                     </>
                   ) : (
                     <>
@@ -432,8 +553,17 @@ function Login() {
           20%, 40%, 60%, 80% { transform: translateX(4px); }
         }
         
+        @keyframes pulse-slow {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.85; }
+        }
+        
         .animate-float {
           animation: float linear infinite;
+        }
+        
+        .animate-pulse-slow {
+          animation: pulse-slow 2s ease-in-out infinite;
         }
         
         .animate-pulse-ring {
