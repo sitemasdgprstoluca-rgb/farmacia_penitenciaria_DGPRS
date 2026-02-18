@@ -1497,7 +1497,7 @@ const handleImportar = async (e) => {
                         </span>
                       </div>
                       
-                      {/* Badge de contrato con tooltip nativo - Solo si existe contrato global */}
+                      {/* Badge de contrato con tooltip nativo (title) - Nunca se corta */}
                       {lote.cantidad_contrato_global != null && (
                         <div 
                           className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs cursor-help mt-1 ${
@@ -1507,20 +1507,25 @@ const handleImportar = async (e) => {
                                 ? 'bg-rose-50 text-rose-700'
                                 : 'bg-amber-50 text-amber-700'
                           }`}
-                          title={`Contrato Global${lote.numero_contrato ? ` (${lote.numero_contrato})` : ''}\nContratado: ${lote.cantidad_contrato_global?.toLocaleString()}\nEn inventario: ${lote.total_inventario_global?.toLocaleString()}\n${
+                          title={[
+                            `📋 Contrato Global${lote.numero_contrato ? ` (${lote.numero_contrato})` : ''}`,
+                            `━━━━━━━━━━━━━━━━━━━━`,
+                            `📦 Contratado: ${lote.cantidad_contrato_global?.toLocaleString()}`,
+                            `📊 En inventario: ${lote.total_inventario_global?.toLocaleString()}`,
+                            `━━━━━━━━━━━━━━━━━━━━`,
                             lote.cantidad_pendiente_global > 0 
-                              ? `Pendiente: ${lote.cantidad_pendiente_global.toLocaleString()}`
+                              ? `⏳ Pendiente: ${lote.cantidad_pendiente_global.toLocaleString()}`
                               : lote.cantidad_pendiente_global < 0
-                                ? `Excedente: ${Math.abs(lote.cantidad_pendiente_global).toLocaleString()}`
-                                : 'Contrato completo'
-                          }`}
+                                ? `✨ Excedente: +${Math.abs(lote.cantidad_pendiente_global).toLocaleString()}`
+                                : '✅ Contrato completo'
+                          ].join('\n')}
                         >
                           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                           </svg>
                           <span className="font-medium">
                             {lote.cantidad_pendiente_global > 0 
-                              ? `Pend: ${lote.cantidad_pendiente_global.toLocaleString()}`
+                              ? `-${lote.cantidad_pendiente_global.toLocaleString()}`
                               : lote.cantidad_pendiente_global < 0
                                 ? `+${Math.abs(lote.cantidad_pendiente_global).toLocaleString()}`
                                 : '✓ OK'
