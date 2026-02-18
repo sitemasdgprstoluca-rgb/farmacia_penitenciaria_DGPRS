@@ -25,6 +25,40 @@ from core.models import Producto, Lote, Centro, ImportacionLog
 logger = logging.getLogger(__name__)
 
 
+def _parse_fecha_excel(fecha_raw):
+    """
+    Convierte una fecha de openpyxl a objeto date de Python sin conversión de timezone.
+    
+    PROBLEMA: openpyxl puede devolver datetime con timezone, y Django con USE_TZ=True
+    puede aplicar conversiones que desplazan fechas (ej: 01/06/2027 → 31/05/2027).
+    
+    SOLUCIÓN: Extraer año/mes/día directamente y crear un date() naive.
+    """
+    if not fecha_raw:
+        return None
+    
+    try:
+        if isinstance(fecha_raw, datetime):
+            # Si es datetime, puede tener timezone. Extraer componentes directamente.
+            # Importante: NO usar .date() porque puede aplicar conversión de timezone
+            return date(fecha_raw.year, fecha_raw.month, fecha_raw.day)
+        elif isinstance(fecha_raw, date):
+            # Ya es date, retornar directamente
+            return fecha_raw
+        else:
+            # Intentar parsear como string
+            fecha_str = str(fecha_raw).strip()
+            for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y', '%m/%d/%Y', '%Y/%m/%d']:
+                try:
+                    dt = datetime.strptime(fecha_str, fmt)
+                    return date(dt.year, dt.month, dt.day)
+                except:
+                    continue
+            raise ValueError(f'Formato de fecha no reconocido: {fecha_raw}')
+    except Exception as e:
+        raise ValueError(f'Error al parsear fecha: {e}')
+
+
 class ResultadoImportacion:
     """Contenedor simple para acumular resultados de importacion."""
 
@@ -860,26 +894,9 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
             idx_cad = col_map['caducidad']
             fecha_cad_raw = fila[idx_cad].value if idx_cad < len(fila) else None
             
-            fecha_caducidad = None
             try:
-                if isinstance(fecha_cad_raw, (datetime, date)):
-                    # ISS-FIX: Extraer fecha sin conversión de timezone para evitar desfase de días
-                    if isinstance(fecha_cad_raw, datetime):
-                        # Tomar año/mes/día directamente sin considerar timezone
-                        fecha_caducidad = date(fecha_cad_raw.year, fecha_cad_raw.month, fecha_cad_raw.day)
-                    else:
-                        fecha_caducidad = fecha_cad_raw
-                elif fecha_cad_raw:
-                    fecha_str = str(fecha_cad_raw).strip()
-                    for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y', '%m/%d/%Y', '%Y/%m/%d']:
-                        try:
-                            fecha_caducidad = datetime.strptime(fecha_str, fmt).date()
-                            break
-                        except:
-                            continue
-                    if not fecha_caducidad:
-                        raise ValueError(f'Formato no reconocido: {fecha_cad_raw}')
-                else:
+                fecha_caducidad = _parse_fecha_excel(fecha_cad_raw)
+                if not fecha_caducidad:
                     raise ValueError('Fecha vacía')
             except Exception as e:
                 resultado.agregar_error(fila_num, 'caducidad', f'Fecha inválida: {e}')
@@ -921,19 +938,7 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                 fecha_fab_raw = fila[idx_fab].value if idx_fab < len(fila) else None
                 if fecha_fab_raw:
                     try:
-                        if isinstance(fecha_fab_raw, (datetime, date)):
-                            # ISS-FIX: Extraer fecha sin conversión de timezone
-                            if isinstance(fecha_fab_raw, datetime):
-                                fecha_fabricacion = date(fecha_fab_raw.year, fecha_fab_raw.month, fecha_fab_raw.day)
-                            else:
-                                fecha_fabricacion = fecha_fab_raw
-                        else:
-                            for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y']:
-                                try:
-                                    fecha_fabricacion = datetime.strptime(str(fecha_fab_raw).strip(), fmt).date()
-                                    break
-                                except:
-                                    continue
+                        fecha_fabricacion = _parse_fecha_excel(fecha_fab_raw)
                     except:
                         pass
             
