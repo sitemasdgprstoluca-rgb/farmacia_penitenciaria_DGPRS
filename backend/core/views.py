@@ -6160,6 +6160,28 @@ class AdminLimpiarDatosView(APIView):
                     # Elimina productos Y todo lo que depende de ellos
                     # ORDEN FK-SAFE: primero eliminar tablas hijas que referencian productos
                     
+                    # ====== CAJA CHICA (detalle_compras_caja_chica.producto_id → productos) ======
+                    # 0. Historial de compras caja chica
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM historial_compras_caja_chica")
+                        eliminados['historial_compras_caja_chica'] = cursor.rowcount
+                    # 0.1 Movimientos de caja chica
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM movimientos_caja_chica")
+                        eliminados['movimientos_caja_chica'] = cursor.rowcount
+                    # 0.2 Detalles de compras caja chica (referencia producto_id)
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM detalle_compras_caja_chica")
+                        eliminados['detalle_compras_caja_chica'] = cursor.rowcount
+                    # 0.3 Compras caja chica
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM compras_caja_chica")
+                        eliminados['compras_caja_chica'] = cursor.rowcount
+                    # 0.4 Inventario caja chica (referencia producto_id)
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM inventario_caja_chica")
+                        eliminados['inventario_caja_chica'] = cursor.rowcount
+                    
                     # ====== DISPENSACIONES (detalle_dispensaciones.producto_id → ON DELETE RESTRICT) ======
                     # 1. Historial de dispensaciones
                     with connection.cursor() as cursor:
@@ -6247,13 +6269,40 @@ class AdminLimpiarDatosView(APIView):
                 
                 else:  # categoria == 'todos'
                     # LIMPIEZA COMPLETA - Orden FK-safe: tablas hijas ANTES que padres
-                    # CRÍTICO: detalle_dispensaciones y detalle_donaciones tienen
+                    # CRÍTICO: detalle_dispensaciones, detalle_donaciones y detalle_compras_caja_chica tienen
                     # producto_id con ON DELETE RESTRICT → deben eliminarse ANTES de productos
                     
                     # 0. Limpiar FKs que referencian lotes antes de eliminarlos
                     with connection.cursor() as cursor:
                         cursor.execute("UPDATE detalle_dispensaciones SET lote_id = NULL WHERE lote_id IS NOT NULL")
                         cursor.execute("UPDATE detalles_requisicion SET lote_id = NULL WHERE lote_id IS NOT NULL")
+                    
+                    # ==================== CAJA CHICA FARMACIA ====================
+                    # Debe eliminarse ANTES de productos (detalle_compras_caja_chica.producto_id, inventario_caja_chica.producto_id)
+                    # 0a. Historial de compras caja chica
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM historial_compras_caja_chica")
+                        eliminados['historial_compras_caja_chica'] = cursor.rowcount
+                    
+                    # 0b. Movimientos de caja chica
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM movimientos_caja_chica")
+                        eliminados['movimientos_caja_chica'] = cursor.rowcount
+                    
+                    # 0c. Detalles de compras caja chica (referencia producto_id)
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM detalle_compras_caja_chica")
+                        eliminados['detalle_compras_caja_chica'] = cursor.rowcount
+                    
+                    # 0d. Compras caja chica
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM compras_caja_chica")
+                        eliminados['compras_caja_chica'] = cursor.rowcount
+                    
+                    # 0e. Inventario caja chica (referencia producto_id)
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM inventario_caja_chica")
+                        eliminados['inventario_caja_chica'] = cursor.rowcount
                     
                     # ==================== DISPENSACIONES (FORMATO C) ====================
                     # Deben eliminarse ANTES de productos (detalle_dispensaciones.producto_id)
@@ -6380,32 +6429,6 @@ class AdminLimpiarDatosView(APIView):
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM importacion_logs")
                         eliminados['importacion_logs'] = cursor.rowcount
-                    
-                    # ==================== CAJA CHICA FARMACIA ====================
-                    # 22. Historial de compras caja chica
-                    with connection.cursor() as cursor:
-                        cursor.execute("DELETE FROM historial_compras_caja_chica")
-                        eliminados['historial_compras_caja_chica'] = cursor.rowcount
-                    
-                    # 23. Movimientos de caja chica
-                    with connection.cursor() as cursor:
-                        cursor.execute("DELETE FROM movimientos_caja_chica")
-                        eliminados['movimientos_caja_chica'] = cursor.rowcount
-                    
-                    # 24. Detalles de compras caja chica
-                    with connection.cursor() as cursor:
-                        cursor.execute("DELETE FROM detalle_compras_caja_chica")
-                        eliminados['detalle_compras_caja_chica'] = cursor.rowcount
-                    
-                    # 25. Compras caja chica
-                    with connection.cursor() as cursor:
-                        cursor.execute("DELETE FROM compras_caja_chica")
-                        eliminados['compras_caja_chica'] = cursor.rowcount
-                    
-                    # 26. Inventario caja chica
-                    with connection.cursor() as cursor:
-                        cursor.execute("DELETE FROM inventario_caja_chica")
-                        eliminados['inventario_caja_chica'] = cursor.rowcount
                 
                 # Calcular totales
                 total_eliminados = sum(eliminados.values())
