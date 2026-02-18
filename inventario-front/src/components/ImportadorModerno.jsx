@@ -274,6 +274,7 @@ const ImportadorModerno = ({
   const [mostrarGuia, setMostrarGuia] = useState(false);
   const [mostrarFormatos, setMostrarFormatos] = useState(false);
   const [mostrarTodosErrores, setMostrarTodosErrores] = useState(false);
+  const [mostrarTodosActualizados, setMostrarTodosActualizados] = useState(false);
   // Paginación para vista previa
   const [paginaActual, setPaginaActual] = useState(1);
   
@@ -591,7 +592,8 @@ const ImportadorModerno = ({
         actualizados: res.actualizados || res.total_actualizados || 0,
         errores: res.errores || res.total_errores || 0,
         omitidos: res.omitidos || 0,
-        detalleErrores: res.detalle_errores || res.errores_detalle || []
+        detalleErrores: res.detalle_errores || res.errores_detalle || [],
+        detalleActualizados: res.detalle_actualizados || []
       });
       
       if (res.exitosa !== false && !res.error) {
@@ -636,95 +638,178 @@ const ImportadorModerno = ({
    * Descarga reporte de errores como Excel con mejor diseño
    */
   const descargarReporteErrores = useCallback(async () => {
-    if (!resultadoImportacion?.detalleErrores?.length) return;
+    const tieneErrores = resultadoImportacion?.detalleErrores?.length > 0;
+    const tieneActualizados = resultadoImportacion?.detalleActualizados?.length > 0;
+    
+    if (!tieneErrores && !tieneActualizados) return;
     
     try {
       const workbook = new ExcelJS.Workbook();
       workbook.creator = 'Sistema de Farmacia Penitenciaria';
       workbook.created = new Date();
       
-      const worksheet = workbook.addWorksheet('Errores de Importación', {
-        properties: { tabColor: { argb: 'FF9F2241' } }
-      });
-      
-      // Título principal
-      worksheet.mergeCells('A1:E1');
-      const titleCell = worksheet.getCell('A1');
-      titleCell.value = `📋 REPORTE DE ERRORES - Importación de ${config.titulo}`;
-      titleCell.font = { bold: true, size: 16, color: { argb: 'FF9F2241' } };
-      titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
-      worksheet.getRow(1).height = 30;
-      
-      // Fecha y resumen
-      worksheet.mergeCells('A2:E2');
-      const dateCell = worksheet.getCell('A2');
-      dateCell.value = `Fecha: ${new Date().toLocaleDateString('es-MX')} ${new Date().toLocaleTimeString('es-MX')}`;
-      dateCell.font = { size: 10, color: { argb: 'FF666666' } };
-      
-      // Resumen de resultados
-      worksheet.mergeCells('A3:E3');
-      const summaryCell = worksheet.getCell('A3');
-      summaryCell.value = `Total errores: ${resultadoImportacion.detalleErrores.length} | Creados: ${resultadoImportacion.creados || 0} | Actualizados: ${resultadoImportacion.actualizados || 0}`;
-      summaryCell.font = { size: 11, bold: true };
-      summaryCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3CD' } };
-      
-      // Espacio
-      worksheet.getRow(4).height = 10;
-      
-      // Headers de la tabla
-      const headerRow = worksheet.getRow(5);
-      const headers = ['#', 'Fila Excel', 'Campo', 'Valor', 'Descripción del Error'];
-      headers.forEach((h, i) => {
-        const cell = headerRow.getCell(i + 1);
-        cell.value = h;
-        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF9F2241' } };
-        cell.alignment = { horizontal: 'center', vertical: 'middle' };
-        cell.border = {
-          top: { style: 'thin' }, bottom: { style: 'thin' },
-          left: { style: 'thin' }, right: { style: 'thin' }
-        };
-      });
-      headerRow.height = 25;
-      
-      // Anchos de columna
-      worksheet.getColumn(1).width = 6;   // #
-      worksheet.getColumn(2).width = 12;  // Fila Excel
-      worksheet.getColumn(3).width = 20;  // Campo
-      worksheet.getColumn(4).width = 25;  // Valor
-      worksheet.getColumn(5).width = 60;  // Error
-      
-      // Datos de errores
-      resultadoImportacion.detalleErrores.forEach((error, idx) => {
-        const row = worksheet.getRow(6 + idx);
-        row.getCell(1).value = idx + 1;
-        row.getCell(2).value = error.fila || '-';
-        row.getCell(3).value = error.campo || '-';
-        row.getCell(4).value = error.valor || '-';
-        row.getCell(5).value = error.mensaje || error.error || 'Error desconocido';
-        
-        // Estilo alternado
-        const fillColor = idx % 2 === 0 ? 'FFFFFFFF' : 'FFF8F8F8';
-        row.eachCell((cell) => {
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fillColor } };
-          cell.border = {
-            top: { style: 'thin', color: { argb: 'FFE0E0E0' } },
-            bottom: { style: 'thin', color: { argb: 'FFE0E0E0' } },
-            left: { style: 'thin', color: { argb: 'FFE0E0E0' } },
-            right: { style: 'thin', color: { argb: 'FFE0E0E0' } }
-          };
-          cell.alignment = { vertical: 'middle', wrapText: true };
+      // ========= HOJA DE ERRORES =========
+      if (tieneErrores) {
+        const wsErrores = workbook.addWorksheet('Errores de Importación', {
+          properties: { tabColor: { argb: 'FF9F2241' } }
         });
-        row.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
-        row.getCell(2).alignment = { horizontal: 'center', vertical: 'middle' };
-      });
+        
+        // Título principal
+        wsErrores.mergeCells('A1:E1');
+        const titleCell = wsErrores.getCell('A1');
+        titleCell.value = `📋 REPORTE DE ERRORES - Importación de ${config.titulo}`;
+        titleCell.font = { bold: true, size: 16, color: { argb: 'FF9F2241' } };
+        titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+        wsErrores.getRow(1).height = 30;
+        
+        // Fecha y resumen
+        wsErrores.mergeCells('A2:E2');
+        const dateCell = wsErrores.getCell('A2');
+        dateCell.value = `Fecha: ${new Date().toLocaleDateString('es-MX')} ${new Date().toLocaleTimeString('es-MX')}`;
+        dateCell.font = { size: 10, color: { argb: 'FF666666' } };
+        
+        // Resumen de resultados
+        wsErrores.mergeCells('A3:E3');
+        const summaryCell = wsErrores.getCell('A3');
+        summaryCell.value = `Total errores: ${resultadoImportacion.detalleErrores.length} | Creados: ${resultadoImportacion.creados || 0} | Actualizados: ${resultadoImportacion.actualizados || 0}`;
+        summaryCell.font = { size: 11, bold: true };
+        summaryCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3CD' } };
+        
+        // Espacio
+        wsErrores.getRow(4).height = 10;
+        
+        // Headers de la tabla
+        const headerRow = wsErrores.getRow(5);
+        const headers = ['#', 'Fila Excel', 'Campo', 'Valor', 'Descripción del Error'];
+        headers.forEach((h, i) => {
+          const cell = headerRow.getCell(i + 1);
+          cell.value = h;
+          cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF9F2241' } };
+          cell.alignment = { horizontal: 'center', vertical: 'middle' };
+          cell.border = {
+            top: { style: 'thin' }, bottom: { style: 'thin' },
+            left: { style: 'thin' }, right: { style: 'thin' }
+          };
+        });
+        headerRow.height = 25;
+        
+        // Anchos de columna
+        wsErrores.getColumn(1).width = 6;
+        wsErrores.getColumn(2).width = 12;
+        wsErrores.getColumn(3).width = 20;
+        wsErrores.getColumn(4).width = 25;
+        wsErrores.getColumn(5).width = 60;
+        
+        // Datos de errores
+        resultadoImportacion.detalleErrores.forEach((error, idx) => {
+          const row = wsErrores.getRow(6 + idx);
+          row.getCell(1).value = idx + 1;
+          row.getCell(2).value = error.fila || '-';
+          row.getCell(3).value = error.campo || '-';
+          row.getCell(4).value = error.valor || '-';
+          row.getCell(5).value = error.mensaje || error.error || 'Error desconocido';
+          
+          const fillColor = idx % 2 === 0 ? 'FFFFFFFF' : 'FFF8F8F8';
+          row.eachCell((cell) => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fillColor } };
+            cell.border = {
+              top: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+              bottom: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+              left: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+              right: { style: 'thin', color: { argb: 'FFE0E0E0' } }
+            };
+            cell.alignment = { vertical: 'middle', wrapText: true };
+          });
+          row.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+          row.getCell(2).alignment = { horizontal: 'center', vertical: 'middle' };
+        });
+        
+        const footerRow = 6 + resultadoImportacion.detalleErrores.length + 1;
+        wsErrores.mergeCells(`A${footerRow}:E${footerRow}`);
+        const footerCell = wsErrores.getCell(`A${footerRow}`);
+        footerCell.value = '💡 Corrija los errores en su archivo original y vuelva a importar.';
+        footerCell.font = { italic: true, size: 10, color: { argb: 'FF666666' } };
+      }
       
-      // Footer con instrucciones
-      const footerRow = 6 + resultadoImportacion.detalleErrores.length + 1;
-      worksheet.mergeCells(`A${footerRow}:E${footerRow}`);
-      const footerCell = worksheet.getCell(`A${footerRow}`);
-      footerCell.value = '💡 Corrija los errores en su archivo original y vuelva a importar.';
-      footerCell.font = { italic: true, size: 10, color: { argb: 'FF666666' } };
+      // ========= HOJA DE ACTUALIZADOS =========
+      if (tieneActualizados) {
+        const wsActualizados = workbook.addWorksheet('Productos Actualizados', {
+          properties: { tabColor: { argb: 'FFFFC107' } }
+        });
+        
+        // Título
+        wsActualizados.mergeCells('A1:D1');
+        const titleCellAct = wsActualizados.getCell('A1');
+        titleCellAct.value = `🔄 PRODUCTOS ACTUALIZADOS - Importación de ${config.titulo}`;
+        titleCellAct.font = { bold: true, size: 16, color: { argb: 'FFB45309' } };
+        titleCellAct.alignment = { horizontal: 'center', vertical: 'middle' };
+        wsActualizados.getRow(1).height = 30;
+        
+        // Fecha
+        wsActualizados.mergeCells('A2:D2');
+        const dateCellAct = wsActualizados.getCell('A2');
+        dateCellAct.value = `Fecha: ${new Date().toLocaleDateString('es-MX')} ${new Date().toLocaleTimeString('es-MX')}`;
+        dateCellAct.font = { size: 10, color: { argb: 'FF666666' } };
+        
+        // Info
+        wsActualizados.mergeCells('A3:D3');
+        const infoCellAct = wsActualizados.getCell('A3');
+        infoCellAct.value = `Total productos actualizados: ${resultadoImportacion.detalleActualizados.length} (ya existían en el catálogo)`;
+        infoCellAct.font = { size: 11, bold: true };
+        infoCellAct.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } };
+        
+        wsActualizados.getRow(4).height = 10;
+        
+        // Headers
+        const headerRowAct = wsActualizados.getRow(5);
+        ['#', 'Fila Excel', 'Clave', 'Nombre del Producto'].forEach((h, i) => {
+          const cell = headerRowAct.getCell(i + 1);
+          cell.value = h;
+          cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFB45309' } };
+          cell.alignment = { horizontal: 'center', vertical: 'middle' };
+          cell.border = {
+            top: { style: 'thin' }, bottom: { style: 'thin' },
+            left: { style: 'thin' }, right: { style: 'thin' }
+          };
+        });
+        headerRowAct.height = 25;
+        
+        wsActualizados.getColumn(1).width = 6;
+        wsActualizados.getColumn(2).width = 12;
+        wsActualizados.getColumn(3).width = 15;
+        wsActualizados.getColumn(4).width = 60;
+        
+        // Datos
+        resultadoImportacion.detalleActualizados.forEach((item, idx) => {
+          const row = wsActualizados.getRow(6 + idx);
+          row.getCell(1).value = idx + 1;
+          row.getCell(2).value = item.fila || '-';
+          row.getCell(3).value = item.clave || '-';
+          row.getCell(4).value = item.nombre || '-';
+          
+          const fillColor = idx % 2 === 0 ? 'FFFFFFFF' : 'FFFEFCE8';
+          row.eachCell((cell) => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fillColor } };
+            cell.border = {
+              top: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+              bottom: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+              left: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+              right: { style: 'thin', color: { argb: 'FFE0E0E0' } }
+            };
+            cell.alignment = { vertical: 'middle', wrapText: true };
+          });
+          row.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+          row.getCell(2).alignment = { horizontal: 'center', vertical: 'middle' };
+        });
+        
+        const footerRowAct = 6 + resultadoImportacion.detalleActualizados.length + 1;
+        wsActualizados.mergeCells(`A${footerRowAct}:D${footerRowAct}`);
+        const footerCellAct = wsActualizados.getCell(`A${footerRowAct}`);
+        footerCellAct.value = 'ℹ️ Estos productos ya existían en el catálogo y sus datos fueron actualizados con la información del Excel.';
+        footerCellAct.font = { italic: true, size: 10, color: { argb: 'FF666666' } };
+      }
       
       // Generar archivo
       const buffer = await workbook.xlsx.writeBuffer();
@@ -732,11 +817,11 @@ const ImportadorModerno = ({
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `Errores_Importacion_${tipo}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      a.download = `Reporte_Importacion_${tipo}_${new Date().toISOString().split('T')[0]}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
       
-      toast.success('Reporte de errores descargado');
+      toast.success('Reporte descargado');
     } catch (error) {
       console.error('Error al generar reporte:', error);
       toast.error('Error al generar el reporte');
@@ -754,6 +839,7 @@ const ImportadorModerno = ({
     setProgreso(0);
     setPaginaActual(1);
     setMostrarTodosErrores(false);
+    setMostrarTodosActualizados(false);
     if (inputRef.current) inputRef.current.value = '';
   }, []);
 
@@ -1329,12 +1415,22 @@ const ImportadorModerno = ({
                 
                 {/* Botones de acción */}
                 <div className="flex flex-wrap gap-3 mt-4">
-                  {resultadoImportacion.detalleErrores?.length > 0 && (
+                  {(resultadoImportacion.detalleErrores?.length > 0 || resultadoImportacion.detalleActualizados?.length > 0) && (
                     <button
                       onClick={descargarReporteErrores}
-                      className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm font-medium"
+                      className={`flex items-center gap-2 px-4 py-2 text-white rounded-lg transition text-sm font-medium ${
+                        resultadoImportacion.detalleErrores?.length > 0 
+                          ? 'bg-red-600 hover:bg-red-700' 
+                          : 'bg-amber-600 hover:bg-amber-700'
+                      }`}
                     >
-                      <FaFileDownload /> Descargar reporte de errores ({resultadoImportacion.detalleErrores.length})
+                      <FaFileDownload /> 
+                      {resultadoImportacion.detalleErrores?.length > 0 && resultadoImportacion.detalleActualizados?.length > 0 
+                        ? `Descargar reporte completo (${resultadoImportacion.detalleErrores.length} errores, ${resultadoImportacion.detalleActualizados.length} actualizados)`
+                        : resultadoImportacion.detalleErrores?.length > 0 
+                          ? `Descargar reporte de errores (${resultadoImportacion.detalleErrores.length})`
+                          : `Descargar reporte de actualizados (${resultadoImportacion.detalleActualizados.length})`
+                      }
                     </button>
                   )}
                   <button
@@ -1408,6 +1504,74 @@ const ImportadorModerno = ({
                         <p>
                           Click para ver los {resultadoImportacion.detalleErrores.length} error(es) detallados. 
                           También puede descargar el reporte completo en Excel.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+                
+                {/* Lista de productos actualizados (duplicados) */}
+                {resultadoImportacion.detalleActualizados?.length > 0 && (
+                  <div className="mt-6 bg-white rounded-xl border border-amber-200 overflow-hidden">
+                    {/* Header de la sección de actualizados */}
+                    <button
+                      onClick={() => setMostrarTodosActualizados(!mostrarTodosActualizados)}
+                      className="w-full px-4 py-3 bg-amber-100 flex items-center justify-between hover:bg-amber-150 transition"
+                    >
+                      <div className="flex items-center gap-2">
+                        <FaSync className="text-amber-600" />
+                        <span className="font-semibold text-amber-800">
+                          Productos actualizados ({resultadoImportacion.detalleActualizados.length})
+                        </span>
+                      </div>
+                      {mostrarTodosActualizados ? <FaChevronUp className="text-amber-500" /> : <FaChevronDown className="text-amber-500" />}
+                    </button>
+                    
+                    {/* Lista de actualizados */}
+                    {mostrarTodosActualizados && (
+                      <div className="max-h-80 overflow-y-auto">
+                        {resultadoImportacion.detalleActualizados.map((item, idx) => (
+                          <div 
+                            key={idx} 
+                            className={`px-4 py-3 border-b border-amber-100 last:border-b-0 ${idx % 2 === 0 ? 'bg-white' : 'bg-amber-50/30'}`}
+                          >
+                            <div className="flex items-start gap-3">
+                              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-amber-100 text-amber-700 text-xs font-bold flex items-center justify-center">
+                                {idx + 1}
+                              </span>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                                  {item.fila && (
+                                    <span className="text-gray-600">
+                                      <span className="text-gray-400">Fila:</span> <strong>{item.fila}</strong>
+                                    </span>
+                                  )}
+                                  {item.clave && (
+                                    <span className="text-gray-600">
+                                      <span className="text-gray-400">Clave:</span> <strong className="text-blue-600">{item.clave}</strong>
+                                    </span>
+                                  )}
+                                  {item.nombre && (
+                                    <span className="text-gray-600 truncate max-w-xs">
+                                      <span className="text-gray-400">Nombre:</span> <strong>{item.nombre}</strong>
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-amber-700 text-sm mt-1">
+                                  🔄 {item.mensaje || 'Producto existente actualizado'}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {/* Resumen cuando está colapsado */}
+                    {!mostrarTodosActualizados && (
+                      <div className="px-4 py-3 text-sm text-amber-700">
+                        <p>
+                          Click para ver los {resultadoImportacion.detalleActualizados.length} producto(s) que ya existían y fueron actualizados.
                         </p>
                       </div>
                     )}

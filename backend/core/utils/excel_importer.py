@@ -36,6 +36,7 @@ class ResultadoImportacion:
         self.actualizados = 0  # Para consolidaciones/actualizaciones
         self.omitidos = 0      # Para filas omitidas (ej: otro centro)
         self.errores = []
+        self.detalle_actualizados = []  # Para tracking detallado de actualizaciones
 
     def agregar_error(self, fila, campo, error):
         self.errores.append({
@@ -45,10 +46,12 @@ class ResultadoImportacion:
         })
         self.fallidos += 1
 
-    def agregar_exito(self, es_actualizacion=False):
+    def agregar_exito(self, es_actualizacion=False, info_actualizacion=None):
         self.exitosos += 1
         if es_actualizacion:
             self.actualizados += 1
+            if info_actualizacion:
+                self.detalle_actualizados.append(info_actualizacion)
     
     def agregar_omitido(self):
         self.omitidos += 1
@@ -71,6 +74,7 @@ class ResultadoImportacion:
             'tasa_exito': round((self.exitosos / self.total_procesados * 100) if self.total_procesados else 0, 2),
             'errores': self.errores[:100],
             'detalle_errores': self.errores[:100],  # Alias para compatibilidad con frontend
+            'detalle_actualizados': self.detalle_actualizados[:100],  # Info de productos actualizados
         }
     
     def _generar_mensaje(self):
@@ -380,9 +384,15 @@ def importar_productos_desde_excel(archivo, usuario):
                 
                 if created:
                     creados += 1
+                    resultado.agregar_exito(es_actualizacion=False)
                 else:
                     actualizados += 1
-                resultado.agregar_exito()
+                    resultado.agregar_exito(es_actualizacion=True, info_actualizacion={
+                        'fila': fila_num,
+                        'clave': clave,
+                        'nombre': nombre[:100],
+                        'mensaje': f'Producto ya existía con clave {clave}, se actualizaron sus datos'
+                    })
                 
             except Exception as exc:
                 logger.exception(f"Error fila {fila_num}: {exc}")
