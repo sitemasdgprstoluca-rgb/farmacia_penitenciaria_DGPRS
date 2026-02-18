@@ -12,7 +12,7 @@ FORMATO EXCEL LOTES:
 
 import logging
 import re
-from datetime import datetime, date
+from datetime import datetime, date, timezone as dt_timezone
 from decimal import Decimal
 
 import openpyxl
@@ -44,9 +44,18 @@ def _parse_fecha_excel(fecha_raw):
     
     try:
         if isinstance(fecha_raw, datetime):
-            # Si es datetime, puede tener timezone. Extraer componentes directamente.
-            # Importante: NO usar .date() porque puede aplicar conversión de timezone
-            resultado = date(fecha_raw.year, fecha_raw.month, fecha_raw.day)
+            # Si es datetime con timezone, convertir primero a naive UTC
+            if fecha_raw.tzinfo is not None:
+                # Datetime timezone-aware: remover timezone forzando a UTC+0
+                fecha_utc = fecha_raw.astimezone(dt_timezone.utc)
+                # Ahora remover el tzinfo para hacerlo naive
+                fecha_naive = fecha_utc.replace(tzinfo=None)
+                logger.info(f"[DEBUG FECHA] TZ-aware convertido a naive UTC: {fecha_naive}")
+                resultado = date(fecha_naive.year, fecha_naive.month, fecha_naive.day)
+            else:
+                # Datetime naive: extraer directamente
+                resultado = date(fecha_raw.year, fecha_raw.month, fecha_raw.day)
+            
             logger.info(f"[DEBUG FECHA] Convertido a: {resultado}")
             return resultado
         elif isinstance(fecha_raw, date):
