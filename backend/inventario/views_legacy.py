@@ -8251,13 +8251,15 @@ def dashboard_resumen(request):
             lotes_activos = lotes_query.values('numero_lote').distinct().count()
             
             # === PRODUCTOS ===
-            # ISS-FIX: Usuarios de centro ven solo productos que tienen lotes en su centro
-            # Admin/farmacia siempre ven el catálogo completo independientemente del filtro
-            if filtrar_por_centro and user_centro:
-                # Usuario de centro: solo productos con lotes en su centro
+            # ISS-FIX: Contar productos según el contexto de filtrado
+            if filtrar_por_centro == 'central':
+                # Farmacia Central con filtro: solo productos con lotes en Farmacia Central (centro=null)
+                total_productos = lotes_query.values('producto').distinct().count()
+            elif filtrar_por_centro and user_centro:
+                # Usuario de centro o admin filtrando por centro: solo productos con lotes en ese centro
                 total_productos = lotes_query.values('producto').distinct().count()
             else:
-                # Admin/farmacia (con o sin filtro): catálogo completo de productos activos
+                # Admin sin filtro: catálogo completo de productos activos
                 total_productos = Producto.objects.filter(activo=True).count()
 
             # === MOVIMIENTOS DEL MES ===
