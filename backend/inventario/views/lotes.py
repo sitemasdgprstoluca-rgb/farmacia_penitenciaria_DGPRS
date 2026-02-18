@@ -168,17 +168,37 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                 queryset = queryset.filter(activo=False)
         
         # Busqueda por numero de lote, clave o nombre producto (ISS-003)
-        # MEJORADA: Búsqueda robusta con prioridad a coincidencias exactas
+        # MEJORADA: Búsqueda inteligente con prioridad a coincidencias exactas
         search = self.request.query_params.get('search')
         if search and search.strip():
             search_term = search.strip()
-            # Búsqueda flexible: coincidencia parcial en lote, clave o nombre
-            queryset = queryset.filter(
-                Q(numero_lote__icontains=search_term) |
-                Q(producto__clave__icontains=search_term) |
-                Q(producto__nombre__icontains=search_term) |
-                Q(producto__descripcion__icontains=search_term)  # También en descripción
-            ).distinct()
+            
+            # Estrategia inteligente: Si el término parece ser una clave (numérico corto),
+            # priorizar coincidencia exacta en clave
+            is_numeric = search_term.isdigit()
+            
+            if is_numeric:
+                # Primero: buscar coincidencia EXACTA en clave de producto
+                exact_match = queryset.filter(producto__clave__iexact=search_term)
+                
+                if exact_match.exists():
+                    # Si hay coincidencia exacta en clave, usar solo esos resultados
+                    queryset = exact_match
+                else:
+                    # No hay coincidencia exacta, buscar parcial incluyendo lotes
+                    queryset = queryset.filter(
+                        Q(numero_lote__icontains=search_term) |
+                        Q(producto__clave__icontains=search_term) |
+                        Q(producto__nombre__icontains=search_term)
+                    ).distinct()
+            else:
+                # Búsqueda de texto: parcial en todos los campos
+                queryset = queryset.filter(
+                    Q(numero_lote__icontains=search_term) |
+                    Q(producto__clave__icontains=search_term) |
+                    Q(producto__nombre__icontains=search_term) |
+                    Q(producto__descripcion__icontains=search_term)
+                ).distinct()
         
         # Filtrar por estado de caducidad segun especificacion SIFP:
         # Normal: > 6 meses (180 dias)
@@ -571,17 +591,37 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                     pass
         
         # Aplicar filtros de búsqueda
-        # MEJORADA: Búsqueda robusta con prioridad a coincidencias exactas
+        # MEJORADA: Búsqueda inteligente con prioridad a coincidencias exactas
         search = request.query_params.get('search')
         if search and search.strip():
             search_term = search.strip()
-            # Búsqueda flexible: coincidencia parcial en lote, clave o nombre
-            queryset = queryset.filter(
-                Q(numero_lote__icontains=search_term) |
-                Q(producto__clave__icontains=search_term) |
-                Q(producto__nombre__icontains=search_term) |
-                Q(producto__descripcion__icontains=search_term)  # También en descripción
-            ).distinct()
+            
+            # Estrategia inteligente: Si el término parece ser una clave (numérico corto),
+            # priorizar coincidencia exacta en clave
+            is_numeric = search_term.isdigit()
+            
+            if is_numeric:
+                # Primero: buscar coincidencia EXACTA en clave de producto
+                exact_match = queryset.filter(producto__clave__iexact=search_term)
+                
+                if exact_match.exists():
+                    # Si hay coincidencia exacta en clave, usar solo esos resultados
+                    queryset = exact_match
+                else:
+                    # No hay coincidencia exacta, buscar parcial incluyendo lotes
+                    queryset = queryset.filter(
+                        Q(numero_lote__icontains=search_term) |
+                        Q(producto__clave__icontains=search_term) |
+                        Q(producto__nombre__icontains=search_term)
+                    ).distinct()
+            else:
+                # Búsqueda de texto: parcial en todos los campos
+                queryset = queryset.filter(
+                    Q(numero_lote__icontains=search_term) |
+                    Q(producto__clave__icontains=search_term) |
+                    Q(producto__nombre__icontains=search_term) |
+                    Q(producto__descripcion__icontains=search_term)
+                ).distinct()
         
         producto = request.query_params.get('producto')
         if producto:
