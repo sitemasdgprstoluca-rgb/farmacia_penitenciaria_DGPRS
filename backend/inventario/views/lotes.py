@@ -192,13 +192,19 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                         Q(producto__nombre__icontains=search_term)
                     ).distinct()
             else:
-                # Búsqueda de texto: parcial en todos los campos
-                queryset = queryset.filter(
-                    Q(numero_lote__icontains=search_term) |
-                    Q(producto__clave__icontains=search_term) |
-                    Q(producto__nombre__icontains=search_term) |
-                    Q(producto__descripcion__icontains=search_term)
-                ).distinct()
+                # Búsqueda de texto: estrategia de precisión
+                # 1. Primero buscar SOLO en nombre del producto (más específico)
+                nombre_match = queryset.filter(producto__nombre__icontains=search_term)
+                
+                if nombre_match.exists():
+                    # Si hay coincidencias en nombre, usar solo esas
+                    queryset = nombre_match
+                else:
+                    # Si no hay en nombre, buscar en lote y clave
+                    queryset = queryset.filter(
+                        Q(numero_lote__icontains=search_term) |
+                        Q(producto__clave__icontains=search_term)
+                    ).distinct()
         
         # Filtrar por estado de caducidad segun especificacion SIFP:
         # Normal: > 6 meses (180 dias)
@@ -615,13 +621,19 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                         Q(producto__nombre__icontains=search_term)
                     ).distinct()
             else:
-                # Búsqueda de texto: parcial en todos los campos
-                queryset = queryset.filter(
-                    Q(numero_lote__icontains=search_term) |
-                    Q(producto__clave__icontains=search_term) |
-                    Q(producto__nombre__icontains=search_term) |
-                    Q(producto__descripcion__icontains=search_term)
-                ).distinct()
+                # Búsqueda de texto: estrategia de precisión
+                # 1. Primero buscar SOLO en nombre del producto (más específico)
+                nombre_match = queryset.filter(producto__nombre__icontains=search_term)
+                
+                if nombre_match.exists():
+                    # Si hay coincidencias en nombre, usar solo esas
+                    queryset = nombre_match
+                else:
+                    # Si no hay en nombre, buscar en lote y clave
+                    queryset = queryset.filter(
+                        Q(numero_lote__icontains=search_term) |
+                        Q(producto__clave__icontains=search_term)
+                    ).distinct()
         
         producto = request.query_params.get('producto')
         if producto:
