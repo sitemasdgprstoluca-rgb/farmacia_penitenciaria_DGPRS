@@ -37,25 +37,37 @@ def _parse_fecha_excel(fecha_raw):
     if not fecha_raw:
         return None
     
+    # DEBUG: Log detallado para diagnosticar el problema
+    logger.info(f"[DEBUG FECHA] Valor raw: {fecha_raw}, Tipo: {type(fecha_raw)}")
+    if isinstance(fecha_raw, datetime):
+        logger.info(f"[DEBUG FECHA] datetime - year:{fecha_raw.year} month:{fecha_raw.month} day:{fecha_raw.day} tzinfo:{fecha_raw.tzinfo}")
+    
     try:
         if isinstance(fecha_raw, datetime):
             # Si es datetime, puede tener timezone. Extraer componentes directamente.
             # Importante: NO usar .date() porque puede aplicar conversión de timezone
-            return date(fecha_raw.year, fecha_raw.month, fecha_raw.day)
+            resultado = date(fecha_raw.year, fecha_raw.month, fecha_raw.day)
+            logger.info(f"[DEBUG FECHA] Convertido a: {resultado}")
+            return resultado
         elif isinstance(fecha_raw, date):
             # Ya es date, retornar directamente
+            logger.info(f"[DEBUG FECHA] Ya es date: {fecha_raw}")
             return fecha_raw
         else:
             # Intentar parsear como string
             fecha_str = str(fecha_raw).strip()
+            logger.info(f"[DEBUG FECHA] Parseando string: {fecha_str}")
             for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y', '%m/%d/%Y', '%Y/%m/%d']:
                 try:
                     dt = datetime.strptime(fecha_str, fmt)
-                    return date(dt.year, dt.month, dt.day)
+                    resultado = date(dt.year, dt.month, dt.day)
+                    logger.info(f"[DEBUG FECHA] String parseado a: {resultado}")
+                    return resultado
                 except:
                     continue
             raise ValueError(f'Formato de fecha no reconocido: {fecha_raw}')
     except Exception as e:
+        logger.error(f"[DEBUG FECHA] Error: {e}")
         raise ValueError(f'Error al parsear fecha: {e}')
 
 
