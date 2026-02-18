@@ -1404,9 +1404,9 @@ const handleImportar = async (e) => {
       )}
 
       {/* Contenedor Tabla + Paginación */}
-      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-visible">
         {/* Tabla */}
-        <div className="w-full overflow-x-auto">
+        <div className="w-full overflow-x-auto overflow-y-visible">
           <table className="w-full min-w-[900px] divide-y divide-gray-200 table-fixed">
             <colgroup>
               <col className="w-10" /> {/* # */}
@@ -1521,8 +1521,9 @@ const handleImportar = async (e) => {
                             </span>
                           </div>
                           
-                          {/* Tooltip al hover */}
-                          <div className="invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-all duration-200 absolute z-50 left-0 top-full mt-1 w-56 bg-white rounded-lg shadow-lg border border-slate-200 p-3">
+                          {/* Tooltip al hover - posicionado hacia arriba y a la izquierda para evitar corte */}
+                          <div className="invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-all duration-200 absolute z-[9999] right-0 bottom-full mb-2 w-56 bg-white rounded-lg shadow-xl border border-slate-200 p-3"
+                            style={{ boxShadow: '0 -4px 20px rgba(0,0,0,0.15)' }}>
                             {/* Header del tooltip */}
                             <div className="text-xs font-semibold text-slate-700 mb-2 pb-2 border-b border-slate-100">
                               Contrato Global
