@@ -334,13 +334,15 @@ const Lotes = () => {
     }
   }, [applyMockLotes, currentPage, filtroActivo, filtroCaducidad, filtroConStock, filtroProducto, filtroCentro, pageSize, searchTerm, puedeVerGlobal, centroUsuario, errorSinCentro]);
 
+  // Debounce para búsqueda y filtros - aplica delay solo a searchTerm
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
       cargarLotes();
-    }, 500);
+    }, searchTerm ? 300 : 0); // 300ms delay solo cuando hay búsqueda activa
 
     return () => clearTimeout(delayDebounceFn);
-  }, [cargarLotes]);
+  }, [currentPage, filtroActivo, filtroCaducidad, filtroConStock, filtroProducto, filtroCentro, pageSize, searchTerm, puedeVerGlobal, centroUsuario, errorSinCentro]);
+  // Nota: NO incluir cargarLotes como dependencia para evitar re-renders innecesarios
 
   // Escuchar evento de limpieza de inventario para refrescar Lotes
   useEffect(() => {
@@ -1260,7 +1262,11 @@ const handleImportar = async (e) => {
       <PageHeader
         icon={FaWarehouse}
         title="Gestión de Lotes"
-        subtitle={`Total: ${totalLotes} lotes | Página ${currentPage} de ${totalPages}`}
+        subtitle={
+          searchTerm 
+            ? `🔍 ${totalLotes} resultado${totalLotes !== 1 ? 's' : ''} para "${searchTerm}" | Página ${currentPage} de ${totalPages}`
+            : `Total: ${totalLotes} lotes | Página ${currentPage} de ${totalPages}`
+        }
         badge={filtrosActivos ? `${filtrosActivos} filtros activos` : null}
         actions={headerActions}
       />
@@ -1305,18 +1311,30 @@ const handleImportar = async (e) => {
           <div className="space-y-3 px-5 py-3">
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-6">
               <div className="lg:col-span-2">
-                <label className="text-xs font-semibold text-theme-primary-hover">Búsqueda</label>
+                <label className="text-xs font-semibold text-theme-primary-hover">
+                  Búsqueda Rápida
+                  <span className="ml-1 text-xs font-normal text-gray-500">(Clave, Lote, Nombre)</span>
+                </label>
                 <div
-                  className="mt-1 flex items-center rounded-lg border px-3 py-2 focus-within:ring-2 border-theme-primary"
+                  className="mt-1 flex items-center rounded-lg border px-3 py-2 focus-within:ring-2 border-theme-primary focus-within:border-theme-primary-hover transition-all"
                 >
-                  <FaFilter className="mr-2 text-gray-400" />
+                  <FaFilter className="mr-2 text-theme-primary" />
                   <input
                     type="text"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full border-none bg-transparent text-sm focus:outline-none"
-                    placeholder="Buscar por número de lote, producto..."
+                    placeholder="Ej: 6994, KETOCONAZOL, LOT-2026..."
                   />
+                  {searchTerm && (
+                    <button
+                      onClick={() => setSearchTerm('')}
+                      className="ml-2 text-gray-400 hover:text-gray-600 transition-colors"
+                      title="Limpiar búsqueda"
+                    >
+                      <FaTimes size={14} />
+                    </button>
+                  )}
                 </div>
               </div>
               <div>
@@ -1403,6 +1421,26 @@ const handleImportar = async (e) => {
         </div>
       )}
 
+      {/* Indicador de búsqueda activa */}
+      {searchTerm && (
+        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-blue-600 font-medium">
+              🔍 Buscando: "{searchTerm}"
+            </span>
+            <span className="text-blue-500 text-sm">
+              ({totalLotes} resultado{totalLotes !== 1 ? 's' : ''})
+            </span>
+          </div>
+          <button
+            onClick={() => setSearchTerm('')}
+            className="text-blue-600 hover:text-blue-800 font-medium text-sm underline"
+          >
+            Limpiar búsqueda
+          </button>
+        </div>
+      )}
+
       {/* Contenedor Tabla + Paginación */}
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
         {/* Tabla */}
@@ -1436,8 +1474,27 @@ const handleImportar = async (e) => {
                 </tr>
               ) : lotes.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="text-center py-8 text-gray-500">
-                    No hay lotes registrados
+                  <td colSpan="8" className="text-center py-12">
+                    {searchTerm ? (
+                      <div className="space-y-3">
+                        <div className="text-gray-600 text-lg">
+                          🔍 No se encontraron resultados para "<span className="font-semibold text-gray-800">{searchTerm}</span>"
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          La búsqueda incluye: número de lote, clave del producto y nombre del producto
+                        </div>
+                        <button
+                          onClick={() => setSearchTerm('')}
+                          className="mt-3 text-sm text-theme-primary hover:text-theme-primary-hover font-medium underline"
+                        >
+                          Limpiar búsqueda
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="text-gray-500">
+                        No hay lotes registrados
+                      </div>
+                    )}
                   </td>
                 </tr>
               ) : (

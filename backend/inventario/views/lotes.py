@@ -168,14 +168,17 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                 queryset = queryset.filter(activo=False)
         
         # Busqueda por numero de lote, clave o nombre producto (ISS-003)
+        # MEJORADA: Búsqueda robusta con prioridad a coincidencias exactas
         search = self.request.query_params.get('search')
         if search and search.strip():
             search_term = search.strip()
+            # Búsqueda flexible: coincidencia parcial en lote, clave o nombre
             queryset = queryset.filter(
                 Q(numero_lote__icontains=search_term) |
                 Q(producto__clave__icontains=search_term) |
-                Q(producto__nombre__icontains=search_term)
-            )
+                Q(producto__nombre__icontains=search_term) |
+                Q(producto__descripcion__icontains=search_term)  # También en descripción
+            ).distinct()
         
         # Filtrar por estado de caducidad segun especificacion SIFP:
         # Normal: > 6 meses (180 dias)
@@ -568,14 +571,17 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                     pass
         
         # Aplicar filtros de búsqueda
+        # MEJORADA: Búsqueda robusta con prioridad a coincidencias exactas
         search = request.query_params.get('search')
         if search and search.strip():
             search_term = search.strip()
+            # Búsqueda flexible: coincidencia parcial en lote, clave o nombre
             queryset = queryset.filter(
                 Q(numero_lote__icontains=search_term) |
                 Q(producto__clave__icontains=search_term) |
-                Q(producto__nombre__icontains=search_term)
-            )
+                Q(producto__nombre__icontains=search_term) |
+                Q(producto__descripcion__icontains=search_term)  # También en descripción
+            ).distinct()
         
         producto = request.query_params.get('producto')
         if producto:
