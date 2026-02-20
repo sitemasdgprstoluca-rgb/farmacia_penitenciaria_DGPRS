@@ -995,6 +995,13 @@ class LoteSerializer(serializers.ModelSerializer):
     producto_clave = serializers.CharField(source='producto.clave', read_only=True)
     producto_descripcion = serializers.CharField(source='producto.nombre', read_only=True)  # Alias para compatibilidad
     producto_info = serializers.SerializerMethodField()  # Info adicional del producto (presentación, unidad)
+    # centro=null → lote de Farmacia Central (FK nullable en BD)
+    # Declarado explícitamente para garantizar required=False, allow_null=True sin depender de extra_kwargs
+    centro = serializers.PrimaryKeyRelatedField(
+        queryset=Centro.objects.all(),
+        required=False,
+        allow_null=True,
+    )
     centro_nombre = serializers.CharField(source='centro.nombre', read_only=True, allow_null=True)
     dias_para_caducar = serializers.SerializerMethodField()
     estado = serializers.SerializerMethodField()
@@ -1050,8 +1057,8 @@ class LoteSerializer(serializers.ModelSerializer):
             'numero_contrato': {'required': False, 'allow_null': True, 'allow_blank': True},
             'marca': {'required': False, 'allow_null': True, 'allow_blank': True},
             'ubicacion': {'required': False, 'allow_null': True, 'allow_blank': True},
-            # centro=null → lote de Farmacia Central (FK nullable en BD)
-            'centro': {'required': False, 'allow_null': True},
+            # NOTA: 'centro' se declara explícitamente como campo (no en extra_kwargs)
+            # porque DRF prohíbe mezclar declaración explícita + extra_kwargs para el mismo campo.
         }
     
     def get_cantidad_pendiente(self, obj):
