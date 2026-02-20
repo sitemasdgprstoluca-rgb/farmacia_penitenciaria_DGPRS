@@ -518,51 +518,64 @@ def test_h1_herencia_ccg():
 
 
 # ============================================================================
-# I) REGRESIONES — bugs encontrados en auditoría 2026-02-20
+# I) REGRESIONES — CCG es POR CENTRO (cada centro es independiente)
 # ============================================================================
 
 @pytest.mark.django_db
-def test_i1_importer_ccg_global_otro_centro_bloquea():
+def test_i1_importer_ccg_por_centro_independencia():
     """
-    BUG: _validar_ccg_antes_de_importar filtraba por centro, permitiendo
-    que Centro B importara aunque Centro A ya consumió el contrato global.
-    FIX: No filtrar por centro — CCG es global por (producto, numero_contrato).
+    Regla: CCG se valida por centro. Farmacia Central y los centros penitenciarios
+    tienen contratos independientes.
+    Si Farmacia ya consumió 90/100 de su CCG, un Centro puede importar
+    hasta 100 unidades de su propio CCG sin que lo bloquee el stock de farmacia.
     """
+    from core.models import Centro
     from core.utils.excel_importer import _validar_ccg_antes_de_importar
     prod = _make_producto('CCG-I1')
 
-    # Farmacia central (centro=None) ya consumió 90 del CCG=100
+    # Farmacia central (centro=None) ya consumió 90 de su CCG=100
     _make_lote(prod, 'LI1-FARM', 90, 'CONT-I1', 100)
 
-    # Importar 15 más sin centro → total global: 90+15=105 > 100 → debe rechazar
+    # Centro A tiene su propio CCG=100 y quiere importar 80 → debe permitir
+    # (sus propios lotes: 0, así que 0+80=80 ≤ 100 → OK)
+    centro_a = Centro.objects.create(nombre='CENTRO_I1_A_TEST', activo=True)
     filas = [{
         'producto_id': prod.pk,
         'numero_contrato': 'CONT-I1',
         'cantidad_contrato_global': 100,
-        'cantidad_inicial': 15,
+        'cantidad_inicial': 80,
     }]
-    import pytest as _pytest
-    with _pytest.raises(ValueError) as exc:
-        _validar_ccg_antes_de_importar(filas, centro=None)
-    assert 'contrato global' in str(exc.value).lower()
+    # NO debe lanzar ValueError — el CCG de centro_a está vacío (0 lotes propios)
+    _validar_ccg_antes_de_importar(filas, centro=centro_a)  # No debe lanzar
 
 
 @pytest.mark.django_db
-def test_i2_importer_ccg_no_filtra_por_centro():
+def test_i2_importer_ccg_bloquea_dentro_del_mismo_centro():
     """
-    El importer cuenta lotes de TODOS los centros al verificar CCG,
-    no solo del centro que está importando (CCG es global).
-    Importar para un centro específico debe ver el stock de farmacia central.
+    El importer bloquea cuando el propio centro supera su CCG.
+    Farmacia u otro centro no interfieren.
     """
-    from core.models import Centro
+    from core.models import Centro, Lote
     from core.utils.excel_importer import _validar_ccg_antes_de_importar
     prod = _make_producto('CCG-I2')
 
-    # Farmacia central ya tiene 90 del CCG=100
-    _make_lote(prod, 'LI2-FARM', 90, 'CONT-I2', 100)
-
-    # Intentar importar 15 para un centro específico: total global=90+15=105 > 100
     centro_b = Centro.objects.create(nombre='CENTRO_I2_B_TEST', activo=True)
+
+    # Centro B ya tiene 90 lotes propios del contrato (CCG=100)
+    Lote.objects.create(
+        producto=prod,
+        numero_lote='LI2-CENT',
+        cantidad_inicial=90,
+        cantidad_actual=90,
+        fecha_caducidad=date(2030, 12, 31),
+        precio_unitario=Decimal('1.00'),
+        numero_contrato='CONT-I2',
+        cantidad_contrato_global=100,
+        activo=True,
+        centro=centro_b,
+    )
+
+    # Intentar importar 15 más para ese mismo centro: 90+15=105 > 100 → BLOQUEAR
     filas = [{
         'producto_id': prod.pk,
         'numero_contrato': 'CONT-I2',
@@ -570,8 +583,87 @@ def test_i2_importer_ccg_no_filtra_por_centro():
         'cantidad_inicial': 15,
     }]
     import pytest as _pytest
-    with _pytest.raises(ValueError):
-        # Con el bug (filtro por centro_b): total_ya_en_bd=0 → 0+15=15 ≤ 100 → no lanza
-        # Con el fix (sin filtro): total_ya_en_bd=90 → 90+15=105 > 100 → lanza ✓
+    with _pytest.raises(ValueError) as exc:
         _validar_ccg_antes_de_importar(filas, centro=centro_b)
+    assert 'contrato global' in str(exc.value).lower()
+
+
+# ============================================================================
+# J) AJUSTE DE CCG — cambiar cantidad_contrato_global debe funcionar
+# ============================================================================
+
+@pytest.mark.django_db
+def test_j1_ccg_aumentado_permite_mas_lotes():
+    """
+    Si se aumenta el CCG (PATCH cantidad_contrato_global ↑), crear/importar
+    lotes adicionales que antes eran rechazados ahora debe ser permitido.
+    """
+    from core.models import Lote
+    from core.serializers import LoteSerializer
+    prod = _make_producto('CCG-J1')
+
+    # Lote existente con CCG=50, cantidad=50 (límite alcanzado)
+    lote = _make_lote(prod, 'LJ1-BASE', 50, 'CONT-J1', 50)
+
+    # Intentar crear otro lote → debe rechazar (50+10=60 > 50)
+    data_rechazado = {
+        'numero_lote': 'LJ1-EXTRA', 'producto': prod.pk, 'cantidad_inicial': 10,
+        'fecha_caducidad': '2030-12-31', 'precio_unitario': '1.00',
+        'numero_contrato': 'CONT-J1', 'centro': None,
+    }
+    ser_rechazado = LoteSerializer(data=data_rechazado)
+    assert not ser_rechazado.is_valid(), 'Debería rechazar cuando CCG=50 ya alcanzado'
+    assert 'cantidad_inicial' in str(ser_rechazado.errors)
+
+    # Aumentar CCG a 80 mediante PATCH (simular actualización directa en BD)
+    lote.cantidad_contrato_global = 80
+    lote.save(update_fields=['cantidad_contrato_global'])
+
+    # Ahora crear otro lote con 10 unidades → 50+10=60 ≤ 80 → debe permitir
+    data_ok = {
+        'numero_lote': 'LJ1-EXTRA2', 'producto': prod.pk, 'cantidad_inicial': 10,
+        'fecha_caducidad': '2030-12-31', 'precio_unitario': '1.00',
+        'numero_contrato': 'CONT-J1', 'centro': None,
+    }
+    ser_ok = LoteSerializer(data=data_ok)
+    assert ser_ok.is_valid(), f'Debería permitir después de aumentar CCG: {ser_ok.errors}'
+
+
+@pytest.mark.django_db
+def test_j2_ccg_disminuido_bloquea_nuevas_entradas():
+    """
+    Si se disminuye el CCG (PATCH cantidad_contrato_global ↓) por debajo del total
+    ya recibido, nuevos intentos de crear lotes deben ser bloqueados.
+    """
+    from core.models import Lote
+    from core.serializers import LoteSerializer
+    prod = _make_producto('CCG-J2')
+
+    # CCG=100, ya se recibieron 60 → hay 40 disponibles
+    lote = _make_lote(prod, 'LJ2-BASE', 60, 'CONT-J2', 100)
+
+    # Crear otro lote con 30 → 60+30=90 ≤ 100 → permitido
+    data_ok = {
+        'numero_lote': 'LJ2-EXT1', 'producto': prod.pk, 'cantidad_inicial': 30,
+        'fecha_caducidad': '2030-12-31', 'precio_unitario': '1.00',
+        'numero_contrato': 'CONT-J2', 'centro': None,
+    }
+    ser_ok = LoteSerializer(data=data_ok)
+    assert ser_ok.is_valid(), f'Debería permitir con CCG=100: {ser_ok.errors}'
+    ser_ok.save()
+
+    # Ahora el total recibido es 90. Reducir CCG a 70 (debajo del total actual de 90)
+    lote.cantidad_contrato_global = 70
+    lote.save(update_fields=['cantidad_contrato_global'])
+    Lote.objects.filter(numero_contrato='CONT-J2').update(cantidad_contrato_global=70)
+
+    # Intentar crear otro lote de 5 → 90+5=95 > 70 → debe rechazar
+    data_rechazado = {
+        'numero_lote': 'LJ2-EXT2', 'producto': prod.pk, 'cantidad_inicial': 5,
+        'fecha_caducidad': '2030-12-31', 'precio_unitario': '1.00',
+        'numero_contrato': 'CONT-J2', 'centro': None,
+    }
+    ser_rechazado = LoteSerializer(data=data_rechazado)
+    assert not ser_rechazado.is_valid(), 'Debe bloquear después de bajar CCG por debajo del total'
+    assert 'cantidad_inicial' in str(ser_rechazado.errors)
 

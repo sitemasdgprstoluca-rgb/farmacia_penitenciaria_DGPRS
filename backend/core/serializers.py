@@ -1127,14 +1127,15 @@ class LoteSerializer(serializers.ModelSerializer):
         """
         if obj.cantidad_contrato_global is None or not obj.numero_contrato:
             return None
-        
-        # Sumar todos los cantidad_inicial de lotes del mismo producto y contrato.
-        # Sin activo=True: lotes inactivos también consumen contrato.
+
+        # CCG es independiente por centro: solo suma lotes del mismo centro.
         from django.db.models import Sum
-        total_recibido = Lote.objects.filter(
-            producto=obj.producto,
-            numero_contrato__iexact=obj.numero_contrato.strip(),
-        ).aggregate(total=Sum('cantidad_inicial'))['total'] or 0
+        _f = dict(producto=obj.producto, numero_contrato__iexact=obj.numero_contrato.strip())
+        if obj.centro_id is not None:
+            _f['centro_id'] = obj.centro_id
+        else:
+            _f['centro__isnull'] = True
+        total_recibido = Lote.objects.filter(**_f).aggregate(total=Sum('cantidad_inicial'))['total'] or 0
 
         # Retornar diferencia REAL (puede ser negativo si hay exceso)
         pendiente = obj.cantidad_contrato_global - total_recibido
@@ -1153,13 +1154,15 @@ class LoteSerializer(serializers.ModelSerializer):
         """
         if obj.cantidad_contrato_global is None or not obj.numero_contrato:
             return None
-        
-        # Sin activo=True: lotes inactivos también consumieron el contrato.
+
+        # CCG es independiente por centro: solo suma lotes del mismo centro.
         from django.db.models import Sum
-        total_recibido = Lote.objects.filter(
-            producto=obj.producto,
-            numero_contrato__iexact=obj.numero_contrato.strip(),
-        ).aggregate(total=Sum('cantidad_inicial'))['total'] or 0
+        _f = dict(producto=obj.producto, numero_contrato__iexact=obj.numero_contrato.strip())
+        if obj.centro_id is not None:
+            _f['centro_id'] = obj.centro_id
+        else:
+            _f['centro__isnull'] = True
+        total_recibido = Lote.objects.filter(**_f).aggregate(total=Sum('cantidad_inicial'))['total'] or 0
 
         return total_recibido
     
@@ -1183,15 +1186,16 @@ class LoteSerializer(serializers.ModelSerializer):
         """
         if obj.cantidad_contrato_global is None or not obj.numero_contrato:
             return None
-        
-        # Para inventario disponible sí filtrar activo=True: lotes inactivos
-        # no aportan stock físico aunque hayan consumido contrato.
+
+        # CCG es independiente por centro: solo suma lotes del mismo centro.
+        # activo=True: lotes inactivos no aportan stock físico.
         from django.db.models import Sum
-        total_inventario = Lote.objects.filter(
-            producto=obj.producto,
-            numero_contrato__iexact=obj.numero_contrato.strip(),
-            activo=True
-        ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
+        _f = dict(producto=obj.producto, numero_contrato__iexact=obj.numero_contrato.strip(), activo=True)
+        if obj.centro_id is not None:
+            _f['centro_id'] = obj.centro_id
+        else:
+            _f['centro__isnull'] = True
+        total_inventario = Lote.objects.filter(**_f).aggregate(total=Sum('cantidad_actual'))['total'] or 0
 
         return total_inventario
     
@@ -1346,24 +1350,35 @@ class LoteSerializer(serializers.ModelSerializer):
         # Si el lote tiene cantidad_contrato_global, verificar si la suma de
         # todos los lotes del mismo producto+contrato excedería el global.
         ccg = attrs.get('cantidad_contrato_global')
+        # REGLA DE NEGOCIO: Cada centro tiene contratos independientes de farmacia.
+        # El CCG se valida por (producto, numero_contrato, centro).
+        _centro_val = attrs.get('centro') if not self.instance else getattr(self.instance, 'centro', None)
+        _ccg_centro_filter: dict = {}
+        if _centro_val is not None:
+            _ccg_centro_filter['centro'] = _centro_val
+        else:
+            _ccg_centro_filter['centro__isnull'] = True
+
         if ccg is None and numero_contrato and producto:
-            # Heredar ccg de lotes existentes con mismo producto+contrato.
+            # Heredar ccg de lotes existentes con mismo producto+contrato+centro.
             # Sin activo=True: lotes inactivos también consumieron del contrato.
             existing_ccg = Lote.objects.filter(
                 producto=producto,
                 numero_contrato__iexact=numero_contrato.strip(),
                 cantidad_contrato_global__isnull=False,
+                **_ccg_centro_filter,
             ).values_list('cantidad_contrato_global', flat=True).first()
             if existing_ccg is not None:
                 ccg = existing_ccg
                 attrs['cantidad_contrato_global'] = ccg
 
         if ccg is not None and numero_contrato and producto and cantidad > 0:
-            # Sumar cantidad_inicial de lotes existentes con mismo producto+contrato.
+            # Sumar cantidad_inicial de lotes del mismo producto+contrato+centro.
             # Sin activo=True: lotes inactivos también consumieron del contrato.
             total_existente = Lote.objects.filter(
                 producto=producto,
                 numero_contrato__iexact=numero_contrato.strip(),
+                **_ccg_centro_filter,
             ).aggregate(total=Sum('cantidad_inicial'))['total'] or 0
 
             # Si estamos editando, restar la cantidad_inicial actual del lote
@@ -1417,21 +1432,24 @@ class LoteSerializer(serializers.ModelSerializer):
         ccg_v = validated_data.get('cantidad_contrato_global')
         nc_v = validated_data.get('numero_contrato')
         prod_v = validated_data.get('producto')
+        centro_v = validated_data.get('centro')  # None = farmacia central
         if ccg_v and nc_v and prod_v and cantidad_inicial > 0:
             from django.db import transaction as _dbtx
             from django.db.models import Sum as _dSum
+            # REGLA DE NEGOCIO: CCG es independiente por centro.
+            _lock_filter: dict = dict(producto=prod_v, numero_contrato__iexact=nc_v.strip())
+            if centro_v is not None:
+                _lock_filter['centro'] = centro_v
+            else:
+                _lock_filter['centro__isnull'] = True
             with _dbtx.atomic():
                 list(
-                    Lote.objects.select_for_update().filter(
-                        producto=prod_v,
-                        numero_contrato__iexact=nc_v.strip(),
-                    ).values_list('id', flat=True)
+                    Lote.objects.select_for_update().filter(**_lock_filter)
+                    .values_list('id', flat=True)
                 )
                 total_ya = (
-                    Lote.objects.filter(
-                        producto=prod_v,
-                        numero_contrato__iexact=nc_v.strip(),
-                    ).aggregate(total=_dSum('cantidad_inicial'))['total'] or 0
+                    Lote.objects.filter(**_lock_filter)
+                    .aggregate(total=_dSum('cantidad_inicial'))['total'] or 0
                 )
                 proyectado = total_ya + cantidad_inicial
                 if proyectado > ccg_v:
