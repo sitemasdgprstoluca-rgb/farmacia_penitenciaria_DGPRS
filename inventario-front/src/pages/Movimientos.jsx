@@ -1179,13 +1179,8 @@ const Movimientos = () => {
         }
         
         toast.success(mensajeExito);
-        
-        // ISS-INV-003: Alerta si la entrada excedió el contrato global
-        if (respData?.alerta_contrato_global) {
-          setTimeout(() => {
-            toast(respData.alerta_contrato_global, { icon: '⚠️', duration: 8000 });
-          }, 500);
-        }
+        // Nota: la validación CCG es un bloqueo duro en el backend (base.py).
+        // Si llegamos aquí, la entrada ya fue aprobada por el servidor.
       }
       
       // ISS-SEC FIX: Resetear modal de confirmación
