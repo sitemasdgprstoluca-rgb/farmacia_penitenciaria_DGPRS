@@ -771,20 +771,27 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
             numero_contrato = lote_ref.numero_contrato
             if ccg is not None and ccg > 0 and numero_contrato:
                 from django.db.models import Sum as _Sum
-                # Adquirir bloqueo de filas en TODOS los lotes del contrato para evitar
-                # condición de carrera: dos peticiones simultáneas en lotes distintos del
-                # mismo contrato podrían leer el mismo total y ambas pasar la validación.
+                # REGLA DE NEGOCIO: Cada centro (incluyendo farmacia central=NULL)
+                # tiene contratos INDEPENDIENTES. El CCG se valida por
+                # (producto, numero_contrato, centro) — no globalmente entre centros.
+                # Adquirir bloqueo de filas sobre los lotes del mismo centro+contrato
+                # para evitar race condition entre peticiones simultáneas.
+                _lote_centro = lote_ref.centro
+                _ccg_filter = dict(
+                    producto=lote_ref.producto,
+                    numero_contrato=numero_contrato,
+                )
+                if _lote_centro is not None:
+                    _ccg_filter['centro'] = _lote_centro
+                else:
+                    _ccg_filter['centro__isnull'] = True
                 list(
-                    Lote.objects.select_for_update().filter(
-                        producto=lote_ref.producto,
-                        numero_contrato=numero_contrato,
-                    ).values_list('id', flat=True)
+                    Lote.objects.select_for_update().filter(**_ccg_filter)
+                    .values_list('id', flat=True)
                 )
                 total_ya_recibido = (
-                    Lote.objects.filter(
-                        producto=lote_ref.producto,
-                        numero_contrato=numero_contrato,
-                    ).aggregate(total=_Sum('cantidad_inicial'))['total'] or 0
+                    Lote.objects.filter(**_ccg_filter)
+                    .aggregate(total=_Sum('cantidad_inicial'))['total'] or 0
                 )
                 nueva_total = total_ya_recibido + abs(cantidad_int)
                 if nueva_total > ccg:

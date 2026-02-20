@@ -596,19 +596,23 @@ def _validar_ccg_antes_de_importar(filas_consolidadas, centro):
         if incoming_total == 0:
             continue
 
-        # BUG-FIX: NO filtrar por centro — el CCG es GLOBAL por (producto, numero_contrato)
-        # independiente del centro, igual que base.py y LoteSerializer.validate().
-        # Filtrar por centro subestimaría el total cuando otro centro ya consumió el contrato.
-        # SELECT FOR UPDATE para evitar race condition entre importaciones concurrentes,
-        # igual que base.py (registrar_movimiento_stock) y LoteSerializer.create().
+        # CCG es POR CENTRO — cada centro penitenciario gestiona su propio contrato global
+        # de forma independiente. Farmacia Central (centro=None) y cada centro tienen
+        # contratos separados; el CCG de farmacia no limita las compras de un centro
+        # y viceversa. SELECT FOR UPDATE para evitar race conditions entre importaciones
+        # concurrentes del mismo centro.
+        if centro is not None:
+            qs_centro = Lote.objects.filter(centro=centro)
+        else:
+            qs_centro = Lote.objects.filter(centro__isnull=True)
         list(
-            Lote.objects.select_for_update().filter(
+            qs_centro.select_for_update().filter(
                 producto_id=pid,
                 numero_contrato__iexact=nc_upper,
             ).values_list('id', flat=True)
         )
         total_ya_en_bd = (
-            Lote.objects.filter(
+            qs_centro.filter(
                 producto_id=pid,
                 numero_contrato__iexact=nc_upper,
             ).aggregate(total=Sum('cantidad_inicial'))['total'] or 0
