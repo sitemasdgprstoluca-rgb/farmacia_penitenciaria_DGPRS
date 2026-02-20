@@ -596,17 +596,23 @@ def _validar_ccg_antes_de_importar(filas_consolidadas, centro):
         if incoming_total == 0:
             continue
 
-        # Total ya recibido en BD sin filtro activo=True para no subestimar
-        qs = Lote.objects.filter(
-            producto_id=pid,
-            numero_contrato__iexact=nc_upper,
+        # BUG-FIX: NO filtrar por centro — el CCG es GLOBAL por (producto, numero_contrato)
+        # independiente del centro, igual que base.py y LoteSerializer.validate().
+        # Filtrar por centro subestimaría el total cuando otro centro ya consumió el contrato.
+        # SELECT FOR UPDATE para evitar race condition entre importaciones concurrentes,
+        # igual que base.py (registrar_movimiento_stock) y LoteSerializer.create().
+        list(
+            Lote.objects.select_for_update().filter(
+                producto_id=pid,
+                numero_contrato__iexact=nc_upper,
+            ).values_list('id', flat=True)
         )
-        if centro:
-            qs = qs.filter(centro=centro)
-        else:
-            qs = qs.filter(centro__isnull=True)
-
-        total_ya_en_bd = qs.aggregate(total=Sum('cantidad_inicial'))['total'] or 0
+        total_ya_en_bd = (
+            Lote.objects.filter(
+                producto_id=pid,
+                numero_contrato__iexact=nc_upper,
+            ).aggregate(total=Sum('cantidad_inicial'))['total'] or 0
+        )
         proyectado = total_ya_en_bd + incoming_total
 
         if proyectado > ccg:

@@ -516,3 +516,62 @@ def test_h1_herencia_ccg():
     assert not ser.is_valid(), 'Herencia de CCG no funciona: debería bloquear'
     assert 'cantidad_inicial' in str(ser.errors)
 
+
+# ============================================================================
+# I) REGRESIONES — bugs encontrados en auditoría 2026-02-20
+# ============================================================================
+
+@pytest.mark.django_db
+def test_i1_importer_ccg_global_otro_centro_bloquea():
+    """
+    BUG: _validar_ccg_antes_de_importar filtraba por centro, permitiendo
+    que Centro B importara aunque Centro A ya consumió el contrato global.
+    FIX: No filtrar por centro — CCG es global por (producto, numero_contrato).
+    """
+    from core.utils.excel_importer import _validar_ccg_antes_de_importar
+    prod = _make_producto('CCG-I1')
+
+    # Farmacia central (centro=None) ya consumió 90 del CCG=100
+    _make_lote(prod, 'LI1-FARM', 90, 'CONT-I1', 100)
+
+    # Importar 15 más sin centro → total global: 90+15=105 > 100 → debe rechazar
+    filas = [{
+        'producto_id': prod.pk,
+        'numero_contrato': 'CONT-I1',
+        'cantidad_contrato_global': 100,
+        'cantidad_inicial': 15,
+    }]
+    import pytest as _pytest
+    with _pytest.raises(ValueError) as exc:
+        _validar_ccg_antes_de_importar(filas, centro=None)
+    assert 'contrato global' in str(exc.value).lower()
+
+
+@pytest.mark.django_db
+def test_i2_importer_ccg_no_filtra_por_centro():
+    """
+    El importer cuenta lotes de TODOS los centros al verificar CCG,
+    no solo del centro que está importando (CCG es global).
+    Importar para un centro específico debe ver el stock de farmacia central.
+    """
+    from core.models import Centro
+    from core.utils.excel_importer import _validar_ccg_antes_de_importar
+    prod = _make_producto('CCG-I2')
+
+    # Farmacia central ya tiene 90 del CCG=100
+    _make_lote(prod, 'LI2-FARM', 90, 'CONT-I2', 100)
+
+    # Intentar importar 15 para un centro específico: total global=90+15=105 > 100
+    centro_b = Centro.objects.create(nombre='CENTRO_I2_B_TEST', activo=True)
+    filas = [{
+        'producto_id': prod.pk,
+        'numero_contrato': 'CONT-I2',
+        'cantidad_contrato_global': 100,
+        'cantidad_inicial': 15,
+    }]
+    import pytest as _pytest
+    with _pytest.raises(ValueError):
+        # Con el bug (filtro por centro_b): total_ya_en_bd=0 → 0+15=15 ≤ 100 → no lanza
+        # Con el fix (sin filtro): total_ya_en_bd=90 → 90+15=105 > 100 → lanza ✓
+        _validar_ccg_antes_de_importar(filas, centro=centro_b)
+
