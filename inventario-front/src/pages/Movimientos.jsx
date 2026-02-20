@@ -2406,7 +2406,7 @@ const Movimientos = () => {
                     <th className="px-2 py-3 text-left text-xs font-bold uppercase tracking-wider text-white/90" style={{ width: esCentroUser ? '20%' : '14%' }}>Estado</th>
                     <th className="px-2 py-3 text-right text-xs font-bold uppercase tracking-wider text-white/90" style={{ width: esCentroUser ? '12%' : '8%' }}>Items</th>
                     {!esCentroUser && (
-                      <th className="px-2 py-3 text-left text-xs font-bold uppercase tracking-wider text-white/90 hidden sm:table-cell" style={{ width: '16%' }}>Destino</th>
+                      <th className="px-2 py-3 text-left text-xs font-bold uppercase tracking-wider text-white/90 hidden sm:table-cell" style={{ width: '16%' }}>Origen / Destino</th>
                     )}
                     <th className="px-2 py-3 text-left text-xs font-bold uppercase tracking-wider text-white/90" style={{ width: esCentroUser ? '18%' : '12%' }}>Fecha</th>
                     {/* ISS-SEC FIX: Ocultar columna Acciones para Centro (solo pueden ver) */}
@@ -3078,9 +3078,21 @@ const Movimientos = () => {
                               </span>
                             </td>
                             <td className="px-2 py-3.5 text-gray-700 text-xs hidden sm:table-cell">
-                              <span className="truncate block max-w-[120px]" title={mov.centro_nombre || mov.centro || "Almacén Central"}>
-                                {mov.centro_nombre || mov.centro || "Almacén Central"}
-                              </span>
+                              {(mov.centro_origen_nombre || mov.centro_destino_nombre) ? (
+                                <div className="flex items-center gap-1 flex-wrap">
+                                  <span className="truncate max-w-[60px]" title={mov.centro_origen_nombre || 'Almacén Central'}>
+                                    {mov.centro_origen_nombre || 'Almacén Central'}
+                                  </span>
+                                  <span className="text-gray-400">→</span>
+                                  <span className="truncate max-w-[60px]" title={mov.centro_destino_nombre || mov.centro_nombre}>
+                                    {mov.centro_destino_nombre || mov.centro_nombre}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="truncate block max-w-[120px]" title={mov.centro_nombre || mov.centro || 'Almacén Central'}>
+                                  {mov.centro_nombre || mov.centro || 'Almacén Central'}
+                                </span>
+                              )}
                             </td>
                             <td className="px-2 py-3.5 text-gray-600 text-xs hidden md:table-cell">
                               {mov.fecha_salida
@@ -3107,54 +3119,122 @@ const Movimientos = () => {
                               </button>
                             </td>
                           </tr>
-                          {/* 📋 PANEL EXPANDIDO - Detalles del movimiento individual */}
+                          {/* 📋 PANEL EXPANDIDO ENRIQUECIDO — sinGrupo (Vista Agrupada) */
                           {expandedId === mov.id && (
                             <tr className="bg-gradient-to-b from-gray-50 to-white">
                               <td colSpan={esFarmacia ? 6 : esCentroUser ? 4 : 5} className="px-4 py-4">
                                 <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                                  {/* Header del panel */}
-                                  <div className="bg-gradient-to-r from-slate-100 to-gray-100 px-4 py-2 border-b border-gray-200">
-                                    <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">
-                                      Detalles del Movimiento #{mov.id}
-                                    </span>
+
+                                  {/* Header: tipo + cantidad prominente */}
+                                  <div className={`px-4 py-3 border-b border-gray-200 flex items-center justify-between flex-wrap gap-2
+                                    ${mov.tipo === 'entrada' ? 'bg-gradient-to-r from-emerald-50 to-emerald-100' :
+                                      mov.tipo === 'salida' ? 'bg-gradient-to-r from-red-50 to-red-100' :
+                                      'bg-gradient-to-r from-slate-100 to-gray-100'}
+                                  `}>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider
+                                        ${mov.tipo === 'entrada' ? 'bg-emerald-200 text-emerald-800 border border-emerald-300' :
+                                          mov.tipo === 'salida' ? 'bg-red-200 text-red-800 border border-red-300' :
+                                          'bg-gray-200 text-gray-700 border border-gray-300'}
+                                      `}>
+                                        <span className={`w-2 h-2 rounded-full ${mov.tipo === 'entrada' ? 'bg-emerald-600' : mov.tipo === 'salida' ? 'bg-red-600' : 'bg-gray-500'}`}></span>
+                                        {mov.tipo === 'entrada' ? 'Entrada' : mov.tipo === 'salida' ? 'Salida' : mov.tipo || 'Ajuste'}
+                                      </span>
+                                      {mov.tipo === 'salida' && mov.subtipo_salida && (
+                                        <span className="text-xs text-gray-600 font-medium">
+                                          {mov.subtipo_salida === 'receta' ? '💊 Receta médica' :
+                                           mov.subtipo_salida === 'consumo_interno' ? '🏥 Consumo interno' :
+                                           mov.subtipo_salida === 'merma' ? '📉 Merma' :
+                                           mov.subtipo_salida === 'caducidad' ? '⏰ Caducidad' :
+                                           mov.subtipo_salida === 'transferencia' ? '🔄 Transferencia a centro' : mov.subtipo_salida}
+                                        </span>
+                                      )}
+                                      <span className="text-xs text-gray-400 font-mono">Mov. #{mov.id}</span>
+                                    </div>
+                                    <div className={`text-2xl font-black tabular-nums
+                                      ${mov.tipo === 'entrada' ? 'text-emerald-600' : mov.tipo === 'salida' ? 'text-red-600' : 'text-gray-700'}
+                                    `}>
+                                      {mov.tipo === 'salida' ? '-' : '+'}{Math.abs(mov.cantidad)}
+                                      <span className="text-xs font-normal text-gray-400 ml-1">uds.</span>
+                                    </div>
                                   </div>
-                                  
-                                  <div className="p-4">
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+
+                                  <div className="p-4 space-y-3">
+
+                                    {/* Producto + Lote */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                       <div className="bg-gray-50 rounded-lg p-3">
-                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">ID</span>
-                                        <p className="text-gray-800 font-mono font-bold">{mov.id}</p>
+                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Producto</span>
+                                        {mov.producto_clave && <span className="text-[11px] font-mono text-gray-400 mr-1">{mov.producto_clave}</span>}
+                                        <p className="text-gray-800 font-semibold text-sm">{mov.producto_nombre || mov.producto || 'N/A'}</p>
                                       </div>
                                       <div className="bg-gray-50 rounded-lg p-3">
-                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Usuario</span>
-                                        <p className="text-gray-800 font-medium">{mov.usuario_nombre || 'Sistema'}</p>
+                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Número de Lote</span>
+                                        <p className="text-gray-800 font-mono font-semibold">{mov.lote_codigo || mov.lote_numero || mov.numero_lote || 'N/A'}</p>
+                                      </div>
+                                    </div>
+
+                                    {/* Flujo origen → destino */}
+                                    <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+                                      <span className="text-[10px] font-bold text-blue-500 uppercase tracking-wider block mb-2">Flujo del movimiento</span>
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <div className="bg-white rounded-lg px-3 py-2 border border-gray-200 shadow-sm">
+                                          <span className="text-[10px] text-gray-400 block">Origen</span>
+                                          <span className="font-semibold text-gray-700 text-sm">{mov.centro_origen_nombre || 'Almacén Central'}</span>
+                                        </div>
+                                        <span className="text-gray-400 font-bold text-lg">→</span>
+                                        <div className="bg-white rounded-lg px-3 py-2 border border-gray-200 shadow-sm">
+                                          <span className="text-[10px] text-gray-400 block">Destino</span>
+                                          <span className="font-semibold text-gray-700 text-sm">{mov.centro_destino_nombre || mov.centro_nombre || 'Almacén Central'}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {/* Usuario + Fecha + Folio opcional */}
+                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                      <div className="bg-gray-50 rounded-lg p-3">
+                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Registrado por</span>
+                                        <p className="text-gray-800 font-medium text-sm">{mov.usuario_nombre || 'Sistema'}</p>
                                       </div>
                                       <div className="bg-gray-50 rounded-lg p-3">
-                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Centro</span>
-                                        <p className="text-gray-800 font-medium">{mov.centro_nombre || 'Almacén Central'}</p>
-                                      </div>
-                                      <div className="bg-gray-50 rounded-lg p-3">
-                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Fecha</span>
+                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Fecha y hora</span>
                                         <p className="text-gray-800 font-medium text-sm">
-                                          {(mov.fecha_movimiento || mov.fecha) 
-                                            ? new Date(mov.fecha_movimiento || mov.fecha).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) 
+                                          {(mov.fecha_movimiento || mov.fecha_salida || mov.fecha)
+                                            ? new Date(mov.fecha_movimiento || mov.fecha_salida || mov.fecha).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' })
                                             : '-'}
                                         </p>
                                       </div>
+                                      {(mov.folio_documento || mov.referencia || mov.requisicion_folio) && (
+                                        <div className="bg-blue-50 rounded-lg p-3">
+                                          <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider block mb-1">
+                                            {mov.requisicion_folio ? 'Requisición' : 'Folio / Referencia'}
+                                          </span>
+                                          <p className="text-blue-800 font-mono font-bold text-sm">
+                                            {mov.requisicion_folio || mov.folio_documento || mov.referencia}
+                                          </p>
+                                        </div>
+                                      )}
+                                      {mov.numero_expediente && (
+                                        <div className="bg-purple-50 rounded-lg p-3">
+                                          <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider block mb-1">No. Expediente</span>
+                                          <p className="text-purple-800 font-mono font-bold text-sm">{mov.numero_expediente}</p>
+                                        </div>
+                                      )}
                                     </div>
-                                    
-                                    {mov.observaciones && (
-                                      <div className="mt-4">
-                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-2">Observaciones</span>
+
+                                    {/* Observaciones */}
+                                    {(mov.observaciones || mov.motivo) && (
+                                      <div>
+                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-2">Observaciones / Motivo</span>
                                         <p className="text-gray-700 bg-amber-50 p-3 rounded-lg border border-amber-200 text-sm leading-relaxed">
-                                          {mov.observaciones}
+                                          {mov.observaciones || mov.motivo}
                                         </p>
                                       </div>
                                     )}
-                                    
-                                    {/* ISS-SEC FIX: Acciones solo para Farmacia/Admin */}
+
+                                    {/* Acciones — solo farmacia/admin, solo salidas */}
                                     {esFarmacia && mov.tipo === 'salida' && (
-                                      <div className="mt-5 pt-4 border-t border-gray-200">
+                                      <div className="pt-3 border-t border-gray-200">
                                         <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-3">Acciones</span>
                                         <div className="flex flex-wrap gap-3">
                                           {!mov.confirmado ? (
@@ -3172,29 +3252,13 @@ const Movimientos = () => {
                                               <button
                                                 onClick={(e) => { e.stopPropagation(); confirmarEntregaIndividual(mov.id); }}
                                                 disabled={confirmandoMovimiento === mov.id}
-                                                className={`
-                                                  inline-flex items-center gap-2 px-4 py-2.5 text-white rounded-xl 
-                                                  transition-all duration-200 text-sm font-semibold shadow-sm hover:shadow-md
-                                                  disabled:opacity-50 disabled:cursor-not-allowed
-                                                  ${mov.subtipo_salida === 'receta' 
-                                                    ? 'bg-gradient-to-b from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700' 
-                                                    : 'bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700'
-                                                  }
+                                                className={`inline-flex items-center gap-2 px-4 py-2.5 text-white rounded-xl transition-all duration-200 text-sm font-semibold shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed
+                                                  ${mov.subtipo_salida === 'receta' ? 'bg-gradient-to-b from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700' : 'bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700'}
                                                 `}
-                                                title={mov.subtipo_salida === 'receta' 
-                                                  ? "Confirmar dispensación" 
-                                                  : "Confirmar entrega"
-                                                }
+                                                title={mov.subtipo_salida === 'receta' ? 'Confirmar dispensación' : 'Confirmar entrega'}
                                               >
-                                                {confirmandoMovimiento === mov.id ? (
-                                                  <FaSpinner className="animate-spin text-base" />
-                                                ) : (
-                                                  <FaClipboardCheck className="text-base" />
-                                                )}
-                                                {confirmandoMovimiento === mov.id 
-                                                  ? 'Confirmando...' 
-                                                  : (mov.subtipo_salida === 'receta' ? 'Confirmar Dispensación' : 'Confirmar Entrega')
-                                                }
+                                                {confirmandoMovimiento === mov.id ? <FaSpinner className="animate-spin text-base" /> : <FaClipboardCheck className="text-base" />}
+                                                {confirmandoMovimiento === mov.id ? 'Confirmando...' : (mov.subtipo_salida === 'receta' ? 'Confirmar Dispensación' : 'Confirmar Entrega')}
                                               </button>
                                             </>
                                           ) : !esMedico ? (
@@ -3208,13 +3272,13 @@ const Movimientos = () => {
                                             </button>
                                           ) : (
                                             <span className="inline-flex items-center gap-2 px-4 py-2.5 text-emerald-600 text-sm font-semibold">
-                                              <FaCheckCircle className="text-base" />
-                                              Entregado
+                                              <FaCheckCircle className="text-base" /> Entregado
                                             </span>
                                           )}
                                         </div>
                                       </div>
                                     )}
+
                                   </div>
                                 </div>
                               </td>
@@ -3293,7 +3357,19 @@ const Movimientos = () => {
                             </span>
                           </td>
                           <td className="px-2 py-3.5 text-gray-700 text-xs hidden sm:table-cell">
-                            <span className="line-clamp-2">{mov.centro_nombre || mov.centro || "Almacén Central"}</span>
+                            {(mov.centro_origen_nombre || mov.centro_destino_nombre) ? (
+                              <div className="flex items-center gap-1 flex-wrap">
+                                <span className="truncate max-w-[60px]" title={mov.centro_origen_nombre || 'Almacén Central'}>
+                                  {mov.centro_origen_nombre || 'Almacén Central'}
+                                </span>
+                                <span className="text-gray-400">→</span>
+                                <span className="truncate max-w-[60px]" title={mov.centro_destino_nombre || mov.centro_nombre}>
+                                  {mov.centro_destino_nombre || mov.centro_nombre}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="line-clamp-2">{mov.centro_nombre || mov.centro || 'Almacén Central'}</span>
+                            )}
                           </td>
                           <td className="px-2 py-3.5 text-gray-600 text-xs hidden md:table-cell whitespace-nowrap">
                             {mov.fecha_salida
@@ -3320,118 +3396,148 @@ const Movimientos = () => {
                             </button>
                           </td>
                         </tr>
-                        {/* 📋 PANEL EXPANDIDO Premium */}
+                        {/* 📋 PANEL EXPANDIDO ENRIQUECIDO — Vista Individual */}
                         {expandedId === mov.id && (
                           <tr className="bg-gradient-to-b from-gray-50 to-white">
                             <td colSpan={esFarmacia ? 6 : esCentroUser ? 4 : 5} className="px-4 py-4">
                               <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                                <div className="bg-gradient-to-r from-slate-100 to-gray-100 px-4 py-2 border-b border-gray-200">
-                                  <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">
-                                    Detalles del Movimiento #{mov.id}
-                                  </span>
+
+                                {/* Header: tipo + cantidad prominente */}
+                                <div className={`px-4 py-3 border-b border-gray-200 flex items-center justify-between flex-wrap gap-2
+                                  ${mov.tipo === 'entrada' ? 'bg-gradient-to-r from-emerald-50 to-emerald-100' :
+                                    mov.tipo === 'salida' ? 'bg-gradient-to-r from-red-50 to-red-100' :
+                                    'bg-gradient-to-r from-slate-100 to-gray-100'}
+                                `}>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider
+                                      ${mov.tipo === 'entrada' ? 'bg-emerald-200 text-emerald-800 border border-emerald-300' :
+                                        mov.tipo === 'salida' ? 'bg-red-200 text-red-800 border border-red-300' :
+                                        'bg-gray-200 text-gray-700 border border-gray-300'}
+                                    `}>
+                                      <span className={`w-2 h-2 rounded-full ${mov.tipo === 'entrada' ? 'bg-emerald-600' : mov.tipo === 'salida' ? 'bg-red-600' : 'bg-gray-500'}`}></span>
+                                      {mov.tipo === 'entrada' ? 'Entrada' : mov.tipo === 'salida' ? 'Salida' : mov.tipo || 'Ajuste'}
+                                    </span>
+                                    {mov.tipo === 'salida' && mov.subtipo_salida && (
+                                      <span className="text-xs text-gray-600 font-medium">
+                                        {mov.subtipo_salida === 'receta' ? '💊 Receta médica' :
+                                         mov.subtipo_salida === 'consumo_interno' ? '🏥 Consumo interno' :
+                                         mov.subtipo_salida === 'merma' ? '📉 Merma' :
+                                         mov.subtipo_salida === 'caducidad' ? '⏰ Caducidad' :
+                                         mov.subtipo_salida === 'transferencia' ? '🔄 Transferencia a centro' : mov.subtipo_salida}
+                                      </span>
+                                    )}
+                                    <span className="text-xs text-gray-400 font-mono">Mov. #{mov.id}</span>
+                                  </div>
+                                  <div className={`text-2xl font-black tabular-nums
+                                    ${mov.tipo === 'entrada' ? 'text-emerald-600' : mov.tipo === 'salida' ? 'text-red-600' : 'text-gray-700'}
+                                  `}>
+                                    {mov.tipo === 'salida' ? '-' : '+'}{Math.abs(mov.cantidad)}
+                                    <span className="text-xs font-normal text-gray-400 ml-1">uds.</span>
+                                  </div>
                                 </div>
-                                <div className="p-4">
-                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+
+                                <div className="p-4 space-y-3">
+
+                                  {/* Producto + Lote */}
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div className="bg-gray-50 rounded-lg p-3">
                                       <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Producto</span>
-                                      <p className="text-gray-800 font-medium text-sm">{mov.producto_clave || 'N/A'} - {mov.producto_nombre || ''}</p>
+                                      {mov.producto_clave && <span className="text-[11px] font-mono text-gray-400 mr-1">{mov.producto_clave}</span>}
+                                      <p className="text-gray-800 font-semibold text-sm">{mov.producto_nombre || mov.producto || 'N/A'}</p>
                                     </div>
                                     <div className="bg-gray-50 rounded-lg p-3">
-                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Lote</span>
-                                      <p className="text-gray-800 font-mono font-medium">{mov.lote_codigo || mov.numero_lote || 'N/A'}</p>
+                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Número de Lote</span>
+                                      <p className="text-gray-800 font-mono font-semibold">{mov.lote_codigo || mov.lote_numero || mov.numero_lote || 'N/A'}</p>
                                     </div>
-                                    <div className="bg-gray-50 rounded-lg p-3">
-                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Centro</span>
-                                      <p className="text-gray-800 font-medium">{mov.centro_nombre || 'Almacén Central'}</p>
-                                    </div>
-                                    <div className="bg-gray-50 rounded-lg p-3">
-                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Usuario</span>
-                                      <p className="text-gray-800 font-medium">{mov.usuario_nombre || mov.usuario || 'Sistema'}</p>
-                                    </div>
-                                    {mov.requisicion_folio && (
-                                      <div className="bg-blue-50 rounded-lg p-3">
-                                        <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider block mb-1">Requisición</span>
-                                        <p className="text-blue-800 font-bold">{mov.requisicion_folio}</p>
+                                  </div>
+
+                                  {/* Flujo origen → destino */}
+                                  <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+                                    <span className="text-[10px] font-bold text-blue-500 uppercase tracking-wider block mb-2">Flujo del movimiento</span>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <div className="bg-white rounded-lg px-3 py-2 border border-gray-200 shadow-sm">
+                                        <span className="text-[10px] text-gray-400 block">Origen</span>
+                                        <span className="font-semibold text-gray-700 text-sm">{mov.centro_origen_nombre || 'Almacén Central'}</span>
                                       </div>
-                                    )}
-                                    {mov.tipo === 'salida' && (
-                                      <div className="bg-gray-50 rounded-lg p-3">
-                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Subtipo</span>
-                                        <p className="text-gray-800 font-medium">
-                                          {mov.subtipo_salida === 'receta' ? '💊 Receta médica' :
-                                           mov.subtipo_salida === 'consumo_interno' ? '🏥 Consumo interno' :
-                                           mov.subtipo_salida === 'merma' ? '📉 Merma' :
-                                           mov.subtipo_salida === 'caducidad' ? '⏰ Caducidad' :
-                                           mov.subtipo_salida === 'transferencia' ? '🔄 Transferencia' :
-                                           mov.subtipo_salida || 'No especificado'}
-                                        </p>
+                                      <span className="text-gray-400 font-bold text-lg">→</span>
+                                      <div className="bg-white rounded-lg px-3 py-2 border border-gray-200 shadow-sm">
+                                        <span className="text-[10px] text-gray-400 block">Destino</span>
+                                        <span className="font-semibold text-gray-700 text-sm">{mov.centro_destino_nombre || mov.centro_nombre || 'Almacén Central'}</span>
                                       </div>
-                                    )}
-                                    {mov.tipo === 'salida' && mov.subtipo_salida === 'receta' && mov.numero_expediente && (
-                                      <div className="bg-purple-50 rounded-lg p-3">
-                                        <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider block mb-1">No. Expediente</span>
-                                        <p className="text-purple-800 font-mono font-bold">{mov.numero_expediente}</p>
-                                      </div>
-                                    )}
+                                    </div>
+                                  </div>
+
+                                  {/* Usuario + Fecha + Folio */}
+                                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                                     <div className="bg-gray-50 rounded-lg p-3">
-                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Fecha Exacta</span>
+                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Registrado por</span>
+                                      <p className="text-gray-800 font-medium text-sm">{mov.usuario_nombre || 'Sistema'}</p>
+                                    </div>
+                                    <div className="bg-gray-50 rounded-lg p-3">
+                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Fecha y hora</span>
                                       <p className="text-gray-800 font-medium text-sm">
-                                        {(mov.fecha_movimiento || mov.fecha) 
-                                          ? new Date(mov.fecha_movimiento || mov.fecha).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) 
+                                        {(mov.fecha_movimiento || mov.fecha_salida || mov.fecha)
+                                          ? new Date(mov.fecha_movimiento || mov.fecha_salida || mov.fecha).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' })
                                           : '-'}
                                       </p>
                                     </div>
+                                    {(mov.folio_documento || mov.referencia || mov.requisicion_folio) && (
+                                      <div className="bg-blue-50 rounded-lg p-3">
+                                        <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider block mb-1">
+                                          {mov.requisicion_folio ? 'Requisición' : 'Folio / Referencia'}
+                                        </span>
+                                        <p className="text-blue-800 font-mono font-bold text-sm">
+                                          {mov.requisicion_folio || mov.folio_documento || mov.referencia}
+                                        </p>
+                                      </div>
+                                    )}
+                                    {mov.numero_expediente && (
+                                      <div className="bg-purple-50 rounded-lg p-3">
+                                        <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider block mb-1">No. Expediente</span>
+                                        <p className="text-purple-800 font-mono font-bold text-sm">{mov.numero_expediente}</p>
+                                      </div>
+                                    )}
                                   </div>
-                                  
-                                  {mov.observaciones && (
-                                    <div className="mt-4">
-                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-2">Observaciones</span>
+
+                                  {/* Observaciones */}
+                                  {(mov.observaciones || mov.motivo) && (
+                                    <div>
+                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-2">Observaciones / Motivo</span>
                                       <p className="text-gray-700 bg-amber-50 p-3 rounded-lg border border-amber-200 text-sm leading-relaxed">
-                                        {mov.observaciones}
+                                        {mov.observaciones || mov.motivo}
                                       </p>
                                     </div>
                                   )}
-                                  
-                                  {/* ISS-SEC FIX: Acciones solo para Farmacia/Admin */}
+
+                                  {/* Acciones — solo farmacia/admin, solo salidas */}
                                   {esFarmacia && mov.tipo === 'salida' && (
-                                    <div className="mt-5 pt-4 border-t border-gray-200">
+                                    <div className="pt-3 border-t border-gray-200">
                                       <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-3">Acciones</span>
                                       <div className="flex flex-wrap gap-3">
-                                        {mov.subtipo_salida !== 'receta' && (
-                                          <button
-                                            onClick={(e) => { e.stopPropagation(); descargarReciboSalida(mov); }}
-                                            className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-b from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 transition-all duration-200 text-sm font-semibold shadow-sm hover:shadow-md"
-                                            title="Descargar hoja de entrega"
-                                          >
-                                            <FaFilePdf className="text-base" />
-                                            Hoja de Entrega
-                                          </button>
-                                        )}
                                         {!mov.confirmado ? (
-                                          <button
-                                            onClick={(e) => { e.stopPropagation(); confirmarEntregaIndividual(mov.id); }}
-                                            disabled={confirmandoMovimiento === mov.id}
-                                            className={`
-                                              inline-flex items-center gap-2 px-4 py-2.5 text-white rounded-xl 
-                                              transition-all duration-200 text-sm font-semibold shadow-sm hover:shadow-md
-                                              disabled:opacity-50 disabled:cursor-not-allowed
-                                              ${mov.subtipo_salida === 'receta' 
-                                                ? 'bg-gradient-to-b from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700' 
-                                                : 'bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700'
-                                              }
-                                            `}
-                                            title={mov.subtipo_salida === 'receta' ? "Confirmar dispensación" : "Confirmar entrega"}
-                                          >
-                                            {confirmandoMovimiento === mov.id ? (
-                                              <FaSpinner className="animate-spin text-base" />
-                                            ) : (
-                                              <FaClipboardCheck className="text-base" />
+                                          <>
+                                            {mov.subtipo_salida !== 'receta' && (
+                                              <button
+                                                onClick={(e) => { e.stopPropagation(); descargarReciboSalida(mov); }}
+                                                className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-b from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 transition-all duration-200 text-sm font-semibold shadow-sm hover:shadow-md"
+                                                title="Descargar hoja de entrega"
+                                              >
+                                                <FaFilePdf className="text-base" />
+                                                Hoja de Entrega
+                                              </button>
                                             )}
-                                            {confirmandoMovimiento === mov.id 
-                                              ? 'Confirmando...' 
-                                              : (mov.subtipo_salida === 'receta' ? 'Confirmar Dispensación' : 'Confirmar Entrega')
-                                            }
-                                          </button>
+                                            <button
+                                              onClick={(e) => { e.stopPropagation(); confirmarEntregaIndividual(mov.id); }}
+                                              disabled={confirmandoMovimiento === mov.id}
+                                              className={`inline-flex items-center gap-2 px-4 py-2.5 text-white rounded-xl transition-all duration-200 text-sm font-semibold shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed
+                                                ${mov.subtipo_salida === 'receta' ? 'bg-gradient-to-b from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700' : 'bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700'}
+                                              `}
+                                              title={mov.subtipo_salida === 'receta' ? 'Confirmar dispensación' : 'Confirmar entrega'}
+                                            >
+                                              {confirmandoMovimiento === mov.id ? <FaSpinner className="animate-spin text-base" /> : <FaClipboardCheck className="text-base" />}
+                                              {confirmandoMovimiento === mov.id ? 'Confirmando...' : (mov.subtipo_salida === 'receta' ? 'Confirmar Dispensación' : 'Confirmar Entrega')}
+                                            </button>
+                                          </>
                                         ) : !esMedico ? (
                                           <button
                                             onClick={(e) => { e.stopPropagation(); descargarReciboFinalizado(mov); }}
@@ -3443,13 +3549,13 @@ const Movimientos = () => {
                                           </button>
                                         ) : (
                                           <span className="inline-flex items-center gap-2 px-4 py-2.5 text-emerald-600 text-sm font-semibold">
-                                            <FaCheckCircle className="text-base" />
-                                            Entregado
+                                            <FaCheckCircle className="text-base" /> Entregado
                                           </span>
                                         )}
                                       </div>
                                     </div>
                                   )}
+
                                 </div>
                               </div>
                             </td>
