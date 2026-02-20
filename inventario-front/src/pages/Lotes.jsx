@@ -375,7 +375,19 @@ const Lotes = () => {
       toast.error('La fecha de caducidad es obligatoria. Para insumos sin caducidad, usar 2099-12-31');
       return;
     }
-    
+
+    // NÚMERO DE CONTRATO obligatorio para Farmacia/Admin
+    if (puedeVerContrato && !editingLote && !formData.numero_contrato?.trim()) {
+      toast.error('El número de contrato es obligatorio');
+      return;
+    }
+
+    // FECHA DE ENTREGA obligatoria en creación
+    if (!editingLote && !formData.fecha_fabricacion) {
+      toast.error('La fecha de entrega es obligatoria');
+      return;
+    }
+
     // Validar que la fecha de caducidad no esté más de 8 años en el futuro
     const fechaCaducidad = new Date(formData.fecha_caducidad);
     const fechaActual = new Date();
@@ -1863,7 +1875,82 @@ const handleImportar = async (e) => {
                     )}
                   </div>
                 </div>
-              
+
+                {/* CAMPOS OBLIGATORIOS: Número de Contrato y Fecha de Entrega */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {puedeVerContrato ? (
+                    <div>
+                      <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
+                        NÚMERO DE CONTRATO {!editingLote && <span className="text-red-600">*</span>}{editingLote?.tiene_movimientos && <span className="text-orange-500 text-xs">🔒</span>}
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.numero_contrato}
+                        onChange={(e) => !(editingLote?.tiene_movimientos) && setFormData({...formData, numero_contrato: e.target.value})}
+                        className={`w-full px-4 py-3 border-2 rounded-xl transition-all focus:outline-none ${
+                          editingLote?.tiene_movimientos
+                            ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed'
+                            : 'border-gray-200'
+                        }`}
+                        onFocus={(e) => {
+                          if (!(editingLote?.tiene_movimientos)) {
+                            e.target.style.borderColor = '#9F2241';
+                            e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
+                          }
+                        }}
+                        onBlur={(e) => {
+                          e.target.style.borderColor = '#E5E7EB';
+                          e.target.style.boxShadow = 'none';
+                        }}
+                        disabled={editingLote?.tiene_movimientos}
+                        readOnly={editingLote?.tiene_movimientos}
+                        placeholder="Ej: CB/A/37/2025"
+                        maxLength={100}
+                      />
+                      <p className="text-xs text-gray-400 mt-1">
+                        {editingLote?.tiene_movimientos
+                          ? '🔒 No editable - Campo auditable con movimientos'
+                          : 'Requerido para trazabilidad de adquisiciones'}
+                      </p>
+                    </div>
+                  ) : (
+                    <div />
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
+                      FECHA DE ENTREGA {!editingLote && <span className="text-red-600">*</span>}{editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
+                    </label>
+                    <input
+                      type="date"
+                      value={formData.fecha_fabricacion}
+                      onChange={(e) => !(editingLote?.tiene_movimientos) && setFormData({...formData, fecha_fabricacion: e.target.value})}
+                      className={`w-full px-4 py-3 border-2 rounded-xl transition-all focus:outline-none ${
+                        editingLote?.tiene_movimientos
+                          ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed'
+                          : 'border-gray-200'
+                      }`}
+                      onFocus={(e) => {
+                        if (!(editingLote?.tiene_movimientos)) {
+                          e.target.style.borderColor = '#9F2241';
+                          e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
+                        }
+                      }}
+                      onBlur={(e) => {
+                        e.target.style.borderColor = '#E5E7EB';
+                        e.target.style.boxShadow = 'none';
+                      }}
+                      required={!editingLote}
+                      disabled={editingLote?.tiene_movimientos}
+                      readOnly={editingLote?.tiene_movimientos}
+                      max={new Date().toISOString().split('T')[0]}
+                    />
+                    <p className="text-xs text-gray-500 italic mt-1">
+                      {editingLote?.tiene_movimientos ? '🔒 No editable' : 'Fecha de recepción del lote'}
+                    </p>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   {/* ISS-INV-002: Cantidad del Contrato LOTE (solo para este lote específico) */}
                   <div>
@@ -2053,144 +2140,73 @@ const handleImportar = async (e) => {
                   </div>
                 </div>
 
-                {/* Fecha de Entrega y Ubicación */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                      FECHA DE ENTREGA {editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
-                    </label>
-                    <input
-                      type="date"
-                      value={formData.fecha_fabricacion}
-                      onChange={(e) => !(editingLote?.tiene_movimientos) && setFormData({...formData, fecha_fabricacion: e.target.value})}
-                      className={`w-full px-4 py-3 border-2 rounded-xl transition-all focus:outline-none ${
-                        editingLote?.tiene_movimientos 
-                          ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed' 
-                          : 'border-gray-200'
-                      }`}
-                      onFocus={(e) => {
-                        if (!(editingLote?.tiene_movimientos)) {
-                          e.target.style.borderColor = '#9F2241';
-                          e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
-                        }
-                      }}
-                      onBlur={(e) => {
-                        e.target.style.borderColor = '#E5E7EB';
-                        e.target.style.boxShadow = 'none';
-                      }}
-                      disabled={editingLote?.tiene_movimientos}
-                      readOnly={editingLote?.tiene_movimientos}
-                      max={new Date().toISOString().split('T')[0]}
-                    />
-                    <p className="text-xs text-gray-500 italic mt-1">
-                      {editingLote?.tiene_movimientos ? '🔒 No editable' : 'Opcional - Fecha de recepción del lote'}
-                    </p>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                      UBICACIÓN {editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.ubicacion}
-                      onChange={(e) => !(editingLote?.tiene_movimientos) && setFormData({...formData, ubicacion: e.target.value})}
-                      className={`w-full px-4 py-3 border-2 rounded-xl transition-all focus:outline-none ${
-                        editingLote?.tiene_movimientos 
-                          ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed' 
-                          : 'border-gray-200'
-                      }`}
-                      onFocus={(e) => {
-                        if (!(editingLote?.tiene_movimientos)) {
-                          e.target.style.borderColor = '#9F2241';
-                          e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
-                        }
-                      }}
-                      onBlur={(e) => {
-                        e.target.style.borderColor = '#E5E7EB';
-                        e.target.style.boxShadow = 'none';
-                      }}
-                      disabled={editingLote?.tiene_movimientos}
-                      readOnly={editingLote?.tiene_movimientos}
-                      placeholder="Ej: Estante A, Anaquel 3"
-                      maxLength={100}
-                    />
-                    <p className="text-xs text-gray-500 italic mt-1">
-                      {editingLote?.tiene_movimientos ? '🔒 No editable' : 'Ubicación física del lote en almacén'}
-                    </p>
-                  </div>
+                {/* Ubicación */}
+                <div>
+                  <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
+                    UBICACIÓN {editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.ubicacion}
+                    onChange={(e) => !(editingLote?.tiene_movimientos) && setFormData({...formData, ubicacion: e.target.value})}
+                    className={`w-full px-4 py-3 border-2 rounded-xl transition-all focus:outline-none ${
+                      editingLote?.tiene_movimientos
+                        ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed'
+                        : 'border-gray-200'
+                    }`}
+                    onFocus={(e) => {
+                      if (!(editingLote?.tiene_movimientos)) {
+                        e.target.style.borderColor = '#9F2241';
+                        e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
+                      }
+                    }}
+                    onBlur={(e) => {
+                      e.target.style.borderColor = '#E5E7EB';
+                      e.target.style.boxShadow = 'none';
+                    }}
+                    disabled={editingLote?.tiene_movimientos}
+                    readOnly={editingLote?.tiene_movimientos}
+                    placeholder="Ej: Estante A, Anaquel 3"
+                    maxLength={100}
+                  />
+                  <p className="text-xs text-gray-500 italic mt-1">
+                    {editingLote?.tiene_movimientos ? '🔒 No editable' : 'Ubicación física del lote en almacén'}
+                  </p>
                 </div>
 
-                {/* CAMPOS DE TRAZABILIDAD DE CONTRATOS - Solo visible para ADMIN y FARMACIA */}
+                {/* Marca / Laboratorio - Solo Admin/Farmacia */}
                 {puedeVerContrato && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                      NÚMERO DE CONTRATO {editingLote?.tiene_movimientos && <span className="text-orange-500 text-xs">🔒</span>}
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.numero_contrato}
-                      onChange={(e) => !(editingLote?.tiene_movimientos) && setFormData({...formData, numero_contrato: e.target.value})}
-                      className={`w-full px-4 py-3 border-2 rounded-xl transition-all focus:outline-none ${
-                        editingLote?.tiene_movimientos 
-                          ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed' 
-                          : 'border-gray-200'
-                      }`}
-                      onFocus={(e) => {
-                        if (!(editingLote?.tiene_movimientos)) {
-                          e.target.style.borderColor = '#9F2241';
-                          e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
-                        }
-                      }}
-                      onBlur={(e) => {
-                        e.target.style.borderColor = '#E5E7EB';
-                        e.target.style.boxShadow = 'none';
-                      }}
-                      disabled={editingLote?.tiene_movimientos}
-                      readOnly={editingLote?.tiene_movimientos}
-                      placeholder="Ej: CONT-2025-001"
-                      maxLength={100}
-                    />
-                    <p className="text-xs text-gray-400 mt-1">
-                      {editingLote?.tiene_movimientos 
-                        ? '🔒 No editable - Campo auditable con movimientos' 
-                        : 'Para trazabilidad de adquisiciones'}
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                      MARCA / LABORATORIO {editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.marca}
-                      onChange={(e) => !(editingLote?.tiene_movimientos) && setFormData({...formData, marca: e.target.value})}
-                      className={`w-full px-4 py-3 border-2 rounded-xl transition-all focus:outline-none ${
-                        editingLote?.tiene_movimientos 
-                          ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed' 
-                          : 'border-gray-200'
-                      }`}
-                      onFocus={(e) => {
-                        if (!(editingLote?.tiene_movimientos)) {
-                          e.target.style.borderColor = '#9F2241';
-                          e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
-                        }
-                      }}
-                      onBlur={(e) => {
-                        e.target.style.borderColor = '#E5E7EB';
-                        e.target.style.boxShadow = 'none';
-                      }}
-                      disabled={editingLote?.tiene_movimientos}
-                      readOnly={editingLote?.tiene_movimientos}
-                      placeholder="Ej: Bayer, Pfizer, Genérico"
-                      maxLength={150}
-                    />
-                    <p className="text-xs text-gray-400 mt-1">
-                      {editingLote?.tiene_movimientos ? '🔒 No editable' : 'Marca o laboratorio del lote'}
-                    </p>
-                  </div>
+                <div>
+                  <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
+                    MARCA / LABORATORIO {editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.marca}
+                    onChange={(e) => !(editingLote?.tiene_movimientos) && setFormData({...formData, marca: e.target.value})}
+                    className={`w-full px-4 py-3 border-2 rounded-xl transition-all focus:outline-none ${
+                      editingLote?.tiene_movimientos
+                        ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed'
+                        : 'border-gray-200'
+                    }`}
+                    onFocus={(e) => {
+                      if (!(editingLote?.tiene_movimientos)) {
+                        e.target.style.borderColor = '#9F2241';
+                        e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
+                      }
+                    }}
+                    onBlur={(e) => {
+                      e.target.style.borderColor = '#E5E7EB';
+                      e.target.style.boxShadow = 'none';
+                    }}
+                    disabled={editingLote?.tiene_movimientos}
+                    readOnly={editingLote?.tiene_movimientos}
+                    placeholder="Ej: Bayer, Pfizer, Genérico"
+                    maxLength={150}
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    {editingLote?.tiene_movimientos ? '🔒 No editable' : 'Marca o laboratorio del lote'}
+                  </p>
                 </div>
                 )}
 

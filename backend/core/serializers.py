@@ -1050,6 +1050,8 @@ class LoteSerializer(serializers.ModelSerializer):
             'numero_contrato': {'required': False, 'allow_null': True, 'allow_blank': True},
             'marca': {'required': False, 'allow_null': True, 'allow_blank': True},
             'ubicacion': {'required': False, 'allow_null': True, 'allow_blank': True},
+            # centro=null → lote de Farmacia Central (FK nullable en BD)
+            'centro': {'required': False, 'allow_null': True},
         }
     
     def get_cantidad_pendiente(self, obj):
