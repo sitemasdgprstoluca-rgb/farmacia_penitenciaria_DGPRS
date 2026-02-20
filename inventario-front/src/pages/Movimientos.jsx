@@ -3078,14 +3078,14 @@ const Movimientos = () => {
                               </span>
                             </td>
                             <td className="px-2 py-3.5 text-gray-700 text-xs hidden sm:table-cell">
-                              {(mov.centro_origen_nombre || mov.centro_destino_nombre) ? (
+                              {(mov.centro_origen_nombre || mov.centro_destino_nombre || mov.tipo === 'entrada') ? (
                                 <div className="flex items-center gap-1 flex-wrap">
-                                  <span className="truncate max-w-[60px]" title={mov.centro_origen_nombre || 'Almacén Central'}>
-                                    {mov.centro_origen_nombre || 'Almacén Central'}
+                                  <span className="truncate max-w-[60px]" title={mov.tipo === 'entrada' ? (mov.centro_origen_nombre || 'Proveedor/Contrato') : (mov.centro_origen_nombre || 'Almacén Central')}>
+                                    {mov.tipo === 'entrada' ? (mov.centro_origen_nombre || 'Proveedor/Contrato') : (mov.centro_origen_nombre || 'Almacén Central')}
                                   </span>
                                   <span className="text-gray-400">→</span>
-                                  <span className="truncate max-w-[60px]" title={mov.centro_destino_nombre || mov.centro_nombre}>
-                                    {mov.centro_destino_nombre || mov.centro_nombre}
+                                  <span className="truncate max-w-[60px]" title={mov.centro_destino_nombre || mov.centro_nombre || 'Almacén Central'}>
+                                    {mov.centro_destino_nombre || mov.centro_nombre || 'Almacén Central'}
                                   </span>
                                 </div>
                               ) : (
@@ -3179,8 +3179,8 @@ const Movimientos = () => {
                                       <span className="text-[10px] font-bold text-blue-500 uppercase tracking-wider block mb-2">Flujo del movimiento</span>
                                       <div className="flex items-center gap-2 flex-wrap">
                                         <div className="bg-white rounded-lg px-3 py-2 border border-gray-200 shadow-sm">
-                                          <span className="text-[10px] text-gray-400 block">Origen</span>
-                                          <span className="font-semibold text-gray-700 text-sm">{mov.centro_origen_nombre || 'Almacén Central'}</span>
+                                          <span className="text-[10px] text-gray-400 block">{mov.tipo === 'entrada' && !mov.centro_origen_nombre ? 'Origen externo' : 'Origen'}</span>
+                                          <span className="font-semibold text-gray-700 text-sm">{mov.tipo === 'entrada' ? (mov.centro_origen_nombre || 'Proveedor / Contrato') : (mov.centro_origen_nombre || 'Almacén Central')}</span>
                                         </div>
                                         <span className="text-gray-400 font-bold text-lg">→</span>
                                         <div className="bg-white rounded-lg px-3 py-2 border border-gray-200 shadow-sm">
@@ -3357,14 +3357,14 @@ const Movimientos = () => {
                             </span>
                           </td>
                           <td className="px-2 py-3.5 text-gray-700 text-xs hidden sm:table-cell">
-                            {(mov.centro_origen_nombre || mov.centro_destino_nombre) ? (
+                            {(mov.centro_origen_nombre || mov.centro_destino_nombre || mov.tipo === 'entrada') ? (
                               <div className="flex items-center gap-1 flex-wrap">
-                                <span className="truncate max-w-[60px]" title={mov.centro_origen_nombre || 'Almacén Central'}>
-                                  {mov.centro_origen_nombre || 'Almacén Central'}
+                                <span className="truncate max-w-[60px]" title={mov.tipo === 'entrada' ? (mov.centro_origen_nombre || 'Proveedor/Contrato') : (mov.centro_origen_nombre || 'Almacén Central')}>
+                                  {mov.tipo === 'entrada' ? (mov.centro_origen_nombre || 'Proveedor/Contrato') : (mov.centro_origen_nombre || 'Almacén Central')}
                                 </span>
                                 <span className="text-gray-400">→</span>
-                                <span className="truncate max-w-[60px]" title={mov.centro_destino_nombre || mov.centro_nombre}>
-                                  {mov.centro_destino_nombre || mov.centro_nombre}
+                                <span className="truncate max-w-[60px]" title={mov.centro_destino_nombre || mov.centro_nombre || 'Almacén Central'}>
+                                  {mov.centro_destino_nombre || mov.centro_nombre || 'Almacén Central'}
                                 </span>
                               </div>
                             ) : (
@@ -3456,8 +3456,8 @@ const Movimientos = () => {
                                     <span className="text-[10px] font-bold text-blue-500 uppercase tracking-wider block mb-2">Flujo del movimiento</span>
                                     <div className="flex items-center gap-2 flex-wrap">
                                       <div className="bg-white rounded-lg px-3 py-2 border border-gray-200 shadow-sm">
-                                        <span className="text-[10px] text-gray-400 block">Origen</span>
-                                        <span className="font-semibold text-gray-700 text-sm">{mov.centro_origen_nombre || 'Almacén Central'}</span>
+                                        <span className="text-[10px] text-gray-400 block">{mov.tipo === 'entrada' && !mov.centro_origen_nombre ? 'Origen externo' : 'Origen'}</span>
+                                        <span className="font-semibold text-gray-700 text-sm">{mov.tipo === 'entrada' ? (mov.centro_origen_nombre || 'Proveedor / Contrato') : (mov.centro_origen_nombre || 'Almacén Central')}</span>
                                       </div>
                                       <span className="text-gray-400 font-bold text-lg">→</span>
                                       <div className="bg-white rounded-lg px-3 py-2 border border-gray-200 shadow-sm">
