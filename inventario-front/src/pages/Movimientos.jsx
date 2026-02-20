@@ -3119,7 +3119,7 @@ const Movimientos = () => {
                               </button>
                             </td>
                           </tr>
-                          {/* 📋 PANEL EXPANDIDO ENRIQUECIDO — sinGrupo (Vista Agrupada) */
+                          {/* 📋 PANEL EXPANDIDO ENRIQUECIDO — sinGrupo (Vista Agrupada) */}
                           {expandedId === mov.id && (
                             <tr className="bg-gradient-to-b from-gray-50 to-white">
                               <td colSpan={esFarmacia ? 6 : esCentroUser ? 4 : 5} className="px-4 py-4">
