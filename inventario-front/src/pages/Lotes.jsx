@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { lotesAPI, productosAPI, centrosAPI, abrirPdfEnNavegador } from '../services/api';
 import { toast } from 'react-hot-toast';
 import { hasAccessToken } from '../services/tokenManager';
@@ -128,7 +128,11 @@ const Lotes = () => {
   const [selectedLoteDoc, setSelectedLoteDoc] = useState(null);
   const [editingLote, setEditingLote] = useState(null);
   const [showFiltersMenu, setShowFiltersMenu] = useState(false);
-  
+  // Auto-completado de Contrato Global
+  const [cargandoCCG, setCargandoCCG] = useState(false);
+  const [ccgAutoCompletado, setCcgAutoCompletado] = useState(false);
+  const ccgTimerRef = useRef(null);
+
   // Paginación
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -217,6 +221,53 @@ const Lotes = () => {
       console.error('Error al cargar centros:', error);
     }
   };
+
+  // =========================================================================
+  // AUTO-FILL CCG: cuando producto + numero_contrato están listos,
+  // buscar lotes existentes del mismo contrato y heredar cantidad_contrato_global
+  // =========================================================================
+  useEffect(() => {
+    if (editingLote) return; // No auto-completar en edición
+    const producto = formData.producto;
+    const contrato = formData.numero_contrato?.trim();
+    if (!producto || !contrato || contrato.length < 3) {
+      setCcgAutoCompletado(false);
+      return;
+    }
+    // Debounce: esperar 500ms desde la última tecla antes de consultar
+    clearTimeout(ccgTimerRef.current);
+    ccgTimerRef.current = setTimeout(async () => {
+      try {
+        setCargandoCCG(true);
+        const resp = await lotesAPI.getAll({
+          producto,
+          numero_contrato: contrato,
+          activo: true,
+          page_size: 1,
+        });
+        const primerLote = (resp.data.results || resp.data || [])[0];
+        if (primerLote?.cantidad_contrato_global != null) {
+          setFormData(prev => ({
+            ...prev,
+            cantidad_contrato_global: primerLote.cantidad_contrato_global,
+          }));
+          setCcgAutoCompletado(true);
+        } else {
+          // Contratonuevo sin CCG registrado: limpiar si era auto-completado antes
+          setCcgAutoCompletado(prev => {
+            if (prev) setFormData(f => ({ ...f, cantidad_contrato_global: '' }));
+            return false;
+          });
+        }
+      } catch {
+        setCcgAutoCompletado(false);
+      } finally {
+        setCargandoCCG(false);
+      }
+    }, 500);
+    return () => clearTimeout(ccgTimerRef.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.numero_contrato, formData.producto, editingLote]);
 
   const cargarProductos = async () => {
     try {
@@ -815,6 +866,7 @@ const Lotes = () => {
       fecha_caducidad: '',
       cantidad_inicial: '',
       cantidad_contrato: '',  // ISS-INV-001: Cantidad del contrato
+      cantidad_contrato_global: '',
       precio_unitario: '',
       numero_contrato: '',
       marca: '',
@@ -822,6 +874,8 @@ const Lotes = () => {
       centro: ''
     });
     setEditingLote(null);
+    setCcgAutoCompletado(false);
+    setCargandoCCG(false);
   };
 
   const limpiarFiltros = () => {
@@ -1993,10 +2047,32 @@ const handleImportar = async (e) => {
                         type="number"
                         min="0"
                         value={formData.cantidad_contrato_global}
-                        onChange={(e) => setFormData({...formData, cantidad_contrato_global: e.target.value})}
-                        className="w-full px-4 py-2.5 border rounded-lg text-base transition-all focus:outline-none border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                        placeholder="Ej: 1000"
+                        onChange={(e) => {
+                          setCcgAutoCompletado(false);
+                          setFormData({...formData, cantidad_contrato_global: e.target.value});
+                        }}
+                        className={`w-full px-4 py-2.5 border rounded-lg text-base transition-all focus:outline-none ${
+                          ccgAutoCompletado
+                            ? 'border-emerald-400 bg-emerald-50 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100'
+                            : 'border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
+                        }`}
+                        placeholder={cargandoCCG ? 'Buscando...' : 'Ej: 1000'}
+                        disabled={cargandoCCG}
                       />
+                      {cargandoCCG && (
+                        <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
+                          <div className="animate-spin rounded-full h-3 w-3 border-2 border-slate-400 border-t-transparent" />
+                          Buscando contrato global existente...
+                        </div>
+                      )}
+                      {!cargandoCCG && ccgAutoCompletado && formData.cantidad_contrato_global && (
+                        <div className="mt-1 flex items-center gap-1.5 text-xs text-emerald-700">
+                          <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                          </svg>
+                          Auto-completado desde contrato existente
+                        </div>
+                      )}
                       
                       {/* Estado del contrato - Solo si hay datos */}
                       {editingLote && editingLote.cantidad_contrato_global != null && (
