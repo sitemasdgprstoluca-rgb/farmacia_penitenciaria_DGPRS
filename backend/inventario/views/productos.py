@@ -244,28 +244,71 @@ class ProductoViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
     
     def create(self, request, *args, **kwargs):
         """
-        Crea un nuevo producto.
-        
-        Validaciones:
-        - Clave única
-        - Campos requeridos
-        - Formato correcto
+        Crea un nuevo producto con soporte de variantes por presentación (ISS-PROD-VAR).
+
+        Si ya existe un producto con el mismo código base pero distinta presentación,
+        se asigna automáticamente el siguiente sufijo disponible (ej. 663 → 663.2).
+
+        Responde con `variante_info` indicando el código asignado y si es variante.
         """
+        from core.utils.producto_variante import obtener_o_crear_variante
+
         try:
-            serializer = self.get_serializer(data=request.data)
+            data = request.data
+
+            # Validar todos los campos usando el serializer, pero quitar
+            # el UniqueValidator de 'clave' porque nosotros manejamos la unicidad
+            serializer = self.get_serializer(data=data)
+            # Eliminar UniqueValidator del campo clave antes de is_valid()
+            if 'clave' in serializer.fields:
+                clave_field = serializer.fields['clave']
+                clave_field.validators = [
+                    v for v in clave_field.validators
+                    if type(v).__name__ != 'UniqueValidator'
+                ]
             serializer.is_valid(raise_exception=True)
-            self.perform_create(serializer)
-            
-            headers = self.get_success_headers(serializer.data)
+
+            validated = serializer.validated_data
+            clave_input = str(data.get('clave', '')).strip().upper()[:50]
+            nombre = str(validated.get('nombre', '')).strip()
+            presentacion = str(validated.get('presentacion', '') or '').strip()
+
+            # Campos que van en defaults (todo menos clave, nombre y presentacion)
+            campos_excluidos = {'clave', 'nombre', 'presentacion'}
+            defaults_prod = {
+                k: v for k, v in validated.items()
+                if k not in campos_excluidos
+            }
+
+            with transaction.atomic():
+                producto, created, var_info = obtener_o_crear_variante(
+                    clave_input=clave_input,
+                    nombre=nombre,
+                    presentacion=presentacion,
+                    defaults=defaults_prod,
+                    usuario=request.user,
+                )
+
+            response_data = dict(self.get_serializer(producto).data)
+            response_data['variante_info'] = var_info
+
+            http_status = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+            headers = self.get_success_headers(response_data)
+            return Response(response_data, status=http_status, headers=headers)
+
+        except ValueError as e:
+            # Conflicto de presentación (usuario envió clave sufijada incorrecta)
+            logger.warning(f"ISS-PROD-VAR: conflicto de variante: {e}")
             return Response(
-                serializer.data, 
-                status=status.HTTP_201_CREATED, 
-                headers=headers
+                {'error': str(e)},
+                status=status.HTTP_409_CONFLICT
             )
         except Exception as e:
-            # traceback removido por seguridad (ISS-008)
             logger.error(f"Error al crear producto: {str(e)}", exc_info=True)
-            return Response({'error': 'Error al crear producto. Verifique los datos ingresados.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'error': 'Error al crear producto. Verifique los datos ingresados.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
     
     def update(self, request, *args, **kwargs):
         """

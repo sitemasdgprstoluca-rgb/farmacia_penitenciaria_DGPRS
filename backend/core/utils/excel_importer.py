@@ -423,36 +423,47 @@ def importar_productos_desde_excel(archivo, usuario):
                 desc_parts = [p for p in [presentacion, concentracion, marca] if p]
                 descripcion = ', '.join(desc_parts)[:500] if desc_parts else None
 
-                # Crear o actualizar producto
-                obj, created = Producto.objects.update_or_create(
-                    clave=clave,
-                    defaults={
-                        'nombre': nombre,
-                        'nombre_comercial': nombre_comercial[:200] if nombre_comercial else None,
-                        'descripcion': descripcion,
-                        'unidad_medida': unidad_medida,
-                        'categoria': categoria,
-                        'sustancia_activa': sustancia_activa[:200] if sustancia_activa else None,
-                        'presentacion': presentacion[:200] if presentacion else None,
-                        'concentracion': concentracion[:100] if concentracion else None,
-                        'via_administracion': via_administracion[:50] if via_administracion else None,
-                        'stock_minimo': stock_minimo,
-                        'requiere_receta': requiere_receta,
-                        'es_controlado': es_controlado,
-                        'activo': activo,
-                    }
+                # ISS-PROD-VAR: Crear o reusar variante por presentación
+                from core.utils.producto_variante import obtener_o_crear_variante
+                defaults_prod = {
+                    'nombre_comercial': nombre_comercial[:200] if nombre_comercial else None,
+                    'descripcion': descripcion,
+                    'unidad_medida': unidad_medida,
+                    'categoria': categoria,
+                    'sustancia_activa': sustancia_activa[:200] if sustancia_activa else None,
+                    'concentracion': concentracion[:100] if concentracion else None,
+                    'via_administracion': via_administracion[:50] if via_administracion else None,
+                    'stock_minimo': stock_minimo,
+                    'requiere_receta': requiere_receta,
+                    'es_controlado': es_controlado,
+                    'activo': activo,
+                }
+                obj, created, var_info = obtener_o_crear_variante(
+                    clave_input=clave,
+                    nombre=nombre,
+                    presentacion=presentacion[:200] if presentacion else '',
+                    defaults=defaults_prod,
                 )
-                
+
                 if created:
                     creados += 1
                     resultado.agregar_exito(es_actualizacion=False)
                 else:
                     actualizados += 1
+                    codigo_asignado = var_info.get('codigo_asignado', clave)
+                    motivo = var_info.get('motivo', '')
+                    if var_info.get('es_variante'):
+                        msg = (
+                            f'Variante existente reutilizada: {codigo_asignado} '
+                            f'(presentación equivalente a clave {clave})'
+                        )
+                    else:
+                        msg = f'Producto ya existía con clave {codigo_asignado}, datos actualizados'
                     resultado.agregar_exito(es_actualizacion=True, info_actualizacion={
                         'fila': fila_num,
-                        'clave': clave,
+                        'clave': codigo_asignado,
                         'nombre': nombre[:100],
-                        'mensaje': f'Producto ya existía con clave {clave}, se actualizaron sus datos'
+                        'mensaje': msg,
                     })
                 
             except Exception as exc:

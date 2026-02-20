@@ -1004,9 +1004,17 @@ const Productos = () => {
 
       } else {
 
-        await productosAPI.create(dataToSend, hasImage);
-
-        toast.success('Producto creado correctamente');
+        const resp = await productosAPI.create(dataToSend, hasImage);
+        const varInfo = resp?.data?.variante_info;
+        if (varInfo?.es_variante) {
+          // ISS-PROD-VAR: Notificar código asignado cuando es variante nueva
+          toast(
+            `Código asignado: ${varInfo.codigo_asignado} (variante de ${varInfo.codigo_base} por presentación diferente)`,
+            { icon: 'ℹ️', duration: 10000 }
+          );
+        } else {
+          toast.success('Producto creado correctamente');
+        }
 
       }
 
