@@ -925,6 +925,20 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                 fecha_caducidad = _parse_fecha_excel(fecha_cad_raw)
                 if not fecha_caducidad:
                     raise ValueError('Fecha vacía')
+                
+                # VALIDACIÓN: Fechas de caducidad no pueden estar más de 8 años en el futuro
+                # Usa relativedelta para considerar años bisiestos correctamente
+                from dateutil.relativedelta import relativedelta
+                fecha_actual = date.today()
+                fecha_maxima = fecha_actual + relativedelta(years=8)
+                
+                if fecha_caducidad > fecha_maxima:
+                    resultado.agregar_error(fila_num, 'caducidad', 
+                        f'Fecha de caducidad muy lejana ({fecha_caducidad.strftime("%d/%m/%Y")}). '
+                        f'Máximo permitido: 8 años desde hoy ({fecha_maxima.strftime("%d/%m/%Y")}). '
+                        f'Verifique que el formato sea correcto (DD/MM/AAAA).')
+                    continue
+                
             except Exception as e:
                 resultado.agregar_error(fila_num, 'caducidad', f'Fecha inválida: {e}')
                 continue

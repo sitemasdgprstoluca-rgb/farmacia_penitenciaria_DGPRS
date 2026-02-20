@@ -3616,6 +3616,22 @@ class DonacionViewSet(viewsets.ModelViewSet):
                             fecha_caducidad_raw = get_val(row, 'fecha_caducidad')
                             fecha_caducidad = parse_fecha(fecha_caducidad_raw) if fecha_caducidad_raw else None
                             
+                            # VALIDACIÓN: Fechas de caducidad no pueden estar más de 8 años en el futuro
+                            # Usa relativedelta para considerar años bisiestos correctamente
+                            if fecha_caducidad:
+                                from dateutil.relativedelta import relativedelta
+                                fecha_actual = date.today()
+                                fecha_maxima = fecha_actual + relativedelta(years=8)
+                                
+                                if fecha_caducidad > fecha_maxima:
+                                    resultados['errores'].append({
+                                        'fila': row_num,
+                                        'error': f'Fecha de caducidad muy lejana ({fecha_caducidad.strftime("%d/%m/%Y")}). '
+                                                f'Máximo permitido: 8 años desde hoy ({fecha_maxima.strftime("%d/%m/%Y")}). '
+                                                f'Verifique que el formato sea correcto (DD/MM/AAAA).'
+                                    })
+                                    continue
+                            
                             # Estado del producto (default: bueno)
                             estado_prod = str(get_val(row, 'estado_producto', 'bueno')).lower().strip()
                             if estado_prod not in ['bueno', 'regular', 'deteriorado']:

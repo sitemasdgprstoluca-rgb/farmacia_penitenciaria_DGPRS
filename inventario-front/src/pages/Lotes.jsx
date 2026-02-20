@@ -376,6 +376,19 @@ const Lotes = () => {
       return;
     }
     
+    // Validar que la fecha de caducidad no esté más de 8 años en el futuro
+    const fechaCaducidad = new Date(formData.fecha_caducidad);
+    const fechaActual = new Date();
+    const fechaMaxima = new Date();
+    fechaMaxima.setFullYear(fechaMaxima.getFullYear() + 8);
+    
+    if (fechaCaducidad > fechaMaxima) {
+      const maxFechaStr = fechaMaxima.toLocaleDateString('es-MX');
+      const caducidadStr = fechaCaducidad.toLocaleDateString('es-MX');
+      toast.error(`Fecha de caducidad muy lejana (${caducidadStr}). Máximo 8 años desde hoy (${maxFechaStr}). Verifique el formato (DD/MM/AAAA).`);
+      return;
+    }
+    
     // Validar cantidad del contrato (OPCIONAL - puede ser vacía/null)
     // Si se proporciona, debe ser un número no negativo
     let cantidadContrato = null;
