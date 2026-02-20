@@ -771,6 +771,15 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
             numero_contrato = lote_ref.numero_contrato
             if ccg is not None and ccg > 0 and numero_contrato:
                 from django.db.models import Sum as _Sum
+                # Adquirir bloqueo de filas en TODOS los lotes del contrato para evitar
+                # condición de carrera: dos peticiones simultáneas en lotes distintos del
+                # mismo contrato podrían leer el mismo total y ambas pasar la validación.
+                list(
+                    Lote.objects.select_for_update().filter(
+                        producto=lote_ref.producto,
+                        numero_contrato=numero_contrato,
+                    ).values_list('id', flat=True)
+                )
                 total_ya_recibido = (
                     Lote.objects.filter(
                         producto=lote_ref.producto,

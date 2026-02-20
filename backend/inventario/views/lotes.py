@@ -256,6 +256,11 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                 fecha_caducidad__gt=date.today()
             )
         
+        # Filtrar por numero_contrato (para validación CCG en frontend)
+        numero_contrato_param = self.request.query_params.get('numero_contrato')
+        if numero_contrato_param:
+            queryset = queryset.filter(numero_contrato=numero_contrato_param)
+
         # ISS-FIX: Filtrar por rango de fechas (para exportación de trazabilidad)
         fecha_desde = self.request.query_params.get('fecha_desde')
         if fecha_desde:
@@ -1237,6 +1242,13 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
             
             return Response(resultado, status=status_code)
             
+        except ValueError as e:
+            # Errores de validación de negocio (ej. contrato global excedido)
+            logger.warning(f"Importación rechazada por validación: {e}")
+            return Response({
+                'error': 'Importación rechazada',
+                'mensaje': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             logger.exception(f"Error en importación de lotes: {e}")
             return Response({
@@ -1487,22 +1499,6 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                 'lote': self.get_serializer(lote_actualizado).data,
                 'movimiento_id': movimiento.id
             }
-            
-            # ISS-INV-003: Advertir si la entrada excede el contrato global
-            if tipo.lower() == 'entrada' and lote_actualizado.cantidad_contrato_global is not None:
-                from django.db.models import Sum
-                total_recibido = Lote.objects.filter(
-                    producto=lote_actualizado.producto,
-                    numero_contrato=lote_actualizado.numero_contrato,
-                    activo=True,
-                ).aggregate(total=Sum('cantidad_inicial'))['total'] or 0
-                ccg = lote_actualizado.cantidad_contrato_global
-                if total_recibido > ccg:
-                    excedente = total_recibido - ccg
-                    response_data['alerta_contrato_global'] = (
-                        f'\u26a0\ufe0f Se excede el contrato global por {excedente} unidades. '
-                        f'Total contratado: {ccg}, total recibido: {total_recibido}.'
-                    )
             
             return Response(response_data)
         except serializers.ValidationError as exc:

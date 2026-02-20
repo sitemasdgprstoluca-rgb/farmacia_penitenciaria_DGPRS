@@ -558,6 +558,69 @@ def _verificar_contrato_global_excedido(filas_consolidadas, centro):
     return alertas
 
 
+def _validar_ccg_antes_de_importar(filas_consolidadas, centro):
+    """
+    BLOQUEO DURO PRE-CREACIÓN: verifica dentro de transaction.atomic() que ningún
+    contrato global (cantidad_contrato_global) será excedido por la importación.
+    Lanza ValueError si alguna combinación (producto, numero_contrato) superaría su CCG.
+
+    Se debe llamar ANTES del bucle de creación/actualización de lotes, dentro del
+    transaction.atomic(), para garantizar que ningún lote se persista si hay violación.
+
+    A diferencia de _verificar_contrato_global_excedido (post-creación/soft-alert),
+    esta función bloquea la importación completa antes de escribir nada.
+
+    NOTA: No usa activo=True para no subestimar el total ya recibido.
+    """
+    from django.db.models import Sum
+
+    # Agrupar la cantidad a importar por (producto_id, numero_contrato)
+    incoming: dict = {}
+    ccg_por_grupo: dict = {}
+    for fila in filas_consolidadas:
+        nc = fila.get('numero_contrato')
+        pid = fila.get('producto_id')
+        ccg = fila.get('cantidad_contrato_global')
+        if not nc or not pid or ccg is None:
+            continue
+        key = (pid, str(nc).strip().upper())
+        incoming[key] = incoming.get(key, 0) + fila.get('cantidad_inicial', 0)
+        # mantener el valor más reciente (CCG es fijo, no se acumula)
+        ccg_por_grupo[key] = ccg
+
+    if not ccg_por_grupo:
+        return  # ninguna fila tiene CCG definido → nada que verificar
+
+    for (pid, nc_upper), ccg in ccg_por_grupo.items():
+        incoming_total = incoming.get((pid, nc_upper), 0)
+        if incoming_total == 0:
+            continue
+
+        # Total ya recibido en BD sin filtro activo=True para no subestimar
+        qs = Lote.objects.filter(
+            producto_id=pid,
+            numero_contrato__iexact=nc_upper,
+        )
+        if centro:
+            qs = qs.filter(centro=centro)
+        else:
+            qs = qs.filter(centro__isnull=True)
+
+        total_ya_en_bd = qs.aggregate(total=Sum('cantidad_inicial'))['total'] or 0
+        proyectado = total_ya_en_bd + incoming_total
+
+        if proyectado > ccg:
+            exceso = proyectado - ccg
+            disponible = max(0, ccg - total_ya_en_bd)
+            raise ValueError(
+                f'Importación rechazada: el contrato global "{nc_upper}" para el producto '
+                f'(ID {pid}) sería excedido. '
+                f'Contrato global: {ccg}, ya recibido en BD: {total_ya_en_bd}, '
+                f'a importar: {incoming_total}, exceso: {exceso}. '
+                f'Máximo permitido en esta importación: {disponible}.'
+            )
+
+
 def _consolidar_filas_importacion(filas_parseadas):
     """
     ISS-IMPORT-CONSOLIDATION: Pre-procesa filas parseadas y las consolida.
@@ -1090,6 +1153,9 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
     # FASE 3: PERSISTENCIA - Crear/actualizar lotes en BD (atómico)
     # ========================================================================
     with transaction.atomic():
+        # BLOQUEO DURO CCG: rechazar si la importación excedería algún contrato global
+        _validar_ccg_antes_de_importar(filas_consolidadas, centro)
+
         for fila in filas_consolidadas:
             try:
                 producto = fila['producto']
@@ -1219,16 +1285,9 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
         # Auto-propagar cantidad_contrato_global: para cada producto+contrato,
         # si algún lote tiene ccg definido, propagarlo a todos los lotes del mismo grupo.
         _propagar_contrato_global(filas_consolidadas, centro)
-        
-        # ISS-INV-003: Verificar si algún contrato global fue excedido
-        alertas_global = _verificar_contrato_global_excedido(filas_consolidadas, centro)
 
     result = resultado.get_dict()
     result['creados'] = creados
-    
-    # Incluir alertas de contrato global excedido
-    if alertas_global:
-        result['alertas_contrato_global'] = alertas_global
     if consolidados_archivo > 0:
         result['consolidados_archivo'] = consolidados_archivo
         result['nota_consolidacion'] = (

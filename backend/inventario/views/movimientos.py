@@ -82,26 +82,9 @@ class MovimientoViewSet(
         headers = self.get_success_headers(serializer.data)
         
         response_data = dict(serializer.data)
-        
-        # Verificar contrato global después del movimiento tipo entrada
-        tipo = (request.data.get('tipo') or '').lower()
-        if tipo == 'entrada' and serializer.instance:
-            from django.db.models import Sum
-            lote_obj = serializer.instance.lote
-            if lote_obj and lote_obj.cantidad_contrato_global is not None and lote_obj.numero_contrato:
-                total_recibido = Lote.objects.filter(
-                    producto=lote_obj.producto,
-                    numero_contrato=lote_obj.numero_contrato,
-                    activo=True,
-                ).aggregate(total=Sum('cantidad_inicial'))['total'] or 0
-                ccg = lote_obj.cantidad_contrato_global
-                if total_recibido > ccg:
-                    excedente = total_recibido - ccg
-                    response_data['alerta_contrato_global'] = (
-                        f'\u26a0\ufe0f Se excede el contrato global por {excedente} unidades. '
-                        f'Total contratado: {ccg}, total recibido: {total_recibido}.'
-                    )
-        
+        # Nota: la validación de contrato global (CCG) es un bloqueo duro en
+        # registrar_movimiento_stock (base.py). Si llegamos aquí, la entrada
+        # ya fue validada y aprobada. No se requiere verificación post-save.
         return Response(response_data, status=status.HTTP_201_CREATED, headers=headers)
 
     def _get_producto_display(self, mov):
