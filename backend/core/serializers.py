@@ -1341,7 +1341,35 @@ class LoteSerializer(serializers.ModelSerializer):
         cantidad_inicial = validated_data.get('cantidad_inicial', 0)
         # cantidad_actual siempre = cantidad_inicial en la creación
         validated_data['cantidad_actual'] = cantidad_inicial
-        
+
+        # =====================================================================
+        # AUTO-SUFIJO: Si numero_lote+producto+centro ya existe en la BD,
+        # asignar sufijo .2, .3, ... igual que hace la importación Excel.
+        # =====================================================================
+        numero_lote_original = validated_data.get('numero_lote', '')
+        lote_base = numero_lote_original
+        producto_val = validated_data.get('producto')
+        centro_val = validated_data.get('centro')  # None = farmacia central
+
+        sufijo = 2
+        numero_lote_candidato = numero_lote_original
+        while Lote.objects.filter(
+            numero_lote__iexact=numero_lote_candidato,
+            producto=producto_val,
+            centro=centro_val,
+        ).exists():
+            numero_lote_candidato = f"{lote_base}.{sufijo}"
+            sufijo += 1
+            if sufijo > 100:
+                break  # salvaguarda ante bucle infinito improbable
+
+        if numero_lote_candidato != numero_lote_original:
+            validated_data['numero_lote'] = numero_lote_candidato
+            self._numero_lote_auto_renombrado = {
+                'original': numero_lote_original,
+                'asignado': numero_lote_candidato,
+            }
+
         instance = super().create(validated_data)
         
         # Auto-propagar cantidad_contrato_global a otros lotes con mismo producto+contrato

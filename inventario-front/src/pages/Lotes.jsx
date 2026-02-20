@@ -510,6 +510,17 @@ const Lotes = () => {
             toast(respData.alerta_contrato_global, { icon: '⚠️', duration: 8000 });
           }, 500);
         }
+
+        // AUTO-SUFIJO: Informar si el número de lote fue renombrado automáticamente
+        if (!editingLote && respData?.numero_lote_auto_asignado) {
+          setTimeout(() => {
+            const { original, asignado } = respData.numero_lote_auto_asignado;
+            toast(
+              `El número "${original}" ya existía. El lote fue guardado como "${asignado}".`,
+              { icon: 'ℹ️', duration: 10000 }
+            );
+          }, 800);
+        }
         
         setShowModal(false);
         resetForm();
