@@ -1128,14 +1128,14 @@ class LoteSerializer(serializers.ModelSerializer):
         if obj.cantidad_contrato_global is None or not obj.numero_contrato:
             return None
         
-        # Sumar todos los cantidad_inicial de lotes del mismo producto y contrato
+        # Sumar todos los cantidad_inicial de lotes del mismo producto y contrato.
+        # Sin activo=True: lotes inactivos también consumen contrato.
         from django.db.models import Sum
         total_recibido = Lote.objects.filter(
             producto=obj.producto,
             numero_contrato__iexact=obj.numero_contrato.strip(),
-            activo=True
         ).aggregate(total=Sum('cantidad_inicial'))['total'] or 0
-        
+
         # Retornar diferencia REAL (puede ser negativo si hay exceso)
         pendiente = obj.cantidad_contrato_global - total_recibido
         return pendiente
@@ -1154,13 +1154,13 @@ class LoteSerializer(serializers.ModelSerializer):
         if obj.cantidad_contrato_global is None or not obj.numero_contrato:
             return None
         
+        # Sin activo=True: lotes inactivos también consumieron el contrato.
         from django.db.models import Sum
         total_recibido = Lote.objects.filter(
             producto=obj.producto,
             numero_contrato__iexact=obj.numero_contrato.strip(),
-            activo=True
         ).aggregate(total=Sum('cantidad_inicial'))['total'] or 0
-        
+
         return total_recibido
     
     def get_total_inventario_global(self, obj):
@@ -1184,13 +1184,15 @@ class LoteSerializer(serializers.ModelSerializer):
         if obj.cantidad_contrato_global is None or not obj.numero_contrato:
             return None
         
+        # Para inventario disponible sí filtrar activo=True: lotes inactivos
+        # no aportan stock físico aunque hayan consumido contrato.
         from django.db.models import Sum
         total_inventario = Lote.objects.filter(
             producto=obj.producto,
             numero_contrato__iexact=obj.numero_contrato.strip(),
             activo=True
         ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
-        
+
         return total_inventario
     
     def get_producto_info(self, obj):
@@ -1345,39 +1347,53 @@ class LoteSerializer(serializers.ModelSerializer):
         # todos los lotes del mismo producto+contrato excedería el global.
         ccg = attrs.get('cantidad_contrato_global')
         if ccg is None and numero_contrato and producto:
-            # Heredar ccg de lotes existentes con mismo producto+contrato
+            # Heredar ccg de lotes existentes con mismo producto+contrato.
+            # Sin activo=True: lotes inactivos también consumieron del contrato.
             existing_ccg = Lote.objects.filter(
                 producto=producto,
                 numero_contrato__iexact=numero_contrato.strip(),
-                activo=True,
                 cantidad_contrato_global__isnull=False,
             ).values_list('cantidad_contrato_global', flat=True).first()
             if existing_ccg is not None:
                 ccg = existing_ccg
                 attrs['cantidad_contrato_global'] = ccg
-        
+
         if ccg is not None and numero_contrato and producto and cantidad > 0:
-            # Sumar cantidad_inicial de lotes existentes con mismo producto+contrato
+            # Sumar cantidad_inicial de lotes existentes con mismo producto+contrato.
+            # Sin activo=True: lotes inactivos también consumieron del contrato.
             total_existente = Lote.objects.filter(
                 producto=producto,
                 numero_contrato__iexact=numero_contrato.strip(),
-                activo=True,
             ).aggregate(total=Sum('cantidad_inicial'))['total'] or 0
-            
+
             # Si estamos editando, restar la cantidad_inicial actual del lote
+            # (se descuenta para no contar dos veces el mismo lote).
             if self.instance:
                 total_existente -= (self.instance.cantidad_inicial or 0)
-            
+
             total_proyectado = total_existente + cantidad
             if total_proyectado > ccg:
                 excedente = total_proyectado - ccg
-                # Guardar alerta como atributo para que el ViewSet la incluya en respuesta
-                self._alerta_contrato_global = (
-                    f'⚠️ Se excede el contrato GLOBAL por {excedente} unidades. '
-                    f'Total contratado global: {ccg}, ya recibido: {total_existente}, '
-                    f'este lote agrega: {cantidad}, total proyectado: {total_proyectado}.'
-                )
-        
+                disponible = max(0, ccg - total_existente)
+                if not self.instance:
+                    # CREATE: BLOQUEO DURO — no permitir crear el lote
+                    raise serializers.ValidationError({
+                        'cantidad_inicial': (
+                            f'La cantidad excede el CONTRATO GLOBAL. '
+                            f'Contrato global: {ccg}, ya recibido: {total_existente}, '
+                            f'este lote agrega: {cantidad}, exceso: {excedente}. '
+                            f'Máximo permitido: {disponible}.'
+                        )
+                    })
+                else:
+                    # UPDATE: alerta informativa (cantidad_inicial no es editable
+                    # vía PATCH/PUT, así que esto solo aplica si se rebaja el ccg).
+                    self._alerta_contrato_global = (
+                        f'⚠️ Se excede el contrato GLOBAL por {excedente} unidades. '
+                        f'Total contratado global: {ccg}, ya recibido: {total_existente}, '
+                        f'total proyectado: {total_proyectado}.'
+                    )
+
         return super().validate(attrs)
     
     def create(self, validated_data):
@@ -1391,6 +1407,45 @@ class LoteSerializer(serializers.ModelSerializer):
         cantidad_inicial = validated_data.get('cantidad_inicial', 0)
         # cantidad_actual siempre = cantidad_inicial en la creación
         validated_data['cantidad_actual'] = cantidad_inicial
+
+        # ─── CCG hard-block concurrent-safe ──────────────────────────────────
+        # validate() ya rechaza el exceso, pero corre fuera de transacción y
+        # no adquiere locks, por lo que dos requests simultáneos podrían pasar.
+        # Aquí repetimos la validación DENTRO de transaction.atomic() con
+        # SELECT FOR UPDATE sobre todos los lotes del contrato, igual que en
+        # base.py (registrar_movimiento_stock) para entradas vía movimientos.
+        ccg_v = validated_data.get('cantidad_contrato_global')
+        nc_v = validated_data.get('numero_contrato')
+        prod_v = validated_data.get('producto')
+        if ccg_v and nc_v and prod_v and cantidad_inicial > 0:
+            from django.db import transaction as _dbtx
+            from django.db.models import Sum as _dSum
+            with _dbtx.atomic():
+                list(
+                    Lote.objects.select_for_update().filter(
+                        producto=prod_v,
+                        numero_contrato__iexact=nc_v.strip(),
+                    ).values_list('id', flat=True)
+                )
+                total_ya = (
+                    Lote.objects.filter(
+                        producto=prod_v,
+                        numero_contrato__iexact=nc_v.strip(),
+                    ).aggregate(total=_dSum('cantidad_inicial'))['total'] or 0
+                )
+                proyectado = total_ya + cantidad_inicial
+                if proyectado > ccg_v:
+                    exceso = proyectado - ccg_v
+                    disponible = max(0, ccg_v - total_ya)
+                    raise serializers.ValidationError({
+                        'cantidad_inicial': (
+                            f'La cantidad excede el CONTRATO GLOBAL (verificación concurrente). '
+                            f'Contrato global: {ccg_v}, ya recibido: {total_ya}, '
+                            f'este lote agrega: {cantidad_inicial}, exceso: {exceso}. '
+                            f'Máximo permitido: {disponible}.'
+                        )
+                    })
+        # ─────────────────────────────────────────────────────────────────────
 
         # =====================================================================
         # AUTO-SUFIJO: Si numero_lote+producto+centro ya existe en la BD,
