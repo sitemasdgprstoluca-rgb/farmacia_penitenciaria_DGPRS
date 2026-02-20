@@ -749,7 +749,11 @@ class ProductoSerializer(serializers.ModelSerializer):
     # ISS-TRAZ: Indicadores para bloquear edición de campos críticos
     tiene_lotes = serializers.SerializerMethodField()
     tiene_movimientos = serializers.SerializerMethodField()
-    
+    # ISS-PROD-VAR: Campos de variante por presentación
+    codigo_base = serializers.SerializerMethodField()
+    es_variante_flag = serializers.SerializerMethodField()
+    variantes_asociadas = serializers.SerializerMethodField()
+
     class Meta:
         model = Producto
         fields = [
@@ -759,9 +763,15 @@ class ProductoSerializer(serializers.ModelSerializer):
             'via_administracion', 'requiere_receta', 'es_controlado',
             'stock_minimo', 'stock_actual', 'activo', 'imagen',
             'lotes_activos', 'marca', 'tiene_lotes', 'tiene_movimientos',
+            # ISS-PROD-VAR
+            'codigo_base', 'es_variante_flag', 'variantes_asociadas',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['created_at', 'updated_at', 'stock_actual', 'marca', 'unidad_base', 'tiene_lotes', 'tiene_movimientos']
+        read_only_fields = [
+            'created_at', 'updated_at', 'stock_actual', 'marca', 'unidad_base',
+            'tiene_lotes', 'tiene_movimientos',
+            'codigo_base', 'es_variante_flag', 'variantes_asociadas',
+        ]
         extra_kwargs = {
             'clave': {'required': True},
             'nombre': {'required': True},
@@ -926,7 +936,38 @@ class ProductoSerializer(serializers.ModelSerializer):
         """
         from .models import Movimiento
         return Movimiento.objects.filter(producto=obj).exists()
-    
+
+    # ------------------------------------------------------------------
+    # ISS-PROD-VAR: Campos de variante por presentación
+    # ------------------------------------------------------------------
+
+    def get_codigo_base(self, obj):
+        """Código base sin sufijo de variante (ej. '663.2' → '663', '663' → '663')."""
+        from core.utils.producto_variante import extraer_codigo_base
+        return extraer_codigo_base(obj.clave)
+
+    def get_es_variante_flag(self, obj):
+        """True si la clave tiene sufijo numérico de variante (ej. '663.2')."""
+        from core.utils.producto_variante import es_variante
+        return es_variante(obj.clave)
+
+    def get_variantes_asociadas(self, obj):
+        """
+        Lista de claves hermanas (mismo código base).
+        Incluye al propio producto y sus variantes.
+        Devuelve lista ligera: [{'clave': '663', 'presentacion': '...'}, ...]
+        """
+        try:
+            from core.utils.producto_variante import extraer_codigo_base, _claves_del_mismo_base
+            base = extraer_codigo_base(obj.clave)
+            hermanas = _claves_del_mismo_base(base).only('clave', 'presentacion')
+            return [
+                {'clave': p.clave, 'presentacion': p.presentacion or ''}
+                for p in hermanas.order_by('clave')
+            ]
+        except Exception:
+            return []
+
     def update(self, instance, validated_data):
         """
         ISS-TRAZ: Proteger campos críticos en productos con lotes/movimientos.
