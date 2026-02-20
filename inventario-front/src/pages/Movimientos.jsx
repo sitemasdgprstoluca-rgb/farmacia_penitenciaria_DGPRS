@@ -960,25 +960,50 @@ const Movimientos = () => {
       }
     }
     
-    // ISS-CONTRATO: Para entradas, validar que no exceda cantidad_contrato
+    // ISS-CONTRATO: Para entradas, validar límites de contrato (por lote y global)
     if (esEntrada && loteSeleccionado) {
       try {
         const respLote = await lotesAPI.getById(parseInt(formData.lote));
         const loteData = respLote.data;
         const cantContrato = loteData?.cantidad_contrato;
+        const cantContratoGlobal = loteData?.cantidad_contrato_global;
         const cantInicial = loteData?.cantidad_inicial || 0;
         const cantEntrada = Number(formData.cantidad);
-        
+        const numeroContrato = loteData?.numero_contrato;
+
+        // Validación 1: límite por lote
         if (cantContrato && cantContrato > 0) {
           const nuevaInicial = cantInicial + cantEntrada;
           if (nuevaInicial > cantContrato) {
             const disponible = Math.max(0, cantContrato - cantInicial);
             toast.error(
-              `⚠️ La entrada excede el contrato. Contrato: ${cantContrato}, ` +
+              `⚠️ La entrada excede el contrato de este lote. Contrato lote: ${cantContrato}, ` +
               `ya recibido: ${cantInicial}, intentando: ${cantEntrada}. ` +
               `Máximo permitido: ${disponible}.`
             );
             return;
+          }
+        }
+
+        // Validación 2: límite contrato global (suma todos los lotes del mismo contrato)
+        if (cantContratoGlobal && cantContratoGlobal > 0 && numeroContrato) {
+          try {
+            const respLotes = await lotesAPI.getAll({ numero_contrato: numeroContrato, page_size: 200 });
+            const todosLotes = respLotes.data?.results || respLotes.data || [];
+            const totalYaRecibido = todosLotes.reduce((sum, l) => sum + (l.cantidad_inicial || 0), 0);
+            const nuevaTotal = totalYaRecibido + cantEntrada;
+            if (nuevaTotal > cantContratoGlobal) {
+              const disponibleGlobal = Math.max(0, cantContratoGlobal - totalYaRecibido);
+              toast.error(
+                `🚫 CONTRATO GLOBAL excedido. Contrato general: ${cantContratoGlobal}, ` +
+                `total recibido en todos los lotes: ${totalYaRecibido}, intentando: ${cantEntrada}. ` +
+                `Máximo permitido por contrato global: ${disponibleGlobal}.`,
+                { duration: 10000 }
+              );
+              return;
+            }
+          } catch (errCcg) {
+            console.warn('No se pudo verificar contrato global (el backend también lo valida):', errCcg);
           }
         }
       } catch (err) {

@@ -748,7 +748,7 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
         # Esto refleja que se recibió más mercancía del mismo contrato/lote
         # Ej: ci=125, ca=115, entrada=+5 → ci=130, ca=120
         if tipo_normalizado == 'entrada':
-            # ISS-CONTRATO: Validar que la entrada no exceda cantidad_contrato
+            # ─── VALIDACIÓN 1: Por lote (cantidad_contrato) ──────────────────
             cant_contrato = lote_ref.cantidad_contrato
             if cant_contrato is not None and cant_contrato > 0:
                 nueva_inicial = lote_ref.cantidad_inicial + abs(cantidad_int)
@@ -757,12 +757,40 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
                     disponible_entrada = max(0, cant_contrato - lote_ref.cantidad_inicial)
                     raise serializers.ValidationError({
                         'cantidad': (
-                            f'La entrada excede la cantidad del contrato. '
-                            f'Contrato: {cant_contrato}, ya recibido: {lote_ref.cantidad_inicial}, '
+                            f'La entrada excede la cantidad del contrato por lote. '
+                            f'Contrato lote: {cant_contrato}, ya recibido en este lote: {lote_ref.cantidad_inicial}, '
                             f'intentando ingresar: {abs(cantidad_int)}, exceso: {exceso}. '
-                            f'Máximo permitido para entrada: {disponible_entrada}.'
+                            f'Máximo permitido: {disponible_entrada}.'
                         )
                     })
+
+            # ─── VALIDACIÓN 2: Global (cantidad_contrato_global) ─────────────
+            # BLOQUEO DURO: evita recibir más de lo contratado globalmente
+            # aunque el lote individual no tenga cantidad_contrato definida
+            ccg = lote_ref.cantidad_contrato_global
+            numero_contrato = lote_ref.numero_contrato
+            if ccg is not None and ccg > 0 and numero_contrato:
+                from django.db.models import Sum as _Sum
+                total_ya_recibido = (
+                    Lote.objects.filter(
+                        producto=lote_ref.producto,
+                        numero_contrato=numero_contrato,
+                    ).aggregate(total=_Sum('cantidad_inicial'))['total'] or 0
+                )
+                nueva_total = total_ya_recibido + abs(cantidad_int)
+                if nueva_total > ccg:
+                    exceso_global = nueva_total - ccg
+                    disponible_global = max(0, ccg - total_ya_recibido)
+                    raise serializers.ValidationError({
+                        'cantidad': (
+                            f'La entrada excede el CONTRATO GLOBAL del producto. '
+                            f'Contrato global: {ccg}, '
+                            f'total ya recibido en todos los lotes del contrato "{numero_contrato}": {total_ya_recibido}, '
+                            f'intentando ingresar: {abs(cantidad_int)}, exceso: {exceso_global}. '
+                            f'Máximo permitido por contrato global: {disponible_global}.'
+                        )
+                    })
+
             update_dict['cantidad_inicial'] = F('cantidad_inicial') + abs(cantidad_int)
         
         Lote.objects.filter(pk=lote_ref.pk).update(**update_dict)
