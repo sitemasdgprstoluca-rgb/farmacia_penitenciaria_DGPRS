@@ -1160,11 +1160,29 @@ class LoteSerializer(serializers.ModelSerializer):
         return super().to_internal_value(data)
     
     def validate_fecha_caducidad(self, value):
-        """ISS-DB-004: Validar que fecha_caducidad esté presente (NOT NULL en BD)."""
+        """
+        ISS-DB-004: Validar que fecha_caducidad esté presente (NOT NULL en BD).
+        Además, validar que no esté más de 8 años en el futuro.
+        """
         if value is None:
             raise serializers.ValidationError(
                 'La fecha de caducidad es obligatoria. Use 2099-12-31 para insumos sin caducidad.'
             )
+        
+        # VALIDACIÓN: Fechas de caducidad no pueden estar más de 8 años en el futuro
+        # Usa relativedelta para considerar años bisiestos correctamente
+        from datetime import date
+        from dateutil.relativedelta import relativedelta
+        fecha_actual = date.today()
+        fecha_maxima = fecha_actual + relativedelta(years=8)
+        
+        if value > fecha_maxima:
+            raise serializers.ValidationError(
+                f'Fecha de caducidad muy lejana ({value.strftime("%d/%m/%Y")}). '
+                f'Máximo permitido: 8 años desde hoy ({fecha_maxima.strftime("%d/%m/%Y")}). '
+                f'Verifique que el formato sea correcto (DD/MM/AAAA).'
+            )
+        
         return value
     
     def validate_numero_lote(self, value):

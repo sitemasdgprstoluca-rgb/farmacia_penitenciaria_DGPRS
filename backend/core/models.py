@@ -1116,6 +1116,7 @@ class Lote(models.Model):
         """
         from django.core.exceptions import ValidationError
         from django.utils import timezone
+        from dateutil.relativedelta import relativedelta
         
         errors = {}
         
@@ -1137,6 +1138,13 @@ class Lote(models.Model):
             hoy = timezone.now().date()
             if self.fecha_caducidad < hoy:
                 errors['fecha_caducidad'] = f'No se puede registrar un lote ya vencido (caducidad: {self.fecha_caducidad}, hoy: {hoy}).'
+        
+        # Validar fecha de caducidad no mayor a 8 años desde hoy
+        if self.fecha_caducidad:
+            hoy = timezone.now().date()
+            fecha_maxima = hoy + relativedelta(years=8)
+            if self.fecha_caducidad > fecha_maxima:
+                errors['fecha_caducidad'] = f'La fecha de caducidad no puede ser mayor a 8 años desde hoy. Fecha máxima permitida: {fecha_maxima.strftime("%d/%m/%Y")}'
         
         # Validar precio unitario no negativo
         if self.precio_unitario is not None and self.precio_unitario < 0:

@@ -151,6 +151,22 @@ export const futureDate = (value, fieldName = 'Fecha') => {
 };
 
 /**
+ * Valida que la fecha no esté más de un número especificado de años en el futuro
+ */
+export const maxYearsInFuture = (years = 8) => (value, fieldName = 'Fecha') => {
+  if (!value) return null;
+  const dateObj = new Date(value);
+  const maxDate = new Date();
+  maxDate.setFullYear(maxDate.getFullYear() + years);
+  if (dateObj > maxDate) {
+    const maxDateStr = maxDate.toLocaleDateString('es-MX');
+    const valueDateStr = dateObj.toLocaleDateString('es-MX');
+    return `${fieldName} muy lejana (${valueDateStr}). Máximo ${years} años desde hoy (${maxDateStr}). Verifique el formato (DD/MM/AAAA).`;
+  }
+  return null;
+};
+
+/**
  * Valida fecha pasada
  */
 export const pastDate = (value, fieldName = 'Fecha') => {
@@ -334,7 +350,7 @@ export const schemas = {
   
   lote: {
     numero_lote: combine(required, loteNumber),
-    fecha_caducidad: combine(required, date, futureDate),
+    fecha_caducidad: combine(required, date, futureDate, maxYearsInFuture(8)),
     cantidad_inicial: combine(required, integer, positive),
     producto: required,
   },

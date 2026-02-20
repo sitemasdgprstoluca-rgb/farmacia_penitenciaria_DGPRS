@@ -516,6 +516,19 @@ const ComprasCajaChica = () => {
       if (cantidadNum <= 0) {
         detallesInvalidos.push(`${d.descripcion_producto}: cantidad debe ser mayor a 0`);
       }
+      
+      // Validar fecha de caducidad si existe
+      if (d.fecha_caducidad) {
+        const fechaCad = new Date(d.fecha_caducidad);
+        const fechaMaxima = new Date();
+        fechaMaxima.setFullYear(fechaMaxima.getFullYear() + 8);
+        
+        if (fechaCad > fechaMaxima) {
+          const maxFechaStr = fechaMaxima.toLocaleDateString('es-MX');
+          const caducidadStr = fechaCad.toLocaleDateString('es-MX');
+          detallesInvalidos.push(`${d.descripcion_producto}: fecha muy lejana (${caducidadStr}). Máximo 8 años desde hoy (${maxFechaStr})`);
+        }
+      }
     });
     
     if (detallesDecimales.length > 0) {

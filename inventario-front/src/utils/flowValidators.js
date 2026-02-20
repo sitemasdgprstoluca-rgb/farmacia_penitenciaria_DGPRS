@@ -608,6 +608,15 @@ export const validarLoteCreacion = (lote, options = {}) => {
     const hoy = new Date();
     if (caducidad < hoy) {
       errores.fecha_caducidad = 'La fecha de caducidad no puede ser pasada';
+    } else {
+      // Validar que no esté más de 8 años en el futuro
+      const maxFecha = new Date();
+      maxFecha.setFullYear(maxFecha.getFullYear() + 8);
+      if (caducidad > maxFecha) {
+        const maxFechaStr = maxFecha.toLocaleDateString('es-MX');
+        const caducidadStr = caducidad.toLocaleDateString('es-MX');
+        errores.fecha_caducidad = `Fecha muy lejana (${caducidadStr}). Máximo 8 años desde hoy (${maxFechaStr}). Verifique el formato (DD/MM/AAAA).`;
+      }
     }
   }
   

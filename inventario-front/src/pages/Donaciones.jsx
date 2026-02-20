@@ -1234,6 +1234,15 @@ const Donaciones = () => {
       toast.error('La fecha de caducidad no puede ser una fecha pasada');
       return;
     }
+    // Validar que la fecha no esté más de 8 años en el futuro
+    const fechaMaxima = new Date();
+    fechaMaxima.setFullYear(fechaMaxima.getFullYear() + 8);
+    if (fechaCad > fechaMaxima) {
+      const maxFechaStr = fechaMaxima.toLocaleDateString('es-MX');
+      const caducidadStr = fechaCad.toLocaleDateString('es-MX');
+      toast.error(`Fecha de caducidad muy lejana (${caducidadStr}). Máximo 8 años desde hoy (${maxFechaStr}). Verifique el formato (DD/MM/AAAA).`);
+      return;
+    }
 
     const producto = productosDonacion.find((p) => p.id === parseInt(detalleForm.producto_donacion));
     const nuevoDetalle = {
