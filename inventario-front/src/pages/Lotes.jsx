@@ -526,7 +526,9 @@ const Lotes = () => {
     if (formData.numero_contrato) dataToSend.numero_contrato = formData.numero_contrato;
     if (formData.marca) dataToSend.marca = formData.marca;
     if (formData.ubicacion) dataToSend.ubicacion = formData.ubicacion;
-    if (formData.centro) dataToSend.centro = formData.centro;
+    // Enviar centro explícitamente: null = Farmacia Central (FK nullable en BD)
+    // NUNCA omitir: backend necesita saber que es null, no que falta el campo
+    dataToSend.centro = formData.centro || null;
     
     // ISS-FIX: SIEMPRE enviar cantidad_contrato al backend
     // El backend valida permisos y rechaza si no es farmacia/admin
@@ -2005,7 +2007,9 @@ const handleImportar = async (e) => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-4 items-start">
+                  {/* Columna izquierda: CANTIDAD CONTRATO LOTE + CANTIDAD INICIAL apilados */}
+                  <div className="flex flex-col gap-4">
                   {/* ISS-INV-002: Cantidad del Contrato LOTE (solo para este lote específico) */}
                   <div>
                     <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
@@ -2033,7 +2037,46 @@ const handleImportar = async (e) => {
                     </p>
                   </div>
                   
-                  {/* ISS-INV-003: Cantidad Contrato Global - Diseño limpio */}
+                  {/* Cantidad Inicial - cantidad realmente recibida (puede ser parcial) */}
+                  <div>
+                    <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
+                      CANTIDAD INICIAL {!editingLote && <span className="text-red-600">*</span>}
+                      {editingLote && <span className="text-red-500 text-xs ml-1">🔒</span>}
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={formData.cantidad_inicial}
+                      onChange={(e) => !editingLote && setFormData({...formData, cantidad_inicial: e.target.value})}
+                      className={`w-full px-4 py-3 border-2 rounded-xl transition-all focus:outline-none ${
+                        editingLote 
+                          ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed' 
+                          : 'border-gray-200'
+                      }`}
+                      onFocus={(e) => {
+                        if (!editingLote) {
+                          e.target.style.borderColor = '#9F2241';
+                          e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
+                        }
+                      }}
+                      onBlur={(e) => {
+                        e.target.style.borderColor = '#E5E7EB';
+                        e.target.style.boxShadow = 'none';
+                      }}
+                      required={!editingLote}
+                      disabled={editingLote}
+                      readOnly={editingLote}
+                      placeholder="Cantidad de la primera entrega"
+                    />
+                    <p className="text-xs text-gray-500 italic mt-1">
+                      {editingLote 
+                        ? '🔒 Inmutable. Para reabastecer use Movimientos → Entrada' 
+                        : 'Cantidad de la primera entrega que se registra al crear el lote'}
+                    </p>
+                  </div>
+                  </div>{/* fin columna izquierda */}
+                  
+                  {/* ISS-INV-003: Columna derecha - Contrato Global */}
                   {esFarmaciaAdmin && (
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                       <div className="flex items-center justify-between mb-3">
@@ -2139,43 +2182,6 @@ const handleImportar = async (e) => {
                     </div>
                   )}
                   
-                  {/* Cantidad Inicial - cantidad realmente recibida (puede ser parcial) */}
-                  <div>
-                    <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                      CANTIDAD INICIAL {!editingLote && <span className="text-red-600">*</span>}
-                      {editingLote && <span className="text-red-500 text-xs ml-1">🔒</span>}
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={formData.cantidad_inicial}
-                      onChange={(e) => !editingLote && setFormData({...formData, cantidad_inicial: e.target.value})}
-                      className={`w-full px-4 py-3 border-2 rounded-xl transition-all focus:outline-none ${
-                        editingLote 
-                          ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed' 
-                          : 'border-gray-200'
-                      }`}
-                      onFocus={(e) => {
-                        if (!editingLote) {
-                          e.target.style.borderColor = '#9F2241';
-                          e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
-                        }
-                      }}
-                      onBlur={(e) => {
-                        e.target.style.borderColor = '#E5E7EB';
-                        e.target.style.boxShadow = 'none';
-                      }}
-                      required={!editingLote}
-                      disabled={editingLote}
-                      readOnly={editingLote}
-                      placeholder="Cantidad de la primera entrega"
-                    />
-                    <p className="text-xs text-gray-500 italic mt-1">
-                      {editingLote 
-                        ? '🔒 Inmutable. Para reabastecer use Movimientos → Entrada' 
-                        : 'Cantidad de la primera entrega que se registra al crear el lote'}
-                    </p>
-                  </div>
                 </div>
 
                 {/* Precio Unitario */}
