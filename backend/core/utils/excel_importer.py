@@ -596,11 +596,13 @@ def _validar_ccg_antes_de_importar(filas_consolidadas, centro):
         if incoming_total == 0:
             continue
 
-        # CCG es POR CENTRO — cada centro penitenciario gestiona su propio contrato global
-        # de forma independiente. Farmacia Central (centro=None) y cada centro tienen
-        # contratos separados; el CCG de farmacia no limita las compras de un centro
-        # y viceversa. SELECT FOR UPDATE para evitar race conditions entre importaciones
-        # concurrentes del mismo centro.
+        # CCG aplica exclusivamente a Farmacia Central (centro=None).
+        # Los centros penitenciarios NO manejan contratos — solo hacen requisiciones,
+        # reciben de farmacia y registran salidas. Si un centro hace una compra de
+        # emergencia, su Excel no traerá cantidad_contrato_global, por lo que
+        # ccg_por_grupo estará vacío y se regresará arriba sin llegar aquí.
+        # El filtro por centro es una salvaguarda defensiva.
+        # SELECT FOR UPDATE para evitar race conditions entre importaciones concurrentes.
         if centro is not None:
             qs_centro = Lote.objects.filter(centro=centro)
         else:
