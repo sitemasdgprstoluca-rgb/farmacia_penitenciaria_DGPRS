@@ -14,7 +14,9 @@ import {
   FaFilePdf,
   FaDownload,
   FaTimes,
-  FaChevronDown
+  FaChevronDown,
+  FaHistory,
+  FaBoxes
 } from 'react-icons/fa';
 import { DEV_CONFIG } from '../config/dev';
 import PageHeader from '../components/PageHeader';
@@ -102,6 +104,8 @@ const Lotes = () => {
   
   // Permisos específicos para acciones - usar permisos finos del backend
   const esFarmaciaAdmin = checkEsFarmaciaAdmin(user);
+  // P0-2 FIX: Solo admin/farmacia pueden autorizar sobre-entregas (mismo criterio que backend)
+  const puedeOverrideSobreentrega = esFarmaciaAdmin;
   const puede = {
     // Usar permisos finos si existen, sino fallback al rol
     crear: permisos?.crearLote === true || (esFarmaciaAdmin && permisos?.crearLote !== false),
@@ -111,6 +115,8 @@ const Lotes = () => {
     importar: permisos?.importarLotes === true || (esFarmaciaAdmin && permisos?.importarLotes !== false),
     verDocumento: true, // Todos pueden ver
     subirDocumento: permisos?.crearLote === true || (esFarmaciaAdmin && permisos?.crearLote !== false),
+    // P0-2: Override de sobre-entrega requiere rol admin/farmacia
+    overrideSobreentrega: puedeOverrideSobreentrega,
   };
   
   const [lotes, setLotes] = useState([]);
@@ -128,6 +134,16 @@ const Lotes = () => {
   const [selectedLoteDoc, setSelectedLoteDoc] = useState(null);
   const [editingLote, setEditingLote] = useState(null);
   const [showFiltersMenu, setShowFiltersMenu] = useState(false);
+  // Modal de Parcialidades (entregas parciales)
+  const [showParcialidadesModal, setShowParcialidadesModal] = useState(false);
+  const [selectedLoteParcialidades, setSelectedLoteParcialidades] = useState(null);
+  const [parcialidadesData, setParcialidadesData] = useState({ parcialidades: [], resumen: {}, contrato_lote: {} });
+  const [loadingParcialidades, setLoadingParcialidades] = useState(false);
+  const [nuevaParcialidad, setNuevaParcialidad] = useState({ fecha_entrega: '', cantidad: '', notas: '' });
+  // Override para sobre-entregas (contrato cumplido)
+  const [requiereOverride, setRequiereOverride] = useState(false);
+  const [motivoOverride, setMotivoOverride] = useState('');
+  const [infoContratoCumplido, setInfoContratoCumplido] = useState(null);
   // Auto-completado de Contrato Global
   const [cargandoCCG, setCargandoCCG] = useState(false);
   const [ccgAutoCompletado, setCcgAutoCompletado] = useState(false);
@@ -555,21 +571,13 @@ const Lotes = () => {
     // El backend exige confirmed=true para operaciones de escritura
     // =====================================================================
     const ejecutarGuardado = async () => {
-      // DEBUG: Log de datos enviados
-      console.log('[LOTE DEBUG] formData:', formData);
-      console.log('[LOTE DEBUG] dataToSend:', dataToSend);
-      console.log('[LOTE DEBUG] fecha_fabricacion en formData:', formData.fecha_fabricacion);
-      console.log('[LOTE DEBUG] fecha_fabricacion en dataToSend:', dataToSend.fecha_fabricacion);
-      
       setSavingLote(true);
       try {
         let respData;
         if (editingLote) {
           // PATCH con confirmed=true (doble confirmación)
-          console.log('[LOTE DEBUG] Enviando PATCH con:', { ...dataToSend, confirmed: true });
           const resp = await lotesAPI.update(editingLote.id, { ...dataToSend, confirmed: true });
           respData = resp.data || resp;
-          console.log('[LOTE DEBUG] Respuesta PATCH:', respData);
           toast.success('Lote actualizado correctamente');
         } else {
           const resp = await lotesAPI.create(dataToSend);
@@ -685,11 +693,13 @@ const Lotes = () => {
     // Obtener presentación del producto si está disponible
     const productoInfo = lote.producto_info || {};
     const presentacionProducto = productoInfo.presentacion || lote.presentacion || '';
+    // Usar ultima_fecha_entrega (de parcialidades) o fecha_fabricacion (legacy)
+    const fechaRecepcion = lote.ultima_fecha_entrega || lote.fecha_fabricacion || '';
     setFormData({
       producto: lote.producto,
       presentacion_producto: presentacionProducto,
       numero_lote: lote.numero_lote,
-      fecha_fabricacion: lote.fecha_fabricacion || '',
+      fecha_fabricacion: fechaRecepcion,
       fecha_caducidad: lote.fecha_caducidad,
       cantidad_inicial: lote.cantidad_inicial,
       cantidad_contrato: lote.cantidad_contrato || '',  // ISS-INV-001: Cantidad del contrato
@@ -769,6 +779,146 @@ const Lotes = () => {
       }));
     } catch (error) {
       console.error('Error al cargar documentos:', error);
+    }
+  };
+
+  // =========================================================================
+  // PARCIALIDADES - Historial de entregas parciales
+  // =========================================================================
+  const handleParcialidadesModal = async (lote) => {
+    setSelectedLoteParcialidades(lote);
+    setShowParcialidadesModal(true);
+    setNuevaParcialidad({ fecha_entrega: '', cantidad: '', notas: '' });
+    
+    // Cargar parcialidades del lote
+    try {
+      setLoadingParcialidades(true);
+      const response = await lotesAPI.listarParcialidades(lote.id);
+      setParcialidadesData(response.data);
+    } catch (error) {
+      console.error('Error al cargar parcialidades:', error);
+      toast.error('Error al cargar historial de entregas');
+      setParcialidadesData({ parcialidades: [], resumen: {}, contrato_lote: {} });
+    } finally {
+      setLoadingParcialidades(false);
+    }
+  };
+
+  const handleAgregarParcialidad = async (forceOverride = false) => {
+    if (!nuevaParcialidad.fecha_entrega || !nuevaParcialidad.cantidad) {
+      toast.error('Fecha y cantidad son obligatorios');
+      return;
+    }
+    
+    const cantidad = parseInt(nuevaParcialidad.cantidad, 10);
+    if (isNaN(cantidad) || cantidad <= 0) {
+      toast.error('La cantidad debe ser un número positivo');
+      return;
+    }
+    
+    // Si requiere override, validar motivo
+    if (forceOverride && (!motivoOverride || motivoOverride.trim().length < 10)) {
+      toast.error('Debe proporcionar un motivo detallado (mínimo 10 caracteres)');
+      return;
+    }
+    
+    try {
+      setLoadingParcialidades(true);
+      
+      const payload = {
+        fecha_entrega: nuevaParcialidad.fecha_entrega,
+        cantidad: cantidad,
+        notas: nuevaParcialidad.notas || 'Entrega manual'
+      };
+      
+      // Si es override, agregar campos adicionales
+      if (forceOverride) {
+        payload.override = true;
+        payload.motivo_override = motivoOverride.trim();
+      }
+      
+      const response = await lotesAPI.agregarParcialidad(selectedLoteParcialidades.id, payload);
+      
+      // Limpiar estado de override
+      setRequiereOverride(false);
+      setMotivoOverride('');
+      setInfoContratoCumplido(null);
+      
+      // Mostrar advertencias si hay sobre-entrega
+      if (response.data.advertencia) {
+        toast(response.data.advertencia, { icon: '⚠️', duration: 6000 });
+      }
+      
+      // Mostrar info si se completó el contrato
+      if (response.data.info) {
+        toast.success(response.data.info, { duration: 5000 });
+      }
+      
+      // Mostrar estado del contrato
+      const estadoLote = response.data.estado_contrato?.lote?.estado;
+      const estadoGlobal = response.data.estado_contrato?.global?.estado;
+      
+      if (estadoLote === 'SOBREENTREGA') {
+        toast('⚠️ Sobre-entrega registrada y auditada', { duration: 5000 });
+      } else if (estadoLote === 'CUMPLIDO' && estadoGlobal === 'CUMPLIDO') {
+        toast.success('¡Entrega registrada! Contratos de lote y global CUMPLIDOS');
+      } else if (estadoLote === 'CUMPLIDO') {
+        toast.success('¡Entrega registrada! Contrato de lote CUMPLIDO');
+      } else if (estadoGlobal === 'CUMPLIDO') {
+        toast.success('¡Entrega registrada! Contrato global CUMPLIDO');
+      } else {
+        toast.success('Entrega registrada correctamente');
+      }
+      
+      // Recargar parcialidades
+      const reloadResponse = await lotesAPI.listarParcialidades(selectedLoteParcialidades.id);
+      setParcialidadesData(reloadResponse.data);
+      setNuevaParcialidad({ fecha_entrega: '', cantidad: '', notas: '' });
+      
+      // Recargar lotes para actualizar métricas en tabla
+      cargarLotes();
+    } catch (error) {
+      console.error('Error al agregar parcialidad:', error);
+      
+      // Detectar error 409: contrato cumplido, requiere override
+      if (error.response?.status === 409 && error.response?.data?.requiere_override) {
+        setRequiereOverride(true);
+        setInfoContratoCumplido({
+          estado: error.response.data.estado_actual,
+          total_entregado: error.response.data.total_entregado,
+          cantidad_contrato: error.response.data.cantidad_contrato,
+          mensaje: error.response.data.mensaje
+        });
+        toast('⚠️ Contrato cumplido - Se requiere autorización', { icon: '🔒', duration: 5000 });
+      } else {
+        const errorMsg = error.response?.data?.mensaje || error.response?.data?.error || 'Error al registrar entrega';
+        toast.error(typeof errorMsg === 'object' ? JSON.stringify(errorMsg) : errorMsg);
+      }
+    } finally {
+      setLoadingParcialidades(false);
+    }
+  };
+
+  const handleEliminarParcialidad = async (parcialidadId) => {
+    if (!confirm('¿Está seguro de eliminar esta entrega?')) return;
+    
+    try {
+      setLoadingParcialidades(true);
+      await lotesAPI.eliminarParcialidad(selectedLoteParcialidades.id, parcialidadId);
+      toast.success('Entrega eliminada correctamente');
+      
+      // Recargar parcialidades
+      const response = await lotesAPI.listarParcialidades(selectedLoteParcialidades.id);
+      setParcialidadesData(response.data);
+      
+      // Recargar lotes para actualizar métricas en tabla
+      cargarLotes();
+    } catch (error) {
+      console.error('Error al eliminar parcialidad:', error);
+      const errorMsg = error.response?.data?.error || 'Error al eliminar entrega';
+      toast.error(errorMsg);
+    } finally {
+      setLoadingParcialidades(false);
     }
   };
 
@@ -1721,6 +1871,19 @@ const handleImportar = async (e) => {
                             <FaFilePdf />
                           )}
                         </button>
+                        {/* Botón Parcialidades - Historial de Entregas */}
+                        <button
+                          onClick={() => handleParcialidadesModal(lote)}
+                          disabled={loadingParcialidades}
+                          className={`disabled:opacity-50 disabled:cursor-not-allowed ${
+                            lote.num_entregas > 0 
+                              ? 'text-purple-600 hover:text-purple-800' 
+                              : 'text-gray-400 hover:text-gray-600'
+                          }`}
+                          title={`Historial de entregas (${lote.num_entregas || 0} entregas, ${lote.total_parcialidades || 0} unidades)`}
+                        >
+                          <FaHistory />
+                        </button>
                         {/* Botón Editar - solo farmacia/admin */}
                         {puede.editar && (
                           <button
@@ -2484,6 +2647,294 @@ const handleImportar = async (e) => {
                 onClick={() => setShowDocModal(false)}
                 className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100"
                 disabled={loading}
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Parcialidades - Historial de Entregas */}
+      {showParcialidadesModal && selectedLoteParcialidades && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="p-6 border-b flex justify-between items-center bg-gradient-to-r from-purple-600 to-indigo-600">
+              <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                <FaBoxes /> Historial de Entregas
+              </h3>
+              <button
+                onClick={() => {
+                  setShowParcialidadesModal(false);
+                  setSelectedLoteParcialidades(null);
+                  setParcialidadesData({ parcialidades: [], resumen: {}, contrato_lote: {} });
+                  // Limpiar estados de override
+                  setRequiereOverride(false);
+                  setMotivoOverride('');
+                  setInfoContratoCumplido(null);
+                }}
+                className="text-white hover:text-gray-200"
+              >
+                <FaTimes className="text-xl" />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4 overflow-y-auto flex-1">
+              {/* Info del lote */}
+              <div className="text-sm text-gray-600 border-b pb-3">
+                <p><strong>Lote:</strong> {selectedLoteParcialidades.numero_lote}</p>
+                <p><strong>Producto:</strong> {selectedLoteParcialidades.producto_nombre}</p>
+                <p><strong>Cantidad Contrato:</strong> {selectedLoteParcialidades.cantidad_contrato?.toLocaleString() || selectedLoteParcialidades.cantidad_contrato_global?.toLocaleString() || 'N/A'}</p>
+              </div>
+
+              {/* Estado del contrato - Con nuevos estados */}
+              {parcialidadesData.contrato_lote && (
+                <div className={`p-3 rounded-lg border ${
+                  parcialidadesData.contrato_lote.estado === 'CUMPLIDO' || parcialidadesData.contrato_lote.estado === 'cumplido'
+                    ? 'bg-green-50 border-green-300' 
+                    : parcialidadesData.contrato_lote.estado === 'SOBREENTREGA'
+                      ? 'bg-red-50 border-red-300'
+                      : parcialidadesData.contrato_lote.estado === 'PARCIAL' || parcialidadesData.contrato_lote.estado === 'parcial'
+                        ? 'bg-amber-50 border-amber-300'
+                        : 'bg-gray-50 border-gray-300'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold">Estado Lote: 
+                        <span className={`ml-2 px-2 py-0.5 rounded text-xs ${
+                          parcialidadesData.contrato_lote.estado === 'CUMPLIDO' || parcialidadesData.contrato_lote.estado === 'cumplido'
+                            ? 'bg-green-200 text-green-800' 
+                            : parcialidadesData.contrato_lote.estado === 'SOBREENTREGA'
+                              ? 'bg-red-200 text-red-800'
+                              : parcialidadesData.contrato_lote.estado === 'PARCIAL' || parcialidadesData.contrato_lote.estado === 'parcial'
+                                ? 'bg-amber-200 text-amber-800'
+                                : 'bg-gray-200 text-gray-800'
+                        }`}>
+                          {parcialidadesData.contrato_lote.estado?.toUpperCase() || 'PENDIENTE'}
+                        </span>
+                      </p>
+                      <p className="text-xs text-gray-600 mt-1">
+                        Entregadas: {parcialidadesData.contrato_lote.total_entregado?.toLocaleString() || 0} / {parcialidadesData.contrato_lote.cantidad_contrato?.toLocaleString() || 0} ({parcialidadesData.contrato_lote.porcentaje?.toFixed(1) || 0}%)
+                      </p>
+                      {parcialidadesData.contrato_lote.excedente > 0 && (
+                        <p className="text-xs text-red-600 mt-1 font-semibold">
+                          ⚠️ Excedente: {parcialidadesData.contrato_lote.excedente?.toLocaleString()} unidades
+                        </p>
+                      )}
+                    </div>
+                    {parcialidadesData.contrato_global && (
+                      <div className="text-right">
+                        <p className="text-xs font-semibold text-indigo-600">Contrato Global</p>
+                        <p className="text-xs text-gray-600">
+                          {parcialidadesData.contrato_global.total_entregado?.toLocaleString() || 0} / {parcialidadesData.contrato_global.cantidad_total?.toLocaleString() || 0}
+                        </p>
+                        <span className={`text-xs px-2 py-0.5 rounded ${
+                          parcialidadesData.contrato_global.estado === 'CUMPLIDO' || parcialidadesData.contrato_global.estado === 'cumplido'
+                            ? 'bg-green-200 text-green-800'
+                            : parcialidadesData.contrato_global.estado === 'SOBREENTREGA'
+                              ? 'bg-red-200 text-red-800'
+                              : 'bg-amber-200 text-amber-800'
+                        }`}>
+                          {parcialidadesData.contrato_global.estado?.toUpperCase() || 'PARCIAL'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              {/* Lista de parcialidades */}
+              {loadingParcialidades ? (
+                <div className="flex justify-center p-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-4 border-purple-500 border-t-transparent"></div>
+                </div>
+              ) : parcialidadesData.parcialidades?.length > 0 ? (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-semibold text-gray-700 flex items-center justify-between">
+                    <span>Entregas registradas ({parcialidadesData.parcialidades.length})</span>
+                    <span className="text-purple-600">
+                      Total: {parcialidadesData.parcialidades.reduce((sum, p) => sum + (p.cantidad || 0), 0).toLocaleString()} unidades
+                    </span>
+                  </h4>
+                  <div className="max-h-48 overflow-y-auto space-y-2">
+                    {parcialidadesData.parcialidades.map((parcialidad) => (
+                      <div key={parcialidad.id} className="p-3 bg-purple-50 border border-purple-200 rounded-lg flex items-center justify-between">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-purple-800 font-medium">
+                            📦 {parcialidad.cantidad?.toLocaleString()} unidades
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {parcialidad.fecha_entrega ? new Date(parcialidad.fecha_entrega).toLocaleDateString('es-MX') : 'Sin fecha'}
+                            {parcialidad.notas && ` • ${parcialidad.notas}`}
+                          </p>
+                          {parcialidad.usuario_nombre && (
+                            <p className="text-xs text-gray-400">
+                              Registrado por: {parcialidad.usuario_nombre}
+                            </p>
+                          )}
+                        </div>
+                        {puede.editar && (
+                          <button
+                            onClick={() => handleEliminarParcialidad(parcialidad.id)}
+                            disabled={loadingParcialidades}
+                            className="p-2 text-red-600 hover:text-red-800 disabled:opacity-50"
+                            title="Eliminar parcialidad"
+                          >
+                            <FaTrash />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
+                  <p className="text-sm text-gray-600">No hay entregas registradas</p>
+                </div>
+              )}
+              
+              {/* Formulario para agregar nueva parcialidad */}
+              {puede.editar && (
+                <div className="border-t pt-4">
+                  <h4 className="text-sm font-semibold text-gray-700 mb-3">Registrar nueva entrega</h4>
+                  
+                  {/* Advertencia si requiere override (contrato cumplido) */}
+                  {requiereOverride && infoContratoCumplido && (
+                    <div className="mb-4 p-3 bg-red-50 border border-red-300 rounded-lg">
+                      <p className="text-sm font-semibold text-red-800 flex items-center gap-2">
+                        🔒 Contrato {infoContratoCumplido.estado}
+                      </p>
+                      <p className="text-xs text-red-700 mt-1">
+                        {infoContratoCumplido.mensaje}
+                      </p>
+                      <p className="text-xs text-gray-600 mt-1">
+                        Total entregado: {infoContratoCumplido.total_entregado?.toLocaleString()} / Contrato: {infoContratoCumplido.cantidad_contrato?.toLocaleString()}
+                      </p>
+                      {/* P0-2 FIX: Mostrar mensaje si usuario NO puede hacer override */}
+                      {!puede.overrideSobreentrega && (
+                        <div className="mt-2 p-2 bg-yellow-100 border border-yellow-400 rounded">
+                          <p className="text-xs text-yellow-800 font-semibold flex items-center gap-1">
+                            ⚠️ Solo administradores o personal de farmacia pueden autorizar sobre-entregas.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">Fecha de entrega *</label>
+                      <input
+                        type="date"
+                        value={nuevaParcialidad.fecha_entrega}
+                        onChange={(e) => setNuevaParcialidad(prev => ({ ...prev, fecha_entrega: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                        max={new Date().toISOString().split('T')[0]}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">Cantidad entregada *</label>
+                      <input
+                        type="number"
+                        value={nuevaParcialidad.cantidad}
+                        onChange={(e) => setNuevaParcialidad(prev => ({ ...prev, cantidad: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                        placeholder="0"
+                        min="1"
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <label className="block text-xs text-gray-600 mb-1">Notas (opcional)</label>
+                    <input
+                      type="text"
+                      value={nuevaParcialidad.notas}
+                      onChange={(e) => setNuevaParcialidad(prev => ({ ...prev, notas: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                      placeholder="Ej: Entrega parcial según factura #123"
+                      maxLength={200}
+                    />
+                  </div>
+                  
+                  {/* Campo de motivo de override - solo visible cuando se requiere Y usuario tiene permiso */}
+                  {requiereOverride && puede.overrideSobreentrega && (
+                    <div className="mt-3">
+                      <label className="block text-xs text-red-600 mb-1 font-semibold">
+                        Motivo de sobre-entrega * (mín. 10 caracteres)
+                      </label>
+                      <textarea
+                        value={motivoOverride}
+                        onChange={(e) => setMotivoOverride(e.target.value)}
+                        className="w-full px-3 py-2 border border-red-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-red-50"
+                        placeholder="Ej: Sobre-entrega autorizada por Director de Farmacia según oficio OF-2024-XXX debido a ajuste de contrato..."
+                        rows={2}
+                        maxLength={500}
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        {motivoOverride.length}/500 caracteres (mínimo 10)
+                      </p>
+                    </div>
+                  )}
+                  
+                  {/* Botón de submit - cambia según si es override o no */}
+                  {requiereOverride ? (
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        onClick={() => {
+                          setRequiereOverride(false);
+                          setMotivoOverride('');
+                          setInfoContratoCumplido(null);
+                        }}
+                        className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100"
+                      >
+                        Cancelar
+                      </button>
+                      {/* P0-2 FIX: Botón de override solo visible si tiene permiso */}
+                      {puede.overrideSobreentrega && (
+                        <button
+                          onClick={() => handleAgregarParcialidad(true)}
+                          disabled={loadingParcialidades || !nuevaParcialidad.fecha_entrega || !nuevaParcialidad.cantidad || motivoOverride.trim().length < 10}
+                          className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                          {loadingParcialidades ? (
+                            <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                          ) : (
+                            <>
+                              <FaExclamationTriangle className="text-sm" />
+                              Autorizar Sobre-entrega
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => handleAgregarParcialidad(false)}
+                      disabled={loadingParcialidades || !nuevaParcialidad.fecha_entrega || !nuevaParcialidad.cantidad}
+                      className="mt-3 w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {loadingParcialidades ? (
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                      ) : (
+                        <>
+                          <FaPlus className="text-sm" />
+                          Registrar Entrega
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+            
+            <div className="px-6 py-4 border-t bg-gray-50 flex justify-end">
+              <button
+                onClick={() => {
+                  setShowParcialidadesModal(false);
+                  setSelectedLoteParcialidades(null);
+                  setParcialidadesData({ parcialidades: [], resumen: {}, contrato_lote: {} });
+                }}
+                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100"
               >
                 Cerrar
               </button>

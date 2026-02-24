@@ -1162,6 +1162,12 @@ export const lotesAPI = {
     timeout: 300000, // 5 minutos para importaciones grandes
   }),
   plantilla: () => apiClient.get('/lotes/plantilla/', { responseType: 'blob' }),
+  // ========== PARCIALIDADES (Historial de Entregas) ==========
+  listarParcialidades: (loteId) => apiClient.get(`/lotes/${loteId}/parcialidades/`),
+  agregarParcialidad: (loteId, data) => apiClient.post(`/lotes/${loteId}/agregar-parcialidad/`, data),
+  // ISS-SEC: DELETE de parcialidad con confirmación obligatoria
+  eliminarParcialidad: (loteId, parcialidadId, options = {}) => 
+    deleteWithConfirmation(`/lotes/${loteId}/eliminar-parcialidad/${parcialidadId}/`, options),
 };
 
 // Centros

@@ -1027,6 +1027,54 @@ class ProductoSerializer(serializers.ModelSerializer):
 
 
 # =============================================================================
+# LOTE PARCIALIDAD SERIALIZER
+# =============================================================================
+
+class LoteParcialidadSerializer(serializers.ModelSerializer):
+    """
+    Serializer para el historial de entregas parciales de un lote.
+    
+    Permite registrar cada entrega parcial con:
+    - Fecha de entrega
+    - Cantidad recibida
+    - Datos opcionales de factura/remisión/proveedor
+    - Campos de auditoría para sobre-entregas
+    """
+    usuario_nombre = serializers.CharField(source='usuario.get_full_name', read_only=True)
+    lote_numero = serializers.CharField(source='lote.numero_lote', read_only=True)
+    
+    class Meta:
+        from .models import LoteParcialidad
+        model = LoteParcialidad
+        fields = [
+            'id', 'lote', 'lote_numero', 'fecha_entrega', 'cantidad',
+            'numero_factura', 'numero_remision', 'proveedor', 'notas',
+            'es_sobreentrega', 'motivo_override',
+            'usuario', 'usuario_nombre', 'created_at'
+        ]
+        read_only_fields = ['id', 'usuario', 'usuario_nombre', 'created_at', 'lote_numero', 'es_sobreentrega']
+    
+    def validate_cantidad(self, value):
+        if value <= 0:
+            raise serializers.ValidationError('La cantidad debe ser mayor a cero.')
+        return value
+    
+    def validate_fecha_entrega(self, value):
+        from django.utils import timezone
+        hoy = timezone.now().date()
+        if value > hoy:
+            raise serializers.ValidationError('La fecha de entrega no puede ser futura.')
+        return value
+    
+    def create(self, validated_data):
+        # Asignar usuario automáticamente
+        request = self.context.get('request')
+        if request and hasattr(request, 'user'):
+            validated_data['usuario'] = request.user
+        return super().create(validated_data)
+
+
+# =============================================================================
 # LOTE SERIALIZER
 # =============================================================================
 
@@ -1067,6 +1115,11 @@ class LoteSerializer(serializers.ModelSerializer):
     cantidad_pendiente_global = serializers.SerializerMethodField(help_text='Cantidad pendiente global por clave (contrato_global - sum recibidos)')
     cantidad_recibido_global = serializers.SerializerMethodField(help_text='Total recibido del contrato global (usa cantidad_inicial, NO cantidad_actual)')
     total_inventario_global = serializers.SerializerMethodField(help_text='Total en inventario actual de todos los lotes del contrato (suma cantidad_actual)')
+    # Campos de parcialidades (historial de entregas)
+    parcialidades = serializers.SerializerMethodField(help_text='Historial de entregas parciales del lote')
+    total_parcialidades = serializers.SerializerMethodField(help_text='Suma de cantidades de todas las parcialidades')
+    num_entregas = serializers.SerializerMethodField(help_text='Número de entregas parciales registradas')
+    ultima_fecha_entrega = serializers.SerializerMethodField(help_text='Fecha de la última entrega registrada')
     
     class Meta:
         model = Lote
@@ -1088,9 +1141,11 @@ class LoteSerializer(serializers.ModelSerializer):
             'numero_contrato', 'marca', 'ubicacion', 'activo', 'estado',
             'dias_para_caducar', 'alerta_caducidad', 'porcentaje_consumido',
             'documentos', 'tiene_documentos', 'tiene_movimientos',
+            # Parcialidades (historial de entregas)
+            'parcialidades', 'total_parcialidades', 'num_entregas', 'ultima_fecha_entrega',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['created_at', 'updated_at', 'estado', 'documentos', 'tiene_documentos', 'tiene_movimientos', 'cantidad_pendiente', 'cantidad_pendiente_global', 'cantidad_recibido_global', 'total_inventario_global']
+        read_only_fields = ['created_at', 'updated_at', 'estado', 'documentos', 'tiene_documentos', 'tiene_movimientos', 'cantidad_pendiente', 'cantidad_pendiente_global', 'cantidad_recibido_global', 'total_inventario_global', 'parcialidades', 'total_parcialidades', 'num_entregas', 'ultima_fecha_entrega']
         extra_kwargs = {
             'cantidad_inicial': {'required': False},  # Requerido solo en creación (validate_cantidad_inicial)
             'cantidad_contrato': {'required': False, 'allow_null': True},
@@ -1194,6 +1249,53 @@ class LoteSerializer(serializers.ModelSerializer):
         ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
 
         return total_inventario
+    
+    def get_parcialidades(self, obj):
+        """
+        Devuelve el historial de entregas parciales del lote.
+        Solo incluye los últimos 10 registros para no sobrecargar respuestas.
+        Usa datos precargados si están disponibles (prefetch_related).
+        """
+        # Usar datos precargados si existen (evita N+1 queries)
+        if hasattr(obj, '_prefetched_objects_cache') and 'parcialidades' in obj._prefetched_objects_cache:
+            parcialidades = sorted(obj.parcialidades.all(), key=lambda x: x.fecha_entrega, reverse=True)[:10]
+        else:
+            from .models import LoteParcialidad
+            parcialidades = LoteParcialidad.objects.filter(lote=obj).order_by('-fecha_entrega')[:10]
+        return LoteParcialidadSerializer(parcialidades, many=True).data
+    
+    def get_total_parcialidades(self, obj):
+        """Suma de cantidades de todas las parcialidades registradas."""
+        # Usar datos precargados si existen (evita N+1 queries)
+        if hasattr(obj, '_prefetched_objects_cache') and 'parcialidades' in obj._prefetched_objects_cache:
+            return sum(p.cantidad for p in obj.parcialidades.all())
+        from django.db.models import Sum
+        from .models import LoteParcialidad
+        total = LoteParcialidad.objects.filter(lote=obj).aggregate(total=Sum('cantidad'))['total']
+        return total or 0
+    
+    def get_num_entregas(self, obj):
+        """Número de entregas parciales registradas para este lote."""
+        # Usar datos precargados si existen (evita N+1 queries)
+        if hasattr(obj, '_prefetched_objects_cache') and 'parcialidades' in obj._prefetched_objects_cache:
+            return len(obj.parcialidades.all())
+        from .models import LoteParcialidad
+        return LoteParcialidad.objects.filter(lote=obj).count()
+    
+    def get_ultima_fecha_entrega(self, obj):
+        """Fecha de la última entrega registrada (o fecha_fabricacion como fallback)."""
+        # Usar datos precargados si existen (evita N+1 queries)
+        if hasattr(obj, '_prefetched_objects_cache') and 'parcialidades' in obj._prefetched_objects_cache:
+            parcialidades = list(obj.parcialidades.all())
+            if parcialidades:
+                return max(p.fecha_entrega for p in parcialidades)
+            return obj.fecha_fabricacion
+        from .models import LoteParcialidad
+        ultima = LoteParcialidad.objects.filter(lote=obj).order_by('-fecha_entrega').first()
+        if ultima:
+            return ultima.fecha_entrega
+        # Fallback: usar fecha_fabricacion si existe (datos legacy)
+        return obj.fecha_fabricacion
     
     def get_producto_info(self, obj):
         """Devuelve información adicional del producto para mostrar en tabla/formulario."""
@@ -1500,14 +1602,6 @@ class LoteSerializer(serializers.ModelSerializer):
         """
         from .models import Movimiento
         from .signals import registrar_auditoria
-        import logging
-        logger = logging.getLogger(__name__)
-        
-        # DEBUG: Ver qué datos llegan al update
-        logger.warning(f"[LOTE UPDATE] validated_data recibido: {validated_data}")
-        logger.warning(f"[LOTE UPDATE] fecha_fabricacion en data: {'fecha_fabricacion' in validated_data}")
-        if 'fecha_fabricacion' in validated_data:
-            logger.warning(f"[LOTE UPDATE] valor fecha_fabricacion: {validated_data['fecha_fabricacion']}")
         
         # =====================================================================
         # PASO 1: Remover cantidad_inicial — NUNCA editable vía API

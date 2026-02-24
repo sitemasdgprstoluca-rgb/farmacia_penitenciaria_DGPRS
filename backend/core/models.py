@@ -1303,6 +1303,78 @@ class Lote(models.Model):
             return 'normal'
 
 
+class LoteParcialidad(models.Model):
+    """
+    Modelo para registrar el historial de entregas parciales de un lote.
+    
+    Cada lote puede recibir múltiples entregas en diferentes fechas.
+    La suma de parcialidades permite:
+    - Comparar contra cantidad_contrato (contrato del lote)
+    - Comparar contra cantidad_contrato_global (contrato por clave)
+    - Determinar cuándo se cumplió el contrato
+    
+    Reemplaza el uso de fecha_fabricacion como campo único, ya que
+    las entregas parciales pueden tener diferentes fechas.
+    """
+    lote = models.ForeignKey(
+        'Lote', 
+        on_delete=models.CASCADE, 
+        related_name='parcialidades',
+        db_column='lote_id'
+    )
+    fecha_entrega = models.DateField(help_text='Fecha de recepción de esta parcialidad')
+    cantidad = models.IntegerField(help_text='Cantidad recibida en esta entrega')
+    numero_factura = models.CharField(max_length=100, blank=True, null=True, help_text='Número de factura asociada')
+    numero_remision = models.CharField(max_length=100, blank=True, null=True, help_text='Número de remisión o guía')
+    proveedor = models.CharField(max_length=255, blank=True, null=True, help_text='Nombre del proveedor')
+    notas = models.TextField(blank=True, null=True, help_text='Observaciones adicionales')
+    # Campos de auditoría para sobre-entregas
+    es_sobreentrega = models.BooleanField(default=False, help_text='True si fue autorizada como sobre-entrega')
+    motivo_override = models.TextField(blank=True, null=True, help_text='Motivo obligatorio para sobre-entregas (auditoría)')
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='parcialidades_registradas',
+        db_column='usuario_id',
+        help_text='Usuario que registró la parcialidad'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'lote_parcialidades'
+        ordering = ['-fecha_entrega', '-created_at']
+        verbose_name = 'Parcialidad de Lote'
+        verbose_name_plural = 'Parcialidades de Lotes'
+    
+    def __str__(self):
+        return f"Parcialidad {self.lote.numero_lote}: {self.cantidad} uds ({self.fecha_entrega})"
+    
+    def clean(self):
+        """Validaciones de negocio."""
+        from django.core.exceptions import ValidationError
+        errors = {}
+        
+        # Cantidad debe ser positiva
+        if self.cantidad is not None and self.cantidad <= 0:
+            errors['cantidad'] = 'La cantidad debe ser mayor a cero.'
+        
+        # Fecha de entrega no puede ser futura
+        if self.fecha_entrega:
+            from django.utils import timezone
+            hoy = timezone.now().date()
+            if self.fecha_entrega > hoy:
+                errors['fecha_entrega'] = 'La fecha de entrega no puede ser futura.'
+        
+        if errors:
+            raise ValidationError(errors)
+    
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+
 class Movimiento(models.Model):
     """
     Modelo de Movimiento de inventario

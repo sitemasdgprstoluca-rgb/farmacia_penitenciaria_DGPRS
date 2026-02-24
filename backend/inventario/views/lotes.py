@@ -54,10 +54,10 @@ from .base import (
 )
 
 # Modelos
-from core.models import Producto, Lote, Movimiento, Centro, LoteDocumento
+from core.models import Producto, Lote, Movimiento, Centro, LoteDocumento, LoteParcialidad
 
 # Serializers
-from core.serializers import LoteSerializer, LoteDocumentoSerializer
+from core.serializers import LoteSerializer, LoteDocumentoSerializer, LoteParcialidadSerializer
 
 # Permisos
 from core.permissions import IsFarmaciaAdminOrReadOnly, IsFarmaciaRole, IsCentroRole
@@ -108,7 +108,7 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
         Seguridad: Usuarios de centro solo ven lotes de su centro.
         Admin/farmacia/vista ven todo por defecto, pueden filtrar con ?centro=.
         """
-        queryset = Lote.objects.select_related('producto', 'centro').all()
+        queryset = Lote.objects.select_related('producto', 'centro').prefetch_related('parcialidades').all()
         
         # SEGURIDAD: Filtrar por centro segun rol
         user = self.request.user
@@ -331,34 +331,70 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
         return super().retrieve(request, *args, **kwargs)
     
     def create(self, request, *args, **kwargs):
-        """Crea un nuevo lote con validaciones y alerta de contrato global"""
+        """
+        Crea un nuevo lote con validaciones y alerta de contrato global.
+        
+        PARCIALIDADES: La cantidad_inicial se registra automáticamente como
+        la primera entrega (parcialidad inicial). Esto permite trazabilidad
+        completa desde la primera carga, ya sea manual o por importación.
+        """
         try:
-            serializer = self.get_serializer(data=request.data)
-            serializer.is_valid(raise_exception=True)
-            self.perform_create(serializer)
-            
-            headers = self.get_success_headers(serializer.data)
-            response_data = dict(serializer.data)
+            with transaction.atomic():
+                serializer = self.get_serializer(data=request.data)
+                serializer.is_valid(raise_exception=True)
+                self.perform_create(serializer)
+                lote = serializer.instance
+                
+                # PARCIALIDADES: Crear parcialidad inicial automáticamente
+                # La cantidad_inicial es la primera entrega del lote
+                parcialidad_creada = False
+                if lote.cantidad_inicial and lote.cantidad_inicial > 0:
+                    # Verificar que no exista ya (idempotencia)
+                    if not LoteParcialidad.objects.filter(lote=lote).exists():
+                        fecha_entrega = lote.fecha_fabricacion or date.today()
+                        LoteParcialidad.objects.create(
+                            lote=lote,
+                            fecha_entrega=fecha_entrega,
+                            cantidad=lote.cantidad_inicial,
+                            notas='Entrega inicial - creación de lote',
+                            usuario=request.user if request.user.is_authenticated else None
+                        )
+                        parcialidad_creada = True
+                        logger.info(
+                            f"Parcialidad inicial creada - Lote: {lote.numero_lote}, "
+                            f"Cantidad: {lote.cantidad_inicial}, Usuario: {request.user.username}"
+                        )
+                
+                headers = self.get_success_headers(serializer.data)
+                response_data = dict(serializer.data)
+                
+                # Informar sobre parcialidad inicial
+                if parcialidad_creada:
+                    response_data['parcialidad_inicial'] = {
+                        'creada': True,
+                        'cantidad': lote.cantidad_inicial,
+                        'mensaje': 'Se registró la entrega inicial automáticamente'
+                    }
 
-            # ISS-INV-003: Incluir alerta de contrato global si existe
-            alerta = getattr(serializer, '_alerta_contrato_global', None)
-            if alerta:
-                response_data['alerta_contrato_global'] = alerta
+                # ISS-INV-003: Incluir alerta de contrato global si existe
+                alerta = getattr(serializer, '_alerta_contrato_global', None)
+                if alerta:
+                    response_data['alerta_contrato_global'] = alerta
 
-            # AUTO-SUFIJO: Informar al frontend si el número de lote fue renombrado
-            auto_renombrado = getattr(serializer, '_numero_lote_auto_renombrado', None)
-            if auto_renombrado:
-                response_data['numero_lote_auto_asignado'] = auto_renombrado
-                response_data['mensaje_informativo'] = (
-                    f'El número de lote "{auto_renombrado["original"]}" ya existe para este producto. '
-                    f'Se asignó automáticamente: "{auto_renombrado["asignado"]}".'
+                # AUTO-SUFIJO: Informar al frontend si el número de lote fue renombrado
+                auto_renombrado = getattr(serializer, '_numero_lote_auto_renombrado', None)
+                if auto_renombrado:
+                    response_data['numero_lote_auto_asignado'] = auto_renombrado
+                    response_data['mensaje_informativo'] = (
+                        f'El número de lote "{auto_renombrado["original"]}" ya existe para este producto. '
+                        f'Se asignó automáticamente: "{auto_renombrado["asignado"]}".'
+                    )
+
+                return Response(
+                    response_data,
+                    status=status.HTTP_201_CREATED,
+                    headers=headers
                 )
-
-            return Response(
-                response_data,
-                status=status.HTTP_201_CREATED,
-                headers=headers
-            )
         except serializers.ValidationError as e:
             return Response(
                 {'error': 'Error de validacion', 'detalles': e.detail}, 
@@ -1841,3 +1877,455 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                 'error': 'Error al eliminar documento',
                 'mensaje': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    # =========================================================================
+    # PARCIALIDADES - Historial de entregas parciales
+    # =========================================================================
+    
+    @action(detail=True, methods=['get'], url_path='parcialidades')
+    def listar_parcialidades(self, request, pk=None):
+        """
+        Lista el historial de entregas parciales del lote.
+        
+        Estados:
+        - PENDIENTE: total_entregado = 0
+        - PARCIAL: 0 < total_entregado < cantidad_contrato
+        - CUMPLIDO: total_entregado == cantidad_contrato
+        - SOBREENTREGA: total_entregado > cantidad_contrato
+        - SIN_CONTRATO: cantidad_contrato no definida
+        
+        Retorna:
+        - Lista de parcialidades ordenadas por fecha (más reciente primero)
+        - Total acumulado
+        - Comparación con contratos (lote y global)
+        """
+        lote = self.get_object()
+        
+        parcialidades = LoteParcialidad.objects.filter(lote=lote).order_by('-fecha_entrega')
+        serializer = LoteParcialidadSerializer(parcialidades, many=True)
+        
+        # Calcular totales (una sola query)
+        from django.db.models import Sum, Count, Min, Max
+        stats = parcialidades.aggregate(
+            total_cantidad=Sum('cantidad'),
+            num_entregas=Count('id'),
+            primera_entrega=Min('fecha_entrega'),
+            ultima_entrega=Max('fecha_entrega')
+        )
+        
+        # Calcular estado del contrato de lote
+        total_parcialidades = stats['total_cantidad'] or 0
+        cantidad_contrato_lote = lote.cantidad_contrato or 0
+        
+        # Usar función centralizada para calcular estado
+        estado_lote = self._calcular_estado_contrato(total_parcialidades, cantidad_contrato_lote)
+        
+        pendiente_lote = max(0, cantidad_contrato_lote - total_parcialidades) if cantidad_contrato_lote > 0 else None
+        porcentaje_lote = min(100, (total_parcialidades / cantidad_contrato_lote) * 100) if cantidad_contrato_lote > 0 else 0
+        excedente_lote = max(0, total_parcialidades - cantidad_contrato_lote) if cantidad_contrato_lote > 0 and total_parcialidades > cantidad_contrato_lote else None
+        
+        # Información del contrato global (usar función centralizada)
+        contrato_global_info = self._calcular_estado_contrato_global(lote)
+        
+        return Response({
+            'parcialidades': serializer.data,
+            'resumen': {
+                'total_cantidad': total_parcialidades,
+                'num_entregas': stats['num_entregas'] or 0,
+                'primera_entrega': stats['primera_entrega'],
+                'ultima_entrega': stats['ultima_entrega'],
+            },
+            'contrato_lote': {
+                'cantidad_contrato': cantidad_contrato_lote or None,
+                'total_entregado': total_parcialidades,
+                'pendiente': pendiente_lote,
+                'porcentaje': round(porcentaje_lote, 2),
+                'estado': estado_lote,
+                'excedente': excedente_lote,
+            },
+            'contrato_global': contrato_global_info,
+        })
+    
+    @action(detail=True, methods=['post'], url_path='agregar-parcialidad')
+    def agregar_parcialidad(self, request, pk=None):
+        """
+        Registra una nueva entrega parcial para el lote.
+        
+        FLUJO ROBUSTO DE PARCIALIDADES:
+        1. Validar permisos de escritura
+        2. Verificar estado actual del contrato (ANTES de agregar)
+        3. Si CUMPLIDO/SOBREENTREGA: requerir override (admin/supervisor + motivo)
+        4. Crear parcialidad con transaction.atomic + select_for_update
+        5. Recalcular estados y retornar información completa
+        
+        Estados posibles:
+        - PENDIENTE: total_entregado = 0
+        - PARCIAL: 0 < total_entregado < cantidad_contrato
+        - CUMPLIDO: total_entregado == cantidad_contrato
+        - SOBREENTREGA: total_entregado > cantidad_contrato
+        - SIN_CONTRATO: cantidad_contrato no definida
+        
+        Campos esperados:
+        - fecha_entrega: date (obligatorio)
+        - cantidad: integer > 0 (obligatorio)
+        - numero_factura: string (opcional)
+        - numero_remision: string (opcional)
+        - proveedor: string (opcional)
+        - notas: string (opcional)
+        - override: boolean (requerido si contrato ya cumplido)
+        - motivo_override: string (requerido si override=true)
+        """
+        lote = self.get_object()
+        user = request.user
+        
+        # Validar permisos de escritura
+        if not is_farmacia_or_admin(user):
+            user_centro = get_user_centro(user)
+            lote_centro = lote.centro
+            if lote_centro is None or (user_centro and lote_centro.pk != user_centro.pk):
+                return Response(
+                    {'error': 'No tiene permisos para registrar entregas de este lote'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
+        # Usar transacción atómica con select_for_update para evitar condiciones de carrera
+        with transaction.atomic():
+            # Bloquear el lote para evitar actualizaciones concurrentes
+            lote_locked = Lote.objects.select_for_update().get(pk=lote.pk)
+            
+            # Calcular estado ACTUAL del contrato (ANTES de agregar)
+            total_actual = LoteParcialidad.objects.filter(lote=lote_locked).aggregate(
+                total=Sum('cantidad')
+            )['total'] or 0
+            
+            cantidad_contrato = lote_locked.cantidad_contrato or 0
+            estado_previo = self._calcular_estado_contrato(total_actual, cantidad_contrato)
+            
+            # VALIDACIÓN DE SOBRE-ENTREGA
+            # Si el contrato ya está CUMPLIDO o en SOBREENTREGA, requerir override
+            if estado_previo in ['CUMPLIDO', 'SOBREENTREGA'] and cantidad_contrato > 0:
+                override = request.data.get('override', False)
+                motivo_override = request.data.get('motivo_override', '').strip()
+                
+                # Solo admin/farmacia pueden hacer override
+                puede_override = is_farmacia_or_admin(user)
+                
+                if not override:
+                    return Response({
+                        'error': 'Contrato ya cumplido',
+                        'estado_actual': estado_previo,
+                        'total_entregado': total_actual,
+                        'cantidad_contrato': cantidad_contrato,
+                        'requiere_override': True,
+                        'mensaje': (
+                            f'El contrato del lote ya está {estado_previo}. '
+                            f'Para agregar más entregas, active "override" y proporcione un motivo.'
+                        )
+                    }, status=status.HTTP_409_CONFLICT)
+                
+                if not puede_override:
+                    return Response({
+                        'error': 'Sin permisos para override',
+                        'mensaje': 'Solo administradores o supervisores pueden agregar entregas a contratos cumplidos.'
+                    }, status=status.HTTP_403_FORBIDDEN)
+                
+                if not motivo_override or len(motivo_override) < 10:
+                    return Response({
+                        'error': 'Motivo de override requerido',
+                        'mensaje': 'Debe proporcionar un motivo detallado (mínimo 10 caracteres) para sobre-entrega.'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Crear parcialidad
+            data = request.data.copy()
+            data['lote'] = lote_locked.pk
+            
+            serializer = LoteParcialidadSerializer(data=data, context={'request': request})
+            if not serializer.is_valid():
+                return Response({
+                    'error': 'Error al registrar entrega',
+                    'detalles': serializer.errors
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            parcialidad = serializer.save()
+            
+            # Actualizar campos de sobre-entrega si aplica
+            if estado_previo in ['CUMPLIDO', 'SOBREENTREGA'] and request.data.get('override'):
+                parcialidad.es_sobreentrega = True
+                parcialidad.motivo_override = request.data.get('motivo_override', '')
+                parcialidad.save(update_fields=['es_sobreentrega', 'motivo_override'])
+            
+            # Recalcular estado DESPUÉS de agregar (sin N+1, una sola query)
+            total_nuevo = LoteParcialidad.objects.filter(lote=lote_locked).aggregate(
+                total=Sum('cantidad')
+            )['total'] or 0
+            
+            estado_nuevo = self._calcular_estado_contrato(total_nuevo, cantidad_contrato)
+            
+            # Calcular métricas del lote
+            pendiente_lote = max(0, cantidad_contrato - total_nuevo) if cantidad_contrato > 0 else None
+            porcentaje_lote = min(100, (total_nuevo / cantidad_contrato) * 100) if cantidad_contrato > 0 else 0
+            excedente_lote = max(0, total_nuevo - cantidad_contrato) if cantidad_contrato > 0 and total_nuevo > cantidad_contrato else None
+            
+            # Calcular estado del contrato GLOBAL (si aplica)
+            estado_global_info = self._calcular_estado_contrato_global(lote_locked)
+            
+            # Registrar en AuditLog PERSISTENTE si es sobre-entrega (SOX/ISO 27001)
+            audit_info = None
+            if estado_previo in ['CUMPLIDO', 'SOBREENTREGA'] and request.data.get('override'):
+                motivo = request.data.get('motivo_override', 'No especificado')
+                audit_info = {
+                    'accion': 'OVERRIDE_SOBREENTREGA',
+                    'usuario': user.username,
+                    'lote': lote_locked.numero_lote,
+                    'lote_id': lote_locked.pk,
+                    'parcialidad_id': parcialidad.pk,
+                    'cantidad_agregada': parcialidad.cantidad,
+                    'fecha_entrega': str(parcialidad.fecha_entrega),
+                    'total_antes': total_actual,
+                    'total_despues': total_nuevo,
+                    'cantidad_contrato': cantidad_contrato,
+                    'cantidad_contrato_global': lote_locked.cantidad_contrato_global,
+                    'excedente': excedente_lote,
+                    'motivo': motivo,
+                    'estado_previo': estado_previo,
+                    'estado_nuevo': estado_nuevo,
+                }
+                
+                # P0-1 FIX: Persistir AuditLog en BD (obligatorio SOX/ISO 27001)
+                # Dentro de transaction.atomic para garantizar consistencia
+                try:
+                    from core.models import AuditoriaLogs
+                    
+                    # Extraer IP del request
+                    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+                    ip_address = x_forwarded_for.split(',')[0].strip() if x_forwarded_for else request.META.get('REMOTE_ADDR', '')
+                    
+                    AuditoriaLogs.objects.create(
+                        usuario=user,
+                        accion='OVERRIDE_SOBREENTREGA',
+                        modelo='LoteParcialidad',
+                        objeto_id=str(parcialidad.pk),
+                        datos_anteriores={
+                            'total_entregado': total_actual,
+                            'estado': estado_previo,
+                        },
+                        datos_nuevos={
+                            'total_entregado': total_nuevo,
+                            'estado': estado_nuevo,
+                            'parcialidad_cantidad': parcialidad.cantidad,
+                            'es_sobreentrega': True,
+                        },
+                        ip_address=ip_address[:45] if ip_address else None,
+                        user_agent=request.META.get('HTTP_USER_AGENT', '')[:200] if request.META.get('HTTP_USER_AGENT') else None,
+                        detalles={
+                            'motivo_override': motivo,
+                            'lote_id': lote_locked.pk,
+                            'lote_numero': lote_locked.numero_lote,
+                            'cantidad_contrato': cantidad_contrato,
+                            'cantidad_contrato_global': lote_locked.cantidad_contrato_global,
+                            'excedente': excedente_lote,
+                            'fecha_entrega': str(parcialidad.fecha_entrega),
+                        }
+                    )
+                    logger.info(
+                        f"[AUDIT-DB] OVERRIDE_SOBREENTREGA persistido - Lote: {lote_locked.numero_lote}, "
+                        f"Parcialidad: {parcialidad.pk}, Usuario: {user.username}"
+                    )
+                except Exception as audit_error:
+                    # Si falla el audit log, hacer rollback de toda la transacción
+                    # Esto garantiza que no queden parcialidades sin auditoría
+                    logger.error(
+                        f"[AUDIT-ERROR] Fallo al persistir AuditLog - Lote: {lote_locked.numero_lote}, "
+                        f"Error: {audit_error}. Revirtiendo transacción."
+                    )
+                    raise Exception(f"Error crítico de auditoría: {audit_error}. Operación cancelada.")
+                
+                # Log adicional a Python logger (no reemplaza BD, es complemento)
+                logger.warning(
+                    f"[AUDIT] SOBREENTREGA AUTORIZADA - Lote: {lote_locked.numero_lote}, "
+                    f"Usuario: {user.username}, Cantidad: {parcialidad.cantidad}, "
+                    f"Excedente: {excedente_lote}, Motivo: {motivo}"
+                )
+            
+            logger.info(
+                f"Parcialidad registrada - Lote: {lote_locked.numero_lote}, "
+                f"Cantidad: {parcialidad.cantidad}, Fecha: {parcialidad.fecha_entrega}, "
+                f"Usuario: {user.username}, Estado: {estado_previo} -> {estado_nuevo}"
+            )
+            
+            # Construir respuesta completa
+            response_data = {
+                'mensaje': 'Entrega registrada correctamente',
+                'parcialidad': serializer.data,
+                'estado_contrato': {
+                    'lote': {
+                        'cantidad_contrato': cantidad_contrato or None,
+                        'total_entregado': total_nuevo,
+                        'pendiente': pendiente_lote,
+                        'porcentaje': round(porcentaje_lote, 2),
+                        'estado': estado_nuevo,
+                        'estado_anterior': estado_previo,
+                        'excedente': excedente_lote,
+                    },
+                    'global': estado_global_info
+                }
+            }
+            
+            # Agregar advertencias según el estado
+            if estado_nuevo == 'SOBREENTREGA':
+                response_data['advertencia'] = (
+                    f'SOBREENTREGA: El total entregado ({total_nuevo}) excede el contrato ({cantidad_contrato}) '
+                    f'por {excedente_lote} unidades.'
+                )
+                response_data['audit_log'] = audit_info
+            elif estado_nuevo == 'CUMPLIDO' and estado_previo != 'CUMPLIDO':
+                response_data['info'] = '¡Contrato CUMPLIDO! Se ha alcanzado la cantidad contratada.'
+            
+            return Response(response_data, status=status.HTTP_201_CREATED)
+    
+    def _calcular_estado_contrato(self, total_entregado, cantidad_contrato):
+        """
+        Calcula el estado del contrato basado en entregas vs contrato.
+        
+        Estados:
+        - SIN_CONTRATO: No hay cantidad_contrato definida
+        - PENDIENTE: total = 0
+        - PARCIAL: 0 < total < contrato
+        - CUMPLIDO: total == contrato
+        - SOBREENTREGA: total > contrato
+        """
+        if not cantidad_contrato or cantidad_contrato <= 0:
+            return 'SIN_CONTRATO'
+        if total_entregado <= 0:
+            return 'PENDIENTE'
+        if total_entregado < cantidad_contrato:
+            return 'PARCIAL'
+        if total_entregado == cantidad_contrato:
+            return 'CUMPLIDO'
+        return 'SOBREENTREGA'
+    
+    def _calcular_estado_contrato_global(self, lote):
+        """
+        Calcula el estado del contrato global sumando parcialidades de todos los lotes.
+        """
+        if not lote.numero_contrato_global:
+            return None
+        
+        # Buscar todos los lotes con el mismo contrato global
+        lotes_ccg = Lote.objects.filter(
+            numero_contrato_global=lote.numero_contrato_global,
+            activo=True
+        )
+        
+        if not lotes_ccg.exists():
+            return None
+        
+        # Obtener el máximo de cantidad_contrato_global (por si varió entre lotes)
+        cantidad_contrato_global = max(
+            (l.cantidad_contrato_global or 0) for l in lotes_ccg
+        )
+        
+        if cantidad_contrato_global <= 0:
+            return None
+        
+        # Total entregado = suma de TODAS las parcialidades de lotes del contrato
+        total_entregado_global = LoteParcialidad.objects.filter(
+            lote__numero_contrato_global=lote.numero_contrato_global,
+            lote__activo=True
+        ).aggregate(total=Sum('cantidad'))['total'] or 0
+        
+        estado_global = self._calcular_estado_contrato(total_entregado_global, cantidad_contrato_global)
+        pendiente_global = max(0, cantidad_contrato_global - total_entregado_global)
+        porcentaje_global = min(100, (total_entregado_global / cantidad_contrato_global) * 100)
+        excedente_global = max(0, total_entregado_global - cantidad_contrato_global) if total_entregado_global > cantidad_contrato_global else None
+        
+        return {
+            'numero_contrato': lote.numero_contrato_global,
+            'cantidad_contrato_global': cantidad_contrato_global,
+            'total_entregado': total_entregado_global,
+            'pendiente': pendiente_global,
+            'porcentaje': round(porcentaje_global, 2),
+            'estado': estado_global,
+            'excedente': excedente_global,
+            'num_lotes': lotes_ccg.count(),
+        }
+    
+    @action(detail=True, methods=['delete'], url_path='eliminar-parcialidad/(?P<parcialidad_id>[0-9]+)')
+    def eliminar_parcialidad(self, request, pk=None, parcialidad_id=None):
+        """
+        Elimina una parcialidad específica del lote.
+        Solo permite eliminar parcialidades recientes (< 7 días).
+        Retorna estado actualizado del contrato.
+        """
+        lote = self.get_object()
+        
+        # Validar permisos de escritura
+        user = request.user
+        if not is_farmacia_or_admin(user):
+            user_centro = get_user_centro(user)
+            lote_centro = lote.centro
+            if lote_centro is None or (user_centro and lote_centro.pk != user_centro.pk):
+                return Response(
+                    {'error': 'No tiene permisos para eliminar entregas de este lote'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
+        # Buscar parcialidad
+        try:
+            parcialidad = LoteParcialidad.objects.get(id=parcialidad_id, lote=lote)
+        except LoteParcialidad.DoesNotExist:
+            return Response(
+                {'error': 'Parcialidad no encontrada'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Validar que sea reciente (< 7 días)
+        from django.utils import timezone
+        dias_desde_creacion = (timezone.now() - parcialidad.created_at).days
+        if dias_desde_creacion > 7:
+            return Response({
+                'error': 'No se puede eliminar una parcialidad con más de 7 días de antigüedad',
+                'dias_desde_creacion': dias_desde_creacion
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Usar transacción atómica
+        with transaction.atomic():
+            cantidad = parcialidad.cantidad
+            fecha = parcialidad.fecha_entrega
+            parcialidad.delete()
+            
+            # Calcular estado actualizado del contrato
+            from django.db.models import Sum
+            total_parcialidades = LoteParcialidad.objects.filter(lote=lote).aggregate(
+                total=Sum('cantidad')
+            )['total'] or 0
+            
+            # Estado del contrato de lote
+            estado_lote = 'sin_contrato'
+            pendiente_lote = None
+            if lote.cantidad_contrato:
+                pendiente_lote = max(0, lote.cantidad_contrato - total_parcialidades)
+                if total_parcialidades >= lote.cantidad_contrato:
+                    estado_lote = 'cumplido'
+                elif total_parcialidades > 0:
+                    estado_lote = 'parcial'
+                else:
+                    estado_lote = 'pendiente'
+            
+            logger.info(
+                f"Parcialidad eliminada - Lote: {lote.numero_lote}, "
+                f"Cantidad: {cantidad}, Fecha: {fecha}, Usuario: {user.username}, "
+                f"Nuevo estado contrato: {estado_lote}"
+            )
+            
+            return Response({
+                'mensaje': 'Entrega eliminada correctamente',
+                'estado_contrato': {
+                    'lote': {
+                        'cantidad_contrato': lote.cantidad_contrato,
+                        'total_recibido': total_parcialidades,
+                        'pendiente': pendiente_lote,
+                        'estado': estado_lote,
+                    }
+                }
+            })

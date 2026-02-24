@@ -834,11 +834,8 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
         if idx >= 0:
             col_map[campo] = idx
     
-    # DEBUG: Log de detección de columnas
-    logger.warning(f"[IMPORTADOR] Encabezados Excel: {encabezados}")
-    logger.warning(f"[IMPORTADOR] Encabezados normalizados: {encabezados_norm}")
-    logger.warning(f"[IMPORTADOR] Columnas detectadas: {col_map}")
-    logger.warning(f"[IMPORTADOR] Tiene 'recepcion' en col_map: {'recepcion' in col_map}")
+    # Log de columnas detectadas (nivel info para diagnóstico)
+    logger.info(f"[IMPORTADOR] Columnas detectadas: {list(col_map.keys())}")
     
     # FIX: Validar columnas mínimas - CLAVE y NOMBRE son OBLIGATORIAS
     # Ambos deben coincidir con el producto en la base de datos
@@ -1060,15 +1057,11 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
             if 'recepcion' in col_map:
                 idx_fab = col_map['recepcion']
                 fecha_fab_raw = fila[idx_fab].value if idx_fab < len(fila) else None
-                logger.warning(f"[FECHA] Fila {fila_num}: idx={idx_fab}, valor_raw={fecha_fab_raw}, tipo={type(fecha_fab_raw)}")
                 if fecha_fab_raw:
                     try:
                         fecha_fabricacion = _parse_fecha_excel(fecha_fab_raw, 'Fecha Recepción')
-                        logger.warning(f"[FECHA] Fila {fila_num}: parseada={fecha_fabricacion}")
                     except Exception as e:
-                        logger.warning(f"[FECHA] Fila {fila_num}: ERROR parseando: {e}")
-            else:
-                logger.warning(f"[FECHA] Fila {fila_num}: 'recepcion' NO está en col_map")
+                        logger.debug(f"Fila {fila_num}: Error parseando fecha recepción: {e}")
             
             # Precio
             precio_raw = get_val('precio', '0')
@@ -1212,20 +1205,50 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                         cantidad_inicial_anterior = lote.cantidad_inicial
                         cantidad_contrato_lote = lote.cantidad_contrato
                         
+                        # Obtener fecha de recepción para la parcialidad
+                        nueva_fecha_fab = fila.get('fecha_fabricacion')
+                        
                         # Preparar datos de actualización
                         update_data = {
                             'cantidad_actual': F('cantidad_actual') + cantidad_inicial,
                             'cantidad_inicial': F('cantidad_inicial') + cantidad_inicial,
                         }
                         
-                        # Actualizar fecha_fabricacion si la nueva es más reciente
-                        nueva_fecha_fab = fila.get('fecha_fabricacion')
+                        # Actualizar fecha_fabricacion si la nueva es más reciente (mantener por compatibilidad)
                         if nueva_fecha_fab is not None:
                             if lote.fecha_fabricacion is None or nueva_fecha_fab > lote.fecha_fabricacion:
                                 update_data['fecha_fabricacion'] = nueva_fecha_fab
                         
                         Lote.objects.filter(pk=lote.pk).update(**update_data)
                         lote.refresh_from_db()
+                        
+                        # Crear parcialidad para registrar esta entrega en el historial
+                        # IDEMPOTENCIA: Verificar si ya existe una parcialidad idéntica
+                        from core.models import LoteParcialidad
+                        from django.utils import timezone
+                        
+                        fecha_parcialidad = nueva_fecha_fab or timezone.now().date()
+                        nota_parcialidad = 'Entrega parcial via importación Excel (consolidación)'
+                        
+                        # Verificar duplicado: misma fecha, cantidad y nota similar
+                        parcialidad_existente = LoteParcialidad.objects.filter(
+                            lote=lote,
+                            fecha_entrega=fecha_parcialidad,
+                            cantidad=cantidad_inicial,
+                            notas__icontains='importación Excel'
+                        ).exists()
+                        
+                        if not parcialidad_existente:
+                            LoteParcialidad.objects.create(
+                                lote=lote,
+                                fecha_entrega=fecha_parcialidad,
+                                cantidad=cantidad_inicial,
+                                notas=nota_parcialidad,
+                                usuario=request.user if request and hasattr(request, 'user') else None,
+                            )
+                            logger.info(f"[PARCIALIDAD] Nueva entrega para lote {numero_lote}: +{cantidad_inicial} uds, fecha={fecha_parcialidad}")
+                        else:
+                            logger.info(f"[PARCIALIDAD] Omitida (duplicado detectado) para lote {numero_lote}: {cantidad_inicial} uds, fecha={fecha_parcialidad}")
                         
                         Producto.objects.filter(pk=producto.pk).update(
                             stock_actual=F('stock_actual') + cantidad_inicial
@@ -1271,8 +1294,11 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                 if centro:
                     lote_existente_inactivo = lote_existente_inactivo.filter(centro=centro)
                 
+                # Obtener fecha de recepción para la parcialidad
+                fecha_recepcion = fila.get('fecha_fabricacion')
+                
                 # Crear lote
-                Lote.objects.create(
+                lote_nuevo = Lote.objects.create(
                     producto=producto,
                     centro=centro,
                     numero_lote=numero_lote,
@@ -1281,13 +1307,40 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                     cantidad_contrato=cantidad_contrato,  # NULL si no se proporcionó
                     cantidad_contrato_global=fila.get('cantidad_contrato_global'),
                     fecha_caducidad=fecha_caducidad,
-                    fecha_fabricacion=fila.get('fecha_fabricacion'),
+                    fecha_fabricacion=fecha_recepcion,  # Mantener por compatibilidad
                     precio_unitario=fila.get('precio_unitario', Decimal('0')),
                     numero_contrato=numero_contrato,
                     marca=marca,
                     ubicacion='Almacén Central',
                     activo=fila.get('activo', True),
                 )
+                
+                # Crear parcialidad inicial para el historial de entregas
+                # IDEMPOTENCIA: Verificar si ya existe (por si se reintenta)
+                from core.models import LoteParcialidad
+                from django.utils import timezone
+                
+                # Usar fecha de recepción del Excel o la fecha actual
+                fecha_parcialidad = fecha_recepcion or timezone.now().date()
+                nota_inicial = 'Carga inicial por importación Excel'
+                
+                # Verificar si ya existe parcialidad para este lote nuevo
+                parcialidad_existente = LoteParcialidad.objects.filter(
+                    lote=lote_nuevo,
+                    notas__icontains='importación Excel'
+                ).exists()
+                
+                if not parcialidad_existente:
+                    LoteParcialidad.objects.create(
+                        lote=lote_nuevo,
+                        fecha_entrega=fecha_parcialidad,
+                        cantidad=cantidad_inicial,
+                        notas=nota_inicial,
+                        usuario=request.user if request and hasattr(request, 'user') else None,
+                    )
+                    logger.info(f"[PARCIALIDAD] Creada para lote {numero_lote}: {cantidad_inicial} uds, fecha={fecha_parcialidad}")
+                else:
+                    logger.info(f"[PARCIALIDAD] Omitida (ya existe) para lote nuevo {numero_lote}")
                 
                 Producto.objects.filter(pk=producto.pk).update(
                     stock_actual=F('stock_actual') + cantidad_inicial
