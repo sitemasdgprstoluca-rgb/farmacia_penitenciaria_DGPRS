@@ -689,51 +689,70 @@ const Lotes = () => {
     }
   };
 
-  const handleEdit = (lote) => {
-    setEditingLote(lote);
-    // Obtener presentación del producto si está disponible
-    const productoInfo = lote.producto_info || {};
-    const presentacionProducto = productoInfo.presentacion || lote.presentacion || '';
-    
-    // Usar ultima_fecha_entrega (de parcialidades) o fecha_fabricacion (legacy)
-    // IMPORTANTE: Asegurar formato YYYY-MM-DD para input type="date"
-    const formatearFechaParaInput = (fecha) => {
-      if (!fecha) return '';
-      // Si ya está en formato YYYY-MM-DD, usar directamente
-      if (typeof fecha === 'string' && /^\d{4}-\d{2}-\d{2}/.test(fecha)) {
-        return fecha.substring(0, 10); // Tomar solo YYYY-MM-DD
-      }
-      // Si es otro formato, intentar convertir
-      try {
-        const d = new Date(fecha);
-        if (!isNaN(d.getTime())) {
-          return d.toISOString().split('T')[0];
+  const handleEdit = async (lote) => {
+    // Obtener datos más recientes del servidor para asegurar campos actualizados
+    try {
+      const response = await lotesAPI.getById(lote.id);
+      const loteActualizado = response.data;
+      
+      setEditingLote(loteActualizado);
+      
+      // Obtener presentación del producto si está disponible
+      const productoInfo = loteActualizado.producto_info || {};
+      const presentacionProducto = productoInfo.presentacion || loteActualizado.presentacion || '';
+      
+      // Usar ultima_fecha_entrega (de parcialidades) o fecha_fabricacion (legacy)
+      // IMPORTANTE: Asegurar formato YYYY-MM-DD para input type="date"
+      const formatearFechaParaInput = (fecha) => {
+        if (!fecha) return '';
+        // Si ya está en formato YYYY-MM-DD, usar directamente
+        if (typeof fecha === 'string' && /^\d{4}-\d{2}-\d{2}/.test(fecha)) {
+          return fecha.substring(0, 10); // Tomar solo YYYY-MM-DD
         }
-      } catch (e) {
-        console.warn('Error parseando fecha:', fecha, e);
-      }
-      return '';
-    };
-    
-    const fechaEntrega = formatearFechaParaInput(lote.ultima_fecha_entrega) || 
-                         formatearFechaParaInput(lote.fecha_fabricacion) || '';
-    
-    setFormData({
-      producto: lote.producto,
-      presentacion_producto: presentacionProducto,
-      numero_lote: lote.numero_lote,
-      fecha_fabricacion: fechaEntrega,
-      fecha_caducidad: formatearFechaParaInput(lote.fecha_caducidad),
-      cantidad_inicial: lote.cantidad_inicial,
-      cantidad_contrato: lote.cantidad_contrato || '',  // ISS-INV-001: Cantidad del contrato
-      cantidad_contrato_global: lote.cantidad_contrato_global || '',  // ISS-INV-003: Total compartido
-      precio_unitario: lote.precio_unitario || lote.precio_compra || '',
-      numero_contrato: lote.numero_contrato || '',
-      marca: lote.marca || '',
-      ubicacion: lote.ubicacion || '',
-      centro: lote.centro || ''
-    });
-    setShowModal(true);
+        // Si es otro formato, intentar convertir
+        try {
+          const d = new Date(fecha);
+          if (!isNaN(d.getTime())) {
+            return d.toISOString().split('T')[0];
+          }
+        } catch (e) {
+          console.warn('Error parseando fecha:', fecha, e);
+        }
+        return '';
+      };
+      
+      // DEBUG: Ver valores de fecha
+      console.log('Lote actualizado:', {
+        id: loteActualizado.id,
+        fecha_fabricacion: loteActualizado.fecha_fabricacion,
+        ultima_fecha_entrega: loteActualizado.ultima_fecha_entrega
+      });
+      
+      const fechaEntrega = formatearFechaParaInput(loteActualizado.ultima_fecha_entrega) || 
+                           formatearFechaParaInput(loteActualizado.fecha_fabricacion) || '';
+      
+      console.log('Fecha entrega formateada:', fechaEntrega);
+      
+      setFormData({
+        producto: loteActualizado.producto,
+        presentacion_producto: presentacionProducto,
+        numero_lote: loteActualizado.numero_lote,
+        fecha_fabricacion: fechaEntrega,
+        fecha_caducidad: formatearFechaParaInput(loteActualizado.fecha_caducidad),
+        cantidad_inicial: loteActualizado.cantidad_inicial,
+        cantidad_contrato: loteActualizado.cantidad_contrato || '',
+        cantidad_contrato_global: loteActualizado.cantidad_contrato_global || '',
+        precio_unitario: loteActualizado.precio_unitario || loteActualizado.precio_compra || '',
+        numero_contrato: loteActualizado.numero_contrato || '',
+        marca: loteActualizado.marca || '',
+        ubicacion: loteActualizado.ubicacion || '',
+        centro: loteActualizado.centro || ''
+      });
+      setShowModal(true);
+    } catch (error) {
+      console.error('Error al obtener lote:', error);
+      toast.error('Error al cargar datos del lote');
+    }
   };
 
   // ISS-SEC: Función auxiliar para ejecutar eliminación de lote con confirmación
