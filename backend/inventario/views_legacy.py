@@ -8692,6 +8692,9 @@ def trazabilidad_producto(request, clave):
         
         lotes = lotes.order_by('-created_at')
         
+        # ISS-FIX: Guardar IDs de lotes filtrados para filtrar movimientos correctamente
+        lotes_filtrados_ids = list(lotes.values_list('id', flat=True))
+        
         # TRAZABILIDAD: Consolidar lotes por numero_lote (mismo lote puede estar en varios centros)
         # Agrupamos por numero_lote para mostrar información consolidada
         lotes_consolidados = {}
@@ -8774,14 +8777,9 @@ def trazabilidad_producto(request, clave):
                 'distribuido_en': len(data['centros']) if data['centros'] else 0,
             })
 
-        movimientos = Movimiento.objects.filter(lote__producto=producto).select_related('lote', 'centro_origen', 'centro_destino')
-        
-        # ISS-FIX: Aplicar filtro de centro de forma ESTRICTA a movimientos
-        # Solo donde el centro es origen O destino (no por lote__centro)
-        if filtrar_por_centro and user_centro:
-            movimientos = movimientos.filter(
-                Q(centro_origen=user_centro) | Q(centro_destino=user_centro)
-            )
+        # ISS-FIX: Filtrar movimientos SOLO por los lotes que ya fueron filtrados
+        # Esto asegura consistencia: si el usuario ve ciertos lotes, solo verá movimientos de esos lotes
+        movimientos = Movimiento.objects.filter(lote_id__in=lotes_filtrados_ids).select_related('lote', 'centro_origen', 'centro_destino')
         
         # Aplicar filtros de fecha a movimientos
         if fecha_inicio:
@@ -8843,11 +8841,9 @@ def trazabilidad_producto(request, clave):
         lotes_activos = len([k for k, v in lotes_consolidados.items() if v['cantidad_total'] > 0])
         total_lotes = len(lotes_consolidados)  # Lotes únicos, no registros duplicados
         
-        # Totales de entradas/salidas filtrados por centro si aplica
-        # ISS-FIX: Excluir movimientos pendientes del cálculo
-        mov_query = Movimiento.objects.filter(lote__producto=producto).exclude(motivo__icontains='[PENDIENTE]')
-        if filtrar_por_centro and user_centro:
-            mov_query = mov_query.filter(lote__centro=user_centro)
+        # ISS-FIX: Totales de entradas/salidas calculados SOLO de los lotes filtrados
+        # Esto asegura que las estadísticas coincidan con los movimientos y lotes mostrados
+        mov_query = Movimiento.objects.filter(lote_id__in=lotes_filtrados_ids).exclude(motivo__icontains='[PENDIENTE]')
         total_entradas_prod = mov_query.filter(tipo='entrada').aggregate(total=Sum('cantidad'))['total'] or 0
         total_salidas_prod = mov_query.filter(tipo='salida').aggregate(total=Sum('cantidad'))['total'] or 0
 
