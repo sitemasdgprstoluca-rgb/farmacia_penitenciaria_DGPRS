@@ -676,6 +676,12 @@ def _consolidar_filas_importacion(filas_parseadas):
             new_ccg = fila.get('cantidad_contrato_global')
             if new_ccg is not None:
                 grupo_completo[key]['cantidad_contrato_global'] = new_ccg
+            # fecha_fabricacion/recepción: mantener la más reciente si hay múltiples entregas parciales
+            existing_fecha_fab = grupo_completo[key].get('fecha_fabricacion')
+            new_fecha_fab = fila.get('fecha_fabricacion')
+            if new_fecha_fab is not None:
+                if existing_fecha_fab is None or new_fecha_fab > existing_fecha_fab:
+                    grupo_completo[key]['fecha_fabricacion'] = new_fecha_fab
             # filas_origen: acumular para auditoría
             grupo_completo[key].setdefault('filas_origen', [fila.get('fila_num', '?')])
             grupo_completo[key]['filas_origen'].append(fila.get('fila_num', '?'))
