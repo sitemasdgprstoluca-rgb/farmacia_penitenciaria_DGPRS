@@ -1570,15 +1570,17 @@ class LoteSerializer(serializers.ModelSerializer):
                 proyectado = total_ya + cantidad_inicial
                 if proyectado > ccg_v:
                     exceso = proyectado - ccg_v
-                    disponible = max(0, ccg_v - total_ya)
-                    raise serializers.ValidationError({
-                        'cantidad_inicial': (
-                            f'La cantidad excede el CONTRATO GLOBAL (verificación concurrente). '
-                            f'Contrato global: {ccg_v}, ya recibido: {total_ya}, '
-                            f'este lote agrega: {cantidad_inicial}, exceso: {exceso}. '
-                            f'Máximo permitido: {disponible}.'
-                        )
-                    })
+                    # ADVERTENCIA en lugar de bloqueo - permitir sobreentregas
+                    logger.warning(
+                        f'⚠️ Sobreentrega global (concurrente): cantidad ({cantidad_inicial}) + '
+                        f'existente ({total_ya}) = {proyectado} > CCG ({ccg_v}). Exceso: {exceso}'
+                    )
+                    self._alerta_contrato_global = (
+                        f'⚠️ Se excede el contrato GLOBAL por {exceso} unidades. '
+                        f'Contrato global: {ccg_v}, ya recibido: {total_ya}, '
+                        f'este lote agrega: {cantidad_inicial}, total: {proyectado}. '
+                        f'Se registra como sobreentrega.'
+                    )
         # ─────────────────────────────────────────────────────────────────────
 
         # =====================================================================
