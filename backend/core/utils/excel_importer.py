@@ -802,7 +802,8 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                       'vencimiento fecha de caducidad'],  # Formato oficial combinado
         'recepcion': ['fecha recepcion', 'recepcion', 'fecha de recepcion', 
                       'fec recepcion', 'fecha fabricacion', 'fabricacion', 'elaboracion', 
-                      'fecha elaboracion', 'fec fab', 'fecha entrega', 'entrega'],
+                      'fecha elaboracion', 'fec fab', 'fecha entrega', 'entrega',
+                      'fec recepcion', 'f recepcion', 'fec rec'],
         'fecha_ingreso': ['fecha ingreso', 'fecha de ingreso', 'ingreso', 'fecha entrada', 
                           'fec ing'],  # Formato oficial
         # Otros campos
@@ -832,6 +833,12 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
         idx = buscar_columna(sinonimos)
         if idx >= 0:
             col_map[campo] = idx
+    
+    # DEBUG: Log de detección de columnas
+    logger.warning(f"[IMPORTADOR] Encabezados Excel: {encabezados}")
+    logger.warning(f"[IMPORTADOR] Encabezados normalizados: {encabezados_norm}")
+    logger.warning(f"[IMPORTADOR] Columnas detectadas: {col_map}")
+    logger.warning(f"[IMPORTADOR] Tiene 'recepcion' en col_map: {'recepcion' in col_map}")
     
     # FIX: Validar columnas mínimas - CLAVE y NOMBRE son OBLIGATORIAS
     # Ambos deben coincidir con el producto en la base de datos
@@ -1053,11 +1060,15 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
             if 'recepcion' in col_map:
                 idx_fab = col_map['recepcion']
                 fecha_fab_raw = fila[idx_fab].value if idx_fab < len(fila) else None
+                logger.warning(f"[FECHA] Fila {fila_num}: idx={idx_fab}, valor_raw={fecha_fab_raw}, tipo={type(fecha_fab_raw)}")
                 if fecha_fab_raw:
                     try:
                         fecha_fabricacion = _parse_fecha_excel(fecha_fab_raw, 'Fecha Recepción')
-                    except:
-                        pass  # Si falla, ignorar (no es campo crítico)
+                        logger.warning(f"[FECHA] Fila {fila_num}: parseada={fecha_fabricacion}")
+                    except Exception as e:
+                        logger.warning(f"[FECHA] Fila {fila_num}: ERROR parseando: {e}")
+            else:
+                logger.warning(f"[FECHA] Fila {fila_num}: 'recepcion' NO está en col_map")
             
             # Precio
             precio_raw = get_val('precio', '0')
@@ -1295,6 +1306,10 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
 
     result = resultado.get_dict()
     result['creados'] = creados
+    # DEBUG: Información de columnas detectadas
+    result['_debug_col_map'] = {k: v for k, v in col_map.items()}
+    result['_debug_encabezados'] = encabezados[:15]  # Solo los primeros 15
+    result['_debug_recepcion_detectada'] = 'recepcion' in col_map
     if consolidados_archivo > 0:
         result['consolidados_archivo'] = consolidados_archivo
         result['nota_consolidacion'] = (
