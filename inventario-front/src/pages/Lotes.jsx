@@ -139,6 +139,7 @@ const Lotes = () => {
   const [selectedLoteParcialidades, setSelectedLoteParcialidades] = useState(null);
   const [parcialidadesData, setParcialidadesData] = useState({ parcialidades: [], resumen: {}, contrato_lote: {} });
   const [loadingParcialidades, setLoadingParcialidades] = useState(false);
+  const [exportingEntregas, setExportingEntregas] = useState(null); // 'pdf' o 'excel'
   const [nuevaParcialidad, setNuevaParcialidad] = useState({ fecha_entrega: '', cantidad: '', notas: '' });
   // Override para sobre-entregas (contrato cumplido)
   const [requiereOverride, setRequiereOverride] = useState(false);
@@ -919,6 +920,41 @@ const Lotes = () => {
       toast.error(errorMsg);
     } finally {
       setLoadingParcialidades(false);
+    }
+  };
+
+  // Exportar historial de entregas a PDF o Excel
+  const handleExportarEntregas = async (formato) => {
+    if (!selectedLoteParcialidades?.id) return;
+    
+    try {
+      setExportingEntregas(formato);
+      
+      const response = formato === 'pdf' 
+        ? await lotesAPI.exportarEntregasPdf(selectedLoteParcialidades.id)
+        : await lotesAPI.exportarEntregasExcel(selectedLoteParcialidades.id);
+      
+      // Crear URL temporal y descargar
+      const blob = new Blob([response.data], { 
+        type: formato === 'pdf' 
+          ? 'application/pdf' 
+          : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Entregas_${selectedLoteParcialidades.numero_lote}_${new Date().toISOString().split('T')[0]}.${formato === 'pdf' ? 'pdf' : 'xlsx'}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success(`Reporte ${formato.toUpperCase()} descargado correctamente`);
+    } catch (error) {
+      console.error(`Error exportando entregas a ${formato}:`, error);
+      toast.error(`Error al exportar a ${formato.toUpperCase()}`);
+    } finally {
+      setExportingEntregas(null);
     }
   };
 
@@ -2659,7 +2695,7 @@ const handleImportar = async (e) => {
       {showParcialidadesModal && selectedLoteParcialidades && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-            {/* HEADER - Mejorado */}
+            {/* HEADER - Mejorado con botones de exportar */}
             <div className="p-5 border-b bg-gradient-to-r from-primary to-[#6B1839]">
               <div className="flex justify-between items-start">
                 <div>
@@ -2670,19 +2706,63 @@ const handleImportar = async (e) => {
                     Lote: <span className="font-semibold">{selectedLoteParcialidades.numero_lote}</span>
                   </p>
                 </div>
-                <button
-                  onClick={() => {
-                    setShowParcialidadesModal(false);
-                    setSelectedLoteParcialidades(null);
-                    setParcialidadesData({ parcialidades: [], resumen: {}, contrato_lote: {} });
-                    setRequiereOverride(false);
-                    setMotivoOverride('');
-                    setInfoContratoCumplido(null);
-                  }}
-                  className="text-white hover:text-gray-200 p-1"
-                >
-                  <FaTimes className="text-xl" />
-                </button>
+                {/* Botones de exportar y cerrar */}
+                <div className="flex items-center gap-2">
+                  {/* Exportar PDF */}
+                  <button
+                    onClick={() => handleExportarEntregas('pdf')}
+                    disabled={exportingEntregas === 'pdf' || !parcialidadesData.parcialidades?.length}
+                    className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                      exportingEntregas === 'pdf' 
+                        ? 'bg-white/30 cursor-wait' 
+                        : parcialidadesData.parcialidades?.length
+                          ? 'bg-white/20 hover:bg-white/30 text-white'
+                          : 'bg-white/10 text-white/50 cursor-not-allowed'
+                    }`}
+                    title="Exportar a PDF"
+                  >
+                    {exportingEntregas === 'pdf' ? (
+                      <span className="animate-spin">⏳</span>
+                    ) : (
+                      <FaFilePdf />
+                    )}
+                    PDF
+                  </button>
+                  {/* Exportar Excel */}
+                  <button
+                    onClick={() => handleExportarEntregas('excel')}
+                    disabled={exportingEntregas === 'excel' || !parcialidadesData.parcialidades?.length}
+                    className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                      exportingEntregas === 'excel' 
+                        ? 'bg-white/30 cursor-wait' 
+                        : parcialidadesData.parcialidades?.length
+                          ? 'bg-white/20 hover:bg-white/30 text-white'
+                          : 'bg-white/10 text-white/50 cursor-not-allowed'
+                    }`}
+                    title="Exportar a Excel"
+                  >
+                    {exportingEntregas === 'excel' ? (
+                      <span className="animate-spin">⏳</span>
+                    ) : (
+                      <FaFileExcel />
+                    )}
+                    Excel
+                  </button>
+                  {/* Cerrar */}
+                  <button
+                    onClick={() => {
+                      setShowParcialidadesModal(false);
+                      setSelectedLoteParcialidades(null);
+                      setParcialidadesData({ parcialidades: [], resumen: {}, contrato_lote: {} });
+                      setRequiereOverride(false);
+                      setMotivoOverride('');
+                      setInfoContratoCumplido(null);
+                    }}
+                    className="text-white hover:text-gray-200 p-1 ml-2"
+                  >
+                    <FaTimes className="text-xl" />
+                  </button>
+                </div>
               </div>
             </div>
             

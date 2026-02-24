@@ -1970,6 +1970,407 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                 'cantidad_contrato_global': lote.cantidad_contrato_global,
             },
         })
+
+    @action(detail=True, methods=['get'], url_path='exportar-entregas-pdf')
+    def exportar_entregas_pdf(self, request, pk=None):
+        """
+        Exporta el historial de entregas del lote a PDF con diseño profesional.
+        Incluye información del producto, lote, contrato y todas las parcialidades.
+        """
+        lote = self.get_object()
+        parcialidades = LoteParcialidad.objects.filter(lote=lote).order_by('-fecha_entrega')
+        
+        # Calcular totales
+        from django.db.models import Sum, Count, Min, Max
+        stats = parcialidades.aggregate(
+            total_cantidad=Sum('cantidad'),
+            num_entregas=Count('id'),
+            primera_entrega=Min('fecha_entrega'),
+            ultima_entrega=Max('fecha_entrega')
+        )
+        
+        # Info del contrato global
+        contrato_global_info = self._calcular_estado_contrato_global(lote)
+        
+        try:
+            from reportlab.lib import colors
+            from reportlab.lib.pagesizes import letter, landscape
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib.units import inch, cm
+            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+            from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+            
+            buffer = BytesIO()
+            doc = SimpleDocTemplate(buffer, pagesize=letter, 
+                                   leftMargin=0.5*inch, rightMargin=0.5*inch,
+                                   topMargin=0.5*inch, bottomMargin=0.5*inch)
+            elements = []
+            styles = getSampleStyleSheet()
+            
+            # Estilos personalizados
+            titulo_style = ParagraphStyle('TituloReporte', parent=styles['Heading1'],
+                                         fontSize=16, textColor=colors.HexColor('#9F2241'),
+                                         alignment=TA_CENTER, spaceAfter=12)
+            subtitulo_style = ParagraphStyle('Subtitulo', parent=styles['Heading2'],
+                                            fontSize=12, textColor=colors.HexColor('#235B4E'),
+                                            alignment=TA_CENTER, spaceAfter=6)
+            normal_style = ParagraphStyle('Normal', parent=styles['Normal'],
+                                         fontSize=10, spaceAfter=4)
+            
+            # Título
+            elements.append(Paragraph("HISTORIAL DE ENTREGAS", titulo_style))
+            elements.append(Paragraph(f"Lote: {lote.numero_lote}", subtitulo_style))
+            elements.append(Spacer(1, 0.2*inch))
+            
+            # Información del producto
+            producto = lote.producto
+            info_producto = [
+                ['INFORMACIÓN DEL PRODUCTO', '', '', ''],
+                ['Clave:', producto.clave if producto else 'N/A', 
+                 'Nombre:', producto.nombre if producto else 'N/A'],
+                ['Número de Lote:', lote.numero_lote, 
+                 'Centro:', lote.centro.nombre if lote.centro else 'Farmacia Central'],
+                ['Fecha Entrega:', lote.fecha_fabricacion.strftime('%d/%m/%Y') if lote.fecha_fabricacion else 'No registrada',
+                 'Fecha Caducidad:', lote.fecha_caducidad.strftime('%d/%m/%Y') if lote.fecha_caducidad else 'N/A'],
+                ['Número Contrato:', lote.numero_contrato or 'Sin contrato', 
+                 'Marca:', lote.marca or 'N/A'],
+            ]
+            
+            t_producto = Table(info_producto, colWidths=[1.5*inch, 2*inch, 1.5*inch, 2.5*inch])
+            t_producto.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#9F2241')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('SPAN', (0, 0), (-1, 0)),
+                ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 11),
+                ('BACKGROUND', (0, 1), (0, -1), colors.HexColor('#F5F5F5')),
+                ('BACKGROUND', (2, 1), (2, -1), colors.HexColor('#F5F5F5')),
+                ('FONTNAME', (0, 1), (0, -1), 'Helvetica-Bold'),
+                ('FONTNAME', (2, 1), (2, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 1), (-1, -1), 9),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CCCCCC')),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ]))
+            elements.append(t_producto)
+            elements.append(Spacer(1, 0.2*inch))
+            
+            # Resumen del contrato
+            total_parcialidades = stats['total_cantidad'] or 0
+            cantidad_contrato_lote = lote.cantidad_contrato or 0
+            
+            resumen_data = [
+                ['RESUMEN DE ENTREGAS', '', '', ''],
+                ['Total Entregas:', str(stats['num_entregas'] or 0),
+                 'Total Entregado:', f"{total_parcialidades:,} uds"],
+                ['Primera Entrega:', stats['primera_entrega'].strftime('%d/%m/%Y') if stats['primera_entrega'] else 'N/A',
+                 'Última Entrega:', stats['ultima_entrega'].strftime('%d/%m/%Y') if stats['ultima_entrega'] else 'N/A'],
+            ]
+            
+            # Info contrato lote
+            if cantidad_contrato_lote > 0:
+                pendiente_lote = max(0, cantidad_contrato_lote - total_parcialidades)
+                porcentaje_lote = min(100, (total_parcialidades / cantidad_contrato_lote) * 100)
+                resumen_data.append(['Contrato Lote:', f"{cantidad_contrato_lote:,} uds",
+                                    'Pendiente Lote:', f"{pendiente_lote:,} uds ({100-porcentaje_lote:.1f}%)"])
+            
+            # Info contrato global
+            if contrato_global_info and contrato_global_info.get('cantidad_contrato_global'):
+                ccg = contrato_global_info['cantidad_contrato_global']
+                te = contrato_global_info['total_entregado']
+                pend = contrato_global_info['pendiente']
+                porc = contrato_global_info['porcentaje']
+                resumen_data.append(['Contrato Global:', f"{ccg:,} uds", 
+                                    'Entregado Global:', f"{te:,} uds ({porc:.1f}%)"])
+                resumen_data.append(['Pendiente Global:', f"{pend:,} uds",
+                                    'Estado:', contrato_global_info['estado']])
+            
+            t_resumen = Table(resumen_data, colWidths=[1.5*inch, 2*inch, 1.5*inch, 2.5*inch])
+            t_resumen.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#235B4E')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('SPAN', (0, 0), (-1, 0)),
+                ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 11),
+                ('BACKGROUND', (0, 1), (0, -1), colors.HexColor('#F5F5F5')),
+                ('BACKGROUND', (2, 1), (2, -1), colors.HexColor('#F5F5F5')),
+                ('FONTNAME', (0, 1), (0, -1), 'Helvetica-Bold'),
+                ('FONTNAME', (2, 1), (2, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 1), (-1, -1), 9),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CCCCCC')),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ]))
+            elements.append(t_resumen)
+            elements.append(Spacer(1, 0.3*inch))
+            
+            # Tabla de parcialidades (detalle de entregas)
+            elements.append(Paragraph("DETALLE DE ENTREGAS", titulo_style))
+            elements.append(Spacer(1, 0.1*inch))
+            
+            if parcialidades.exists():
+                # Encabezados
+                tabla_data = [['#', 'Fecha', 'Cantidad', 'Factura', 'Remisión', 'Proveedor', 'Notas']]
+                
+                # Filas de datos
+                acumulado = 0
+                for i, p in enumerate(parcialidades.order_by('fecha_entrega'), 1):
+                    acumulado += p.cantidad
+                    tabla_data.append([
+                        str(i),
+                        p.fecha_entrega.strftime('%d/%m/%Y') if p.fecha_entrega else '',
+                        f"{p.cantidad:,}",
+                        p.numero_factura or '-',
+                        p.numero_remision or '-',
+                        p.proveedor or '-',
+                        (p.notas[:30] + '...') if p.notas and len(p.notas) > 30 else (p.notas or '-'),
+                    ])
+                
+                # Fila de total
+                tabla_data.append(['', 'TOTAL', f"{total_parcialidades:,}", '', '', '', ''])
+                
+                t_parcialidades = Table(tabla_data, colWidths=[0.4*inch, 0.9*inch, 0.8*inch, 1*inch, 1*inch, 1.2*inch, 2.2*inch])
+                t_parcialidades.setStyle(TableStyle([
+                    # Encabezado
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#9F2241')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 9),
+                    ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                    # Filas de datos
+                    ('FONTSIZE', (0, 1), (-1, -2), 8),
+                    ('ALIGN', (0, 1), (0, -1), 'CENTER'),
+                    ('ALIGN', (2, 1), (2, -1), 'RIGHT'),
+                    # Fila total
+                    ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#235B4E')),
+                    ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
+                    ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+                    # Bordes
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CCCCCC')),
+                    ('TOPPADDING', (0, 0), (-1, -1), 4),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                    # Alternar colores de fila
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#F9F9F9')]),
+                ]))
+                elements.append(t_parcialidades)
+            else:
+                elements.append(Paragraph("No hay entregas registradas para este lote.", normal_style))
+            
+            # Pie de página
+            elements.append(Spacer(1, 0.5*inch))
+            fecha_gen = timezone.now().strftime('%d/%m/%Y %H:%M')
+            elements.append(Paragraph(f"Generado: {fecha_gen} | Usuario: {request.user.username}", 
+                                     ParagraphStyle('Pie', parent=styles['Normal'], 
+                                                   fontSize=8, textColor=colors.gray,
+                                                   alignment=TA_RIGHT)))
+            
+            doc.build(elements)
+            buffer.seek(0)
+            
+            response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="Entregas_{lote.numero_lote}_{timezone.now().strftime("%Y%m%d")}.pdf"'
+            return response
+            
+        except Exception as e:
+            logger.exception(f"Error generando PDF de entregas para lote {pk}: {e}")
+            return Response({'error': f'Error generando PDF: {str(e)}'}, 
+                          status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['get'], url_path='exportar-entregas-excel')
+    def exportar_entregas_excel(self, request, pk=None):
+        """
+        Exporta el historial de entregas del lote a Excel con formato profesional.
+        """
+        lote = self.get_object()
+        parcialidades = LoteParcialidad.objects.filter(lote=lote).order_by('fecha_entrega')
+        
+        # Calcular totales
+        from django.db.models import Sum, Count, Min, Max
+        stats = parcialidades.aggregate(
+            total_cantidad=Sum('cantidad'),
+            num_entregas=Count('id'),
+            primera_entrega=Min('fecha_entrega'),
+            ultima_entrega=Max('fecha_entrega')
+        )
+        
+        # Info contrato global
+        contrato_global_info = self._calcular_estado_contrato_global(lote)
+        
+        try:
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Historial Entregas"
+            
+            # Estilos
+            header_fill = PatternFill(start_color="9F2241", end_color="9F2241", fill_type="solid")
+            header_font = Font(bold=True, color="FFFFFF", size=11)
+            subheader_fill = PatternFill(start_color="235B4E", end_color="235B4E", fill_type="solid")
+            subheader_font = Font(bold=True, color="FFFFFF", size=10)
+            label_fill = PatternFill(start_color="F5F5F5", end_color="F5F5F5", fill_type="solid")
+            label_font = Font(bold=True, size=9)
+            total_fill = PatternFill(start_color="235B4E", end_color="235B4E", fill_type="solid")
+            total_font = Font(bold=True, color="FFFFFF")
+            
+            row = 1
+            
+            # Título
+            ws.merge_cells(f'A{row}:G{row}')
+            ws[f'A{row}'] = "HISTORIAL DE ENTREGAS"
+            ws[f'A{row}'].fill = header_fill
+            ws[f'A{row}'].font = Font(bold=True, color="FFFFFF", size=14)
+            ws[f'A{row}'].alignment = Alignment(horizontal='center')
+            row += 1
+            
+            ws.merge_cells(f'A{row}:G{row}')
+            ws[f'A{row}'] = f"Lote: {lote.numero_lote}"
+            ws[f'A{row}'].alignment = Alignment(horizontal='center')
+            ws[f'A{row}'].font = Font(bold=True, size=12)
+            row += 2
+            
+            # Información del producto
+            producto = lote.producto
+            ws.merge_cells(f'A{row}:G{row}')
+            ws[f'A{row}'] = "INFORMACIÓN DEL PRODUCTO"
+            ws[f'A{row}'].fill = subheader_fill
+            ws[f'A{row}'].font = subheader_font
+            row += 1
+            
+            info_rows = [
+                ('Clave:', producto.clave if producto else 'N/A', 'Nombre:', producto.nombre if producto else 'N/A'),
+                ('Número de Lote:', lote.numero_lote, 'Centro:', lote.centro.nombre if lote.centro else 'Farmacia Central'),
+                ('Fecha Entrega:', lote.fecha_fabricacion.strftime('%d/%m/%Y') if lote.fecha_fabricacion else 'No registrada',
+                 'Fecha Caducidad:', lote.fecha_caducidad.strftime('%d/%m/%Y') if lote.fecha_caducidad else 'N/A'),
+                ('Número Contrato:', lote.numero_contrato or 'Sin contrato', 'Marca:', lote.marca or 'N/A'),
+            ]
+            
+            for label1, val1, label2, val2 in info_rows:
+                ws[f'A{row}'] = label1
+                ws[f'A{row}'].fill = label_fill
+                ws[f'A{row}'].font = label_font
+                ws[f'B{row}'] = val1
+                ws[f'C{row}'] = label2
+                ws[f'C{row}'].fill = label_fill
+                ws[f'C{row}'].font = label_font
+                ws[f'D{row}'] = val2
+                row += 1
+            
+            row += 1
+            
+            # Resumen
+            ws.merge_cells(f'A{row}:G{row}')
+            ws[f'A{row}'] = "RESUMEN DE ENTREGAS"
+            ws[f'A{row}'].fill = subheader_fill
+            ws[f'A{row}'].font = subheader_font
+            row += 1
+            
+            total_parcialidades = stats['total_cantidad'] or 0
+            cantidad_contrato_lote = lote.cantidad_contrato or 0
+            
+            resumen_rows = [
+                ('Total Entregas:', str(stats['num_entregas'] or 0), 'Total Entregado:', f"{total_parcialidades:,} uds"),
+                ('Primera Entrega:', stats['primera_entrega'].strftime('%d/%m/%Y') if stats['primera_entrega'] else 'N/A',
+                 'Última Entrega:', stats['ultima_entrega'].strftime('%d/%m/%Y') if stats['ultima_entrega'] else 'N/A'),
+            ]
+            
+            if cantidad_contrato_lote > 0:
+                pendiente_lote = max(0, cantidad_contrato_lote - total_parcialidades)
+                porcentaje_lote = min(100, (total_parcialidades / cantidad_contrato_lote) * 100)
+                resumen_rows.append(('Contrato Lote:', f"{cantidad_contrato_lote:,} uds",
+                                    'Pendiente Lote:', f"{pendiente_lote:,} uds ({100-porcentaje_lote:.1f}%)"))
+            
+            if contrato_global_info and contrato_global_info.get('cantidad_contrato_global'):
+                ccg = contrato_global_info['cantidad_contrato_global']
+                te = contrato_global_info['total_entregado']
+                pend = contrato_global_info['pendiente']
+                porc = contrato_global_info['porcentaje']
+                resumen_rows.append(('Contrato Global:', f"{ccg:,} uds", 
+                                    'Entregado Global:', f"{te:,} uds ({porc:.1f}%)"))
+                resumen_rows.append(('Pendiente Global:', f"{pend:,} uds",
+                                    'Estado:', contrato_global_info['estado']))
+            
+            for label1, val1, label2, val2 in resumen_rows:
+                ws[f'A{row}'] = label1
+                ws[f'A{row}'].fill = label_fill
+                ws[f'A{row}'].font = label_font
+                ws[f'B{row}'] = val1
+                ws[f'C{row}'] = label2
+                ws[f'C{row}'].fill = label_fill
+                ws[f'C{row}'].font = label_font
+                ws[f'D{row}'] = val2
+                row += 1
+            
+            row += 1
+            
+            # Tabla de parcialidades
+            ws.merge_cells(f'A{row}:G{row}')
+            ws[f'A{row}'] = "DETALLE DE ENTREGAS"
+            ws[f'A{row}'].fill = header_fill
+            ws[f'A{row}'].font = header_font
+            ws[f'A{row}'].alignment = Alignment(horizontal='center')
+            row += 1
+            
+            # Encabezados de tabla
+            headers = ['#', 'Fecha', 'Cantidad', 'Factura', 'Remisión', 'Proveedor', 'Notas']
+            for col, header in enumerate(headers, 1):
+                cell = ws.cell(row=row, column=col, value=header)
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal='center')
+            row += 1
+            
+            # Datos
+            if parcialidades.exists():
+                for i, p in enumerate(parcialidades, 1):
+                    ws.cell(row=row, column=1, value=i)
+                    ws.cell(row=row, column=2, value=p.fecha_entrega.strftime('%d/%m/%Y') if p.fecha_entrega else '')
+                    ws.cell(row=row, column=3, value=p.cantidad)
+                    ws.cell(row=row, column=4, value=p.numero_factura or '-')
+                    ws.cell(row=row, column=5, value=p.numero_remision or '-')
+                    ws.cell(row=row, column=6, value=p.proveedor or '-')
+                    ws.cell(row=row, column=7, value=p.notas or '-')
+                    row += 1
+                
+                # Fila total
+                ws.cell(row=row, column=1, value='')
+                ws.cell(row=row, column=2, value='TOTAL')
+                ws.cell(row=row, column=2).font = total_font
+                ws.cell(row=row, column=2).fill = total_fill
+                ws.cell(row=row, column=3, value=total_parcialidades)
+                ws.cell(row=row, column=3).font = total_font
+                ws.cell(row=row, column=3).fill = total_fill
+                for col in [1, 4, 5, 6, 7]:
+                    ws.cell(row=row, column=col).fill = total_fill
+            else:
+                ws.merge_cells(f'A{row}:G{row}')
+                ws[f'A{row}'] = "No hay entregas registradas"
+                ws[f'A{row}'].alignment = Alignment(horizontal='center')
+            
+            # Ajustar anchos de columna
+            ws.column_dimensions['A'].width = 6
+            ws.column_dimensions['B'].width = 14
+            ws.column_dimensions['C'].width = 12
+            ws.column_dimensions['D'].width = 15
+            ws.column_dimensions['E'].width = 15
+            ws.column_dimensions['F'].width = 18
+            ws.column_dimensions['G'].width = 35
+            
+            buffer = BytesIO()
+            wb.save(buffer)
+            buffer.seek(0)
+            
+            response = HttpResponse(buffer.getvalue(), 
+                                   content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            response['Content-Disposition'] = f'attachment; filename="Entregas_{lote.numero_lote}_{timezone.now().strftime("%Y%m%d")}.xlsx"'
+            return response
+            
+        except Exception as e:
+            logger.exception(f"Error generando Excel de entregas para lote {pk}: {e}")
+            return Response({'error': f'Error generando Excel: {str(e)}'}, 
+                          status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     @action(detail=True, methods=['post'], url_path='agregar-parcialidad')
     def agregar_parcialidad(self, request, pk=None):

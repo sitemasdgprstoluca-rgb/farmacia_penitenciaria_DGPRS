@@ -1168,6 +1168,13 @@ export const lotesAPI = {
   // ISS-SEC: DELETE de parcialidad con confirmación obligatoria
   eliminarParcialidad: (loteId, parcialidadId, options = {}) => 
     deleteWithConfirmation(`/lotes/${loteId}/eliminar-parcialidad/${parcialidadId}/`, options),
+  // ========== EXPORTAR ENTREGAS ==========
+  exportarEntregasPdf: (loteId) => apiClient.get(`/lotes/${loteId}/exportar-entregas-pdf/`, { 
+    responseType: 'blob' 
+  }),
+  exportarEntregasExcel: (loteId) => apiClient.get(`/lotes/${loteId}/exportar-entregas-excel/`, { 
+    responseType: 'blob' 
+  }),
 };
 
 // Centros

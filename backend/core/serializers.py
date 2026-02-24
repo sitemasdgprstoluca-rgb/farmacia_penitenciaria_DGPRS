@@ -1153,6 +1153,8 @@ class LoteSerializer(serializers.ModelSerializer):
             'numero_contrato': {'required': False, 'allow_null': True, 'allow_blank': True},
             'marca': {'required': False, 'allow_null': True, 'allow_blank': True},
             'ubicacion': {'required': False, 'allow_null': True, 'allow_blank': True},
+            # ISS-FIX: fecha_fabricacion (fecha de entrega) explícitamente editable
+            'fecha_fabricacion': {'required': False, 'allow_null': True},
             # NOTA: 'centro' se declara explícitamente como campo (no en extra_kwargs)
             # porque DRF prohíbe mezclar declaración explícita + extra_kwargs para el mismo campo.
         }
