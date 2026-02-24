@@ -1174,8 +1174,9 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
     # FASE 3: PERSISTENCIA - Crear/actualizar lotes en BD (atómico)
     # ========================================================================
     with transaction.atomic():
-        # BLOQUEO DURO CCG: rechazar si la importación excedería algún contrato global
-        _validar_ccg_antes_de_importar(filas_consolidadas, centro)
+        # BLOQUEO DURO CCG: Deshabilitado - permitir importación sin validar CCG
+        # El CCG se puede ajustar manualmente en el Excel según necesidades operativas
+        # _validar_ccg_antes_de_importar(filas_consolidadas, centro)
 
         for fila in filas_consolidadas:
             try:
