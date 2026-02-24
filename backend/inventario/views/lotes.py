@@ -2207,13 +2207,16 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
     def _calcular_estado_contrato_global(self, lote):
         """
         Calcula el estado del contrato global sumando parcialidades de todos los lotes.
+        Usa numero_contrato + producto para agrupar lotes del mismo contrato global.
         """
-        if not lote.numero_contrato_global:
+        # Verificar que el lote tenga contrato y cantidad_contrato_global definidos
+        if not lote.numero_contrato or not lote.cantidad_contrato_global:
             return None
         
-        # Buscar todos los lotes con el mismo contrato global
+        # Buscar todos los lotes con el mismo contrato y producto (contrato global)
         lotes_ccg = Lote.objects.filter(
-            numero_contrato_global=lote.numero_contrato_global,
+            numero_contrato=lote.numero_contrato,
+            producto=lote.producto,
             activo=True
         )
         
@@ -2230,7 +2233,8 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
         
         # Total entregado = suma de TODAS las parcialidades de lotes del contrato
         total_entregado_global = LoteParcialidad.objects.filter(
-            lote__numero_contrato_global=lote.numero_contrato_global,
+            lote__numero_contrato=lote.numero_contrato,
+            lote__producto=lote.producto,
             lote__activo=True
         ).aggregate(total=Sum('cantidad'))['total'] or 0
         
@@ -2240,7 +2244,7 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
         excedente_global = max(0, total_entregado_global - cantidad_contrato_global) if total_entregado_global > cantidad_contrato_global else None
         
         return {
-            'numero_contrato': lote.numero_contrato_global,
+            'numero_contrato': lote.numero_contrato,
             'cantidad_contrato_global': cantidad_contrato_global,
             'total_entregado': total_entregado_global,
             'pendiente': pendiente_global,

@@ -2659,7 +2659,7 @@ const handleImportar = async (e) => {
       {showParcialidadesModal && selectedLoteParcialidades && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="p-6 border-b flex justify-between items-center bg-gradient-to-r from-purple-600 to-indigo-600">
+            <div className="p-6 border-b flex justify-between items-center bg-gradient-to-r from-primary to-[#6B1839]">
               <h3 className="text-xl font-bold text-white flex items-center gap-2">
                 <FaBoxes /> Historial de Entregas
               </h3>
@@ -2724,7 +2724,7 @@ const handleImportar = async (e) => {
                     </div>
                     {parcialidadesData.contrato_global && (
                       <div className="text-right">
-                        <p className="text-xs font-semibold text-indigo-600">Contrato Global</p>
+                        <p className="text-xs font-semibold text-primary">Contrato Global</p>
                         <p className="text-xs text-gray-600">
                           {parcialidadesData.contrato_global.total_entregado?.toLocaleString() || 0} / {parcialidadesData.contrato_global.cantidad_total?.toLocaleString() || 0}
                         </p>
@@ -2746,21 +2746,21 @@ const handleImportar = async (e) => {
               {/* Lista de parcialidades */}
               {loadingParcialidades ? (
                 <div className="flex justify-center p-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-4 border-purple-500 border-t-transparent"></div>
+                  <div className="animate-spin rounded-full h-8 w-8 border-4 border-primary border-t-transparent"></div>
                 </div>
               ) : parcialidadesData.parcialidades?.length > 0 ? (
                 <div className="space-y-2">
                   <h4 className="text-sm font-semibold text-gray-700 flex items-center justify-between">
                     <span>Entregas registradas ({parcialidadesData.parcialidades.length})</span>
-                    <span className="text-purple-600">
+                    <span className="text-primary">
                       Total: {parcialidadesData.parcialidades.reduce((sum, p) => sum + (p.cantidad || 0), 0).toLocaleString()} unidades
                     </span>
                   </h4>
                   <div className="max-h-48 overflow-y-auto space-y-2">
                     {parcialidadesData.parcialidades.map((parcialidad) => (
-                      <div key={parcialidad.id} className="p-3 bg-purple-50 border border-purple-200 rounded-lg flex items-center justify-between">
+                      <div key={parcialidad.id} className="p-3 bg-red-50 border border-primary/30 rounded-lg flex items-center justify-between">
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm text-purple-800 font-medium">
+                          <p className="text-sm text-primary font-medium">
                             📦 {parcialidad.cantidad?.toLocaleString()} unidades
                           </p>
                           <p className="text-xs text-gray-500">
@@ -2828,7 +2828,7 @@ const handleImportar = async (e) => {
                         type="date"
                         value={nuevaParcialidad.fecha_entrega}
                         onChange={(e) => setNuevaParcialidad(prev => ({ ...prev, fecha_entrega: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary"
                         max={new Date().toISOString().split('T')[0]}
                       />
                     </div>
@@ -2838,7 +2838,7 @@ const handleImportar = async (e) => {
                         type="number"
                         value={nuevaParcialidad.cantidad}
                         onChange={(e) => setNuevaParcialidad(prev => ({ ...prev, cantidad: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary"
                         placeholder="0"
                         min="1"
                       />
@@ -2850,7 +2850,7 @@ const handleImportar = async (e) => {
                       type="text"
                       value={nuevaParcialidad.notas}
                       onChange={(e) => setNuevaParcialidad(prev => ({ ...prev, notas: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary"
                       placeholder="Ej: Entrega parcial según factura #123"
                       maxLength={200}
                     />
@@ -2911,7 +2911,7 @@ const handleImportar = async (e) => {
                     <button
                       onClick={() => handleAgregarParcialidad(false)}
                       disabled={loadingParcialidades || !nuevaParcialidad.fecha_entrega || !nuevaParcialidad.cantidad}
-                      className="mt-3 w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      className="mt-3 w-full px-4 py-2 bg-primary text-white rounded-lg hover:bg-[#6B1839] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                       {loadingParcialidades ? (
                         <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />

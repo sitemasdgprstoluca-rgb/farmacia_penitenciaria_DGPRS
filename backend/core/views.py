@@ -5650,8 +5650,8 @@ class AdminLimpiarDatosView(APIView):
     empezar a usar el sistema desde cero después de capacitación.
     
     SOPORTA ELIMINACIÓN SELECTIVA:
-    - productos: Elimina productos, imágenes, lotes, documentos, movimientos
-    - lotes: Elimina lotes, documentos, hojas recolección (no productos)
+    - productos: Elimina productos, imágenes, lotes, parcialidades, documentos, movimientos
+    - lotes: Elimina lotes, documentos, parcialidades, hojas recolección (no productos)
     - requisiciones: Elimina requisiciones, detalles, historial, ajustes
     - movimientos: Elimina solo movimientos
     - donaciones: Elimina donaciones, detalles y salidas de donaciones
@@ -5674,7 +5674,7 @@ class AdminLimpiarDatosView(APIView):
     - GET /api/admin/limpiar-datos/ - Obtener estadísticas detalladas
     - POST /api/admin/limpiar-datos/ - Ejecutar limpieza (requiere confirmación y categoría)
     
-    Versión: 2.0 - Incluye dispensaciones, pacientes y caja chica
+    Versión: 2.1 - Incluye parcialidades de lotes, dispensaciones, pacientes y caja chica
     """
     permission_classes = [IsAuthenticated, IsSuperuserOnly]
     
@@ -5738,6 +5738,8 @@ class AdminLimpiarDatosView(APIView):
             ajustes_count = cursor.fetchone()[0]
             cursor.execute("SELECT COUNT(*) FROM requisicion_historial_estados")
             historial_count = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM lote_parcialidades")
+            lote_parcialidades_count = cursor.fetchone()[0]
         
         # Verificar si hay donaciones con productos
         productos_con_donaciones = DetalleDonacion.objects.values('producto_id').distinct().count()
@@ -5747,31 +5749,33 @@ class AdminLimpiarDatosView(APIView):
             'categorias': {
                 'productos': {
                     'nombre': 'Productos e Inventario',
-                    'descripcion': 'Elimina productos, lotes, movimientos, requisiciones, dispensaciones y donaciones vinculadas',
-                    'total': productos_count + ProductoImagen.objects.count() + lotes_count + LoteDocumento.objects.count() + dispensaciones_count + detalle_dispensaciones_count + historial_dispensaciones_count + donaciones_count + detalles_donacion_count + salidas_donacion_count,
+                    'descripcion': 'Elimina productos, lotes, parcialidades, movimientos, requisiciones, dispensaciones y donaciones vinculadas',
+                    'total': productos_count + ProductoImagen.objects.count() + lotes_count + LoteDocumento.objects.count() + lote_parcialidades_count + dispensaciones_count + detalle_dispensaciones_count + historial_dispensaciones_count + donaciones_count + detalles_donacion_count + salidas_donacion_count,
                     'detalle': {
                         'productos': productos_count,
                         'producto_imagenes': ProductoImagen.objects.count(),
                         'lotes': lotes_count,
                         'lote_documentos': LoteDocumento.objects.count(),
+                        'lote_parcialidades': lote_parcialidades_count,
                         'dispensaciones': dispensaciones_count,
                         'detalle_dispensaciones': detalle_dispensaciones_count,
                         'donaciones': donaciones_count,
                         'detalles_donacion': detalles_donacion_count,
                     },
-                    'dependencias': ['También eliminará: movimientos, hojas recolección, dispensaciones, donaciones y sus detalles'],
+                    'dependencias': ['También eliminará: movimientos, hojas recolección, entregas parciales, dispensaciones, donaciones y sus detalles'],
                 },
                 'lotes': {
                     'nombre': 'Solo Lotes',
-                    'descripcion': 'Elimina lotes, documentos de lotes y hojas de recolección (mantiene productos)',
-                    'total': lotes_count + LoteDocumento.objects.count() + hojas_recoleccion_count + DetalleHojaRecoleccion.objects.count(),
+                    'descripcion': 'Elimina lotes, documentos de lotes, parcialidades y hojas de recolección (mantiene productos)',
+                    'total': lotes_count + LoteDocumento.objects.count() + lote_parcialidades_count + hojas_recoleccion_count + DetalleHojaRecoleccion.objects.count(),
                     'detalle': {
                         'lotes': lotes_count,
                         'lote_documentos': LoteDocumento.objects.count(),
+                        'lote_parcialidades': lote_parcialidades_count,
                         'hojas_recoleccion': hojas_recoleccion_count,
                         'detalles_hojas_recoleccion': DetalleHojaRecoleccion.objects.count(),
                     },
-                    'dependencias': ['También eliminará: movimientos vinculados a lotes'],
+                    'dependencias': ['También eliminará: movimientos vinculados a lotes, entregas parciales'],
                 },
                 'requisiciones': {
                     'nombre': 'Requisiciones',
@@ -6139,6 +6143,11 @@ class AdminLimpiarDatosView(APIView):
                         cursor.execute("DELETE FROM lote_documentos")
                         eliminados['lote_documentos'] = cursor.rowcount
                     
+                    # 4.1 Parcialidades de lotes (entregas parciales)
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM lote_parcialidades")
+                        eliminados['lote_parcialidades'] = cursor.rowcount
+                    
                     # 5. Actualizar detalles_requisicion para quitar referencia a lotes
                     with connection.cursor() as cursor:
                         cursor.execute("UPDATE detalles_requisicion SET lote_id = NULL")
@@ -6263,6 +6272,10 @@ class AdminLimpiarDatosView(APIView):
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM lote_documentos")
                         eliminados['lote_documentos'] = cursor.rowcount
+                    # 14.1 Parcialidades de lotes (entregas parciales)
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM lote_parcialidades")
+                        eliminados['lote_parcialidades'] = cursor.rowcount
                     # 15. Lotes
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM lotes")
@@ -6411,6 +6424,11 @@ class AdminLimpiarDatosView(APIView):
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM lote_documentos")
                         eliminados['lote_documentos'] = cursor.rowcount
+                    
+                    # 17.1 Parcialidades de lotes (entregas parciales)
+                    with connection.cursor() as cursor:
+                        cursor.execute("DELETE FROM lote_parcialidades")
+                        eliminados['lote_parcialidades'] = cursor.rowcount
                     
                     # 18. Lotes - con verificación
                     with connection.cursor() as cursor:
