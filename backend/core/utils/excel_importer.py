@@ -28,57 +28,32 @@ logger = logging.getLogger(__name__)
 def _parse_fecha_excel(fecha_raw, nombre_campo='fecha'):
     """
     Convierte una fecha de openpyxl a objeto date de Python sin conversión de timezone.
-    
-    PROBLEMA CRÍTICO: Excel + openpyxl + Django USE_TZ=True causan desfase de 1 día.
-    - Excel almacena fechas como números seriales
-    - openpyxl las convierte a datetime a medianoche (00:00:00)
-    - Django con timezone America/Mexico_City (UTC-6) puede restar horas y cambiar fecha
-    
-    SOLUCIÓN: Normalizar a mediodía (12:00:00) para que conversiones de ±6 horas no cambien fecha.
-    
-    VALIDACIÓN: Rechaza fechas fuera del rango razonable (1900-2100) para evitar errores.
+    Normaliza a mediodía (12:00:00) para evitar desfase por timezone.
+    Valida rango 1900-2100.
     """
     if not fecha_raw:
         return None
-    
-    # DEBUG: Log detallado para diagnosticar el problema
-    logger.info(f"[DEBUG FECHA] {nombre_campo} - Valor raw: {fecha_raw}, Tipo: {type(fecha_raw)}")
-    if isinstance(fecha_raw, datetime):
-        logger.info(f"[DEBUG FECHA] datetime - year:{fecha_raw.year} month:{fecha_raw.month} day:{fecha_raw.day} hour:{fecha_raw.hour} tzinfo:{fecha_raw.tzinfo}")
     
     try:
         resultado = None
         
         if isinstance(fecha_raw, datetime):
-            # CRÍTICO: Normalizar a mediodía para evitar desfase por timezone
-            # Si viene a 00:00:00, movemos a 12:00:00 para que ±6 horas no cambie fecha
             fecha_normalizada = fecha_raw.replace(hour=12, minute=0, second=0, microsecond=0)
-            logger.info(f"[DEBUG FECHA] Normalizado a mediodía: {fecha_normalizada}")
-            
             if fecha_normalizada.tzinfo is not None:
-                # Si tiene timezone, convertir a la zona local de Django
                 fecha_local = timezone.localtime(fecha_normalizada)
-                logger.info(f"[DEBUG FECHA] Convertido a local: {fecha_local}")
                 resultado = fecha_local.date()
             else:
-                # Datetime naive: extraer directamente después de normalizar
                 resultado = fecha_normalizada.date()
             
         elif isinstance(fecha_raw, date):
-            # Ya es date, retornar directamente
-            logger.info(f"[DEBUG FECHA] Ya es date: {fecha_raw}")
             resultado = fecha_raw
         else:
-            # Intentar parsear como string
             fecha_str = str(fecha_raw).strip()
-            logger.info(f"[DEBUG FECHA] Parseando string: {fecha_str}")
             for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y', '%m/%d/%Y', '%Y/%m/%d']:
                 try:
                     dt = datetime.strptime(fecha_str, fmt)
-                    # Normalizar a mediodía también para strings
                     dt = dt.replace(hour=12, minute=0, second=0, microsecond=0)
                     resultado = dt.date()
-                    logger.info(f"[DEBUG FECHA] String parseado a: {resultado}")
                     break
                 except:
                     continue
@@ -86,18 +61,14 @@ def _parse_fecha_excel(fecha_raw, nombre_campo='fecha'):
             if resultado is None:
                 raise ValueError(f'Formato de fecha no reconocido: {fecha_raw}')
         
-        # VALIDACIÓN: Rechazar fechas exageradas (fuera del rango 1900-2100)
+        # Validar rango razonable
         if resultado:
-            if resultado.year < 1900:
-                raise ValueError(f'{nombre_campo} no puede ser anterior a 1900: {resultado}')
-            if resultado.year > 2100:
-                raise ValueError(f'{nombre_campo} no puede ser posterior a 2100: {resultado}')
+            if resultado.year < 1900 or resultado.year > 2100:
+                raise ValueError(f'{nombre_campo} fuera de rango (1900-2100): {resultado}')
         
-        logger.info(f"[DEBUG FECHA] Resultado final validado: {resultado}")
         return resultado
         
     except Exception as e:
-        logger.error(f"[DEBUG FECHA] Error: {e}")
         raise ValueError(f'Error al parsear fecha: {e}')
 
 
@@ -862,12 +833,6 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
         if idx >= 0:
             col_map[campo] = idx
     
-    logger.info(f"Lotes - Mapeo completo: {col_map}")
-    if 'recepcion' in col_map:
-        logger.info(f"[RECEPCION] Columna de recepción encontrada en índice: {col_map['recepcion']}")
-    else:
-        logger.warning(f"[RECEPCION] NO se encontró columna de recepción. Encabezados normalizados: {encabezados}")
-    
     # FIX: Validar columnas mínimas - CLAVE y NOMBRE son OBLIGATORIAS
     # Ambos deben coincidir con el producto en la base de datos
     tiene_clave = ('producto_clave' in col_map or 'producto_id' in col_map)
@@ -1083,25 +1048,16 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                     except:
                         pass
             
-            # Fecha recepción (OPCIONAL - campo informativo, no usado en lógica de negocio)
-            # Usuario puede omitir este campo sin problema
+            # Fecha recepción (OPCIONAL - campo informativo)
             fecha_fabricacion = None
             if 'recepcion' in col_map:
                 idx_fab = col_map['recepcion']
                 fecha_fab_raw = fila[idx_fab].value if idx_fab < len(fila) else None
-                logger.debug(f"[RECEPCION] Fila {fila_num}: idx={idx_fab}, valor_raw={fecha_fab_raw}")
                 if fecha_fab_raw:
                     try:
                         fecha_fabricacion = _parse_fecha_excel(fecha_fab_raw, 'Fecha Recepción')
-                        logger.info(f"[RECEPCION] Fila {fila_num}: parseada exitosamente = {fecha_fabricacion}")
-                    except Exception as e:
-                        # Si falla el parseo, simplemente ignorar (no es campo crítico)
-                        logger.debug(f"Fila {fila_num}: No se pudo parsear fecha recepción: {e}")
-                        pass
-                else:
-                    logger.debug(f"[RECEPCION] Fila {fila_num}: valor vacio o None")
-            else:
-                logger.debug(f"[RECEPCION] Columna 'recepcion' no encontrada en col_map para fila {fila_num}")
+                    except:
+                        pass  # Si falla, ignorar (no es campo crítico)
             
             # Precio
             precio_raw = get_val('precio', '0')
@@ -1253,11 +1209,9 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                         
                         # Actualizar fecha_fabricacion si la nueva es más reciente
                         nueva_fecha_fab = fila.get('fecha_fabricacion')
-                        logger.debug(f"[RECEPCION] Consolidando lote {numero_lote}: fecha_actual={lote.fecha_fabricacion}, nueva_fecha={nueva_fecha_fab}")
                         if nueva_fecha_fab is not None:
                             if lote.fecha_fabricacion is None or nueva_fecha_fab > lote.fecha_fabricacion:
                                 update_data['fecha_fabricacion'] = nueva_fecha_fab
-                                logger.info(f"[RECEPCION] Actualizando fecha_fabricacion de lote {numero_lote}: {lote.fecha_fabricacion} -> {nueva_fecha_fab}")
                         
                         Lote.objects.filter(pk=lote.pk).update(**update_data)
                         lote.refresh_from_db()
@@ -1305,16 +1259,8 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                 )
                 if centro:
                     lote_existente_inactivo = lote_existente_inactivo.filter(centro=centro)
-                    
-                if lote_existente_inactivo.exists():
-                    lote_inact = lote_existente_inactivo.first()
-                    logger.info(f"Lote {numero_lote} existía inactivo (ID: {lote_inact.id}), "
-                               f"se creará nuevo registro activo")
                 
                 # Crear lote
-                fecha_fab_a_guardar = fila.get('fecha_fabricacion')
-                logger.info(f"[RECEPCION] Creando lote {numero_lote}: fecha_fabricacion={fecha_fab_a_guardar}")
-                
                 Lote.objects.create(
                     producto=producto,
                     centro=centro,
@@ -1324,7 +1270,7 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                     cantidad_contrato=cantidad_contrato,  # NULL si no se proporcionó
                     cantidad_contrato_global=fila.get('cantidad_contrato_global'),
                     fecha_caducidad=fecha_caducidad,
-                    fecha_fabricacion=fecha_fab_a_guardar,
+                    fecha_fabricacion=fila.get('fecha_fabricacion'),
                     precio_unitario=fila.get('precio_unitario', Decimal('0')),
                     numero_contrato=numero_contrato,
                     marca=marca,

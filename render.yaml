@@ -28,7 +28,7 @@ services:
     buildCommand: chmod +x build.sh && ./build.sh
     
     # Comando para iniciar el servidor
-    startCommand: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2
+    startCommand: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 300
     
     # Variables de entorno
     envVars:
