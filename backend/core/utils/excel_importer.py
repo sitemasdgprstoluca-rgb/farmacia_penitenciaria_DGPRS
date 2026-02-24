@@ -836,6 +836,11 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
     
     # Log de columnas detectadas (nivel info para diagnóstico)
     logger.info(f"[IMPORTADOR] Columnas detectadas: {list(col_map.keys())}")
+    # Log específico para fecha de recepción
+    if 'recepcion' in col_map:
+        logger.info(f"[IMPORTADOR] Columna RECEPCION mapeada a índice {col_map['recepcion']} (header: {encabezados[col_map['recepcion']]})")
+    else:
+        logger.warning(f"[IMPORTADOR] Columna RECEPCION NO encontrada. Headers: {encabezados}")
     
     # FIX: Validar columnas mínimas - CLAVE y NOMBRE son OBLIGATORIAS
     # Ambos deben coincidir con el producto en la base de datos
@@ -1093,6 +1098,8 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                 if fecha_fab_raw:
                     try:
                         fecha_fabricacion = _parse_fecha_excel(fecha_fab_raw, 'Fecha Recepción')
+                        if fecha_fabricacion and fila_num <= 10:  # Log solo primeras 10 filas
+                            logger.info(f"[IMPORTADOR] Fila {fila_num}: fecha_recepcion={fecha_fabricacion} (raw={fecha_fab_raw})")
                     except Exception as e:
                         logger.debug(f"Fila {fila_num}: Error parseando fecha recepción: {e}")
             
@@ -1247,10 +1254,11 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                             'cantidad_inicial': F('cantidad_inicial') + cantidad_inicial,
                         }
                         
-                        # Actualizar fecha_fabricacion si la nueva es más reciente (mantener por compatibilidad)
+                        # SIEMPRE actualizar fecha_fabricacion si viene en el Excel
+                        # Esto permite que cada importación actualice la fecha de recepción del lote
                         if nueva_fecha_fab is not None:
-                            if lote.fecha_fabricacion is None or nueva_fecha_fab > lote.fecha_fabricacion:
-                                update_data['fecha_fabricacion'] = nueva_fecha_fab
+                            update_data['fecha_fabricacion'] = nueva_fecha_fab
+                            logger.info(f"[LOTE] Actualizando fecha_fabricacion de {lote.numero_lote}: {lote.fecha_fabricacion} -> {nueva_fecha_fab}")
                         
                         Lote.objects.filter(pk=lote.pk).update(**update_data)
                         lote.refresh_from_db()
