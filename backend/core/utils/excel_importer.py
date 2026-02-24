@@ -891,12 +891,20 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
         fila = list(sheet[fila_num])
         
         try:
+            # ISS-IMPORT-FIX: Lista de valores que se consideran como "vacío" en Excel
+            VALORES_VACIOS = {'-', '--', '---', 'n/a', 'na', 'null', 'none', '', ' ', 'sin dato', 'sin datos', 's/d'}
+            
             def get_val(col_name, default=None):
                 idx = col_map.get(col_name, -1)
                 if idx >= 0 and idx < len(fila):
                     val = fila[idx].value
-                    if val is not None and str(val).strip():
-                        return str(val).strip()
+                    if val is not None:
+                        val_str = str(val).strip()
+                        # Tratar valores como "-", "N/A" como vacíos
+                        if val_str.lower() in VALORES_VACIOS:
+                            return default
+                        if val_str:
+                            return val_str
                 return default
             
             # ========== DETECCIÓN DE FILAS VACÍAS O INCOMPLETAS ==========
@@ -1266,7 +1274,7 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                                 defaults={
                                     'cantidad': cantidad_inicial,
                                     'notas': nota_parcialidad,
-                                    'usuario': request.user if request and hasattr(request, 'user') else None,
+                                    'usuario': usuario,
                                 }
                             )
                             if created:
@@ -1365,7 +1373,7 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                         defaults={
                             'cantidad': cantidad_inicial,
                             'notas': nota_inicial,
-                            'usuario': request.user if request and hasattr(request, 'user') else None,
+                            'usuario': usuario,
                         }
                     )
                     if created:
