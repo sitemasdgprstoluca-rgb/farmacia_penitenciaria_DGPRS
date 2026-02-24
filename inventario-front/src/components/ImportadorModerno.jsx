@@ -63,9 +63,9 @@ const IMPORT_CONFIGS = {
     sinonimosCols: {
       'clave producto': ['clave', 'codigo', 'sku', 'key', 'clave producto'],
       'nombre producto': ['nombre', 'articulo', 'descripcion', 'nombre producto'],
-      'número lote': ['lote', 'numero lote', 'num lote', 'batch'],
+      'numero lote': ['lote', 'numero lote', 'num lote', 'batch', 'número lote'],
       'fecha caducidad': ['caducidad', 'vencimiento', 'fecha caducidad', 'expiracion'],
-      'fecha recepción': ['fecha recepcion', 'recepcion', 'fecha de recepcion', 'fec recepcion', 'fecha fabricacion', 'fabricacion', 'elaboracion', 'fecha elaboracion', 'fec fab', 'fecha entrega', 'entrega'],
+      'fecha recepcion': ['fecha recepcion', 'recepcion', 'fecha de recepcion', 'fec recepcion', 'fecha fabricacion', 'fabricacion', 'elaboracion', 'fecha elaboracion', 'fec fab', 'fecha entrega', 'entrega', 'fecha recepción'],
       'cantidad inicial': ['cantidad', 'cantidad inicial', 'cant', 'stock', 'existencia', 'qty'],
       'cantidad contrato lote': ['cant contrato lote', 'cantidad contrato lote', 'cant lote', 'contrato lote'],
       'cantidad contrato global': ['cant contrato global', 'cantidad contrato global', 'contrato global', 'cant ccg']
@@ -415,6 +415,16 @@ const ImportadorModerno = ({
           });
         }
       });
+      
+      // Detectar columnas opcionales encontradas
+      if (config.columnasOpcionales) {
+        config.columnasOpcionales.forEach(colOpt => {
+          const encontrada = headers.some(h => columnaCoincide(h, colOpt, config.sinonimosCols));
+          if (encontrada) {
+            columnasEncontradas.push(colOpt);
+          }
+        });
+      }
       
       // Validar filas de datos
       const erroresPorFila = [];

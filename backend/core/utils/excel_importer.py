@@ -802,7 +802,7 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                       'vencimiento fecha de caducidad'],  # Formato oficial combinado
         'recepcion': ['fecha recepcion', 'recepcion', 'fecha de recepcion', 
                       'fec recepcion', 'fecha fabricacion', 'fabricacion', 'elaboracion', 
-                      'fecha elaboracion', 'fec fab'],
+                      'fecha elaboracion', 'fec fab', 'fecha entrega', 'entrega'],
         'fecha_ingreso': ['fecha ingreso', 'fecha de ingreso', 'ingreso', 'fecha entrada', 
                           'fec ing'],  # Formato oficial
         # Otros campos

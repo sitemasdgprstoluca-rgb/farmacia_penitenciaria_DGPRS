@@ -433,9 +433,9 @@ const Lotes = () => {
       return;
     }
 
-    // FECHA DE ENTREGA obligatoria en creación
+    // FECHA DE RECEPCIÓN obligatoria en creación
     if (!editingLote && !formData.fecha_fabricacion) {
-      toast.error('La fecha de entrega es obligatoria');
+      toast.error('La fecha de recepción es obligatoria');
       return;
     }
 
@@ -1932,7 +1932,7 @@ const handleImportar = async (e) => {
                   </div>
                 </div>
 
-                {/* CAMPOS OBLIGATORIOS: Número de Contrato y Fecha de Entrega */}
+                {/* CAMPOS OBLIGATORIOS: Número de Contrato y Fecha de Recepción */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {puedeVerContrato ? (
                     <div>
@@ -1975,7 +1975,7 @@ const handleImportar = async (e) => {
 
                   <div>
                     <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                      FECHA DE ENTREGA {!editingLote && <span className="text-red-600">*</span>}{editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
+                      FECHA DE RECEPCIÓN {!editingLote && <span className="text-red-600">*</span>}{editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
                     </label>
                     <input
                       type="date"
