@@ -25,7 +25,7 @@ from core.models import Producto, Lote, Centro, ImportacionLog
 logger = logging.getLogger(__name__)
 
 
-def _parse_fecha_excel(fecha_raw):
+def _parse_fecha_excel(fecha_raw, nombre_campo='fecha'):
     """
     Convierte una fecha de openpyxl a objeto date de Python sin conversión de timezone.
     
@@ -35,16 +35,20 @@ def _parse_fecha_excel(fecha_raw):
     - Django con timezone America/Mexico_City (UTC-6) puede restar horas y cambiar fecha
     
     SOLUCIÓN: Normalizar a mediodía (12:00:00) para que conversiones de ±6 horas no cambien fecha.
+    
+    VALIDACIÓN: Rechaza fechas fuera del rango razonable (1900-2100) para evitar errores.
     """
     if not fecha_raw:
         return None
     
     # DEBUG: Log detallado para diagnosticar el problema
-    logger.info(f"[DEBUG FECHA] Valor raw: {fecha_raw}, Tipo: {type(fecha_raw)}")
+    logger.info(f"[DEBUG FECHA] {nombre_campo} - Valor raw: {fecha_raw}, Tipo: {type(fecha_raw)}")
     if isinstance(fecha_raw, datetime):
         logger.info(f"[DEBUG FECHA] datetime - year:{fecha_raw.year} month:{fecha_raw.month} day:{fecha_raw.day} hour:{fecha_raw.hour} tzinfo:{fecha_raw.tzinfo}")
     
     try:
+        resultado = None
+        
         if isinstance(fecha_raw, datetime):
             # CRÍTICO: Normalizar a mediodía para evitar desfase por timezone
             # Si viene a 00:00:00, movemos a 12:00:00 para que ±6 horas no cambie fecha
@@ -60,12 +64,10 @@ def _parse_fecha_excel(fecha_raw):
                 # Datetime naive: extraer directamente después de normalizar
                 resultado = fecha_normalizada.date()
             
-            logger.info(f"[DEBUG FECHA] Resultado final: {resultado}")
-            return resultado
         elif isinstance(fecha_raw, date):
             # Ya es date, retornar directamente
             logger.info(f"[DEBUG FECHA] Ya es date: {fecha_raw}")
-            return fecha_raw
+            resultado = fecha_raw
         else:
             # Intentar parsear como string
             fecha_str = str(fecha_raw).strip()
@@ -77,10 +79,23 @@ def _parse_fecha_excel(fecha_raw):
                     dt = dt.replace(hour=12, minute=0, second=0, microsecond=0)
                     resultado = dt.date()
                     logger.info(f"[DEBUG FECHA] String parseado a: {resultado}")
-                    return resultado
+                    break
                 except:
                     continue
-            raise ValueError(f'Formato de fecha no reconocido: {fecha_raw}')
+            
+            if resultado is None:
+                raise ValueError(f'Formato de fecha no reconocido: {fecha_raw}')
+        
+        # VALIDACIÓN: Rechazar fechas exageradas (fuera del rango 1900-2100)
+        if resultado:
+            if resultado.year < 1900:
+                raise ValueError(f'{nombre_campo} no puede ser anterior a 1900: {resultado}')
+            if resultado.year > 2100:
+                raise ValueError(f'{nombre_campo} no puede ser posterior a 2100: {resultado}')
+        
+        logger.info(f"[DEBUG FECHA] Resultado final validado: {resultado}")
+        return resultado
+        
     except Exception as e:
         logger.error(f"[DEBUG FECHA] Error: {e}")
         raise ValueError(f'Error al parsear fecha: {e}')
@@ -1018,7 +1033,7 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
             fecha_cad_raw = fila[idx_cad].value if idx_cad < len(fila) else None
             
             try:
-                fecha_caducidad = _parse_fecha_excel(fecha_cad_raw)
+                fecha_caducidad = _parse_fecha_excel(fecha_cad_raw, 'Fecha Caducidad')
                 if not fecha_caducidad:
                     raise ValueError('Fecha vacía')
                 
@@ -1077,7 +1092,7 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                 logger.debug(f"[RECEPCION] Fila {fila_num}: idx={idx_fab}, valor_raw={fecha_fab_raw}")
                 if fecha_fab_raw:
                     try:
-                        fecha_fabricacion = _parse_fecha_excel(fecha_fab_raw)
+                        fecha_fabricacion = _parse_fecha_excel(fecha_fab_raw, 'Fecha Recepción')
                         logger.info(f"[RECEPCION] Fila {fila_num}: parseada exitosamente = {fecha_fabricacion}")
                     except Exception as e:
                         # Si falla el parseo, simplemente ignorar (no es campo crítico)
