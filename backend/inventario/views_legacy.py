@@ -3235,7 +3235,10 @@ class LoteViewSet(viewsets.ModelViewSet):
                 'fecha_caducidad': ['fecha caducidad', 'caducidad', 'vencimiento', 'fecha vencimiento', 'expira', 'fecha expiracion'],
                 'cantidad_inicial': ['cantidad inicial', 'cantidad', 'cant inicial', 'cant', 'qty'],
                 'cantidad_actual': ['cantidad actual', 'cant actual', 'stock', 'existencia'],
-                'fecha_fabricacion': ['fecha fabricacion', 'fecha fabricación', 'fabricacion', 'fabricación', 'manufactura'],
+                # ISS-FIX: Agregar "fecha recepcion" como sinónimo principal (Plantilla_Lotes.xlsx)
+                'fecha_fabricacion': ['fecha recepcion', 'fecha recepción', 'recepcion', 'recepción',
+                                      'fecha fabricacion', 'fecha fabricación', 'fabricacion', 'fabricación', 
+                                      'manufactura', 'fecha entrega', 'entrega', 'fecha de recepcion'],
                 'precio_unitario': ['precio unitario', 'precio', 'costo', 'valor', 'precio unit'],
                 'numero_contrato': ['numero contrato', 'número contrato', 'contrato', 'no. contrato', 'no contrato'],
                 'marca': ['marca', 'laboratorio', 'fabricante'],
@@ -3246,7 +3249,12 @@ class LoteViewSet(viewsets.ModelViewSet):
             def normalizar_header(val):
                 if not val:
                     return ''
-                return str(val).lower().strip().replace('_', ' ').replace('-', ' ')
+                texto = str(val).lower().strip().replace('_', ' ').replace('-', ' ')
+                # ISS-FIX: Normalizar acentos para mapeo robusto
+                acentos = {'á':'a', 'é':'e', 'í':'i', 'ó':'o', 'ú':'u', 'ñ':'n', 'ü':'u'}
+                for ac, rep in acentos.items():
+                    texto = texto.replace(ac, rep)
+                return texto
             
             # Buscar fila con encabezados (primeras 5 filas)
             for row_num in range(1, min(6, ws.max_row + 1)):
@@ -3456,6 +3464,20 @@ class LoteViewSet(viewsets.ModelViewSet):
                         numero_lote=str(numero_lote).strip().upper(),
                         defaults=defaults
                     )
+                    
+                    # ISS-FIX: Crear parcialidad para historial de entregas
+                    # Solo si es un lote nuevo o si no tiene parcialidades
+                    from core.models import LoteParcialidad
+                    if created or not LoteParcialidad.objects.filter(lote=lote).exists():
+                        fecha_parcialidad = fecha_fab_val or timezone.now().date()
+                        LoteParcialidad.objects.create(
+                            lote=lote,
+                            fecha_entrega=fecha_parcialidad,
+                            cantidad=cant_ini,
+                            notas='Carga inicial por importación Excel',
+                            usuario=request.user if request.user.is_authenticated else None,
+                        )
+                    
                     exitos.append({'fila': row_idx, 'lote_id': lote.id, 'numero_lote': lote.numero_lote, 'created': created})
                 except Exception as exc:
                     errores.append({'fila': row_idx, 'error': str(exc)})
