@@ -8821,6 +8821,21 @@ def trazabilidad_producto(request, clave):
             else:
                 centro_display = mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central'
             
+            # TRAZABILIDAD COMPLETA: Extraer información adicional del lote y producto
+            producto_clave = mov.lote.producto.clave if mov.lote and mov.lote.producto else 'N/A'
+            producto_nombre = mov.lote.producto.nombre if mov.lote and mov.lote.producto else 'N/A'
+            lote_caducidad = mov.lote.fecha_caducidad.isoformat() if mov.lote and mov.lote.fecha_caducidad else None
+            precio_unitario = str(mov.lote.precio_unitario) if mov.lote and mov.lote.precio_unitario else None
+            
+            # Extraer folio de requisición o documento del motivo (REQ-YYYYMMDD-XXXX, etc.)
+            import re
+            folio = None
+            if mov.motivo:
+                # Buscar patrones como REQ-20260220-1422, FACT-XXX, DOC-XXX, etc.
+                match = re.search(r'(REQ|FACT|DOC|ENT|SAL|TRANS)-[\w-]+', mov.motivo)
+                if match:
+                    folio = match.group(0)
+            
             movimientos_data.append({
                 'id': mov.id,
                 'tipo_movimiento': mov.tipo.upper(),
@@ -8829,6 +8844,14 @@ def trazabilidad_producto(request, clave):
                 'cantidad': mov.cantidad,
                 'fecha_movimiento': mov.fecha.isoformat(),
                 'observaciones': mov.motivo or '',
+                # NUEVO: Información del producto
+                'producto_clave': producto_clave,
+                'producto_nombre': producto_nombre,
+                # NUEVO: Información del lote
+                'lote_caducidad': lote_caducidad,
+                'precio_unitario': precio_unitario,
+                # NUEVO: Folio de documento (extraído del motivo)
+                'folio': folio,
                 # ISS-FIX: Agregar información de centro
                 'centro': centro_display,
                 'centro_origen': mov.centro_origen.nombre if mov.centro_origen else 'Farmacia Central',
@@ -9064,6 +9087,21 @@ def trazabilidad_lote(request, codigo):
             else:
                 centro_mov = 'Farmacia Central'
             
+            # TRAZABILIDAD COMPLETA: Extraer información adicional del lote y producto
+            producto_clave = mov.lote.producto.clave if mov.lote and mov.lote.producto else 'N/A'
+            producto_nombre = mov.lote.producto.nombre if mov.lote and mov.lote.producto else 'N/A'
+            lote_caducidad = mov.lote.fecha_caducidad.isoformat() if mov.lote and mov.lote.fecha_caducidad else None
+            precio_unitario = str(mov.lote.precio_unitario) if mov.lote and mov.lote.precio_unitario else None
+            
+            # Extraer folio de requisición o documento del motivo (REQ-YYYYMMDD-XXXX, etc.)
+            import re
+            folio = None
+            if mov.motivo:
+                # Buscar patrones como REQ-20260220-1422, FACT-XXX, DOC-XXX, etc.
+                match = re.search(r'(REQ|FACT|DOC|ENT|SAL|TRANS)-[\w-]+', mov.motivo)
+                if match:
+                    folio = match.group(0)
+            
             historial.append({
                 'id': mov.id,
                 'fecha': mov.fecha.isoformat(),
@@ -9073,7 +9111,15 @@ def trazabilidad_lote(request, codigo):
                 'centro': centro_mov,
                 'usuario': mov.usuario.username if mov.usuario else '-',
                 'lote': mov.lote.numero_lote if mov.lote else '-',
-                'observaciones': mov.motivo or ''
+                'observaciones': mov.motivo or '',
+                # NUEVO: Información del producto
+                'producto_clave': producto_clave,
+                'producto_nombre': producto_nombre,
+                # NUEVO: Información del lote
+                'lote_caducidad': lote_caducidad,
+                'precio_unitario': precio_unitario,
+                # NUEVO: Folio de documento (extraído del motivo)
+                'folio': folio,
             })
 
         total_entradas = movimientos.filter(tipo='entrada').aggregate(total=Sum('cantidad'))['total'] or 0
@@ -12340,6 +12386,19 @@ def trazabilidad_global(request):
             else:
                 usuario_display = 'Sistema'
             
+            # Extraer folio de requisición o documento del motivo (REQ-YYYYMMDD-XXXX, etc.)
+            import re
+            folio = None
+            if mov.motivo:
+                # Buscar patrones como REQ-20260220-1422, FACT-XXX, DOC-XXX, etc.
+                match = re.search(r'(REQ|FACT|DOC|ENT|SAL|TRANS)-[\w-]+', mov.motivo)
+                if match:
+                    folio = match.group(0)
+            
+            # Información adicional del lote
+            lote_caducidad = mov.lote.fecha_caducidad.isoformat() if mov.lote and mov.lote.fecha_caducidad else None
+            precio_unitario = str(mov.lote.precio_unitario) if mov.lote and mov.lote.precio_unitario else None
+            
             movimientos_data.append({
                 'id': mov.id,
                 'fecha': mov.fecha.isoformat() if mov.fecha else None,
@@ -12353,6 +12412,11 @@ def trazabilidad_global(request):
                 'usuario': usuario_display,
                 'observaciones': mov.motivo or '',
                 'numero_contrato': mov.lote.numero_contrato if mov.lote else None,
+                # NUEVO: Folio de documento extraído del motivo
+                'folio': folio,
+                # NUEVO: Información adicional del lote
+                'lote_caducidad': lote_caducidad,
+                'precio_unitario': precio_unitario,
                 # ISS-FIX: Campos de trazabilidad para salidas de centro
                 'subtipo_salida': getattr(mov, 'subtipo_salida', None) or '',
                 'numero_expediente': getattr(mov, 'numero_expediente', None) or '',
