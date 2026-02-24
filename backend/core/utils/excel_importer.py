@@ -899,6 +899,25 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                         return str(val).strip()
                 return default
             
+            # ========== DETECCIÓN DE FILAS VACÍAS O INCOMPLETAS ==========
+            # Si los campos esenciales están TODOS vacíos, omitir silenciosamente
+            clave_test = get_val('producto_clave')
+            nombre_test = get_val('producto_nombre')
+            lote_test = get_val('numero_lote')
+            cantidad_test = get_val('cantidad_inicial', '0')
+            
+            # Fila completamente vacía: omitir sin error
+            if not clave_test and not nombre_test and not lote_test and (not cantidad_test or cantidad_test == '0'):
+                logger.debug(f"Fila {fila_num}: OMITIDA - fila vacía o incompleta")
+                resultado.agregar_omitido()
+                continue
+            
+            # Fila con solo cantidad (sin producto/lote): probablemente fila residual
+            if not clave_test and not nombre_test and not lote_test:
+                logger.debug(f"Fila {fila_num}: OMITIDA - sin datos de producto/lote")
+                resultado.agregar_omitido()
+                continue
+            
             # ========== PRODUCTO (requerido - CLAVE Y NOMBRE son OBLIGATORIOS) ==========
             producto = None
             clave_producto = None
@@ -985,16 +1004,22 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                 resultado.agregar_error(fila_num, 'cantidad', f'Cantidad inválida: {cant_raw}')
                 continue
             
+            # ISS-IMPORT-TOLERANTE: Filas con cantidad 0 se OMITEN (no error)
+            # Esto permite importar archivos donde algunas filas aún no tienen stock
             if cantidad_inicial <= 0:
                 cant_contrato_preview = get_val('cantidad_contrato')
                 if cant_contrato_preview and int(float(cant_contrato_preview)) > 0:
-                    resultado.agregar_error(fila_num, 'cantidad', 
-                        f'Cantidad Inicial es 0 pero Contrato dice {cant_contrato_preview}. '
-                        f'Importe este lote cuando llegue la primera entrega con la cantidad real recibida. '
-                        f'Ejemplo: si llegan 5 de {cant_contrato_preview}, ponga Cantidad Inicial=5.')
+                    logger.info(
+                        f"Fila {fila_num}: OMITIDA - Lote {numero_lote} con cantidad 0 "
+                        f"(contrato pendiente: {cant_contrato_preview}). "
+                        f"Importe cuando llegue la primera entrega."
+                    )
                 else:
-                    resultado.agregar_error(fila_num, 'cantidad', 
-                        'Cantidad Inicial debe ser mayor a 0. No se puede registrar un lote sin unidades recibidas.')
+                    logger.info(
+                        f"Fila {fila_num}: OMITIDA - Lote {numero_lote} con cantidad 0. "
+                        f"No se puede registrar un lote sin unidades recibidas."
+                    )
+                resultado.agregar_omitido()
                 continue
             
             # ========== FECHA CADUCIDAD (requerido) ==========
