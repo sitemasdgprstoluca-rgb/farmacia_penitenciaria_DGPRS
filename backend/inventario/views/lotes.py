@@ -376,6 +376,11 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                         'mensaje': 'Se registró la entrega inicial automáticamente'
                     }
 
+                # ISS-INV-001: Incluir alerta de contrato del lote si existe (sobreentrega)
+                alerta_lote = getattr(serializer, '_alerta_contrato_lote', None)
+                if alerta_lote:
+                    response_data['alerta_contrato_lote'] = alerta_lote
+
                 # ISS-INV-003: Incluir alerta de contrato global si existe
                 alerta = getattr(serializer, '_alerta_contrato_global', None)
                 if alerta:

@@ -1468,16 +1468,21 @@ class LoteSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({'numero_contrato': str(e)})
         
         # ISS-INV-001: Validar contrato del LOTE INDIVIDUAL
+        # NOTA: Solo advertencia, no bloqueo - permite sobreentregas
         cantidad_contrato_lote = attrs.get('cantidad_contrato')
         if cantidad_contrato_lote is not None and cantidad_contrato_lote > 0 and cantidad > 0:
-            # La cantidad_inicial del lote no debe exceder su cantidad_contrato
+            # La cantidad_inicial del lote excede su cantidad_contrato - solo advertir
             if cantidad > cantidad_contrato_lote:
-                raise serializers.ValidationError({
-                    'cantidad_inicial': (
-                        f'La cantidad inicial ({cantidad}) excede el contrato de ESTE lote ({cantidad_contrato_lote}). '
-                        f'Si es una entrega parcial, ajuste la cantidad inicial a lo recibido.'
-                    )
-                })
+                excedente = cantidad - cantidad_contrato_lote
+                logger.warning(
+                    f'⚠️ Sobreentrega lote: cantidad_inicial ({cantidad}) > contrato_lote ({cantidad_contrato_lote}). '
+                    f'Excedente: {excedente}'
+                )
+                # Guardar alerta para incluir en respuesta
+                self._alerta_contrato_lote = (
+                    f'⚠️ La cantidad recibida ({cantidad}) excede el contrato del lote ({cantidad_contrato_lote}) '
+                    f'por {excedente} unidades. Se registra como sobreentrega.'
+                )
         
         # ISS-INV-003: Validar contrato GLOBAL por clave de producto
         # Si el lote tiene cantidad_contrato_global, verificar si la suma de
@@ -1512,24 +1517,16 @@ class LoteSerializer(serializers.ModelSerializer):
             if total_proyectado > ccg:
                 excedente = total_proyectado - ccg
                 disponible = max(0, ccg - total_existente)
-                if not self.instance:
-                    # CREATE: BLOQUEO DURO — no permitir crear el lote
-                    raise serializers.ValidationError({
-                        'cantidad_inicial': (
-                            f'La cantidad excede el CONTRATO GLOBAL. '
-                            f'Contrato global: {ccg}, ya recibido: {total_existente}, '
-                            f'este lote agrega: {cantidad}, exceso: {excedente}. '
-                            f'Máximo permitido: {disponible}.'
-                        )
-                    })
-                else:
-                    # UPDATE: alerta informativa (cantidad_inicial no es editable
-                    # vía PATCH/PUT, así que esto solo aplica si se rebaja el ccg).
-                    self._alerta_contrato_global = (
-                        f'⚠️ Se excede el contrato GLOBAL por {excedente} unidades. '
-                        f'Total contratado global: {ccg}, ya recibido: {total_existente}, '
-                        f'total proyectado: {total_proyectado}.'
-                    )
+                # ADVERTENCIA en lugar de bloqueo - permitir sobreentregas con notificación
+                logger.warning(
+                    f'⚠️ Sobreentrega global: cantidad ({cantidad}) + existente ({total_existente}) = '
+                    f'{total_proyectado} > CCG ({ccg}). Excedente: {excedente}'
+                )
+                self._alerta_contrato_global = (
+                    f'⚠️ Se excede el contrato GLOBAL por {excedente} unidades. '
+                    f'Total contratado global: {ccg}, ya recibido: {total_existente}, '
+                    f'total proyectado: {total_proyectado}. Se registra como sobreentrega.'
+                )
 
         return super().validate(attrs)
     

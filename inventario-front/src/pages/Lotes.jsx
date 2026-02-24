@@ -507,10 +507,14 @@ const Lotes = () => {
         return;
       }
       
-      // Validación: cantidad_inicial no puede superar cantidad_contrato (solo si contrato está definido)
+      // Advertencia: cantidad_inicial supera cantidad_contrato (permitido pero se notifica)
       if (cantidadContrato !== null && cantidadInicial > cantidadContrato) {
-        toast.error('La cantidad inicial recibida no puede superar la cantidad del contrato');
-        return;
+        toast('⚠️ La cantidad inicial excede el contrato del lote. Se registrará como sobreentrega.', {
+          icon: '⚠️',
+          duration: 5000,
+          style: { background: '#fef3cd', color: '#856404' }
+        });
+        // No bloquear - permitir la operación
       }
     }
     
@@ -586,6 +590,13 @@ const Lotes = () => {
           toast.success('Lote creado correctamente');
         }
         
+        // ISS-INV-001: Mostrar alerta si se excedió el contrato del lote (sobreentrega)
+        if (respData?.alerta_contrato_lote) {
+          setTimeout(() => {
+            toast(respData.alerta_contrato_lote, { icon: '⚠️', duration: 8000 });
+          }, 300);
+        }
+
         // ISS-INV-003: Mostrar alerta si se excedió el contrato global
         if (respData?.alerta_contrato_global) {
           setTimeout(() => {
