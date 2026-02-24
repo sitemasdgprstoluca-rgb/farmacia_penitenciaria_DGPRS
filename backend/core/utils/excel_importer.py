@@ -1090,7 +1090,8 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                     except:
                         pass
             
-            # Fecha recepción (OPCIONAL - campo informativo)
+            # Fecha recepción/entrega (OPCIONAL - campo informativo para trazabilidad)
+            # Nota: Se almacena en 'fecha_fabricacion' por compatibilidad histórica del modelo
             fecha_fabricacion = None
             if 'recepcion' in col_map:
                 idx_fab = col_map['recepcion']
@@ -1098,10 +1099,17 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                 if fecha_fab_raw:
                     try:
                         fecha_fabricacion = _parse_fecha_excel(fecha_fab_raw, 'Fecha Recepción')
-                        if fecha_fabricacion and fila_num <= 10:  # Log solo primeras 10 filas
-                            logger.info(f"[IMPORTADOR] Fila {fila_num}: fecha_recepcion={fecha_fabricacion} (raw={fecha_fab_raw})")
+                        if fila_num <= 15:  # Log primeras 15 filas para diagnóstico
+                            logger.info(f"[FECHA] Fila {fila_num}: fecha_recepcion PARSEADA = {fecha_fabricacion} (raw={type(fecha_fab_raw).__name__}:{fecha_fab_raw})")
                     except Exception as e:
-                        logger.debug(f"Fila {fila_num}: Error parseando fecha recepción: {e}")
+                        # WARNING visible para diagnóstico en producción
+                        logger.warning(f"[FECHA-ERROR] Fila {fila_num}: No se pudo parsear fecha recepción '{fecha_fab_raw}' - {e}")
+                else:
+                    if fila_num <= 15:
+                        logger.info(f"[FECHA] Fila {fila_num}: celda de recepción VACÍA (idx={idx_fab})")
+            else:
+                if fila_num <= 5:  # Log solo primeras filas
+                    logger.warning(f"[FECHA] Fila {fila_num}: columna 'recepcion' NO MAPEADA en este Excel")
             
             # Precio
             precio_raw = get_val('precio', '0')
@@ -1245,8 +1253,9 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                         cantidad_inicial_anterior = lote.cantidad_inicial
                         cantidad_contrato_lote = lote.cantidad_contrato
                         
-                        # Obtener fecha de recepción para la parcialidad
+                        # Obtener fecha de recepción del Excel para la parcialidad y el lote
                         nueva_fecha_fab = fila.get('fecha_fabricacion')
+                        logger.info(f"[LOTE-CONSOLIDAR] {lote.numero_lote}: fecha del Excel={nueva_fecha_fab}, fecha actual en BD={lote.fecha_fabricacion}")
                         
                         # Preparar datos de actualización
                         update_data = {
@@ -1255,10 +1264,16 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                         }
                         
                         # SIEMPRE actualizar fecha_fabricacion si viene en el Excel
-                        # Esto permite que cada importación actualice la fecha de recepción del lote
+                        # O si el lote existente no tiene fecha y ahora sí viene
                         if nueva_fecha_fab is not None:
                             update_data['fecha_fabricacion'] = nueva_fecha_fab
-                            logger.info(f"[LOTE] Actualizando fecha_fabricacion de {lote.numero_lote}: {lote.fecha_fabricacion} -> {nueva_fecha_fab}")
+                            logger.info(f"[LOTE-CONSOLIDAR] Actualizando fecha_fabricacion de {lote.numero_lote}: {lote.fecha_fabricacion} -> {nueva_fecha_fab}")
+                        elif lote.fecha_fabricacion is None:
+                            # Si no viene fecha del Excel pero el lote no tiene fecha,
+                            # usar la fecha actual como fallback
+                            from django.utils import timezone
+                            update_data['fecha_fabricacion'] = timezone.now().date()
+                            logger.warning(f"[LOTE-CONSOLIDAR] {lote.numero_lote}: Sin fecha en Excel, usando fecha actual como fallback")
                         
                         Lote.objects.filter(pk=lote.pk).update(**update_data)
                         lote.refresh_from_db()
@@ -1340,8 +1355,18 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                 if centro:
                     lote_existente_inactivo = lote_existente_inactivo.filter(centro=centro)
                 
-                # Obtener fecha de recepción para la parcialidad
+                # Obtener fecha de recepción para guardar en el lote y la parcialidad
                 fecha_recepcion = fila.get('fecha_fabricacion')
+                
+                # Log de diagnóstico antes de crear el lote
+                logger.info(f"[LOTE-CREAR] {numero_lote}: fecha_recepcion={fecha_recepcion} (type={type(fecha_recepcion).__name__})")
+                
+                # Si no hay fecha de recepción del Excel, usar fecha actual
+                # Esto asegura que SIEMPRE haya fecha tanto en el lote como en la parcialidad
+                from django.utils import timezone
+                if fecha_recepcion is None:
+                    fecha_recepcion = timezone.now().date()
+                    logger.warning(f"[LOTE-CREAR] {numero_lote}: Sin fecha en Excel, usando fecha actual: {fecha_recepcion}")
                 
                 # Crear lote
                 lote_nuevo = Lote.objects.create(
@@ -1364,11 +1389,9 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                 # Crear parcialidad inicial para el historial de entregas
                 # IDEMPOTENCIA: Usar get_or_create para respetar constraint UNIQUE
                 from core.models import LoteParcialidad
-                from django.utils import timezone
                 from django.db import IntegrityError
                 
-                # Usar fecha de recepción del Excel o la fecha actual
-                fecha_parcialidad = fecha_recepcion or timezone.now().date()
+                # La fecha ya está garantizada (del Excel o fallback a fecha actual)
                 nota_inicial = 'Carga inicial por importación Excel'
                 
                 # Usar get_or_create con los campos del constraint UNIQUE
@@ -1376,7 +1399,7 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                 try:
                     parcialidad, created = LoteParcialidad.objects.get_or_create(
                         lote=lote_nuevo,
-                        fecha_entrega=fecha_parcialidad,
+                        fecha_entrega=fecha_recepcion,  # Ya garantizada arriba
                         numero_factura=None,  # Constraint incluye COALESCE para NULL
                         defaults={
                             'cantidad': cantidad_inicial,
@@ -1385,7 +1408,7 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                         }
                     )
                     if created:
-                        logger.info(f"[PARCIALIDAD] Creada para lote {numero_lote}: {cantidad_inicial} uds, fecha={fecha_parcialidad}")
+                        logger.info(f"[PARCIALIDAD] Creada para lote {numero_lote}: {cantidad_inicial} uds, fecha={fecha_recepcion}")
                     else:
                         logger.info(f"[PARCIALIDAD] Ya existe parcialidad para lote nuevo {numero_lote} - omitida")
                 except IntegrityError:
