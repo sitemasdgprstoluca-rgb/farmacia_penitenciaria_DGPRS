@@ -555,13 +555,21 @@ const Lotes = () => {
     // El backend exige confirmed=true para operaciones de escritura
     // =====================================================================
     const ejecutarGuardado = async () => {
+      // DEBUG: Log de datos enviados
+      console.log('[LOTE DEBUG] formData:', formData);
+      console.log('[LOTE DEBUG] dataToSend:', dataToSend);
+      console.log('[LOTE DEBUG] fecha_fabricacion en formData:', formData.fecha_fabricacion);
+      console.log('[LOTE DEBUG] fecha_fabricacion en dataToSend:', dataToSend.fecha_fabricacion);
+      
       setSavingLote(true);
       try {
         let respData;
         if (editingLote) {
           // PATCH con confirmed=true (doble confirmación)
+          console.log('[LOTE DEBUG] Enviando PATCH con:', { ...dataToSend, confirmed: true });
           const resp = await lotesAPI.update(editingLote.id, { ...dataToSend, confirmed: true });
           respData = resp.data || resp;
+          console.log('[LOTE DEBUG] Respuesta PATCH:', respData);
           toast.success('Lote actualizado correctamente');
         } else {
           const resp = await lotesAPI.create(dataToSend);
