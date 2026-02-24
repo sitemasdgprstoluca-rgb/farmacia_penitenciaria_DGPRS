@@ -1220,10 +1220,19 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                         cantidad_inicial_anterior = lote.cantidad_inicial
                         cantidad_contrato_lote = lote.cantidad_contrato
                         
-                        Lote.objects.filter(pk=lote.pk).update(
-                            cantidad_actual=F('cantidad_actual') + cantidad_inicial,
-                            cantidad_inicial=F('cantidad_inicial') + cantidad_inicial,
-                        )
+                        # Preparar datos de actualización
+                        update_data = {
+                            'cantidad_actual': F('cantidad_actual') + cantidad_inicial,
+                            'cantidad_inicial': F('cantidad_inicial') + cantidad_inicial,
+                        }
+                        
+                        # Actualizar fecha_fabricacion si la nueva es más reciente
+                        nueva_fecha_fab = fila.get('fecha_fabricacion')
+                        if nueva_fecha_fab is not None:
+                            if lote.fecha_fabricacion is None or nueva_fecha_fab > lote.fecha_fabricacion:
+                                update_data['fecha_fabricacion'] = nueva_fecha_fab
+                        
+                        Lote.objects.filter(pk=lote.pk).update(**update_data)
                         lote.refresh_from_db()
                         
                         Producto.objects.filter(pk=producto.pk).update(
