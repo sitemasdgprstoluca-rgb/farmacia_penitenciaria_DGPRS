@@ -1058,7 +1058,8 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                     except:
                         pass
             
-            # Fecha recepción
+            # Fecha recepción (OPCIONAL - campo informativo, no usado en lógica de negocio)
+            # Usuario puede omitir este campo sin problema
             fecha_fabricacion = None
             if 'recepcion' in col_map:
                 idx_fab = col_map['recepcion']
@@ -1066,7 +1067,9 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                 if fecha_fab_raw:
                     try:
                         fecha_fabricacion = _parse_fecha_excel(fecha_fab_raw)
-                    except:
+                    except Exception as e:
+                        # Si falla el parseo, simplemente ignorar (no es campo crítico)
+                        logger.debug(f"Fila {fila_num}: No se pudo parsear fecha recepción: {e}")
                         pass
             
             # Precio

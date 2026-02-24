@@ -1061,9 +1061,9 @@ class Lote(models.Model):
     → cantidad_contrato=100, cantidad_inicial=80, cantidad_actual=75, pendiente=20
     
     ISS-001: Validaciones de negocio implementadas:
-    - fecha_caducidad debe ser posterior a fecha_fabricacion
     - cantidad_inicial y cantidad_actual deben ser >= 0
     - fecha_caducidad no puede ser anterior a la fecha actual para lotes nuevos
+    - fecha_fabricacion es OPCIONAL y solo informativa (no se valida contra caducidad)
     
     ISS-AUDIT-001 FIX: IMPORTANTE sobre campo 'estado':
     =====================================================
@@ -1086,7 +1086,8 @@ class Lote(models.Model):
     cantidad_contrato = models.IntegerField(null=True, blank=True, help_text='Cantidad según contrato para ESTE LOTE. NULL si no aplica.')
     # ISS-INV-003: cantidad_contrato_global = Total contratado para toda la CLAVE/producto en este contrato
     cantidad_contrato_global = models.IntegerField(null=True, blank=True, help_text='Cantidad total del contrato global por clave de producto. Compartida entre todos los lotes del mismo producto+contrato.')
-    fecha_fabricacion = models.DateField(null=True, blank=True)
+    # Campo opcional informativo - no afecta lógica de negocio
+    fecha_fabricacion = models.DateField(null=True, blank=True, help_text='Fecha de recepción/fabricación (opcional, solo informativa)')
     fecha_caducidad = models.DateField()
     precio_unitario = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     numero_contrato = models.CharField(max_length=100, blank=True, null=True)
@@ -1128,10 +1129,9 @@ class Lote(models.Model):
         if self.cantidad_actual is not None and self.cantidad_actual < 0:
             errors['cantidad_actual'] = 'La cantidad actual no puede ser negativa.'
         
-        # Validar que fecha_caducidad sea posterior a fecha_fabricacion (fecha de recepción)
-        if self.fecha_fabricacion and self.fecha_caducidad:
-            if self.fecha_caducidad <= self.fecha_fabricacion:
-                errors['fecha_caducidad'] = 'La fecha de caducidad debe ser posterior a la fecha de recepción.'
+        # NOTA: fecha_fabricacion (fecha de recepción) es OPCIONAL y NO se valida
+        # El usuario puede o no proporcionar este campo, y no afecta la caducidad
+        # La fecha_fabricacion es solo informativa y no se usa en lógica de negocio
         
         # Validar que lotes nuevos no estén ya vencidos (solo en creación)
         if not self.pk and self.fecha_caducidad:  # Solo para nuevos registros
