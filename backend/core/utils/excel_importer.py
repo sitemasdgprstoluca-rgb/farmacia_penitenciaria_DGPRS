@@ -800,10 +800,12 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
         'caducidad': ['fecha caducidad', 'caducidad', 'vencimiento', 'fecha vencimiento', 
                       'expira', 'fec cad', 'expiracion', 'fecha expiracion',
                       'vencimiento fecha de caducidad'],  # Formato oficial combinado
-        'recepcion': ['fecha entrega', 'entrega', 'fecha de entrega', 'fecha recepcion', 
-                      'recepcion', 'fecha de recepcion', 'fec recepcion', 'fecha fabricacion', 
-                      'fabricacion', 'elaboracion', 'fecha elaboracion', 'fec fab',
-                      'fec recepcion', 'f recepcion', 'fec rec'],
+        # Fecha de Entrega: Sinónimos exhaustivos para máxima compatibilidad
+        'recepcion': ['fecha entrega', 'entrega', 'fecha de entrega', 'f entrega', 'fec entrega',
+                      'fecha recepcion', 'recepcion', 'fecha de recepcion', 'fec recepcion',
+                      'fecha fabricacion', 'fabricacion', 'fecha de fabricacion', 'fec fab',
+                      'elaboracion', 'fecha elaboracion', 'fecha de elaboracion',
+                      'f recepcion', 'fec rec', 'fecha rec', 'fecha ent'],
         'fecha_ingreso': ['fecha ingreso', 'fecha de ingreso', 'ingreso', 'fecha entrada', 
                           'fec ing'],  # Formato oficial
         # Otros campos
@@ -1435,6 +1437,13 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
     result['_debug_col_map'] = {k: v for k, v in col_map.items()}
     result['_debug_encabezados'] = encabezados[:15]  # Solo los primeros 15
     result['_debug_recepcion_detectada'] = 'recepcion' in col_map
+    # ADVERTENCIA si no se detectó columna de fecha de entrega
+    if 'recepcion' not in col_map:
+        result['advertencia_fecha'] = (
+            'ADVERTENCIA: No se detectó columna de "Fecha Entrega" en el Excel. '
+            'Los lotes se crearán con la fecha actual. '
+            'Encabezados detectados: ' + ', '.join(encabezados[:10])
+        )
     if consolidados_archivo > 0:
         result['consolidados_archivo'] = consolidados_archivo
         result['nota_consolidacion'] = (
