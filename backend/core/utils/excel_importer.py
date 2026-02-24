@@ -305,6 +305,31 @@ def importar_productos_desde_excel(archivo, usuario):
     
     logger.info(f"Productos - Mapeo: {col_map}")
     
+    # ========================================================================
+    # VALIDACIÓN: Detectar si se está usando la PLANTILLA DE LOTES por error
+    # ========================================================================
+    # Si encontramos columnas únicas de lotes, el usuario subió archivo incorrecto
+    COLUMNAS_UNICAS_LOTES = ['lote', 'numero lote', 'num lote', 'batch', 'caducidad', 
+                             'fecha caducidad', 'vencimiento', 'cantidad inicial',
+                             'cantidad recibida', 'cantidad surtida', 
+                             'cantidad contrato', 'cantidad contrato global']
+    
+    columnas_lotes_encontradas = []
+    for h in encabezados_norm:
+        if h:
+            for col_lote in COLUMNAS_UNICAS_LOTES:
+                if col_lote in h or h in col_lote:
+                    columnas_lotes_encontradas.append(h)
+                    break
+    
+    if len(columnas_lotes_encontradas) >= 2:
+        # Alta probabilidad de ser plantilla de Lotes
+        resultado.agregar_error(1, 'plantilla_incorrecta', 
+            f'⚠️ PLANTILLA INCORRECTA: Parece que está usando una plantilla de LOTES '
+            f'en el importador de PRODUCTOS. Columnas de lotes detectadas: {columnas_lotes_encontradas}. '
+            f'Por favor use la plantilla de Productos (botón "Plantilla" en la página de Productos).')
+        return resultado.get_dict()
+    
     # Validar columnas mínimas
     if 'clave' not in col_map:
         resultado.agregar_error(1, 'encabezados', 
@@ -855,6 +880,34 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
     tiene_lote = 'numero_lote' in col_map
     tiene_cantidad = 'cantidad_inicial' in col_map
     tiene_caducidad = 'caducidad' in col_map
+    
+    # ========================================================================
+    # VALIDACIÓN: Detectar si se está usando la PLANTILLA DE PRODUCTOS por error
+    # ========================================================================
+    # Si encontramos columnas únicas de productos, el usuario subió archivo incorrecto
+    COLUMNAS_UNICAS_PRODUCTOS = ['sustancia activa', 'principio activo', 'via admin',
+                                  'via administracion', 'requiere receta', 'receta',
+                                  'controlado', 'es controlado', 'stock minimo',
+                                  'inventario minimo', 'categoria clasificacion']
+    
+    columnas_productos_encontradas = []
+    for h in encabezados_norm:
+        if h:
+            for col_prod in COLUMNAS_UNICAS_PRODUCTOS:
+                if col_prod in h or h == col_prod:
+                    columnas_productos_encontradas.append(h)
+                    break
+    
+    # Verificar también que NO tiene columnas de lotes (lote, caducidad, cantidad)
+    tiene_columnas_lotes = tiene_lote and tiene_caducidad and tiene_cantidad
+    
+    if len(columnas_productos_encontradas) >= 2 and not tiene_columnas_lotes:
+        # Alta probabilidad de ser plantilla de Productos
+        resultado.agregar_error(1, 'plantilla_incorrecta', 
+            f'⚠️ PLANTILLA INCORRECTA: Parece que está usando una plantilla de PRODUCTOS '
+            f'en el importador de LOTES. Columnas de productos detectadas: {columnas_productos_encontradas}. '
+            f'Por favor use la plantilla de Lotes (botón "Plantilla" en la página de Lotes).')
+        return resultado.get_dict()
     
     if not (tiene_clave and tiene_nombre and tiene_lote and tiene_cantidad and tiene_caducidad):
         faltantes = []
