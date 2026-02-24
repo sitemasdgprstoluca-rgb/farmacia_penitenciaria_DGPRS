@@ -1898,6 +1898,9 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
         - Lista de parcialidades ordenadas por fecha (más reciente primero)
         - Total acumulado
         - Comparación con contratos (lote y global)
+        
+        AUTO-SINCRONIZACIÓN:
+        - Si fecha_fabricacion es NULL y hay parcialidades, se sincroniza automáticamente
         """
         lote = self.get_object()
         
@@ -1913,6 +1916,18 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
             ultima_entrega=Max('fecha_entrega')
         )
         
+        # =================================================================
+        # AUTO-SINCRONIZACIÓN DE FECHA_FABRICACION
+        # Si el lote no tiene fecha pero hay parcialidades, sincronizar
+        # =================================================================
+        if lote.fecha_fabricacion is None and stats['primera_entrega']:
+            try:
+                lote.fecha_fabricacion = stats['primera_entrega']
+                lote.save(update_fields=['fecha_fabricacion'])
+                logger.info(f"[AUTO-SYNC] Lote {lote.numero_lote}: fecha_fabricacion = {stats['primera_entrega']}")
+            except Exception as e:
+                logger.warning(f"[AUTO-SYNC] Error sincronizando fecha para lote {lote.pk}: {e}")
+        
         # Calcular estado del contrato de lote
         total_parcialidades = stats['total_cantidad'] or 0
         cantidad_contrato_lote = lote.cantidad_contrato or 0
@@ -1927,6 +1942,9 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
         # Información del contrato global (usar función centralizada)
         contrato_global_info = self._calcular_estado_contrato_global(lote)
         
+        # Fecha de entrega a devolver (priorizar fecha del lote, fallback a primera parcialidad)
+        fecha_entrega_display = lote.fecha_fabricacion or stats['primera_entrega']
+        
         return Response({
             'parcialidades': serializer.data,
             'resumen': {
@@ -1934,6 +1952,7 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                 'num_entregas': stats['num_entregas'] or 0,
                 'primera_entrega': stats['primera_entrega'],
                 'ultima_entrega': stats['ultima_entrega'],
+                'fecha_entrega': fecha_entrega_display,  # Campo explícito para el frontend
             },
             'contrato_lote': {
                 'cantidad_contrato': cantidad_contrato_lote or None,
@@ -1944,6 +1963,12 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                 'excedente': excedente_lote,
             },
             'contrato_global': contrato_global_info,
+            # Información adicional del lote para el modal
+            'lote_info': {
+                'fecha_fabricacion': lote.fecha_fabricacion,
+                'numero_contrato': lote.numero_contrato,
+                'cantidad_contrato_global': lote.cantidad_contrato_global,
+            },
         })
     
     @action(detail=True, methods=['post'], url_path='agregar-parcialidad')
@@ -2208,9 +2233,39 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
         """
         Calcula el estado del contrato global sumando parcialidades de todos los lotes.
         Usa numero_contrato + producto para agrupar lotes del mismo contrato global.
+        
+        IMPORTANTE: El contrato global es por CLAVE DE PRODUCTO + NÚMERO DE CONTRATO.
+        Busca cantidad_contrato_global de CUALQUIER lote del mismo grupo.
+        
+        MEJORA: Si no hay numero_contrato pero sí tiene cantidad_contrato_global,
+        usar solo el campo del lote actual (para casos de lote único).
         """
-        # Verificar que el lote tenga contrato y cantidad_contrato_global definidos
-        if not lote.numero_contrato or not lote.cantidad_contrato_global:
+        # Caso 1: El lote tiene cantidad_contrato_global directamente
+        if lote.cantidad_contrato_global and lote.cantidad_contrato_global > 0:
+            # Calcular total entregado solo para este lote si no tiene contrato
+            if not lote.numero_contrato:
+                total_entregado = LoteParcialidad.objects.filter(
+                    lote=lote
+                ).aggregate(total=Sum('cantidad'))['total'] or 0
+                
+                estado = self._calcular_estado_contrato(total_entregado, lote.cantidad_contrato_global)
+                pendiente = max(0, lote.cantidad_contrato_global - total_entregado)
+                porcentaje = min(100, (total_entregado / lote.cantidad_contrato_global) * 100) if lote.cantidad_contrato_global > 0 else 0
+                excedente = max(0, total_entregado - lote.cantidad_contrato_global) if total_entregado > lote.cantidad_contrato_global else None
+                
+                return {
+                    'numero_contrato': 'Sin número de contrato',
+                    'cantidad_contrato_global': lote.cantidad_contrato_global,
+                    'total_entregado': total_entregado,
+                    'pendiente': pendiente,
+                    'porcentaje': round(porcentaje, 2),
+                    'estado': estado,
+                    'excedente': excedente,
+                    'num_lotes': 1,
+                }
+        
+        # Caso 2: Buscar por numero_contrato + producto
+        if not lote.numero_contrato:
             return None
         
         # Buscar todos los lotes con el mismo contrato y producto (contrato global)
@@ -2223,13 +2278,31 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
         if not lotes_ccg.exists():
             return None
         
-        # Obtener el máximo de cantidad_contrato_global (por si varió entre lotes)
+        # Buscar cantidad_contrato_global de CUALQUIER lote del grupo
+        # Puede que este lote específico no lo tenga pero otro del mismo contrato sí
         cantidad_contrato_global = max(
             (l.cantidad_contrato_global or 0) for l in lotes_ccg
         )
         
+        # Si ningún lote tiene CCG definido, retornar info básica con 0
         if cantidad_contrato_global <= 0:
-            return None
+            # Aún retornar info del contrato para mostrar al usuario
+            total_entregado = LoteParcialidad.objects.filter(
+                lote__numero_contrato=lote.numero_contrato,
+                lote__producto=lote.producto,
+                lote__activo=True
+            ).aggregate(total=Sum('cantidad'))['total'] or 0
+            
+            return {
+                'numero_contrato': lote.numero_contrato,
+                'cantidad_contrato_global': None,  # No definido
+                'total_entregado': total_entregado,
+                'pendiente': None,
+                'porcentaje': None,
+                'estado': 'SIN_CONTRATO_GLOBAL',
+                'excedente': None,
+                'num_lotes': lotes_ccg.count(),
+            }
         
         # Total entregado = suma de TODAS las parcialidades de lotes del contrato
         total_entregado_global = LoteParcialidad.objects.filter(

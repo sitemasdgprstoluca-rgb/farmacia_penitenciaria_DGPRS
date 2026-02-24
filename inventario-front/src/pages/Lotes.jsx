@@ -2658,138 +2658,289 @@ const handleImportar = async (e) => {
       {/* Modal de Parcialidades - Historial de Entregas */}
       {showParcialidadesModal && selectedLoteParcialidades && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="p-6 border-b flex justify-between items-center bg-gradient-to-r from-primary to-[#6B1839]">
-              <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                <FaBoxes /> Historial de Entregas
-              </h3>
-              <button
-                onClick={() => {
-                  setShowParcialidadesModal(false);
-                  setSelectedLoteParcialidades(null);
-                  setParcialidadesData({ parcialidades: [], resumen: {}, contrato_lote: {} });
-                  // Limpiar estados de override
-                  setRequiereOverride(false);
-                  setMotivoOverride('');
-                  setInfoContratoCumplido(null);
-                }}
-                className="text-white hover:text-gray-200"
-              >
-                <FaTimes className="text-xl" />
-              </button>
+          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            {/* HEADER - Mejorado */}
+            <div className="p-5 border-b bg-gradient-to-r from-primary to-[#6B1839]">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                    <FaBoxes /> Historial de Entregas
+                  </h3>
+                  <p className="text-white/80 text-sm mt-1">
+                    Lote: <span className="font-semibold">{selectedLoteParcialidades.numero_lote}</span>
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowParcialidadesModal(false);
+                    setSelectedLoteParcialidades(null);
+                    setParcialidadesData({ parcialidades: [], resumen: {}, contrato_lote: {} });
+                    setRequiereOverride(false);
+                    setMotivoOverride('');
+                    setInfoContratoCumplido(null);
+                  }}
+                  className="text-white hover:text-gray-200 p-1"
+                >
+                  <FaTimes className="text-xl" />
+                </button>
+              </div>
             </div>
             
-            <div className="p-6 space-y-4 overflow-y-auto flex-1">
-              {/* Info del lote */}
-              <div className="text-sm text-gray-600 border-b pb-3">
-                <p><strong>Lote:</strong> {selectedLoteParcialidades.numero_lote}</p>
-                <p><strong>Producto:</strong> {selectedLoteParcialidades.producto_nombre}</p>
-                <p><strong>Cantidad Contrato:</strong> {selectedLoteParcialidades.cantidad_contrato?.toLocaleString() || selectedLoteParcialidades.cantidad_contrato_global?.toLocaleString() || 'N/A'}</p>
+            <div className="p-5 space-y-4 overflow-y-auto flex-1">
+              {/* INFORMACIÓN DEL LOTE - Rediseñado como tarjetas */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="bg-gray-50 rounded-lg p-3 border">
+                  <p className="text-xs text-gray-500 uppercase tracking-wide">Producto</p>
+                  <p className="text-sm font-semibold text-gray-800 truncate" title={selectedLoteParcialidades.producto_nombre}>
+                    {selectedLoteParcialidades.producto_nombre || 'N/A'}
+                  </p>
+                  <p className="text-xs text-gray-500">{selectedLoteParcialidades.producto_clave || ''}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3 border">
+                  <p className="text-xs text-gray-500 uppercase tracking-wide">Contrato</p>
+                  <p className="text-sm font-semibold text-gray-800">
+                    {selectedLoteParcialidades.numero_contrato || 'Sin contrato'}
+                  </p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3 border">
+                  <p className="text-xs text-gray-500 uppercase tracking-wide">Caducidad</p>
+                  <p className="text-sm font-semibold text-gray-800">
+                    {selectedLoteParcialidades.fecha_caducidad 
+                      ? new Date(selectedLoteParcialidades.fecha_caducidad).toLocaleDateString('es-MX')
+                      : 'N/A'}
+                  </p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3 border">
+                  <p className="text-xs text-gray-500 uppercase tracking-wide">Fecha Entrega</p>
+                  <p className="text-sm font-semibold text-gray-800">
+                    {/* Prioridad: lote_info del backend > fecha_fabricacion del lote > resumen > primera parcialidad */}
+                    {parcialidadesData.lote_info?.fecha_fabricacion 
+                      ? new Date(parcialidadesData.lote_info.fecha_fabricacion).toLocaleDateString('es-MX')
+                      : parcialidadesData.resumen?.fecha_entrega
+                        ? new Date(parcialidadesData.resumen.fecha_entrega).toLocaleDateString('es-MX')
+                        : selectedLoteParcialidades.fecha_fabricacion 
+                          ? new Date(selectedLoteParcialidades.fecha_fabricacion).toLocaleDateString('es-MX')
+                          : parcialidadesData.resumen?.primera_entrega
+                            ? new Date(parcialidadesData.resumen.primera_entrega).toLocaleDateString('es-MX')
+                            : 'Sin fecha'}
+                  </p>
+                </div>
               </div>
 
-              {/* Estado del contrato - Con nuevos estados */}
-              {parcialidadesData.contrato_lote && (
-                <div className={`p-3 rounded-lg border ${
-                  parcialidadesData.contrato_lote.estado === 'CUMPLIDO' || parcialidadesData.contrato_lote.estado === 'cumplido'
-                    ? 'bg-green-50 border-green-300' 
-                    : parcialidadesData.contrato_lote.estado === 'SOBREENTREGA'
-                      ? 'bg-red-50 border-red-300'
-                      : parcialidadesData.contrato_lote.estado === 'PARCIAL' || parcialidadesData.contrato_lote.estado === 'parcial'
-                        ? 'bg-amber-50 border-amber-300'
+              {/* ESTADO DE CONTRATOS - Rediseñado con dos columnas claras */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Contrato del Lote */}
+                <div className={`rounded-xl border-2 p-4 ${
+                  (parcialidadesData.contrato_lote?.estado === 'CUMPLIDO' || parcialidadesData.contrato_lote?.estado === 'cumplido')
+                    ? 'bg-green-50 border-green-400' 
+                    : parcialidadesData.contrato_lote?.estado === 'SOBREENTREGA'
+                      ? 'bg-red-50 border-red-400'
+                      : (parcialidadesData.contrato_lote?.estado === 'PARCIAL' || parcialidadesData.contrato_lote?.estado === 'parcial')
+                        ? 'bg-amber-50 border-amber-400'
                         : 'bg-gray-50 border-gray-300'
                 }`}>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-semibold">Estado Lote: 
-                        <span className={`ml-2 px-2 py-0.5 rounded text-xs ${
-                          parcialidadesData.contrato_lote.estado === 'CUMPLIDO' || parcialidadesData.contrato_lote.estado === 'cumplido'
-                            ? 'bg-green-200 text-green-800' 
-                            : parcialidadesData.contrato_lote.estado === 'SOBREENTREGA'
-                              ? 'bg-red-200 text-red-800'
-                              : parcialidadesData.contrato_lote.estado === 'PARCIAL' || parcialidadesData.contrato_lote.estado === 'parcial'
-                                ? 'bg-amber-200 text-amber-800'
-                                : 'bg-gray-200 text-gray-800'
-                        }`}>
-                          {parcialidadesData.contrato_lote.estado?.toUpperCase() || 'PENDIENTE'}
-                        </span>
-                      </p>
-                      <p className="text-xs text-gray-600 mt-1">
-                        Entregadas: {parcialidadesData.contrato_lote.total_entregado?.toLocaleString() || 0} / {parcialidadesData.contrato_lote.cantidad_contrato?.toLocaleString() || 0} ({parcialidadesData.contrato_lote.porcentaje?.toFixed(1) || 0}%)
-                      </p>
-                      {parcialidadesData.contrato_lote.excedente > 0 && (
-                        <p className="text-xs text-red-600 mt-1 font-semibold">
-                          ⚠️ Excedente: {parcialidadesData.contrato_lote.excedente?.toLocaleString()} unidades
-                        </p>
-                      )}
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-sm font-bold text-gray-700">📦 Contrato del Lote</h4>
+                    <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                      (parcialidadesData.contrato_lote?.estado === 'CUMPLIDO' || parcialidadesData.contrato_lote?.estado === 'cumplido')
+                        ? 'bg-green-200 text-green-800' 
+                        : parcialidadesData.contrato_lote?.estado === 'SOBREENTREGA'
+                          ? 'bg-red-200 text-red-800'
+                          : (parcialidadesData.contrato_lote?.estado === 'PARCIAL' || parcialidadesData.contrato_lote?.estado === 'parcial')
+                            ? 'bg-amber-200 text-amber-800'
+                            : 'bg-gray-200 text-gray-700'
+                    }`}>
+                      {parcialidadesData.contrato_lote?.estado?.toUpperCase() || 'SIN CONTRATO'}
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Contratado:</span>
+                      <span className="font-semibold">
+                        {(parcialidadesData.contrato_lote?.cantidad_contrato || selectedLoteParcialidades.cantidad_contrato)?.toLocaleString() || 'N/A'}
+                      </span>
                     </div>
-                    {parcialidadesData.contrato_global && (
-                      <div className="text-right">
-                        <p className="text-xs font-semibold text-primary">Contrato Global</p>
-                        <p className="text-xs text-gray-600">
-                          {parcialidadesData.contrato_global.total_entregado?.toLocaleString() || 0} / {parcialidadesData.contrato_global.cantidad_contrato_global?.toLocaleString() || 0}
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Entregado:</span>
+                      <span className="font-semibold text-primary">
+                        {parcialidadesData.contrato_lote?.total_entregado?.toLocaleString() || 0}
+                      </span>
+                    </div>
+                    {parcialidadesData.contrato_lote?.cantidad_contrato > 0 && (
+                      <>
+                        <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                          <div 
+                            className={`h-2 rounded-full transition-all ${
+                              parcialidadesData.contrato_lote?.porcentaje >= 100 ? 'bg-green-500' : 'bg-primary'
+                            }`}
+                            style={{ width: `${Math.min(100, parcialidadesData.contrato_lote?.porcentaje || 0)}%` }}
+                          ></div>
+                        </div>
+                        <p className="text-xs text-center text-gray-500">
+                          {parcialidadesData.contrato_lote?.porcentaje?.toFixed(1) || 0}% completado
                         </p>
-                        <span className={`text-xs px-2 py-0.5 rounded ${
-                          parcialidadesData.contrato_global.estado === 'CUMPLIDO' || parcialidadesData.contrato_global.estado === 'cumplido'
-                            ? 'bg-green-200 text-green-800'
-                            : parcialidadesData.contrato_global.estado === 'SOBREENTREGA'
-                              ? 'bg-red-200 text-red-800'
-                              : 'bg-amber-200 text-amber-800'
-                        }`}>
-                          {parcialidadesData.contrato_global.estado?.toUpperCase() || 'PARCIAL'}
-                        </span>
-                      </div>
+                      </>
+                    )}
+                    {parcialidadesData.contrato_lote?.excedente > 0 && (
+                      <p className="text-xs text-red-600 font-semibold mt-1">
+                        ⚠️ Excedente: +{parcialidadesData.contrato_lote.excedente?.toLocaleString()}
+                      </p>
+                    )}
+                    {parcialidadesData.contrato_lote?.pendiente > 0 && (
+                      <p className="text-xs text-amber-600 font-semibold mt-1">
+                        ⏳ Pendiente: {parcialidadesData.contrato_lote.pendiente?.toLocaleString()}
+                      </p>
                     )}
                   </div>
                 </div>
-              )}
+
+                {/* Contrato Global */}
+                <div className={`rounded-xl border-2 p-4 ${
+                  parcialidadesData.contrato_global
+                    ? (parcialidadesData.contrato_global.estado === 'CUMPLIDO' || parcialidadesData.contrato_global.estado === 'cumplido')
+                      ? 'bg-green-50 border-green-400' 
+                      : parcialidadesData.contrato_global.estado === 'SOBREENTREGA'
+                        ? 'bg-red-50 border-red-400'
+                        : 'bg-blue-50 border-blue-400'
+                    : 'bg-gray-100 border-gray-300'
+                }`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-sm font-bold text-gray-700">🌐 Contrato Global</h4>
+                    {parcialidadesData.contrato_global ? (
+                      <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                        (parcialidadesData.contrato_global.estado === 'CUMPLIDO' || parcialidadesData.contrato_global.estado === 'cumplido')
+                          ? 'bg-green-200 text-green-800' 
+                          : parcialidadesData.contrato_global.estado === 'SOBREENTREGA'
+                            ? 'bg-red-200 text-red-800'
+                            : 'bg-blue-200 text-blue-800'
+                      }`}>
+                        {parcialidadesData.contrato_global.estado?.toUpperCase() || 'PARCIAL'}
+                      </span>
+                    ) : (
+                      <span className="px-2 py-1 rounded-full text-xs font-bold bg-gray-200 text-gray-600">
+                        N/A
+                      </span>
+                    )}
+                  </div>
+                  {parcialidadesData.contrato_global ? (
+                    <div className="space-y-2">
+                      <p className="text-xs text-gray-500 italic">
+                        Total para clave {selectedLoteParcialidades.producto_clave || 'del producto'}
+                      </p>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Contratado:</span>
+                        <span className="font-semibold">
+                          {parcialidadesData.contrato_global.cantidad_contrato_global?.toLocaleString() || 'N/A'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Entregado (todos lotes):</span>
+                        <span className="font-semibold text-blue-600">
+                          {parcialidadesData.contrato_global.total_entregado?.toLocaleString() || 0}
+                        </span>
+                      </div>
+                      {parcialidadesData.contrato_global.cantidad_contrato_global > 0 && (
+                        <>
+                          <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                            <div 
+                              className={`h-2 rounded-full transition-all ${
+                                parcialidadesData.contrato_global.porcentaje >= 100 ? 'bg-green-500' : 'bg-blue-500'
+                              }`}
+                              style={{ width: `${Math.min(100, parcialidadesData.contrato_global.porcentaje || 0)}%` }}
+                            ></div>
+                          </div>
+                          <p className="text-xs text-center text-gray-500">
+                            {parcialidadesData.contrato_global.porcentaje?.toFixed(1) || 0}% completado
+                          </p>
+                        </>
+                      )}
+                      <p className="text-xs text-gray-500 mt-1">
+                        📊 {parcialidadesData.contrato_global.num_lotes || 1} lote(s) en este contrato
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500 italic">
+                      Este lote no tiene contrato global definido
+                    </p>
+                  )}
+                </div>
+              </div>
               
-              {/* Lista de parcialidades */}
+              {/* LISTA DE ENTREGAS - Mejorada */}
               {loadingParcialidades ? (
                 <div className="flex justify-center p-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-4 border-primary border-t-transparent"></div>
                 </div>
               ) : parcialidadesData.parcialidades?.length > 0 ? (
-                <div className="space-y-2">
-                  <h4 className="text-sm font-semibold text-gray-700 flex items-center justify-between">
-                    <span>Entregas registradas ({parcialidadesData.parcialidades.length})</span>
-                    <span className="text-primary">
-                      Total: {parcialidadesData.parcialidades.reduce((sum, p) => sum + (p.cantidad || 0), 0).toLocaleString()} unidades
-                    </span>
-                  </h4>
-                  <div className="max-h-48 overflow-y-auto space-y-2">
-                    {parcialidadesData.parcialidades.map((parcialidad) => (
-                      <div key={parcialidad.id} className="p-3 bg-red-50 border border-primary/30 rounded-lg flex items-center justify-between">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm text-primary font-medium">
-                            📦 {parcialidad.cantidad?.toLocaleString()} unidades
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {parcialidad.fecha_entrega ? new Date(parcialidad.fecha_entrega).toLocaleDateString('es-MX') : 'Sin fecha'}
-                            {parcialidad.notas && ` • ${parcialidad.notas}`}
-                          </p>
-                          {parcialidad.usuario_nombre && (
-                            <p className="text-xs text-gray-400">
-                              Registrado por: {parcialidad.usuario_nombre}
-                            </p>
-                          )}
-                        </div>
-                        {puede.editar && (
-                          <button
-                            onClick={() => handleEliminarParcialidad(parcialidad.id)}
-                            disabled={loadingParcialidades}
-                            className="p-2 text-red-600 hover:text-red-800 disabled:opacity-50"
-                            title="Eliminar parcialidad"
-                          >
-                            <FaTrash />
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-bold text-gray-700 flex items-center gap-2">
+                      📋 Entregas registradas ({parcialidadesData.parcialidades.length})
+                    </h4>
+                    <div className="text-right">
+                      <span className="text-lg font-bold text-primary">
+                        {parcialidadesData.parcialidades.reduce((sum, p) => sum + (p.cantidad || 0), 0).toLocaleString()}
+                      </span>
+                      <span className="text-sm text-gray-500 ml-1">unidades total</span>
+                    </div>
+                  </div>
+                  
+                  {/* Tabla de entregas */}
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-100">
+                        <tr>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Fecha</th>
+                          <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Cantidad</th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Notas</th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Usuario</th>
+                          {puede.editar && <th className="px-3 py-2 text-center text-xs font-semibold text-gray-600">Acción</th>}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {parcialidadesData.parcialidades.map((parcialidad, idx) => (
+                          <tr key={parcialidad.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                            <td className="px-3 py-2">
+                              <span className="font-medium">
+                                {parcialidad.fecha_entrega 
+                                  ? new Date(parcialidad.fecha_entrega).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })
+                                  : 'Sin fecha'}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              <span className="font-bold text-primary">
+                                {parcialidad.cantidad?.toLocaleString()}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-gray-600 max-w-[150px] truncate" title={parcialidad.notas}>
+                              {parcialidad.notas || '-'}
+                            </td>
+                            <td className="px-3 py-2 text-gray-500 text-xs">
+                              {parcialidad.usuario_nombre || 'Sistema'}
+                            </td>
+                            {puede.editar && (
+                              <td className="px-3 py-2 text-center">
+                                <button
+                                  onClick={() => handleEliminarParcialidad(parcialidad.id)}
+                                  disabled={loadingParcialidades}
+                                  className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded disabled:opacity-50"
+                                  title="Eliminar entrega"
+                                >
+                                  <FaTrash className="text-xs" />
+                                </button>
+                              </td>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               ) : (
-                <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
-                  <p className="text-sm text-gray-600">No hay entregas registradas</p>
+                <div className="p-6 bg-gray-50 border-2 border-dashed border-gray-300 rounded-xl text-center">
+                  <FaBoxes className="text-4xl text-gray-300 mx-auto mb-2" />
+                  <p className="text-gray-600 font-medium">No hay entregas registradas</p>
+                  <p className="text-xs text-gray-400 mt-1">Registra la primera entrega usando el formulario</p>
                 </div>
               )}
               
