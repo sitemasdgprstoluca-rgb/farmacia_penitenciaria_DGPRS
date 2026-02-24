@@ -1159,6 +1159,7 @@ export const lotesAPI = {
   }),
   importar: (formData) => apiClient.post('/lotes/importar-excel/', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 300000, // 5 minutos para importaciones grandes
   }),
   plantilla: () => apiClient.get('/lotes/plantilla/', { responseType: 'blob' }),
 };
