@@ -1087,7 +1087,7 @@ class Lote(models.Model):
     # ISS-INV-003: cantidad_contrato_global = Total contratado para toda la CLAVE/producto en este contrato
     cantidad_contrato_global = models.IntegerField(null=True, blank=True, help_text='Cantidad total del contrato global por clave de producto. Compartida entre todos los lotes del mismo producto+contrato.')
     # Campo opcional informativo - no afecta lógica de negocio
-    fecha_fabricacion = models.DateField(null=True, blank=True, help_text='Fecha de recepción/fabricación (opcional, solo informativa)')
+    fecha_fabricacion = models.DateField(null=True, blank=True, help_text='Fecha de entrega del lote (opcional, solo informativa)')
     fecha_caducidad = models.DateField()
     precio_unitario = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     numero_contrato = models.CharField(max_length=100, blank=True, null=True)
@@ -1322,7 +1322,7 @@ class LoteParcialidad(models.Model):
         related_name='parcialidades',
         db_column='lote_id'
     )
-    fecha_entrega = models.DateField(help_text='Fecha de recepción de esta parcialidad')
+    fecha_entrega = models.DateField(help_text='Fecha de entrega de esta parcialidad')
     cantidad = models.IntegerField(help_text='Cantidad recibida en esta entrega')
     numero_factura = models.CharField(max_length=100, blank=True, null=True, help_text='Número de factura asociada')
     numero_remision = models.CharField(max_length=100, blank=True, null=True, help_text='Número de remisión o guía')

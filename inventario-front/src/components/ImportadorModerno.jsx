@@ -50,10 +50,10 @@ const IMPORT_CONFIGS = {
     titulo: 'Lotes de Inventario',
     descripcion: 'Importar lotes de productos al almacén',
     columnasRequeridas: ['Clave Producto', 'Nombre Producto', 'Número Lote', 'Fecha Caducidad', 'Cantidad Inicial'],
-    columnasOpcionales: ['Cantidad Contrato Lote', 'Cantidad Contrato Global', 'Fecha Recepción', 'Precio Unitario', 'Número Contrato', 'Marca', 'Activo'],
+    columnasOpcionales: ['Cantidad Contrato Lote', 'Cantidad Contrato Global', 'Fecha Entrega', 'Precio Unitario', 'Número Contrato', 'Marca', 'Activo'],
     formatos: {
       'Fecha Caducidad': 'YYYY-MM-DD o DD/MM/YYYY',
-      'Fecha Recepción': 'YYYY-MM-DD o DD/MM/YYYY',
+      'Fecha Entrega': 'YYYY-MM-DD o DD/MM/YYYY',
       'Cantidad Inicial': 'Número entero positivo',
       'Cantidad Contrato Lote': 'Número entero positivo (opcional) - esperado para este lote',
       'Cantidad Contrato Global': 'Número entero positivo (opcional) - total contratado por clave',
@@ -65,7 +65,7 @@ const IMPORT_CONFIGS = {
       'nombre producto': ['nombre', 'articulo', 'descripcion', 'nombre producto'],
       'numero lote': ['lote', 'numero lote', 'num lote', 'batch', 'número lote'],
       'fecha caducidad': ['caducidad', 'vencimiento', 'fecha caducidad', 'expiracion'],
-      'fecha recepcion': ['fecha recepcion', 'recepcion', 'fecha de recepcion', 'fec recepcion', 'fecha fabricacion', 'fabricacion', 'elaboracion', 'fecha elaboracion', 'fec fab', 'fecha entrega', 'entrega', 'fecha recepción'],
+      'fecha entrega': ['fecha entrega', 'entrega', 'fecha de entrega', 'fecha recepcion', 'recepcion', 'fecha de recepcion', 'fec recepcion', 'fecha fabricacion', 'fabricacion', 'elaboracion', 'fecha elaboracion', 'fec fab', 'fecha recepción'],
       'cantidad inicial': ['cantidad', 'cantidad inicial', 'cant', 'stock', 'existencia', 'qty'],
       'cantidad contrato lote': ['cant contrato lote', 'cantidad contrato lote', 'cant lote', 'contrato lote'],
       'cantidad contrato global': ['cant contrato global', 'cantidad contrato global', 'contrato global', 'cant ccg']

@@ -716,7 +716,7 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
     - Precio Unitario: precio unitario (default 0)
     - Número Contrato: número de contrato
     - Marca: laboratorio (opcional)
-    - Fecha Recepción: fecha de recepción del lote
+    - Fecha Entrega: fecha de entrega del lote
     - Activo: estado del lote (default Activo)
     
     ISS-INV-001: SOPORTE PARA CONTRATOS PARCIALES
@@ -800,9 +800,9 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
         'caducidad': ['fecha caducidad', 'caducidad', 'vencimiento', 'fecha vencimiento', 
                       'expira', 'fec cad', 'expiracion', 'fecha expiracion',
                       'vencimiento fecha de caducidad'],  # Formato oficial combinado
-        'recepcion': ['fecha recepcion', 'recepcion', 'fecha de recepcion', 
-                      'fec recepcion', 'fecha fabricacion', 'fabricacion', 'elaboracion', 
-                      'fecha elaboracion', 'fec fab', 'fecha entrega', 'entrega',
+        'recepcion': ['fecha entrega', 'entrega', 'fecha de entrega', 'fecha recepcion', 
+                      'recepcion', 'fecha de recepcion', 'fec recepcion', 'fecha fabricacion', 
+                      'fabricacion', 'elaboracion', 'fecha elaboracion', 'fec fab',
                       'fec recepcion', 'f recepcion', 'fec rec'],
         'fecha_ingreso': ['fecha ingreso', 'fecha de ingreso', 'ingreso', 'fecha entrada', 
                           'fec ing'],  # Formato oficial
@@ -836,11 +836,11 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
     
     # Log de columnas detectadas (nivel info para diagnóstico)
     logger.info(f"[IMPORTADOR] Columnas detectadas: {list(col_map.keys())}")
-    # Log específico para fecha de recepción
+    # Log específico para fecha de entrega
     if 'recepcion' in col_map:
-        logger.info(f"[IMPORTADOR] Columna RECEPCION mapeada a índice {col_map['recepcion']} (header: {encabezados[col_map['recepcion']]})")
+        logger.info(f"[IMPORTADOR] Columna FECHA ENTREGA mapeada a índice {col_map['recepcion']} (header: {encabezados[col_map['recepcion']]})")
     else:
-        logger.warning(f"[IMPORTADOR] Columna RECEPCION NO encontrada. Headers: {encabezados}")
+        logger.warning(f"[IMPORTADOR] Columna FECHA ENTREGA NO encontrada. Headers: {encabezados}")
     
     # FIX: Validar columnas mínimas - CLAVE y NOMBRE son OBLIGATORIAS
     # Ambos deben coincidir con el producto en la base de datos
@@ -1090,7 +1090,7 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                     except:
                         pass
             
-            # Fecha recepción/entrega (OPCIONAL - campo informativo para trazabilidad)
+            # Fecha de entrega (OPCIONAL - campo informativo para trazabilidad)
             # Nota: Se almacena en 'fecha_fabricacion' por compatibilidad histórica del modelo
             fecha_fabricacion = None
             if 'recepcion' in col_map:
@@ -1098,12 +1098,12 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                 fecha_fab_raw = fila[idx_fab].value if idx_fab < len(fila) else None
                 if fecha_fab_raw:
                     try:
-                        fecha_fabricacion = _parse_fecha_excel(fecha_fab_raw, 'Fecha Recepción')
+                        fecha_fabricacion = _parse_fecha_excel(fecha_fab_raw, 'Fecha Entrega')
                         if fila_num <= 15:  # Log primeras 15 filas para diagnóstico
                             logger.info(f"[FECHA] Fila {fila_num}: fecha_recepcion PARSEADA = {fecha_fabricacion} (raw={type(fecha_fab_raw).__name__}:{fecha_fab_raw})")
                     except Exception as e:
                         # WARNING visible para diagnóstico en producción
-                        logger.warning(f"[FECHA-ERROR] Fila {fila_num}: No se pudo parsear fecha recepción '{fecha_fab_raw}' - {e}")
+                        logger.warning(f"[FECHA-ERROR] Fila {fila_num}: No se pudo parsear fecha entrega '{fecha_fab_raw}' - {e}")
                 else:
                     if fila_num <= 15:
                         logger.info(f"[FECHA] Fila {fila_num}: celda de recepción VACÍA (idx={idx_fab})")
@@ -1253,7 +1253,7 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                         cantidad_inicial_anterior = lote.cantidad_inicial
                         cantidad_contrato_lote = lote.cantidad_contrato
                         
-                        # Obtener fecha de recepción del Excel para la parcialidad y el lote
+                        # Obtener fecha de entrega del Excel para la parcialidad y el lote
                         nueva_fecha_fab = fila.get('fecha_fabricacion')
                         logger.info(f"[LOTE-CONSOLIDAR] {lote.numero_lote}: fecha del Excel={nueva_fecha_fab}, fecha actual en BD={lote.fecha_fabricacion}")
                         
@@ -1355,13 +1355,13 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                 if centro:
                     lote_existente_inactivo = lote_existente_inactivo.filter(centro=centro)
                 
-                # Obtener fecha de recepción para guardar en el lote y la parcialidad
+                # Obtener fecha de entrega para guardar en el lote y la parcialidad
                 fecha_recepcion = fila.get('fecha_fabricacion')
                 
                 # Log de diagnóstico antes de crear el lote
                 logger.info(f"[LOTE-CREAR] {numero_lote}: fecha_recepcion={fecha_recepcion} (type={type(fecha_recepcion).__name__})")
                 
-                # Si no hay fecha de recepción del Excel, usar fecha actual
+                # Si no hay fecha de entrega del Excel, usar fecha actual
                 # Esto asegura que SIEMPRE haya fecha tanto en el lote como en la parcialidad
                 from django.utils import timezone
                 if fecha_recepcion is None:

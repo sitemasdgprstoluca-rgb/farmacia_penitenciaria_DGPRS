@@ -434,7 +434,7 @@ export const formatStock = (producto) => {
  * @property {number} cantidad_inicial
  * @property {number} cantidad_actual
  * @property {string} fecha_caducidad
- * @property {string} [fecha_fabricacion] - Representa fecha de recepción del lote
+ * @property {string} [fecha_fabricacion] - Representa fecha de entrega del lote
  * @property {string} estado - calculado: disponible, agotado, vencido, por_vencer
  * @property {boolean} activo
  */

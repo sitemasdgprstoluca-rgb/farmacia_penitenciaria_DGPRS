@@ -449,9 +449,9 @@ const Lotes = () => {
       return;
     }
 
-    // FECHA DE RECEPCIÓN obligatoria en creación
+    // FECHA DE ENTREGA obligatoria en creación
     if (!editingLote && !formData.fecha_fabricacion) {
-      toast.error('La fecha de recepción es obligatoria');
+      toast.error('La fecha de entrega es obligatoria');
       return;
     }
 
@@ -694,12 +694,12 @@ const Lotes = () => {
     const productoInfo = lote.producto_info || {};
     const presentacionProducto = productoInfo.presentacion || lote.presentacion || '';
     // Usar ultima_fecha_entrega (de parcialidades) o fecha_fabricacion (legacy)
-    const fechaRecepcion = lote.ultima_fecha_entrega || lote.fecha_fabricacion || '';
+    const fechaEntrega = lote.ultima_fecha_entrega || lote.fecha_fabricacion || '';
     setFormData({
       producto: lote.producto,
       presentacion_producto: presentacionProducto,
       numero_lote: lote.numero_lote,
-      fecha_fabricacion: fechaRecepcion,
+      fecha_fabricacion: fechaEntrega,
       fecha_caducidad: lote.fecha_caducidad,
       cantidad_inicial: lote.cantidad_inicial,
       cantidad_contrato: lote.cantidad_contrato || '',  // ISS-INV-001: Cantidad del contrato
@@ -2103,7 +2103,7 @@ const handleImportar = async (e) => {
                   </div>
                 </div>
 
-                {/* CAMPOS OBLIGATORIOS: Número de Contrato y Fecha de Recepción */}
+                {/* CAMPOS OBLIGATORIOS: Número de Contrato y Fecha de Entrega */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {puedeVerContrato ? (
                     <div>
@@ -2146,7 +2146,7 @@ const handleImportar = async (e) => {
 
                   <div>
                     <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                      FECHA DE RECEPCIÓN {!editingLote && <span className="text-red-600">*</span>}{editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
+                      FECHA DE ENTREGA {!editingLote && <span className="text-red-600">*</span>}{editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
                     </label>
                     <input
                       type="date"
@@ -2173,7 +2173,7 @@ const handleImportar = async (e) => {
                       max={new Date().toISOString().split('T')[0]}
                     />
                     <p className="text-xs text-gray-500 italic mt-1">
-                      {editingLote?.tiene_movimientos ? '🔒 No editable' : 'Fecha de recepción del lote'}
+                      {editingLote?.tiene_movimientos ? '🔒 No editable' : 'Fecha de entrega del lote'}
                     </p>
                   </div>
                 </div>
