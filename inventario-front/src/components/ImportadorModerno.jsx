@@ -65,7 +65,10 @@ const IMPORT_CONFIGS = {
       'nombre producto': ['nombre', 'articulo', 'descripcion', 'nombre producto'],
       'número lote': ['lote', 'numero lote', 'num lote', 'batch'],
       'fecha caducidad': ['caducidad', 'vencimiento', 'fecha caducidad', 'expiracion'],
-      'cantidad inicial': ['cantidad', 'cantidad inicial', 'cant', 'stock', 'existencia', 'qty']
+      'fecha recepción': ['fecha recepcion', 'recepcion', 'fecha de recepcion', 'fec recepcion', 'fecha fabricacion', 'fabricacion', 'elaboracion', 'fecha elaboracion', 'fec fab', 'fecha entrega', 'entrega'],
+      'cantidad inicial': ['cantidad', 'cantidad inicial', 'cant', 'stock', 'existencia', 'qty'],
+      'cantidad contrato lote': ['cant contrato lote', 'cantidad contrato lote', 'cant lote', 'contrato lote'],
+      'cantidad contrato global': ['cant contrato global', 'cantidad contrato global', 'contrato global', 'cant ccg']
     },
     limites: {
       maxFilas: 5000,
