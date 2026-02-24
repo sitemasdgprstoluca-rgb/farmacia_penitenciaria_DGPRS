@@ -808,7 +808,8 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                       'fecha recepcion', 'recepcion', 'fecha de recepcion', 'fec recepcion',
                       'fecha fabricacion', 'fabricacion', 'fecha de fabricacion', 'fec fab',
                       'elaboracion', 'fecha elaboracion', 'fecha de elaboracion',
-                      'f recepcion', 'fec rec', 'fecha rec', 'fecha ent'],
+                      'f recepcion', 'fec rec', 'fecha rec', 'fecha ent',
+                      'fecha recep'],  # ISS-FIX: más variantes
         'fecha_ingreso': ['fecha ingreso', 'fecha de ingreso', 'ingreso', 'fecha entrada', 
                           'fec ing'],  # Formato oficial
         # Otros campos

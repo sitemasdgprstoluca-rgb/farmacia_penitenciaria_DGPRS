@@ -1285,17 +1285,50 @@ class LoteSerializer(serializers.ModelSerializer):
         return LoteParcialidad.objects.filter(lote=obj).count()
     
     def get_ultima_fecha_entrega(self, obj):
-        """Fecha de la última entrega registrada (o fecha_fabricacion como fallback)."""
+        """
+        Fecha de la última entrega registrada (o fecha_fabricacion como fallback).
+        
+        AUTO-SINCRONIZACIÓN: Si el lote no tiene fecha_fabricacion pero tiene
+        parcialidades, actualiza automáticamente el lote con la primera fecha.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
         # Usar datos precargados si existen (evita N+1 queries)
         if hasattr(obj, '_prefetched_objects_cache') and 'parcialidades' in obj._prefetched_objects_cache:
             parcialidades = list(obj.parcialidades.all())
             if parcialidades:
-                return max(p.fecha_entrega for p in parcialidades)
+                fechas = [p.fecha_entrega for p in parcialidades if p.fecha_entrega]
+                if fechas:
+                    # AUTO-SYNC: Si lote no tiene fecha pero hay parcialidades
+                    if obj.fecha_fabricacion is None:
+                        primera_fecha = min(fechas)
+                        try:
+                            from .models import Lote
+                            Lote.objects.filter(pk=obj.pk).update(fecha_fabricacion=primera_fecha)
+                            obj.fecha_fabricacion = primera_fecha  # Actualizar en memoria
+                            logger.info(f"[SERIALIZER-SYNC] Lote {obj.numero_lote}: fecha_fabricacion = {primera_fecha}")
+                        except Exception as e:
+                            logger.warning(f"[SERIALIZER-SYNC] Error sincronizando fecha lote {obj.pk}: {e}")
+                    return max(fechas)
             return obj.fecha_fabricacion
+        
         from .models import LoteParcialidad
         ultima = LoteParcialidad.objects.filter(lote=obj).order_by('-fecha_entrega').first()
-        if ultima:
+        if ultima and ultima.fecha_entrega:
+            # AUTO-SYNC: Si lote no tiene fecha pero hay parcialidades
+            if obj.fecha_fabricacion is None:
+                primera = LoteParcialidad.objects.filter(lote=obj).order_by('fecha_entrega').first()
+                if primera and primera.fecha_entrega:
+                    try:
+                        from .models import Lote
+                        Lote.objects.filter(pk=obj.pk).update(fecha_fabricacion=primera.fecha_entrega)
+                        obj.fecha_fabricacion = primera.fecha_entrega
+                        logger.info(f"[SERIALIZER-SYNC] Lote {obj.numero_lote}: fecha_fabricacion = {primera.fecha_entrega}")
+                    except Exception as e:
+                        logger.warning(f"[SERIALIZER-SYNC] Error sincronizando fecha lote {obj.pk}: {e}")
             return ultima.fecha_entrega
+        
         # Fallback: usar fecha_fabricacion si existe (datos legacy)
         return obj.fecha_fabricacion
     

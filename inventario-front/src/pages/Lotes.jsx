@@ -694,14 +694,36 @@ const Lotes = () => {
     // Obtener presentación del producto si está disponible
     const productoInfo = lote.producto_info || {};
     const presentacionProducto = productoInfo.presentacion || lote.presentacion || '';
+    
     // Usar ultima_fecha_entrega (de parcialidades) o fecha_fabricacion (legacy)
-    const fechaEntrega = lote.ultima_fecha_entrega || lote.fecha_fabricacion || '';
+    // IMPORTANTE: Asegurar formato YYYY-MM-DD para input type="date"
+    const formatearFechaParaInput = (fecha) => {
+      if (!fecha) return '';
+      // Si ya está en formato YYYY-MM-DD, usar directamente
+      if (typeof fecha === 'string' && /^\d{4}-\d{2}-\d{2}/.test(fecha)) {
+        return fecha.substring(0, 10); // Tomar solo YYYY-MM-DD
+      }
+      // Si es otro formato, intentar convertir
+      try {
+        const d = new Date(fecha);
+        if (!isNaN(d.getTime())) {
+          return d.toISOString().split('T')[0];
+        }
+      } catch (e) {
+        console.warn('Error parseando fecha:', fecha, e);
+      }
+      return '';
+    };
+    
+    const fechaEntrega = formatearFechaParaInput(lote.ultima_fecha_entrega) || 
+                         formatearFechaParaInput(lote.fecha_fabricacion) || '';
+    
     setFormData({
       producto: lote.producto,
       presentacion_producto: presentacionProducto,
       numero_lote: lote.numero_lote,
       fecha_fabricacion: fechaEntrega,
-      fecha_caducidad: lote.fecha_caducidad,
+      fecha_caducidad: formatearFechaParaInput(lote.fecha_caducidad),
       cantidad_inicial: lote.cantidad_inicial,
       cantidad_contrato: lote.cantidad_contrato || '',  // ISS-INV-001: Cantidad del contrato
       cantidad_contrato_global: lote.cantidad_contrato_global || '',  // ISS-INV-003: Total compartido
