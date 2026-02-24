@@ -1500,6 +1500,14 @@ class LoteSerializer(serializers.ModelSerializer):
         """
         from .models import Movimiento
         from .signals import registrar_auditoria
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # DEBUG: Ver qué datos llegan al update
+        logger.warning(f"[LOTE UPDATE] validated_data recibido: {validated_data}")
+        logger.warning(f"[LOTE UPDATE] fecha_fabricacion en data: {'fecha_fabricacion' in validated_data}")
+        if 'fecha_fabricacion' in validated_data:
+            logger.warning(f"[LOTE UPDATE] valor fecha_fabricacion: {validated_data['fecha_fabricacion']}")
         
         # =====================================================================
         # PASO 1: Remover cantidad_inicial — NUNCA editable vía API
