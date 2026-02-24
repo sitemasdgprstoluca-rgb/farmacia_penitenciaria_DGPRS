@@ -2726,7 +2726,7 @@ const handleImportar = async (e) => {
                       <div className="text-right">
                         <p className="text-xs font-semibold text-primary">Contrato Global</p>
                         <p className="text-xs text-gray-600">
-                          {parcialidadesData.contrato_global.total_entregado?.toLocaleString() || 0} / {parcialidadesData.contrato_global.cantidad_total?.toLocaleString() || 0}
+                          {parcialidadesData.contrato_global.total_entregado?.toLocaleString() || 0} / {parcialidadesData.contrato_global.cantidad_contrato_global?.toLocaleString() || 0}
                         </p>
                         <span className={`text-xs px-2 py-0.5 rounded ${
                           parcialidadesData.contrato_global.estado === 'CUMPLIDO' || parcialidadesData.contrato_global.estado === 'cumplido'
