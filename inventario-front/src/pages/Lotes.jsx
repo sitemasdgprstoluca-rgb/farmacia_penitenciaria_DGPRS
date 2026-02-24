@@ -659,7 +659,10 @@ const Lotes = () => {
         }
         
         toast.error(errorMsg);
-        console.error(error);
+        // DEBUG: Log completo del error para diagnóstico
+        console.error('Error al guardar lote:', error);
+        console.error('Respuesta del servidor:', error.response?.data);
+        console.error('Datos enviados:', dataToSend);
       } finally {
         setSavingLote(false);
       }
