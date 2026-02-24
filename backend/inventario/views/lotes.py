@@ -2333,3 +2333,143 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                     }
                 }
             })
+
+    # =========================================================================
+    # ADMIN: Crear parcialidades retroactivas para lotes sin historial
+    # =========================================================================
+    @action(detail=False, methods=['post'], url_path='crear-parcialidades-retroactivas')
+    def crear_parcialidades_retroactivas(self, request):
+        """
+        ADMIN: Crea parcialidades iniciales para lotes que no tienen ninguna.
+        
+        Este endpoint es necesario para lotes importados antes del sistema de
+        entregas parciales. Crea una parcialidad inicial con la cantidad_inicial
+        del lote.
+        
+        También actualiza fecha_fabricacion de lotes que la tengan vacía,
+        usando created_at como referencia.
+        
+        Solo usuarios admin/farmacia pueden ejecutar esta acción.
+        
+        Returns:
+            - lotes_procesados: número de lotes que recibieron parcialidad
+            - lotes_ya_tenian: número de lotes que ya tenían parcialidad
+            - lotes_sin_cantidad: lotes con cantidad_inicial = 0 (ignorados)
+            - lotes_fecha_actualizada: lotes con fecha_fabricacion actualizada
+            - errores: lista de errores si los hubo
+        """
+        user = request.user
+        
+        # Solo admin/farmacia pueden ejecutar
+        if not is_farmacia_or_admin(user):
+            return Response(
+                {'error': 'Solo administradores pueden ejecutar esta acción'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        try:
+            from django.db import transaction
+            from django.utils import timezone
+            
+            # Estadísticas
+            lotes_procesados = 0
+            lotes_ya_tenian = 0
+            lotes_sin_cantidad = 0
+            lotes_fecha_actualizada = 0
+            errores = []
+            detalles = []
+            
+            # Obtener todos los lotes activos
+            lotes = Lote.objects.filter(activo=True)
+            
+            with transaction.atomic():
+                for lote in lotes:
+                    # Verificar si ya tiene parcialidades
+                    ya_tiene_parcialidades = LoteParcialidad.objects.filter(lote=lote).exists()
+                    
+                    if ya_tiene_parcialidades:
+                        lotes_ya_tenian += 1
+                        # Aun así, actualizar fecha_fabricacion si está vacía
+                        if not lote.fecha_fabricacion and lote.created_at:
+                            lote.fecha_fabricacion = lote.created_at.date()
+                            lote.save(update_fields=['fecha_fabricacion'])
+                            lotes_fecha_actualizada += 1
+                        continue
+                    
+                    # Ignorar lotes sin cantidad inicial
+                    if not lote.cantidad_inicial or lote.cantidad_inicial <= 0:
+                        lotes_sin_cantidad += 1
+                        continue
+                    
+                    try:
+                        # Usar fecha_fabricacion o created_at o fecha actual
+                        fecha_entrega = lote.fecha_fabricacion
+                        actualizar_fecha_fab = False
+                        
+                        if not fecha_entrega:
+                            # Si no hay fecha_fabricacion, usar created_at o hoy
+                            if lote.created_at:
+                                fecha_entrega = lote.created_at.date()
+                            else:
+                                fecha_entrega = timezone.now().date()
+                            actualizar_fecha_fab = True
+                        
+                        # Crear parcialidad inicial
+                        LoteParcialidad.objects.create(
+                            lote=lote,
+                            fecha_entrega=fecha_entrega,
+                            cantidad=lote.cantidad_inicial,
+                            notas='Carga inicial retroactiva (lote preexistente sin historial)',
+                            usuario=user,
+                            es_sobreentrega=False
+                        )
+                        
+                        # Actualizar fecha_fabricacion si estaba vacía
+                        if actualizar_fecha_fab:
+                            lote.fecha_fabricacion = fecha_entrega
+                            lote.save(update_fields=['fecha_fabricacion'])
+                            lotes_fecha_actualizada += 1
+                        
+                        lotes_procesados += 1
+                        detalles.append({
+                            'lote_id': lote.id,
+                            'numero_lote': lote.numero_lote,
+                            'producto': lote.producto.clave if lote.producto else 'N/A',
+                            'cantidad': lote.cantidad_inicial,
+                            'fecha': str(fecha_entrega),
+                            'fecha_actualizada': actualizar_fecha_fab
+                        })
+                        
+                    except Exception as e:
+                        errores.append({
+                            'lote_id': lote.id,
+                            'numero_lote': lote.numero_lote,
+                            'error': str(e)
+                        })
+            
+            logger.info(
+                f"[PARCIALIDADES RETROACTIVAS] Usuario {user.username}: "
+                f"procesados={lotes_procesados}, ya_tenian={lotes_ya_tenian}, "
+                f"sin_cantidad={lotes_sin_cantidad}, fechas_actualizadas={lotes_fecha_actualizada}, "
+                f"errores={len(errores)}"
+            )
+            
+            return Response({
+                'mensaje': f'Proceso completado: {lotes_procesados} lotes con parcialidades, {lotes_fecha_actualizada} fechas actualizadas',
+                'resumen': {
+                    'lotes_procesados': lotes_procesados,
+                    'lotes_ya_tenian': lotes_ya_tenian,
+                    'lotes_sin_cantidad': lotes_sin_cantidad,
+                    'lotes_fecha_actualizada': lotes_fecha_actualizada,
+                    'total_errores': len(errores)
+                },
+                'detalles': detalles[:50],  # Limitar detalles mostrados
+                'errores': errores[:10] if errores else []
+            })
+            
+        except Exception as e:
+            logger.exception(f"Error en crear_parcialidades_retroactivas: {e}")
+            return Response(
+                {'error': 'Error al crear parcialidades', 'mensaje': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
