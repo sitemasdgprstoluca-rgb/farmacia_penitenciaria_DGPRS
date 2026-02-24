@@ -847,7 +847,11 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
         if idx >= 0:
             col_map[campo] = idx
     
-    logger.info(f"Lotes - Mapeo: {col_map}")
+    logger.info(f"Lotes - Mapeo completo: {col_map}")
+    if 'recepcion' in col_map:
+        logger.info(f"[RECEPCION] Columna de recepción encontrada en índice: {col_map['recepcion']}")
+    else:
+        logger.warning(f"[RECEPCION] NO se encontró columna de recepción. Encabezados normalizados: {encabezados}")
     
     # FIX: Validar columnas mínimas - CLAVE y NOMBRE son OBLIGATORIAS
     # Ambos deben coincidir con el producto en la base de datos
@@ -1070,13 +1074,19 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
             if 'recepcion' in col_map:
                 idx_fab = col_map['recepcion']
                 fecha_fab_raw = fila[idx_fab].value if idx_fab < len(fila) else None
+                logger.debug(f"[RECEPCION] Fila {fila_num}: idx={idx_fab}, valor_raw={fecha_fab_raw}")
                 if fecha_fab_raw:
                     try:
                         fecha_fabricacion = _parse_fecha_excel(fecha_fab_raw)
+                        logger.info(f"[RECEPCION] Fila {fila_num}: parseada exitosamente = {fecha_fabricacion}")
                     except Exception as e:
                         # Si falla el parseo, simplemente ignorar (no es campo crítico)
                         logger.debug(f"Fila {fila_num}: No se pudo parsear fecha recepción: {e}")
                         pass
+                else:
+                    logger.debug(f"[RECEPCION] Fila {fila_num}: valor vacio o None")
+            else:
+                logger.debug(f"[RECEPCION] Columna 'recepcion' no encontrada en col_map para fila {fila_num}")
             
             # Precio
             precio_raw = get_val('precio', '0')
@@ -1228,9 +1238,11 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                         
                         # Actualizar fecha_fabricacion si la nueva es más reciente
                         nueva_fecha_fab = fila.get('fecha_fabricacion')
+                        logger.debug(f"[RECEPCION] Consolidando lote {numero_lote}: fecha_actual={lote.fecha_fabricacion}, nueva_fecha={nueva_fecha_fab}")
                         if nueva_fecha_fab is not None:
                             if lote.fecha_fabricacion is None or nueva_fecha_fab > lote.fecha_fabricacion:
                                 update_data['fecha_fabricacion'] = nueva_fecha_fab
+                                logger.info(f"[RECEPCION] Actualizando fecha_fabricacion de lote {numero_lote}: {lote.fecha_fabricacion} -> {nueva_fecha_fab}")
                         
                         Lote.objects.filter(pk=lote.pk).update(**update_data)
                         lote.refresh_from_db()
@@ -1285,6 +1297,9 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                                f"se creará nuevo registro activo")
                 
                 # Crear lote
+                fecha_fab_a_guardar = fila.get('fecha_fabricacion')
+                logger.info(f"[RECEPCION] Creando lote {numero_lote}: fecha_fabricacion={fecha_fab_a_guardar}")
+                
                 Lote.objects.create(
                     producto=producto,
                     centro=centro,
@@ -1294,7 +1309,7 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                     cantidad_contrato=cantidad_contrato,  # NULL si no se proporcionó
                     cantidad_contrato_global=fila.get('cantidad_contrato_global'),
                     fecha_caducidad=fecha_caducidad,
-                    fecha_fabricacion=fila.get('fecha_fabricacion'),
+                    fecha_fabricacion=fecha_fab_a_guardar,
                     precio_unitario=fila.get('precio_unitario', Decimal('0')),
                     numero_contrato=numero_contrato,
                     marca=marca,
