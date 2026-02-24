@@ -62,6 +62,7 @@ const baseFilters = {
   nivelStock: "",
   tipoMovimiento: "",
   numeroContrato: "",  // Filtro para reporte de contratos
+  soloSobreentregas: false,  // Filtro para reporte de parcialidades
   mesControlMensual: new Date().getMonth() + 1,
   anioControlMensual: new Date().getFullYear(),
 };
@@ -122,6 +123,18 @@ const COLUMNAS_CONFIG = {
     { key: 'movimientos_salida', label: 'Salidas', width: '70px', align: 'center' },
     { key: 'valor_total', label: 'Valor Total', width: '100px', align: 'right' },
     { key: 'estado', label: 'Estado', width: '100px', align: 'center' },
+  ],
+  parcialidades: [
+    { key: 'fecha_entrega', label: 'Fecha Entrega', width: '110px' },
+    { key: 'numero_lote', label: 'Lote', width: '120px' },
+    { key: 'clave_producto', label: 'Clave', width: '80px' },
+    { key: 'producto_nombre', label: 'Producto', width: '180px' },
+    { key: 'cantidad', label: 'Cantidad', width: '80px', align: 'right' },
+    { key: 'numero_factura', label: 'Factura', width: '100px' },
+    { key: 'proveedor', label: 'Proveedor', width: '140px' },
+    { key: 'centro', label: 'Centro', width: '150px' },
+    { key: 'es_sobreentrega', label: 'Sobre-entrega', width: '100px', align: 'center' },
+    { key: 'usuario', label: 'Registró', width: '100px' },
   ],
 };
 
@@ -288,6 +301,10 @@ const Reportes = () => {
       if (filtros.fechaFin) params.fecha_fin = filtros.fechaFin;
     } else if (filtros.tipo === "contratos") {
       if (filtros.numeroContrato) params.numero_contrato = filtros.numeroContrato;
+    } else if (filtros.tipo === "parcialidades") {
+      if (filtros.fechaInicio) params.fecha_inicio = filtros.fechaInicio;
+      if (filtros.fechaFin) params.fecha_fin = filtros.fechaFin;
+      if (filtros.soloSobreentregas) params.es_sobreentrega = 'true';
     }
     
     return params;
@@ -321,6 +338,8 @@ const Reportes = () => {
         response = await reportesAPI.movimientos(params);
       } else if (filtros.tipo === "contratos") {
         response = await reportesAPI.contratos(params);
+      } else if (filtros.tipo === "parcialidades") {
+        response = await reportesAPI.parcialidades(params);
       } else {
         throw new Error("Tipo de reporte no soportado");
       }
@@ -419,6 +438,9 @@ const Reportes = () => {
       } else if (filtros.tipo === "contratos") {
         response = await reportesAPI.exportarContratosExcel(params);
         filename = `contratos_${new Date().toISOString().split("T")[0]}.xlsx`;
+      } else if (filtros.tipo === "parcialidades") {
+        response = await reportesAPI.exportarParcialidadesExcel(params);
+        filename = `historial_entregas_${new Date().toISOString().split("T")[0]}.xlsx`;
       } else {
         toast.error("Tipo de reporte no soportado", { id: toastId });
         return;
@@ -454,6 +476,8 @@ const Reportes = () => {
         response = await reportesAPI.exportarMovimientosPDF(params);
       } else if (filtros.tipo === "contratos") {
         response = await reportesAPI.exportarContratosPDF(params);
+      } else if (filtros.tipo === "parcialidades") {
+        response = await reportesAPI.exportarParcialidadesPDF(params);
       } else if (filtros.tipo === "control_mensual") {
         // Control Mensual - Formato Oficial A
         const controlParams = {
@@ -498,6 +522,7 @@ const Reportes = () => {
     if (filtros.tipo === 'movimientos') return <FaExchangeAlt />;
     if (filtros.tipo === 'control_mensual') return <FaDatabase />;
     if (filtros.tipo === 'contratos') return <FaFileContract />;
+    if (filtros.tipo === 'parcialidades') return <FaCubes />;
     return <FaChartBar />;
   };
 
@@ -584,6 +609,22 @@ const Reportes = () => {
           style={{ backgroundColor: colors.bg, color: colors.text }}
         >
           {esEntrada ? '📥 ENTRADA' : '📤 SALIDA'}
+        </span>
+      );
+    }
+    
+    // Renderizar sobre-entrega para parcialidades
+    if (col.key === 'es_sobreentrega' && filtros.tipo === 'parcialidades') {
+      const esSobre = value === true;
+      const colors = esSobre 
+        ? { bg: '#FEE2E2', text: '#991B1B' }  // Rojo para sobre-entregas
+        : { bg: '#D1FAE5', text: '#065F46' }; // Verde normal
+      return (
+        <span 
+          className="px-2 py-1 rounded-full text-xs font-bold"
+          style={{ backgroundColor: colors.bg, color: colors.text }}
+        >
+          {esSobre ? '⚠️ SÍ' : '✓ No'}
         </span>
       );
     }
@@ -823,6 +864,47 @@ const Reportes = () => {
       );
     }
 
+    // Resumen para reporte de historial de entregas (parcialidades)
+    if (filtros.tipo === 'parcialidades') {
+      return (
+        <div className="p-3 md:p-4 bg-gradient-to-r from-gray-50 to-white border-t">
+          <div className="text-center mb-3">
+            <span className="px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-semibold rounded-full">
+              📦 Historial de Entregas y Parcialidades
+            </span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 md:gap-3">
+            <div className="flex items-center gap-2 p-2 md:p-3 bg-blue-50 rounded-lg">
+              <FaClipboardList className="text-lg md:text-2xl text-blue-600" />
+              <div>
+                <p className="text-[10px] md:text-xs text-blue-600 font-semibold">Total Entregas</p>
+                <p className="text-base md:text-xl font-bold text-blue-800">{resumen.total_registros || datos.length}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 p-2 md:p-3 bg-green-50 rounded-lg">
+              <FaCubes className="text-lg md:text-2xl text-green-600" />
+              <div>
+                <p className="text-[10px] md:text-xs text-green-600 font-semibold">Cantidad Total</p>
+                <p className="text-base md:text-xl font-bold text-green-800">{(resumen.total_cantidad_entregada || 0).toLocaleString()}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 p-2 md:p-3 bg-red-50 rounded-lg">
+              <FaExclamationTriangle className="text-lg md:text-2xl text-red-600" />
+              <div>
+                <p className="text-[10px] md:text-xs text-red-600 font-semibold">Sobre-entregas</p>
+                <p className="text-base md:text-xl font-bold text-red-800">{resumen.total_sobreentregas || 0}</p>
+              </div>
+            </div>
+          </div>
+          {resumen.fecha_inicio_filtro && resumen.fecha_fin_filtro && (
+            <p className="text-[10px] md:text-xs text-gray-500 mt-2 text-center">
+              📅 Período: {resumen.fecha_inicio_filtro} - {resumen.fecha_fin_filtro}
+            </p>
+          )}
+        </div>
+      );
+    }
+
     return null;
   };
 
@@ -869,6 +951,7 @@ const Reportes = () => {
               <option value="requisiciones">📋 Requisiciones</option>
               <option value="movimientos">🔄 Movimientos</option>
               <option value="contratos">📝 Contratos (Lotes y Consumo)</option>
+              <option value="parcialidades">📦 Historial de Entregas</option>
               <option value="control_mensual">📊 Control Mensual (Formato A)</option>
             </select>
           </div>
@@ -1247,6 +1330,66 @@ const Reportes = () => {
                 Deja vacío para ver todos los contratos, o escribe parte del número para filtrar
               </p>
             </div>
+          )}
+
+          {/* Filtros para Historial de Entregas (Parcialidades) */}
+          {filtros.tipo === "parcialidades" && (
+            <>
+              <div className="space-y-1">
+                <label className="text-sm font-semibold text-gray-700">Fecha inicio</label>
+                <input
+                  type="date"
+                  value={filtros.fechaInicio}
+                  onChange={(e) => handleFiltro("fechaInicio", e.target.value)}
+                  className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-semibold text-gray-700">Fecha fin</label>
+                <input
+                  type="date"
+                  value={filtros.fechaFin}
+                  onChange={(e) => handleFiltro("fechaFin", e.target.value)}
+                  className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-semibold text-gray-700">Centro</label>
+                <select
+                  value={!esAdminOFarmacia && userCentroId ? userCentroId : filtros.centro}
+                  onChange={(e) => handleFiltro("centro", e.target.value)}
+                  disabled={!esAdminOFarmacia && userCentroId}
+                  className={`w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors ${!esAdminOFarmacia && userCentroId ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                >
+                  {esAdminOFarmacia ? (
+                    <>
+                      <option value="">Todos los centros</option>
+                      <option value="central">🏥 Almacén Central</option>
+                      {centros.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.nombre}
+                        </option>
+                      ))}
+                    </>
+                  ) : (
+                    <option value={userCentroId}>
+                      {centros.find(c => c.id === userCentroId)?.nombre || 'Tu centro'}
+                    </option>
+                  )}
+                </select>
+              </div>
+              <div className="space-y-1 flex items-end">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={filtros.soloSobreentregas || false}
+                    onChange={(e) => handleFiltro("soloSobreentregas", e.target.checked)}
+                    className="w-5 h-5 rounded border-gray-300 text-rose-600 focus:ring-rose-500"
+                  />
+                  <span className="text-sm font-semibold text-gray-700">Solo sobre-entregas</span>
+                </label>
+              </div>
+            </>
           )}
 
           {/* Control Mensual - Formato Oficial A */}

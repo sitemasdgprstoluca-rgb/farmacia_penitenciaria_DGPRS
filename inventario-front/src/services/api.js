@@ -1636,6 +1636,7 @@ export const reportesAPI = {
   requisiciones: (params) => apiClient.get('/reportes/requisiciones/', { params }),
   movimientos: (params) => apiClient.get('/reportes/movimientos/', { params: { ...params, formato: 'json' } }),
   contratos: (params) => apiClient.get('/reportes/contratos/', { params }),
+  parcialidades: (params) => apiClient.get('/reportes/parcialidades/', { params }),
 
   // Descargas Excel
   exportarInventarioExcel: (params) => apiClient.get('/reportes/inventario/', {
@@ -1658,6 +1659,10 @@ export const reportesAPI = {
     params: { ...params, formato: 'excel' },
     responseType: 'blob'
   }),
+  exportarParcialidadesExcel: (params) => apiClient.get('/reportes/parcialidades/', {
+    params: { ...params, formato: 'excel' },
+    responseType: 'blob'
+  }),
 
   // Descargas PDF (con fondo oficial)
   exportarInventarioPDF: (params) => apiClient.get('/reportes/inventario/', {
@@ -1677,6 +1682,10 @@ export const reportesAPI = {
     responseType: 'blob'
   }),
   exportarContratosPDF: (params) => apiClient.get('/reportes/contratos/', {
+    params: { ...params, formato: 'pdf' },
+    responseType: 'blob'
+  }),
+  exportarParcialidadesPDF: (params) => apiClient.get('/reportes/parcialidades/', {
     params: { ...params, formato: 'pdf' },
     responseType: 'blob'
   }),

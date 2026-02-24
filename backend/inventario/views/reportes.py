@@ -26,6 +26,7 @@ from inventario.views_legacy import (
     reporte_bajo_stock,
     reporte_consumo,
     reporte_contratos,
+    reporte_parcialidades,
     reportes_precarga,
 )
 
@@ -38,5 +39,6 @@ __all__ = [
     'reporte_bajo_stock',
     'reporte_consumo',
     'reporte_contratos',
+    'reporte_parcialidades',
     'reportes_precarga',
 ]

@@ -13844,5 +13844,324 @@ def _exportar_lote_excel(movimientos, producto_info):
     return response
 
 
+# ============================================================================
+# REPORTE DE HISTORIAL DE ENTREGAS (PARCIALIDADES)
+# ============================================================================
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def reporte_parcialidades(request):
+    """
+    Genera reporte del historial de entregas parciales de lotes.
+    Muestra todas las parcialidades con detalle de entregas, sobreentregas y auditoría.
+    
+    SEGURIDAD: Solo admin/farmacia pueden acceder.
+    
+    Parámetros:
+    - fecha_inicio: Fecha mínima de entrega (DD/MM/YYYY)
+    - fecha_fin: Fecha máxima de entrega (DD/MM/YYYY)
+    - centro: ID del centro (opcional)
+    - es_sobreentrega: true/false - filtrar solo sobre-entregas
+    - numero_lote: Filtrar por número de lote
+    - clave_producto: Filtrar por clave de producto
+    - formato: json (default), excel, pdf
+    """
+    from core.models import LoteParcialidad, Lote, Producto, Centro
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+    from openpyxl.utils import get_column_letter
+    
+    try:
+        logger.info(f"reporte_parcialidades: params={dict(request.query_params)}, user={request.user}")
+        
+        # SEGURIDAD: Solo admin/farmacia pueden ver reportes de parcialidades
+        if not request.user or not request.user.is_authenticated or not is_farmacia_or_admin(request.user):
+            return Response({
+                'error': 'Solo usuarios de farmacia o administradores pueden acceder a reportes de entregas'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        formato = request.query_params.get('formato', 'json')
+        
+        # Parsear filtros
+        fecha_inicio_str = request.query_params.get('fecha_inicio', '').strip()
+        fecha_fin_str = request.query_params.get('fecha_fin', '').strip()
+        centro_id = request.query_params.get('centro', '').strip()
+        solo_sobreentregas = request.query_params.get('es_sobreentrega', '').lower() == 'true'
+        numero_lote_filtro = request.query_params.get('numero_lote', '').strip()
+        clave_producto_filtro = request.query_params.get('clave_producto', '').strip()
+        
+        # Query base con relaciones
+        parcialidades_query = LoteParcialidad.objects.select_related(
+            'lote', 'lote__producto', 'lote__centro', 'usuario'
+        ).order_by('-fecha_entrega', '-created_at')
+        
+        # Aplicar filtros
+        fecha_inicio = None
+        fecha_fin = None
+        
+        if fecha_inicio_str:
+            try:
+                fecha_inicio = datetime.strptime(fecha_inicio_str, '%d/%m/%Y').date()
+                parcialidades_query = parcialidades_query.filter(fecha_entrega__gte=fecha_inicio)
+            except ValueError:
+                try:
+                    fecha_inicio = datetime.strptime(fecha_inicio_str, '%Y-%m-%d').date()
+                    parcialidades_query = parcialidades_query.filter(fecha_entrega__gte=fecha_inicio)
+                except ValueError:
+                    pass
+        
+        if fecha_fin_str:
+            try:
+                fecha_fin = datetime.strptime(fecha_fin_str, '%d/%m/%Y').date()
+                parcialidades_query = parcialidades_query.filter(fecha_entrega__lte=fecha_fin)
+            except ValueError:
+                try:
+                    fecha_fin = datetime.strptime(fecha_fin_str, '%Y-%m-%d').date()
+                    parcialidades_query = parcialidades_query.filter(fecha_entrega__lte=fecha_fin)
+                except ValueError:
+                    pass
+        
+        if centro_id:
+            try:
+                parcialidades_query = parcialidades_query.filter(lote__centro_id=int(centro_id))
+            except ValueError:
+                pass
+        
+        if solo_sobreentregas:
+            parcialidades_query = parcialidades_query.filter(es_sobreentrega=True)
+        
+        if numero_lote_filtro:
+            parcialidades_query = parcialidades_query.filter(lote__numero_lote__icontains=numero_lote_filtro)
+        
+        if clave_producto_filtro:
+            parcialidades_query = parcialidades_query.filter(lote__producto__clave__icontains=clave_producto_filtro)
+        
+        # Construir datos
+        datos = []
+        total_cantidad = 0
+        total_sobreentregas = 0
+        
+        for parcialidad in parcialidades_query[:5000]:  # Límite para evitar timeout
+            lote = parcialidad.lote
+            producto = lote.producto if lote else None
+            centro = lote.centro if lote else None
+            
+            cantidad_entrega = parcialidad.cantidad or 0
+            total_cantidad += cantidad_entrega
+            if parcialidad.es_sobreentrega:
+                total_sobreentregas += 1
+            
+            datos.append({
+                'id': parcialidad.id,
+                'fecha_entrega': parcialidad.fecha_entrega.strftime('%d/%m/%Y') if parcialidad.fecha_entrega else '-',
+                'fecha_entrega_iso': parcialidad.fecha_entrega.isoformat() if parcialidad.fecha_entrega else None,
+                'numero_lote': lote.numero_lote if lote else '-',
+                'lote_id': lote.id if lote else None,
+                'clave_producto': producto.clave if producto else '-',
+                'producto_nombre': producto.nombre if producto else '-',
+                'presentacion': producto.presentacion if producto else '-',
+                'cantidad': cantidad_entrega,
+                'numero_factura': parcialidad.numero_factura or '-',
+                'numero_remision': parcialidad.numero_remision or '-',
+                'proveedor': parcialidad.proveedor or '-',
+                'notas': parcialidad.notas or '-',
+                'es_sobreentrega': parcialidad.es_sobreentrega,
+                'motivo_override': parcialidad.motivo_override or '-',
+                'centro': centro.nombre if centro else 'Almacén Central',
+                'centro_id': centro.id if centro else None,
+                'usuario': parcialidad.usuario.username if parcialidad.usuario else 'Sistema',
+                'created_at': parcialidad.created_at.strftime('%d/%m/%Y %H:%M') if parcialidad.created_at else '-',
+                # Info adicional del lote para contexto
+                'lote_cantidad_inicial': lote.cantidad_inicial if lote else 0,
+                'lote_cantidad_actual': lote.cantidad_actual if lote else 0,
+                'lote_cantidad_contrato': lote.cantidad_contrato if lote else None,
+                'lote_fecha_caducidad': lote.fecha_caducidad.strftime('%d/%m/%Y') if lote and lote.fecha_caducidad else '-',
+            })
+        
+        resumen = {
+            'total_registros': len(datos),
+            'total_cantidad_entregada': total_cantidad,
+            'total_sobreentregas': total_sobreentregas,
+            'fecha_inicio_filtro': fecha_inicio.strftime('%d/%m/%Y') if fecha_inicio else None,
+            'fecha_fin_filtro': fecha_fin.strftime('%d/%m/%Y') if fecha_fin else None,
+            'generado': timezone.now().strftime('%d/%m/%Y %H:%M'),
+        }
+        
+        # Formato JSON
+        if formato == 'json':
+            return Response({
+                'datos': datos,
+                'resumen': resumen
+            })
+        
+        # Formato Excel
+        if formato == 'excel':
+            wb = Workbook()
+            ws = wb.active
+            ws.title = 'Historial Entregas'
+            
+            # Estilos
+            header_font = Font(bold=True, color='FFFFFF')
+            header_fill = PatternFill(start_color='2C3E50', end_color='2C3E50', fill_type='solid')
+            sobreentrega_fill = PatternFill(start_color='FFCCCC', end_color='FFCCCC', fill_type='solid')
+            border_thin = Border(
+                left=Side(style='thin'),
+                right=Side(style='thin'),
+                top=Side(style='thin'),
+                bottom=Side(style='thin')
+            )
+            
+            # Título
+            ws.merge_cells('A1:N1')
+            ws['A1'] = 'REPORTE HISTORIAL DE ENTREGAS (PARCIALIDADES)'
+            ws['A1'].font = Font(bold=True, size=14)
+            ws['A1'].alignment = Alignment(horizontal='center')
+            
+            # Resumen
+            ws['A3'] = f"Total registros: {resumen['total_registros']}"
+            ws['D3'] = f"Total cantidad entregada: {resumen['total_cantidad_entregada']:,}"
+            ws['H3'] = f"Sobre-entregas: {resumen['total_sobreentregas']}"
+            ws['L3'] = f"Generado: {resumen['generado']}"
+            
+            # Encabezados - Fila 5
+            headers = [
+                'Fecha Entrega', 'Lote', 'Clave', 'Producto', 'Presentación',
+                'Cantidad', 'Factura', 'Remisión', 'Proveedor', 'Centro',
+                'Sobre-entrega', 'Motivo Override', 'Usuario', 'Registrado'
+            ]
+            for col, header in enumerate(headers, 1):
+                cell = ws.cell(row=5, column=col, value=header)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.border = border_thin
+                cell.alignment = Alignment(horizontal='center', wrap_text=True)
+            
+            # Datos
+            for row_idx, dato in enumerate(datos, 6):
+                row_data = [
+                    dato['fecha_entrega'],
+                    dato['numero_lote'],
+                    dato['clave_producto'],
+                    dato['producto_nombre'],
+                    dato['presentacion'],
+                    dato['cantidad'],
+                    dato['numero_factura'],
+                    dato['numero_remision'],
+                    dato['proveedor'],
+                    dato['centro'],
+                    'SÍ' if dato['es_sobreentrega'] else 'No',
+                    dato['motivo_override'],
+                    dato['usuario'],
+                    dato['created_at'],
+                ]
+                for col, value in enumerate(row_data, 1):
+                    cell = ws.cell(row=row_idx, column=col, value=value)
+                    cell.border = border_thin
+                    # Resaltar sobre-entregas
+                    if dato['es_sobreentrega']:
+                        cell.fill = sobreentrega_fill
+            
+            # Ajustar anchos
+            column_widths = [12, 15, 12, 35, 15, 10, 15, 15, 20, 25, 12, 40, 15, 18]
+            for col, width in enumerate(column_widths, 1):
+                ws.column_dimensions[get_column_letter(col)].width = width
+            
+            buffer = BytesIO()
+            wb.save(buffer)
+            buffer.seek(0)
+            
+            response = HttpResponse(
+                buffer.getvalue(),
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            fecha_archivo = timezone.now().strftime('%Y%m%d_%H%M')
+            response['Content-Disposition'] = f'attachment; filename="Historial_Entregas_{fecha_archivo}.xlsx"'
+            return response
+        
+        # Formato PDF
+        if formato == 'pdf':
+            # PDF usando reportlab
+            from reportlab.lib import colors
+            from reportlab.lib.pagesizes import letter, landscape
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+            from reportlab.lib.units import inch
+            
+            buffer = BytesIO()
+            doc = SimpleDocTemplate(buffer, pagesize=landscape(letter), topMargin=0.5*inch, bottomMargin=0.5*inch)
+            elements = []
+            styles = getSampleStyleSheet()
+            
+            # Título
+            title_style = ParagraphStyle(
+                'Title',
+                parent=styles['Heading1'],
+                fontSize=14,
+                alignment=1,
+                spaceAfter=12
+            )
+            elements.append(Paragraph('REPORTE HISTORIAL DE ENTREGAS (PARCIALIDADES)', title_style))
+            
+            # Resumen
+            resumen_text = f"Total registros: {resumen['total_registros']} | Cantidad total: {resumen['total_cantidad_entregada']:,} | Sobre-entregas: {resumen['total_sobreentregas']} | Generado: {resumen['generado']}"
+            elements.append(Paragraph(resumen_text, styles['Normal']))
+            elements.append(Spacer(1, 12))
+            
+            # Tabla - columnas reducidas para PDF
+            table_data = [['Fecha', 'Lote', 'Clave', 'Producto', 'Cant.', 'Centro', 'Sobre-ent.', 'Usuario']]
+            
+            for dato in datos[:500]:  # Límite para PDF
+                row = [
+                    dato['fecha_entrega'],
+                    dato['numero_lote'][:15] if len(dato['numero_lote']) > 15 else dato['numero_lote'],
+                    dato['clave_producto'],
+                    dato['producto_nombre'][:30] if len(dato['producto_nombre']) > 30 else dato['producto_nombre'],
+                    str(dato['cantidad']),
+                    dato['centro'][:20] if len(dato['centro']) > 20 else dato['centro'],
+                    'SÍ' if dato['es_sobreentrega'] else 'No',
+                    dato['usuario'],
+                ]
+                table_data.append(row)
+            
+            col_widths = [70, 80, 70, 160, 50, 100, 60, 80]
+            table = Table(table_data, colWidths=col_widths, repeatRows=1)
+            
+            table_style = TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2C3E50')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 8),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+                ('FONTSIZE', (0, 1), (-1, -1), 7),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ])
+            
+            # Resaltar sobre-entregas en rojo claro
+            for row_idx, dato in enumerate(datos[:500], 1):
+                if dato['es_sobreentrega']:
+                    table_style.add('BACKGROUND', (0, row_idx), (-1, row_idx), colors.HexColor('#FFCCCC'))
+            
+            table.setStyle(table_style)
+            elements.append(table)
+            
+            doc.build(elements)
+            buffer.seek(0)
+            
+            response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+            fecha_archivo = timezone.now().strftime('%Y%m%d_%H%M')
+            response['Content-Disposition'] = f'attachment; filename="Historial_Entregas_{fecha_archivo}.pdf"'
+            return response
+        
+        # Formato no soportado
+        return Response({
+            'error': f"Formato '{formato}' no soportado. Use: json, excel, pdf"
+        }, status=status.HTTP_400_BAD_REQUEST)
+        
+    except Exception as e:
+        logger.exception(f"Error en reporte_parcialidades: {e}")
+        return Response({
+            'error': f'Error generando reporte: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
