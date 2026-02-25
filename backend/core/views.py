@@ -932,8 +932,8 @@ class UserViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                         existing_user = User.objects.filter(username__iexact=username).first()
                         
                         if existing_user is None:
-                            # Crear nuevo usuario
-                            user = User.objects.create(
+                            # Crear nuevo usuario - usar create_user para manejar password correctamente
+                            user = User(
                                 username=username,
                                 email=email or f'{username}@sistema.local',
                                 first_name=first_name,
