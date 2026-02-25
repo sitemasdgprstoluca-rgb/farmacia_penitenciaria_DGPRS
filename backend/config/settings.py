@@ -695,6 +695,7 @@ CORS_ALLOW_HEADERS = [
     'user-agent',
     'x-csrftoken',
     'x-requested-with',
+    'x-confirm-action',
 ]
 # Exponer headers necesarios al frontend
 CORS_EXPOSE_HEADERS = [
