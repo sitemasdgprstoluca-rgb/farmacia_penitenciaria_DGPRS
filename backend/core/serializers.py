@@ -1584,14 +1584,64 @@ class LoteSerializer(serializers.ModelSerializer):
         # ─────────────────────────────────────────────────────────────────────
 
         # =====================================================================
-        # AUTO-SUFIJO: Si numero_lote+producto+centro ya existe en la BD,
-        # asignar sufijo .2, .3, ... igual que hace la importación Excel.
+        # MERGE vs AUTO-SUFIJO: Si existe lote idéntico (mismo numero_lote,
+        # producto, centro Y fecha_caducidad), hacer MERGE sumando cantidad.
+        # Si existe pero con diferente caducidad, crear con sufijo .2, .3...
         # =====================================================================
         numero_lote_original = validated_data.get('numero_lote', '')
         lote_base = numero_lote_original
         producto_val = validated_data.get('producto')
         centro_val = validated_data.get('centro')  # None = farmacia central
+        fecha_caducidad_val = validated_data.get('fecha_caducidad')
 
+        # Buscar lote IDÉNTICO (mismo numero_lote, producto, centro, caducidad)
+        lote_identico = Lote.objects.filter(
+            numero_lote__iexact=numero_lote_original,
+            producto=producto_val,
+            centro=centro_val,
+            fecha_caducidad=fecha_caducidad_val,
+            activo=True,
+        ).first()
+
+        if lote_identico:
+            # ─── MERGE: Sumar cantidad al lote existente ───
+            cantidad_agregar = cantidad_inicial
+            lote_identico.cantidad_inicial = (lote_identico.cantidad_inicial or 0) + cantidad_agregar
+            lote_identico.cantidad_actual = (lote_identico.cantidad_actual or 0) + cantidad_agregar
+            lote_identico.save(update_fields=['cantidad_inicial', 'cantidad_actual'])
+            
+            # Crear parcialidad para registrar esta entrega adicional
+            from .models import LoteParcialidad
+            from datetime import date
+            request = self.context.get('request')
+            user = getattr(request, 'user', None) if request else None
+            fecha_entrega = validated_data.get('fecha_fabricacion') or date.today()
+            LoteParcialidad.objects.create(
+                lote=lote_identico,
+                fecha_entrega=fecha_entrega,
+                cantidad=cantidad_agregar,
+                proveedor=validated_data.get('marca', ''),
+                numero_factura=validated_data.get('numero_contrato', ''),
+                notas=f'Merge automático - cantidad añadida al lote existente',
+                usuario=user if user and user.is_authenticated else None
+            )
+            
+            logger.info(
+                f"MERGE: Lote {lote_identico.numero_lote} actualizado. "
+                f"+{cantidad_agregar} unidades. Nueva cantidad: {lote_identico.cantidad_inicial}"
+            )
+            
+            # Marcar para que la vista sepa que fue merge
+            self._lote_merge_realizado = {
+                'lote_id': lote_identico.pk,
+                'numero_lote': lote_identico.numero_lote,
+                'cantidad_agregada': cantidad_agregar,
+                'nueva_cantidad_total': lote_identico.cantidad_inicial,
+            }
+            
+            return lote_identico
+
+        # Buscar si existe lote con mismo número pero DIFERENTE caducidad
         sufijo = 2
         numero_lote_candidato = numero_lote_original
         while Lote.objects.filter(

@@ -345,10 +345,13 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                 self.perform_create(serializer)
                 lote = serializer.instance
                 
+                # Verificar si fue MERGE (el serializer ya creó la parcialidad)
+                merge_realizado = getattr(serializer, '_lote_merge_realizado', None)
+                
                 # PARCIALIDADES: Crear parcialidad inicial automáticamente
-                # La cantidad_inicial es la primera entrega del lote
+                # Solo si NO fue merge (en merge ya se crea en el serializer)
                 parcialidad_creada = False
-                if lote.cantidad_inicial and lote.cantidad_inicial > 0:
+                if not merge_realizado and lote.cantidad_inicial and lote.cantidad_inicial > 0:
                     # Verificar que no exista ya (idempotencia)
                     if not LoteParcialidad.objects.filter(lote=lote).exists():
                         fecha_entrega = lote.fecha_fabricacion or date.today()
@@ -385,6 +388,16 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                 alerta = getattr(serializer, '_alerta_contrato_global', None)
                 if alerta:
                     response_data['alerta_contrato_global'] = alerta
+
+                # MERGE: Informar al frontend si el lote fue fusionado con existente
+                merge_info = getattr(serializer, '_lote_merge_realizado', None)
+                if merge_info:
+                    response_data['merge_realizado'] = merge_info
+                    response_data['mensaje_informativo'] = (
+                        f'El lote "{merge_info["numero_lote"]}" ya existía. '
+                        f'Se agregaron {merge_info["cantidad_agregada"]} unidades. '
+                        f'Nueva cantidad total: {merge_info["nueva_cantidad_total"]}.'
+                    )
 
                 # AUTO-SUFIJO: Informar al frontend si el número de lote fue renombrado
                 auto_renombrado = getattr(serializer, '_numero_lote_auto_renombrado', None)
