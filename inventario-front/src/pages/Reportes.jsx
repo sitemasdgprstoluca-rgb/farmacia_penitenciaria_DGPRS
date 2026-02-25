@@ -58,7 +58,7 @@ const baseFilters = {
   dias: 30,
   fechaInicio: "",
   fechaFin: "",
-  centro: "",
+  centro: "todos",  // Por defecto: todos los centros (para admin/farmacia)
   nivelStock: "",
   tipoMovimiento: "",
   numeroContrato: "",  // Filtro para reporte de contratos
@@ -272,24 +272,31 @@ const Reportes = () => {
   const buildParams = () => {
     const params = {};
     
-    // Aplicar filtro de centro: usuarios no admin/farmacia forzados a su centro
-    if (!esAdminOFarmacia && userCentroId) {
-      params.centro = userCentroId;
-    } else if (filtros.centro && filtros.centro !== '') {
-      // Centro específico seleccionado (ID numérico o 'central')
-      params.centro = filtros.centro;
-    } else {
-      // Sin selección = ver todos los centros
-      params.centro = 'todos';
+    // ── Centro ──────────────────────────────────────────────────────────
+    // Contratos y Control Mensual no usan el filtro global de centro
+    const reporteUsaCentro = !['contratos', 'control_mensual'].includes(filtros.tipo);
+    
+    if (reporteUsaCentro) {
+      if (!esAdminOFarmacia && userCentroId) {
+        // Usuario restringido: siempre su centro
+        params.centro = userCentroId;
+      } else if (esAdminOFarmacia) {
+        // Admin/Farmacia: enviar valor explícito del selector
+        const centroVal = filtros.centro;
+        if (centroVal && centroVal !== '' && centroVal !== null && centroVal !== undefined) {
+          params.centro = centroVal;  // 'todos', 'central', o ID numérico
+        }
+        // Si no hay valor → no enviar param → backend trata como 'todos'
+      }
     }
     
-    // Parámetros específicos por tipo de reporte
+    // ── Parámetros específicos por tipo de reporte ──────────────────────
     if (filtros.tipo === "inventario") {
       if (filtros.nivelStock) params.nivel_stock = filtros.nivelStock;
       if (filtros.fechaInicio) params.fecha_inicio = filtros.fechaInicio;
       if (filtros.fechaFin) params.fecha_fin = filtros.fechaFin;
     } else if (filtros.tipo === "caducidades") {
-      params.dias = filtros.dias || 30;
+      if (filtros.dias && filtros.dias !== 30) params.dias = filtros.dias;
       if (filtros.estado) params.estado = filtros.estado;
     } else if (filtros.tipo === "requisiciones") {
       if (filtros.estado) params.estado = filtros.estado;
@@ -300,7 +307,9 @@ const Reportes = () => {
       if (filtros.fechaInicio) params.fecha_inicio = filtros.fechaInicio;
       if (filtros.fechaFin) params.fecha_fin = filtros.fechaFin;
     } else if (filtros.tipo === "contratos") {
-      if (filtros.numeroContrato) params.numero_contrato = filtros.numeroContrato;
+      if (filtros.numeroContrato && filtros.numeroContrato.trim()) {
+        params.numero_contrato = filtros.numeroContrato.trim();
+      }
     } else if (filtros.tipo === "parcialidades") {
       if (filtros.fechaInicio) params.fecha_inicio = filtros.fechaInicio;
       if (filtros.fechaFin) params.fecha_fin = filtros.fechaFin;
@@ -362,7 +371,14 @@ const Reportes = () => {
       }
     } catch (err) {
       console.error('Error al cargar reporte:', err);
-      const msg = err.response?.data?.detail || err.response?.data?.error || err.message || "Error al cargar reporte";
+      // Mostrar errores de validación del backend (400) de forma amigable
+      const errData = err.response?.data;
+      let msg;
+      if (errData?.errores && Array.isArray(errData.errores)) {
+        msg = errData.errores.join('\n');
+      } else {
+        msg = errData?.detail || errData?.error || err.message || "Error al cargar reporte";
+      }
       setError(msg);
       toast.error(msg);
     } finally {
@@ -386,21 +402,51 @@ const Reportes = () => {
     }
   }, [location.state]);
 
-  // Cuando cambia el tipo de reporte, resetear fechas según el tipo (sin cargar automáticamente)
+  // Cuando cambia el tipo de reporte, resetear filtros específicos según el tipo
   const handleTipoChange = (nuevoTipo) => {
-    let nuevosFiltros = { ...filtros, tipo: nuevoTipo };
+    // Resetear todos los filtros pero mantener el centro actual del usuario
+    const centroActual = filtros.centro;
+    
+    // Determinar centro adecuado para el nuevo tipo de reporte
+    let centroNuevo = centroActual;
+    if (nuevoTipo === 'control_mensual') {
+      // Control Mensual requiere un centro específico (no tiene opción "todos")
+      centroNuevo = (centroActual && centroActual !== 'todos') ? centroActual : 'central';
+    } else if (nuevoTipo === 'contratos') {
+      // Contratos no usa filtro de centro
+      centroNuevo = centroActual;
+    } else {
+      // Demás reportes: si el centro era solo válido para control_mensual, resetear a 'todos'
+      centroNuevo = centroActual || 'todos';
+    }
+    
+    // Crear filtros base limpios
+    let nuevosFiltros = {
+      tipo: nuevoTipo,
+      estado: "",
+      dias: 30,
+      fechaInicio: "",
+      fechaFin: "",
+      centro: centroNuevo,
+      nivelStock: "",
+      tipoMovimiento: "",
+      numeroContrato: "",
+      soloSobreentregas: false,
+      mesControlMensual: new Date().getMonth() + 1,
+      anioControlMensual: new Date().getFullYear(),
+    };
     
     // Para movimientos, establecer fechas del mes actual por defecto
     if (nuevoTipo === "movimientos") {
       nuevosFiltros.fechaInicio = getFirstDayOfMonth();
       nuevosFiltros.fechaFin = getTodayDate();
-    } else {
-      // Para otros tipos, limpiar fechas
-      nuevosFiltros.fechaInicio = "";
-      nuevosFiltros.fechaFin = "";
     }
     
     setFiltros(nuevosFiltros);
+    // Limpiar datos previos para evitar confusión
+    setDatos([]);
+    setResumen(null);
+    setPaginaActual(1);
     // No cargar automáticamente - el usuario debe dar clic en "Aplicar Filtros"
   };
 
@@ -480,10 +526,13 @@ const Reportes = () => {
         response = await reportesAPI.exportarParcialidadesPDF(params);
       } else if (filtros.tipo === "control_mensual") {
         // Control Mensual - Formato Oficial A
+        // Normalizar centro: 'todos' no es válido para control_mensual, usar 'central'
+        let centroControl = filtros.centro;
+        if (!centroControl || centroControl === 'todos') centroControl = 'central';
         const controlParams = {
           mes: filtros.mesControlMensual || new Date().getMonth() + 1,
           anio: filtros.anioControlMensual || new Date().getFullYear(),
-          centro: filtros.centro || 'central'
+          centro: centroControl
         };
         response = await reportesAPI.exportarControlMensualPDF(controlParams);
       } else {
@@ -507,7 +556,15 @@ const Reportes = () => {
   };
 
   const limpiarFiltros = () => {
-    setFiltros(baseFilters);
+    // Determinar el centro apropiado según el rol del usuario
+    const centroDefault = (!esAdminOFarmacia && userCentroId) ? userCentroId : "todos";
+    
+    // Resetear a filtros base pero con el centro apropiado
+    setFiltros({
+      ...baseFilters,
+      centro: centroDefault
+    });
+    
     // Limpiar todos los datos del reporte
     setDatos([]);
     setPaginaActual(1);
@@ -973,14 +1030,14 @@ const Reportes = () => {
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-gray-700">Centro</label>
                 <select
-                  value={!esAdminOFarmacia && userCentroId ? userCentroId : filtros.centro}
+                  value={!esAdminOFarmacia && userCentroId ? userCentroId : (filtros.centro || 'todos')}
                   onChange={(e) => handleFiltro("centro", e.target.value)}
                   disabled={!esAdminOFarmacia && userCentroId}
                   className={`w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors ${!esAdminOFarmacia && userCentroId ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                 >
                   {esAdminOFarmacia ? (
                     <>
-                      <option value="">Todos los centros</option>
+                      <option value="todos">Todos los centros</option>
                       <option value="central">🏥 Almacén Central</option>
                       {centros.map((c) => (
                         <option key={c.id} value={c.id}>
@@ -1043,14 +1100,14 @@ const Reportes = () => {
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-gray-700">Centro</label>
                 <select
-                  value={!esAdminOFarmacia && userCentroId ? userCentroId : filtros.centro}
+                  value={!esAdminOFarmacia && userCentroId ? userCentroId : (filtros.centro || 'todos')}
                   onChange={(e) => handleFiltro("centro", e.target.value)}
                   disabled={!esAdminOFarmacia && userCentroId}
                   className={`w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors ${!esAdminOFarmacia && userCentroId ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                 >
                   {esAdminOFarmacia ? (
                     <>
-                      <option value="">Todos los centros</option>
+                      <option value="todos">Todos los centros</option>
                       {centros.map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.nombre}
@@ -1090,14 +1147,14 @@ const Reportes = () => {
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-gray-700">Centro</label>
                 <select
-                  value={!esAdminOFarmacia && userCentroId ? userCentroId : filtros.centro}
+                  value={!esAdminOFarmacia && userCentroId ? userCentroId : (filtros.centro || 'todos')}
                   onChange={(e) => handleFiltro("centro", e.target.value)}
                   disabled={!esAdminOFarmacia && userCentroId}
                   className={`w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors ${!esAdminOFarmacia && userCentroId ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                 >
                   {esAdminOFarmacia ? (
                     <>
-                      <option value="">Todos los centros</option>
+                      <option value="todos">Todos los centros</option>
                       <option value="central">🏥 Farmacia Central</option>
                       {centros.map((c) => (
                         <option key={c.id} value={c.id}>
@@ -1220,14 +1277,14 @@ const Reportes = () => {
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-gray-700">Centro</label>
                 <select
-                  value={!esAdminOFarmacia && userCentroId ? userCentroId : filtros.centro}
+                  value={!esAdminOFarmacia && userCentroId ? userCentroId : (filtros.centro || 'todos')}
                   onChange={(e) => handleFiltro("centro", e.target.value)}
                   disabled={!esAdminOFarmacia && userCentroId}
                   className={`w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors ${!esAdminOFarmacia && userCentroId ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                 >
                   {esAdminOFarmacia ? (
                     <>
-                      <option value="">Todos los centros</option>
+                      <option value="todos">Todos los centros</option>
                       <option value="central">🏥 Farmacia Central</option>
                       {centros.map((c) => (
                         <option key={c.id} value={c.id}>
@@ -1356,14 +1413,14 @@ const Reportes = () => {
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-gray-700">Centro</label>
                 <select
-                  value={!esAdminOFarmacia && userCentroId ? userCentroId : filtros.centro}
+                  value={!esAdminOFarmacia && userCentroId ? userCentroId : (filtros.centro || 'todos')}
                   onChange={(e) => handleFiltro("centro", e.target.value)}
                   disabled={!esAdminOFarmacia && userCentroId}
                   className={`w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors ${!esAdminOFarmacia && userCentroId ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                 >
                   {esAdminOFarmacia ? (
                     <>
-                      <option value="">Todos los centros</option>
+                      <option value="todos">Todos los centros</option>
                       <option value="central">🏥 Almacén Central</option>
                       {centros.map((c) => (
                         <option key={c.id} value={c.id}>
@@ -1432,7 +1489,7 @@ const Reportes = () => {
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-gray-700">Centro / Almacén</label>
                 <select
-                  value={!esAdminOFarmacia && userCentroId ? userCentroId : filtros.centro}
+                  value={!esAdminOFarmacia && userCentroId ? userCentroId : (filtros.centro || 'central')}
                   onChange={(e) => handleFiltro("centro", e.target.value)}
                   disabled={!esAdminOFarmacia && userCentroId}
                   className={`w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors ${!esAdminOFarmacia && userCentroId ? 'bg-gray-100 cursor-not-allowed' : ''}`}

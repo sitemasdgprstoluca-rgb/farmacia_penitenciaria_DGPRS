@@ -31,6 +31,10 @@ except ImportError:
 
 # ISS-011, ISS-021, ISS-030: Import de servicios transaccionales
 from inventario.services import CentroPermissionMixin
+from inventario.services.report_utils import (
+    parse_report_filters, verificar_permisos_reporte, resolver_centro_para_queryset,
+    FiltrosReporte, CentroResuelto
+)
 
 logger = logging.getLogger(__name__)
 
@@ -9234,6 +9238,11 @@ def reporte_inventario(request):
     from django.db.models import Sum, Avg
     from django.db.models.functions import Coalesce
     
+    # ── Validación unificada de filtros ──
+    f = parse_report_filters(request, 'inventario')
+    if f.tiene_errores:
+        return f.respuesta_error()
+    
     try:
         logger.info(f"reporte_inventario: params={dict(request.query_params)}, user={request.user}")
         if not request.user or not request.user.is_authenticated or not is_farmacia_or_admin(request.user):
@@ -9241,41 +9250,46 @@ def reporte_inventario(request):
         # SEGURIDAD: Determinar filtro de centro
         user = request.user
         
-        # Por defecto: admin/farmacia ven solo Farmacia Central
-        # Usuarios de centro ven solo su centro
-        filtrar_por_centro = True  # Siempre filtrar
+        # Variables de control de filtro
+        filtrar_por_centro = True  # Por defecto siempre filtrar
         user_centro = None  # NULL = Farmacia Central por defecto
-        excluir_farmacia_central = False  # ISS-FIX: Flag para excluir Farmacia Central cuando 'todos'
+        ver_solo_cprs = False  # Flag para ver solo CPRs (excluir Farmacia Central)
         
         if not is_farmacia_or_admin(user):
-            # Usuario de centro: filtrar por su centro
+            # Usuario de centro: filtrar por su centro obligatoriamente
             user_centro = get_user_centro(user)
         
         # Admin/farmacia puede filtrar por centro específico
         centro_param = request.query_params.get('centro')
         if centro_param and is_farmacia_or_admin(user):
             if centro_param.lower() == 'central':
-                # Filtrar solo farmacia central (ya es el default)
+                # Filtrar solo farmacia central
                 user_centro = None
-                excluir_farmacia_central = False
+                filtrar_por_centro = True
+                ver_solo_cprs = False
             elif centro_param.lower() == 'todos':
-                # ISS-FIX: "Todos los centros" = excluir Farmacia Central
-                # Solo centros penitenciarios, NO farmacia central
+                # 'todos' en Inventario = Ver solo CPRs (excluir Farmacia Central)
+                # Esto es útil para ver el inventario distribuido en centros penitenciarios
                 filtrar_por_centro = False
-                excluir_farmacia_central = True
+                ver_solo_cprs = True
+                user_centro = None
             else:
                 try:
-                    # ISS-FIX: Buscar por ID o nombre
+                    # Centro específico por ID
                     if centro_param.isdigit():
                         user_centro = Centro.objects.get(pk=centro_param)
                     else:
                         user_centro = Centro.objects.get(nombre__iexact=centro_param)
                     filtrar_por_centro = True
+                    ver_solo_cprs = False
                 except Centro.DoesNotExist:
-                    pass
+                    # Si no encuentra el centro, mostrar solo Farmacia Central por defecto
+                    user_centro = None
+                    filtrar_por_centro = True
+                    ver_solo_cprs = False
         
-        formato = request.query_params.get('formato', 'json')
-        nivel_stock_filtro = request.query_params.get('nivel_stock', '').lower().strip()
+        formato = f.formato
+        nivel_stock_filtro = f.nivel_stock or ''
         productos = Producto.objects.filter(activo=True).order_by('clave')
         
         # Construir datos
@@ -9296,8 +9310,8 @@ def reporte_inventario(request):
                 else:
                     # centro=NULL significa farmacia central
                     lotes_query = lotes_query.filter(centro__isnull=True)
-            elif excluir_farmacia_central:
-                # ISS-FIX: "Todos los centros" = solo centros (NO farmacia central)
+            elif ver_solo_cprs:
+                # "Todos los centros" (solo CPRs) = solo centros (NO farmacia central)
                 lotes_query = lotes_query.filter(centro__isnull=False)
             
             stock_total = lotes_query.aggregate(total=Sum('cantidad_actual'))['total'] or 0
@@ -9390,8 +9404,8 @@ def reporte_inventario(request):
             else:
                 # centro=NULL significa farmacia central (por defecto)
                 lotes_query = lotes_query.filter(centro__isnull=True)
-        elif excluir_farmacia_central:
-            # ISS-FIX: "Todos los centros" = solo centros (NO farmacia central)
+        elif ver_solo_cprs:
+            # "Todos los centros" (solo CPRs) = solo centros (NO farmacia central)
             lotes_query = lotes_query.filter(centro__isnull=False)
         
         lotes_query = lotes_query.order_by('producto__clave', 'numero_lote', 'fecha_caducidad')
@@ -9448,8 +9462,8 @@ def reporte_inventario(request):
                 })
         
         # Determinar título según filtro
-        if excluir_farmacia_central:
-            # ISS-FIX: "Todos los centros" = solo centros penitenciarios (excluye Farmacia Central)
+        if ver_solo_cprs:
+            # "Todos los centros" = solo centros penitenciarios (excluye Farmacia Central)
             titulo_reporte = 'REPORTE DE INVENTARIO - CENTROS PENITENCIARIOS'
             subtitulo_reporte = f"Generado el {timezone.now().strftime('%d/%m/%Y %H:%M:%S')} - Todos los CPRS (excluye Farmacia Central)"
             centro_nombre = 'Todos los CPRS'
@@ -9480,7 +9494,7 @@ def reporte_inventario(request):
             # AGRUPAR POR CENTRO Y LUEGO POR CLAVE DE PRODUCTO
             # Para reporte "Todos los CPRS" - dividido por centros
             # =====================================================
-            es_reporte_todos_cprs = excluir_farmacia_central or (not filtrar_por_centro and centro_param == 'todos')
+            es_reporte_todos_cprs = ver_solo_cprs or (not filtrar_por_centro and centro_param == 'todos')
             
             if es_reporte_todos_cprs:
                 # Agrupar por centro y luego por producto
@@ -9856,6 +9870,11 @@ def reporte_movimientos(request):
     - centro: ID del centro (solo admin/farmacia)
     - formato: excel o pdf
     """
+    # ── Validación unificada de filtros ──
+    f = parse_report_filters(request, 'movimientos')
+    if f.tiene_errores:
+        return f.respuesta_error()
+    
     try:
         logger.info(f"Generando reporte de movimientos. Params: {dict(request.query_params)}")
         
@@ -9930,14 +9949,14 @@ def reporte_movimientos(request):
                     # Si no encuentra el centro, no filtrar (mostrar todos)
                     pass
         
-        # Obtener parametros
-        fecha_inicio = request.query_params.get('fecha_inicio')
-        fecha_fin = request.query_params.get('fecha_fin')
-        tipo = request.query_params.get('tipo')
-        formato = request.query_params.get('formato', 'excel')
+        # Obtener parametros (ya validados por parse_report_filters)
+        fecha_inicio = f.fecha_inicio.isoformat() if f.fecha_inicio else None
+        fecha_fin = f.fecha_fin.isoformat() if f.fecha_fin else None
+        tipo = f.tipo_movimiento
+        formato = f.formato if f.formato != 'json' else request.query_params.get('formato', 'excel')
         # ISS-FIX: Filtro de estado de confirmación para salidas masivas
         # Valores: 'confirmado', 'pendiente', 'todos' (default: 'confirmado')
-        estado_confirmacion = request.query_params.get('estado_confirmacion', 'confirmado')
+        estado_confirmacion = f.estado_confirmacion
         
         # Filtrar movimientos
         movimientos = Movimiento.objects.select_related('lote__producto', 'centro_origen', 'centro_destino').all()
@@ -10474,6 +10493,11 @@ def reporte_caducidades(request):
     - estado: vencido, critico, proximo (filtra por estado especfico)
     - formato: json (default), excel, pdf
     """
+    # ── Validación unificada de filtros ──
+    f = parse_report_filters(request, 'caducidades')
+    if f.tiene_errores:
+        return f.respuesta_error()
+    
     try:
         # SEGURIDAD: Determinar filtro de centro
         user = request.user
@@ -10483,11 +10507,12 @@ def reporte_caducidades(request):
         # Admin/farmacia puede filtrar por centro específico
         centro_param = request.query_params.get('centro')
         if centro_param and is_farmacia_or_admin(user):
-            if centro_param == 'todos':
-                # ISS-FIX: 'todos' significa NO filtrar por centro (ver todos)
+            if centro_param.lower() == 'todos':
+                # 'todos' significa NO filtrar por centro (ver todos los centros, incluida Farmacia Central)
                 filtrar_por_centro = False
                 user_centro = None
-            elif centro_param == 'central':
+            elif centro_param.lower() == 'central':
+                # Filtrar solo farmacia central
                 filtrar_por_centro = True
                 user_centro = None
             else:
@@ -10495,12 +10520,13 @@ def reporte_caducidades(request):
                     user_centro = Centro.objects.get(pk=centro_param)
                     filtrar_por_centro = True
                 except (Centro.DoesNotExist, ValueError):
-                    # ISS-FIX: ValueError para manejar IDs no numéricos
-                    pass
+                    # Si no encuentra el centro, mostrar todos
+                    filtrar_por_centro = False
+                    user_centro = None
         
-        dias = int(request.query_params.get('dias', 30))
-        formato = request.query_params.get('formato', 'json')
-        estado_filtro = request.query_params.get('estado', '').lower().strip()
+        dias = f.dias  # Ya validado y con default=30 desde parse_report_filters
+        formato = f.formato
+        estado_filtro = (f.estado_caducidad or '').lower().strip()
         
         fecha_limite = date.today() + timedelta(days=dias)
         
@@ -10688,17 +10714,22 @@ def reporte_requisiciones(request):
     - centro: ID del centro (solo admin/farmacia)
     - formato: json/excel
     """
+    # ── Validación unificada de filtros ──
+    f = parse_report_filters(request, 'requisiciones')
+    if f.tiene_errores:
+        return f.respuesta_error()
+    
     try:
         # SEGURIDAD: Determinar filtro de centro
         user = request.user
         filtrar_por_centro = not is_farmacia_or_admin(user)
         user_centro = get_user_centro(user) if filtrar_por_centro else None
         
-        fecha_inicio = request.query_params.get('fecha_inicio')
-        fecha_fin = request.query_params.get('fecha_fin')
-        estado = request.query_params.get('estado')
+        fecha_inicio = f.fecha_inicio.isoformat() if f.fecha_inicio else None
+        fecha_fin = f.fecha_fin.isoformat() if f.fecha_fin else None
+        estado = f.estado
         centro_param = request.query_params.get('centro') or request.query_params.get('centro_id')
-        formato = request.query_params.get('formato', 'json')
+        formato = f.formato
         
         requisiciones = Requisicion.objects.select_related('centro_origen', 'centro_destino', 'solicitante').all()
         
@@ -11181,6 +11212,11 @@ def reporte_contratos(request):
     from collections import defaultdict
     from django.db.models import Sum, Count
     
+    # ── Validación unificada de filtros ──
+    f = parse_report_filters(request, 'contratos')
+    if f.tiene_errores:
+        return f.respuesta_error()
+    
     try:
         logger.info(f"reporte_contratos: params={dict(request.query_params)}, user={request.user}")
         
@@ -11190,9 +11226,9 @@ def reporte_contratos(request):
                 'error': 'Solo usuarios de farmacia o administradores pueden acceder a reportes de contratos'
             }, status=status.HTTP_403_FORBIDDEN)
         
-        formato = request.query_params.get('formato', 'json')
-        numero_contrato_filtro = request.query_params.get('numero_contrato', '').strip()
-        incluir_movimientos = request.query_params.get('incluir_movimientos', 'false').lower() == 'true'
+        formato = f.formato
+        numero_contrato_filtro = (f.numero_contrato or '').strip()
+        incluir_movimientos = f.incluir_movimientos
         
         # Obtener lotes activos con número de contrato
         lotes_query = Lote.objects.select_related('producto', 'centro').filter(
@@ -13503,14 +13539,19 @@ def exportar_control_mensual(request):
     from django.db.models.functions import Coalesce
     from core.utils.pdf_reports import generar_control_mensual_almacen
     
+    # ── Validación unificada de filtros ──
+    f = parse_report_filters(request, 'control_mensual')
+    if f.tiene_errores:
+        return f.respuesta_error()
+    
     user = request.user
     if not user or not user.is_authenticated:
         return Response({'error': 'Autenticación requerida'}, status=status.HTTP_403_FORBIDDEN)
     
     try:
-        # Obtener parámetros
-        mes = int(request.query_params.get('mes', timezone.now().month))
-        anio = int(request.query_params.get('anio', timezone.now().year))
+        # Obtener parámetros (ya validados por parse_report_filters)
+        mes = f.mes
+        anio = f.anio
         centro_id = request.query_params.get('centro', None)
         
         # Validar mes
@@ -13521,7 +13562,7 @@ def exportar_control_mensual(request):
         centro_nombre = None
         centro_filtro = None
         
-        if centro_id and centro_id not in ['', 'null', 'undefined', 'central']:
+        if centro_id and centro_id not in ['', 'null', 'undefined', 'central', 'todos']:
             try:
                 centro_obj = Centro.objects.get(pk=int(centro_id))
                 
@@ -13899,6 +13940,11 @@ def reporte_parcialidades(request):
     from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
     from openpyxl.utils import get_column_letter
     
+    # ── Validación unificada de filtros ──
+    f = parse_report_filters(request, 'parcialidades')
+    if f.tiene_errores:
+        return f.respuesta_error()
+    
     try:
         logger.info(f"reporte_parcialidades: params={dict(request.query_params)}, user={request.user}")
         
@@ -13908,15 +13954,15 @@ def reporte_parcialidades(request):
                 'error': 'Solo usuarios de farmacia o administradores pueden acceder a reportes de entregas'
             }, status=status.HTTP_403_FORBIDDEN)
         
-        formato = request.query_params.get('formato', 'json')
+        formato = f.formato
         
-        # Parsear filtros
+        # Parsear filtros (ya validados por parse_report_filters)
         fecha_inicio_str = request.query_params.get('fecha_inicio', '').strip()
         fecha_fin_str = request.query_params.get('fecha_fin', '').strip()
         centro_id = request.query_params.get('centro', '').strip()
-        solo_sobreentregas = request.query_params.get('es_sobreentrega', '').lower() == 'true'
-        numero_lote_filtro = request.query_params.get('numero_lote', '').strip()
-        clave_producto_filtro = request.query_params.get('clave_producto', '').strip()
+        solo_sobreentregas = f.es_sobreentrega
+        numero_lote_filtro = (f.numero_lote or '')
+        clave_producto_filtro = (f.clave_producto or '')
         
         # Query base con relaciones
         parcialidades_query = LoteParcialidad.objects.select_related(
@@ -13950,10 +13996,18 @@ def reporte_parcialidades(request):
                     pass
         
         if centro_id:
-            try:
-                parcialidades_query = parcialidades_query.filter(lote__centro_id=int(centro_id))
-            except ValueError:
+            centro_id_lower = centro_id.lower()
+            if centro_id_lower == 'todos':
+                # 'todos' = sin filtro de centro, mostrar todas las parcialidades
                 pass
+            elif centro_id_lower == 'central':
+                # 'central' = Almacén Central → lotes sin centro asignado (centro is NULL)
+                parcialidades_query = parcialidades_query.filter(lote__centro__isnull=True)
+            else:
+                try:
+                    parcialidades_query = parcialidades_query.filter(lote__centro_id=int(centro_id))
+                except ValueError:
+                    pass
         
         if solo_sobreentregas:
             parcialidades_query = parcialidades_query.filter(es_sobreentrega=True)
