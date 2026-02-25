@@ -9971,22 +9971,29 @@ def reporte_movimientos(request):
         # =====================================================================
         
         if es_filtro_farmacia_central:
-            # FARMACIA CENTRAL: Solo movimientos internos de Farmacia Central
-            # - Entradas al almacén central: centro_destino=NULL (entran a Farmacia Central)
-            # - Movimientos internos: ambos NULL (dentro de Farmacia Central)
-            # Excluir salidas hacia CPRs (esas pertenecen al reporte de "Todos los centros")
+            # FARMACIA CENTRAL: Solo movimientos INTERNOS de Farmacia Central
+            # - Entradas externas (compras): centro_origen=NULL, centro_destino=NULL
+            # - Ajustes/movimientos internos: ambos NULL
+            # EXCLUIR: Salidas hacia CPRs (centro_destino NOT NULL) - esas van al reporte de centros
             tipo_lower = (tipo or '').lower()
             if tipo_lower == 'entrada':
-                # Entradas A Farmacia Central: destino es NULL
-                movimientos = movimientos.filter(centro_destino__isnull=True)
-            elif tipo_lower == 'salida':
-                # Salidas DESDE Farmacia Central: origen es NULL, destino es un CPR
-                # Pero también internos donde ambos son NULL
-                movimientos = movimientos.filter(centro_origen__isnull=True)
-            else:
-                # Sin tipo: movimientos donde Farmacia Central está involucrada (origen o destino NULL)
+                # Entradas A Farmacia Central: ambos NULL (entradas externas)
                 movimientos = movimientos.filter(
-                    Q(centro_origen__isnull=True) | Q(centro_destino__isnull=True)
+                    centro_origen__isnull=True,
+                    centro_destino__isnull=True
+                )
+            elif tipo_lower == 'salida':
+                # Salidas INTERNAS de Farmacia Central: ambos NULL, EXCLUYENDO las que van a centros
+                # Las salidas a centros tienen destino NOT NULL
+                movimientos = movimientos.filter(
+                    centro_origen__isnull=True,
+                    centro_destino__isnull=True
+                )
+            else:
+                # Sin tipo: solo movimientos INTERNOS (ambos NULL)
+                movimientos = movimientos.filter(
+                    centro_origen__isnull=True,
+                    centro_destino__isnull=True
                 )
         
         elif es_filtro_todos_centros:
