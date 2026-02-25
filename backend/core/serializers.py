@@ -753,6 +753,9 @@ class ProductoSerializer(serializers.ModelSerializer):
     codigo_base = serializers.SerializerMethodField()
     es_variante_flag = serializers.SerializerMethodField()
     variantes_asociadas = serializers.SerializerMethodField()
+    # AUDITORÍA: quién registró y quién modificó última vez
+    creado_por_nombre = serializers.SerializerMethodField()
+    modificado_por_nombre = serializers.SerializerMethodField()
 
     class Meta:
         model = Producto
@@ -765,12 +768,15 @@ class ProductoSerializer(serializers.ModelSerializer):
             'lotes_activos', 'marca', 'tiene_lotes', 'tiene_movimientos',
             # ISS-PROD-VAR
             'codigo_base', 'es_variante_flag', 'variantes_asociadas',
-            'created_at', 'updated_at'
+            'created_at', 'updated_at',
+            # AUDITORÍA
+            'creado_por_nombre', 'modificado_por_nombre',
         ]
         read_only_fields = [
             'created_at', 'updated_at', 'stock_actual', 'marca', 'unidad_base',
             'tiene_lotes', 'tiene_movimientos',
             'codigo_base', 'es_variante_flag', 'variantes_asociadas',
+            'creado_por_nombre', 'modificado_por_nombre',
         ]
         extra_kwargs = {
             'clave': {'required': True},
@@ -787,7 +793,31 @@ class ProductoSerializer(serializers.ModelSerializer):
         """
         from core.constants import normalizar_unidad_medida
         return normalizar_unidad_medida(obj.unidad_medida)
-    
+
+    def get_creado_por_nombre(self, obj):
+        """Retorna el nombre del usuario que creó este producto consultando AuditoriaLogs."""
+        try:
+            log = AuditoriaLogs.objects.filter(
+                modelo='Producto', objeto_id=str(obj.pk), accion='crear'
+            ).select_related('usuario').order_by('timestamp').first()
+            if log and log.usuario:
+                return log.usuario.get_full_name() or log.usuario.username
+        except Exception:
+            pass
+        return None
+
+    def get_modificado_por_nombre(self, obj):
+        """Retorna el nombre del usuario que modificó este producto por última vez."""
+        try:
+            log = AuditoriaLogs.objects.filter(
+                modelo='Producto', objeto_id=str(obj.pk), accion='actualizar'
+            ).select_related('usuario').order_by('-timestamp').first()
+            if log and log.usuario:
+                return log.usuario.get_full_name() or log.usuario.username
+        except Exception:
+            pass
+        return None
+
     def get_stock_actual(self, obj):
         # Priorizar stock_calculado (anotación) sobre el campo
         return getattr(obj, 'stock_calculado', None) or obj.stock_actual or 0
@@ -1082,6 +1112,9 @@ class LoteSerializer(serializers.ModelSerializer):
     # ISS-DB: Campos alineados con schema de productos (clave, nombre)
     producto_nombre = serializers.CharField(source='producto.nombre', read_only=True)
     producto_clave = serializers.CharField(source='producto.clave', read_only=True)
+    # AUDITORÍA: quién registró y quién modificó última vez
+    creado_por_nombre = serializers.SerializerMethodField()
+    modificado_por_nombre = serializers.SerializerMethodField()
     producto_descripcion = serializers.CharField(source='producto.nombre', read_only=True)  # Alias para compatibilidad
     producto_info = serializers.SerializerMethodField()  # Info adicional del producto (presentación, unidad)
     # centro=null → lote de Farmacia Central (FK nullable en BD)
@@ -1143,9 +1176,11 @@ class LoteSerializer(serializers.ModelSerializer):
             'documentos', 'tiene_documentos', 'tiene_movimientos',
             # Parcialidades (historial de entregas)
             'parcialidades', 'total_parcialidades', 'num_entregas', 'ultima_fecha_entrega',
-            'created_at', 'updated_at'
+            'created_at', 'updated_at',
+            # AUDITORÍA
+            'creado_por_nombre', 'modificado_por_nombre',
         ]
-        read_only_fields = ['created_at', 'updated_at', 'estado', 'documentos', 'tiene_documentos', 'tiene_movimientos', 'cantidad_pendiente', 'cantidad_pendiente_global', 'cantidad_recibido_global', 'total_inventario_global', 'parcialidades', 'total_parcialidades', 'num_entregas', 'ultima_fecha_entrega']
+        read_only_fields = ['created_at', 'updated_at', 'estado', 'documentos', 'tiene_documentos', 'tiene_movimientos', 'cantidad_pendiente', 'cantidad_pendiente_global', 'cantidad_recibido_global', 'total_inventario_global', 'parcialidades', 'total_parcialidades', 'num_entregas', 'ultima_fecha_entrega', 'creado_por_nombre', 'modificado_por_nombre']
         extra_kwargs = {
             'cantidad_inicial': {'required': False},  # Requerido solo en creación (validate_cantidad_inicial)
             'cantidad_contrato': {'required': False, 'allow_null': True},
@@ -1159,6 +1194,30 @@ class LoteSerializer(serializers.ModelSerializer):
             # porque DRF prohíbe mezclar declaración explícita + extra_kwargs para el mismo campo.
         }
     
+    def get_creado_por_nombre(self, obj):
+        """Retorna el nombre del usuario que creó este lote consultando AuditoriaLogs."""
+        try:
+            log = AuditoriaLogs.objects.filter(
+                modelo='Lote', objeto_id=str(obj.pk), accion='crear'
+            ).select_related('usuario').order_by('timestamp').first()
+            if log and log.usuario:
+                return log.usuario.get_full_name() or log.usuario.username
+        except Exception:
+            pass
+        return None
+
+    def get_modificado_por_nombre(self, obj):
+        """Retorna el nombre del usuario que modificó este lote por última vez (excluye creación)."""
+        try:
+            log = AuditoriaLogs.objects.filter(
+                modelo='Lote', objeto_id=str(obj.pk), accion='actualizar'
+            ).select_related('usuario').order_by('-timestamp').first()
+            if log and log.usuario:
+                return log.usuario.get_full_name() or log.usuario.username
+        except Exception:
+            pass
+        return None
+
     def get_cantidad_pendiente(self, obj):
         """
         ISS-INV-001: Calcula cantidad pendiente por recibir del contrato POR LOTE.

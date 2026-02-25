@@ -21,7 +21,7 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 import logging
 
-from core.models import Producto
+from core.models import Producto, AuditoriaLogs
 from core.serializers import ProductoSerializer
 from core.constants import UNIDADES_MEDIDA
 from core.permissions import HasProductosPermission, IsFarmaciaRole
@@ -338,9 +338,29 @@ class ProductoViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
         Validaciones:
         - No puede eliminarse si tiene lotes asociados
         - Confirmación de eliminación
+        - AUDIT-OWN: Solo el creador o admin puede eliminar
         """
         instance = self.get_object()
-        
+        user = request.user
+
+        # AUDIT-OWN: Solo el creador o admin puede eliminar
+        rol = (getattr(user, 'rol', '') or '').lower()
+        ROLES_ADMIN = {'admin', 'admin_sistema', 'superusuario', 'administrador'}
+        if not user.is_superuser and rol not in ROLES_ADMIN:
+            log_crear = AuditoriaLogs.objects.filter(
+                modelo='Producto', objeto_id=str(instance.pk), accion='crear'
+            ).order_by('timestamp').first()
+            if log_crear and log_crear.usuario and log_crear.usuario.pk != user.pk:
+                logger.warning(
+                    f"AUDIT-OWN: {user.username} intentó eliminar producto #{instance.pk} "
+                    f"(creado por {log_crear.usuario.username}) - DENEGADO"
+                )
+                return Response(
+                    {'error': 'Solo el usuario que registró este producto o un administrador puede eliminarlo',
+                     'creado_por': log_crear.usuario.get_full_name() or log_crear.usuario.username},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
         try:
             if instance.lotes.exists():
                 return Response({

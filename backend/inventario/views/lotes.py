@@ -54,7 +54,7 @@ from .base import (
 )
 
 # Modelos
-from core.models import Producto, Lote, Movimiento, Centro, LoteDocumento, LoteParcialidad
+from core.models import Producto, Lote, Movimiento, Centro, LoteDocumento, LoteParcialidad, AuditoriaLogs
 
 # Serializers
 from core.serializers import LoteSerializer, LoteDocumentoSerializer, LoteParcialidadSerializer
@@ -495,6 +495,7 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
         Elimina un lote.
         
         ISS-010 FIX: Validación explícita de permisos para evitar IDOR.
+        AUDIT-OWN: Solo el usuario que registró el lote o un admin puede eliminarlo.
         
         Validaciones:
         - Permisos de escritura sobre el lote
@@ -517,6 +518,24 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                 )
                 return Response(
                     {'error': 'No tiene permisos para eliminar este lote'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+        # AUDIT-OWN: Solo el creador o admin puede eliminar
+        rol = (getattr(user, 'rol', '') or '').lower()
+        ROLES_ADMIN = {'admin', 'admin_sistema', 'superusuario', 'administrador'}
+        if not user.is_superuser and rol not in ROLES_ADMIN:
+            log_crear = AuditoriaLogs.objects.filter(
+                modelo='Lote', objeto_id=str(instance.pk), accion='crear'
+            ).order_by('timestamp').first()
+            if log_crear and log_crear.usuario and log_crear.usuario.pk != user.pk:
+                logger.warning(
+                    f"AUDIT-OWN: {user.username} intentó eliminar lote #{instance.pk} "
+                    f"(creado por {log_crear.usuario.username}) - DENEGADO"
+                )
+                return Response(
+                    {'error': 'Solo el usuario que registró este lote o un administrador puede eliminarlo',
+                     'creado_por': log_crear.usuario.get_full_name() or log_crear.usuario.username},
                     status=status.HTTP_403_FORBIDDEN
                 )
         
