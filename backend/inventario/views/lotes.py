@@ -2466,24 +2466,55 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                         'mensaje': 'Debe proporcionar un motivo detallado (mínimo 10 caracteres) para sobre-entrega.'
                     }, status=status.HTTP_400_BAD_REQUEST)
             
-            # Crear parcialidad
-            data = request.data.copy()
-            data['lote'] = lote_locked.pk
+            # Crear o MERGE parcialidad (evita duplicados de entregas equivalentes)
+            from core.utils.parcialidad_merge import merge_or_create_parcialidad
             
-            serializer = LoteParcialidadSerializer(data=data, context={'request': request})
-            if not serializer.is_valid():
+            # Extraer datos del request
+            fecha_entrega = request.data.get('fecha_entrega')
+            cantidad = request.data.get('cantidad')
+            
+            # Validar campos obligatorios
+            if not fecha_entrega:
                 return Response({
-                    'error': 'Error al registrar entrega',
-                    'detalles': serializer.errors
+                    'error': 'fecha_entrega es requerida',
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            parcialidad = serializer.save()
+            try:
+                cantidad = int(cantidad)
+                if cantidad <= 0:
+                    raise ValueError()
+            except (TypeError, ValueError):
+                return Response({
+                    'error': 'cantidad debe ser un número entero positivo',
+                }, status=status.HTTP_400_BAD_REQUEST)
             
-            # Actualizar campos de sobre-entrega si aplica
-            if estado_previo in ['CUMPLIDO', 'SOBREENTREGA'] and request.data.get('override'):
-                parcialidad.es_sobreentrega = True
-                parcialidad.motivo_override = request.data.get('motivo_override', '')
-                parcialidad.save(update_fields=['es_sobreentrega', 'motivo_override'])
+            # Datos opcionales
+            factura = request.data.get('numero_factura') or None
+            numero_remision = request.data.get('numero_remision') or None
+            proveedor = request.data.get('proveedor') or None
+            notas = request.data.get('notas') or None
+            
+            # Determinar si es sobreentrega y si hay override
+            es_sobreentrega = estado_previo in ['CUMPLIDO', 'SOBREENTREGA'] and request.data.get('override', False)
+            motivo_override = request.data.get('motivo_override', '').strip() if es_sobreentrega else None
+            
+            # Ejecutar MERGE o CREATE
+            resultado_merge = merge_or_create_parcialidad(
+                lote=lote_locked,
+                fecha_entrega=fecha_entrega,
+                cantidad=cantidad,
+                usuario=user,
+                factura=factura,
+                proveedor=proveedor,
+                numero_remision=numero_remision,
+                notas=notas,
+                es_sobreentrega=es_sobreentrega,
+                motivo_override=motivo_override,
+                request=request,
+            )
+            
+            parcialidad = resultado_merge['parcialidad']
+            fue_merge = resultado_merge['merged']
             
             # Recalcular estado DESPUÉS de agregar (sin N+1, una sola query)
             total_nuevo = LoteParcialidad.objects.filter(lote=lote_locked).aggregate(
@@ -2579,15 +2610,35 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                 )
             
             logger.info(
-                f"Parcialidad registrada - Lote: {lote_locked.numero_lote}, "
+                f"Parcialidad {'MERGED' if fue_merge else 'CREATED'} - Lote: {lote_locked.numero_lote}, "
                 f"Cantidad: {parcialidad.cantidad}, Fecha: {parcialidad.fecha_entrega}, "
                 f"Usuario: {user.username}, Estado: {estado_previo} -> {estado_nuevo}"
             )
             
+            # Construir datos de la parcialidad para la respuesta
+            parcialidad_data = {
+                'id': parcialidad.pk,
+                'lote': lote_locked.pk,
+                'fecha_entrega': str(parcialidad.fecha_entrega),
+                'cantidad': parcialidad.cantidad,
+                'numero_factura': parcialidad.numero_factura,
+                'numero_remision': parcialidad.numero_remision,
+                'proveedor': parcialidad.proveedor,
+                'notas': parcialidad.notas,
+                'es_sobreentrega': parcialidad.es_sobreentrega,
+            }
+            
             # Construir respuesta completa
+            mensaje_base = 'Entrega consolidada con registro existente' if fue_merge else 'Entrega registrada correctamente'
             response_data = {
-                'mensaje': 'Entrega registrada correctamente',
-                'parcialidad': serializer.data,
+                'mensaje': mensaje_base,
+                'parcialidad': parcialidad_data,
+                'merge_info': {
+                    'fue_merge': fue_merge,
+                    'nivel_match': resultado_merge.get('nivel_match', ''),
+                    'cantidad_antes': resultado_merge.get('cantidad_antes', 0),
+                    'campos_rellenados': resultado_merge.get('campos_rellenados', []),
+                } if fue_merge else None,
                 'estado_contrato': {
                     'lote': {
                         'cantidad_contrato': cantidad_contrato or None,

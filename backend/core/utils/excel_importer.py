@@ -1337,38 +1337,44 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                         Lote.objects.filter(pk=lote.pk).update(**update_data)
                         lote.refresh_from_db()
                         
-                        # Crear parcialidad para registrar esta entrega en el historial
-                        # IDEMPOTENCIA: Usar get_or_create para respetar constraint UNIQUE
-                        from core.models import LoteParcialidad
+                        # Crear o MERGE parcialidad para registrar esta entrega en el historial
+                        # Usa la misma lógica de consolidación inteligente que el endpoint web
+                        from core.utils.parcialidad_merge import merge_or_create_parcialidad
                         from django.utils import timezone
-                        from django.db import IntegrityError
                         
                         fecha_parcialidad = nueva_fecha_fab or timezone.now().date()
-                        nota_parcialidad = 'Entrega parcial via importación Excel (consolidación)'
+                        nota_parcialidad = 'Entrega via importación Excel (consolidación)'
                         
-                        # Usar get_or_create con los campos del constraint UNIQUE
-                        # UNIQUE: (lote_id, fecha_entrega, COALESCE(numero_factura, ''))
+                        # Usar merge_or_create para evitar duplicados y consolidar entregas equivalentes
                         try:
-                            parcialidad, created = LoteParcialidad.objects.get_or_create(
+                            resultado_merge = merge_or_create_parcialidad(
                                 lote=lote,
                                 fecha_entrega=fecha_parcialidad,
-                                numero_factura=None,  # Constraint incluye COALESCE para NULL
-                                defaults={
-                                    'cantidad': cantidad_inicial,
-                                    'notas': nota_parcialidad,
-                                    'usuario': usuario,
-                                }
+                                cantidad=cantidad_inicial,
+                                usuario=usuario,
+                                notas=nota_parcialidad,
+                                archivo_nombre=self.archivo_nombre if hasattr(self, 'archivo_nombre') else None,
+                                fila_num=fila.get('fila_num'),
                             )
-                            if created:
-                                logger.info(f"[PARCIALIDAD] Nueva entrega para lote {numero_lote}: +{cantidad_inicial} uds, fecha={fecha_parcialidad}")
+                            parcialidad = resultado_merge['parcialidad']
+                            fue_merge = resultado_merge['merged']
+                            
+                            if fue_merge:
+                                logger.info(
+                                    f"[PARCIALIDAD-IMPORT] MERGE para lote {numero_lote}: "
+                                    f"+{cantidad_inicial} uds, nivel={resultado_merge.get('nivel_match')}, "
+                                    f"total={parcialidad.cantidad}"
+                                )
                             else:
-                                # Actualizar cantidad si ya existía (sumar a la cantidad previa)
-                                parcialidad.cantidad += cantidad_inicial
-                                parcialidad.notas = f"{parcialidad.notas or ''} | +{cantidad_inicial} uds (consolidación adicional)"
-                                parcialidad.save()
-                                logger.info(f"[PARCIALIDAD] Actualizada para lote {numero_lote}: +{cantidad_inicial} uds (total: {parcialidad.cantidad})")
-                        except IntegrityError:
-                            logger.warning(f"[PARCIALIDAD] Conflicto de concurrencia para lote {numero_lote}, fecha {fecha_parcialidad} - omitido")
+                                logger.info(
+                                    f"[PARCIALIDAD-IMPORT] Nueva entrega para lote {numero_lote}: "
+                                    f"+{cantidad_inicial} uds, fecha={fecha_parcialidad}"
+                                )
+                        except Exception as parcialidad_error:
+                            logger.warning(
+                                f"[PARCIALIDAD-IMPORT] Error creando parcialidad para lote {numero_lote}: "
+                                f"{parcialidad_error}"
+                            )
                         
                         Producto.objects.filter(pk=producto.pk).update(
                             stock_actual=F('stock_actual') + cantidad_inicial
