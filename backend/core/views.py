@@ -5751,34 +5751,50 @@ class AdminLimpiarDatosView(APIView):
         productos_con_donaciones = DetalleDonacion.objects.values('producto_id').distinct().count()
         
         # Estadísticas organizadas por categoría
+        # NOTA: 'total' debe reflejar TODOS los registros que se eliminarán realmente
         stats = {
             'categorias': {
                 'productos': {
                     'nombre': 'Productos e Inventario',
-                    'descripcion': 'Elimina productos, lotes, parcialidades, movimientos, requisiciones, dispensaciones y donaciones vinculadas',
-                    'total': productos_count + ProductoImagen.objects.count() + lotes_count + LoteDocumento.objects.count() + lote_parcialidades_count + dispensaciones_count + detalle_dispensaciones_count + historial_dispensaciones_count + donaciones_count + detalles_donacion_count + salidas_donacion_count,
+                    'descripcion': 'Elimina productos, lotes, movimientos y requisiciones',
+                    'total': (
+                        productos_count + ProductoImagen.objects.count() +  # productos
+                        lotes_count + LoteDocumento.objects.count() + lote_parcialidades_count + fingerprints_count +  # lotes
+                        movimientos_count +  # movimientos
+                        requisiciones_count + detalles_req_count + historial_count + ajustes_count +  # requisiciones
+                        hojas_recoleccion_count + DetalleHojaRecoleccion.objects.count() +  # hojas
+                        dispensaciones_count + detalle_dispensaciones_count + historial_dispensaciones_count +  # dispensaciones
+                        donaciones_count + detalles_donacion_count + salidas_donacion_count +  # donaciones
+                        compras_caja_chica_count + detalle_compras_caja_chica_count + inventario_caja_chica_count + movimientos_caja_chica_count + historial_compras_caja_chica_count  # caja chica
+                    ),
                     'detalle': {
                         'productos': productos_count,
                         'producto_imagenes': ProductoImagen.objects.count(),
                         'lotes': lotes_count,
                         'lote_documentos': LoteDocumento.objects.count(),
                         'lote_parcialidades': lote_parcialidades_count,
+                        'movimientos': movimientos_count,
+                        'requisiciones': requisiciones_count,
+                        'detalles_requisicion': detalles_req_count,
                         'dispensaciones': dispensaciones_count,
-                        'detalle_dispensaciones': detalle_dispensaciones_count,
                         'donaciones': donaciones_count,
-                        'detalles_donacion': detalles_donacion_count,
                     },
-                    'dependencias': ['También eliminará: movimientos, hojas recolección, entregas parciales, dispensaciones, donaciones y sus detalles'],
+                    'dependencias': ['Elimina TODO el inventario'],
                 },
                 'lotes': {
                     'nombre': 'Solo Lotes',
-                    'descripcion': 'Elimina lotes, documentos de lotes, parcialidades y hojas de recolección (mantiene productos)',
-                    'total': lotes_count + LoteDocumento.objects.count() + lote_parcialidades_count + fingerprints_count + hojas_recoleccion_count + DetalleHojaRecoleccion.objects.count(),
+                    'descripcion': 'Elimina lotes y movimientos asociados, mantiene productos',
+                    'total': (
+                        lotes_count + LoteDocumento.objects.count() + lote_parcialidades_count + fingerprints_count +
+                        hojas_recoleccion_count + DetalleHojaRecoleccion.objects.count() +
+                        movimientos_count  # Los movimientos referencian lotes
+                    ),
                     'detalle': {
                         'lotes': lotes_count,
                         'lote_documentos': LoteDocumento.objects.count(),
                         'lote_parcialidades': lote_parcialidades_count,
                         'fingerprints_importacion': fingerprints_count,
+                        'movimientos': movimientos_count,
                         'hojas_recoleccion': hojas_recoleccion_count,
                         'detalles_hojas_recoleccion': DetalleHojaRecoleccion.objects.count(),
                     },
@@ -5863,7 +5879,29 @@ class AdminLimpiarDatosView(APIView):
                 'todos': {
                     'nombre': 'Todo el Sistema',
                     'descripcion': 'Limpieza completa: productos, lotes, requisiciones, movimientos, donaciones, notificaciones, dispensaciones, pacientes y caja chica',
-                    'total': productos_count + lotes_count + requisiciones_count + movimientos_count + donaciones_count + notificaciones_count + dispensaciones_count + pacientes_count + compras_caja_chica_count,
+                    'total': (
+                        # Productos
+                        productos_count + ProductoImagen.objects.count() +
+                        # Lotes
+                        lotes_count + LoteDocumento.objects.count() + lote_parcialidades_count + fingerprints_count +
+                        # Requisiciones
+                        requisiciones_count + detalles_req_count + historial_count + ajustes_count +
+                        # Hojas recolección
+                        hojas_recoleccion_count + DetalleHojaRecoleccion.objects.count() +
+                        # Movimientos
+                        movimientos_count +
+                        # Donaciones
+                        donaciones_count + detalles_donacion_count + salidas_donacion_count + productos_donacion_count +
+                        # Notificaciones
+                        notificaciones_count +
+                        # Dispensaciones
+                        dispensaciones_count + detalle_dispensaciones_count + historial_dispensaciones_count +
+                        # Pacientes
+                        pacientes_count +
+                        # Caja chica
+                        compras_caja_chica_count + detalle_compras_caja_chica_count + inventario_caja_chica_count + 
+                        movimientos_caja_chica_count + historial_compras_caja_chica_count
+                    ),
                     'detalle': {
                         'productos': productos_count,
                         'lotes': lotes_count,
@@ -5873,9 +5911,9 @@ class AdminLimpiarDatosView(APIView):
                         'notificaciones': notificaciones_count,
                         'dispensaciones': dispensaciones_count,
                         'pacientes': pacientes_count,
-                        'caja_chica': compras_caja_chica_count + detalle_compras_caja_chica_count + inventario_caja_chica_count,
+                        'caja_chica': compras_caja_chica_count + detalle_compras_caja_chica_count + inventario_caja_chica_count + movimientos_caja_chica_count + historial_compras_caja_chica_count,
                     },
-                    'dependencias': ['Incluye todos los datos asociados, dependencias y todos los módulos del sistema'],
+                    'dependencias': ['ELIMINA TODO (incluyendo donaciones y notificaciones)'],
                 },
             },
             'resumen': {
