@@ -820,7 +820,14 @@ class UserViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
             )
         
         # === CONSTANTES DE VALIDACIÓN ===
-        ROLES_VALIDOS = ['admin_sistema', 'admin_farmacia', 'farmacia', 'centro', 'vista', 'usuario_normal', 'usuario_vista']
+        # Todos los roles válidos según ROLES_USUARIO en constants.py
+        ROLES_VALIDOS = [
+            # Roles actuales
+            'admin', 'farmacia', 'vista',
+            'medico', 'administrador_centro', 'director_centro', 'centro',
+            # Legacy (compatibilidad)
+            'admin_sistema', 'admin_farmacia', 'usuario_normal', 'usuario_vista', 'superusuario',
+        ]
         USERNAME_PATTERN = re.compile(r'^[a-z0-9_.-]{3,50}$')
         EMAIL_PATTERN = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
         
@@ -875,7 +882,14 @@ class UserViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                 last_name = str(valores[3] or '').strip()[:100]
                 password = str(valores[4] or '').strip()
                 rol = str(valores[5] or 'centro').strip().lower()
-                centro_clave = str(valores[6] or '').strip().upper()
+                # Normalizar Centro ID: Excel devuelve números como float (1.0, 2.0)
+                # str(1.0) = "1.0" no coincide con str(c.id) = "1" → corregir
+                _centro_raw = str(valores[6] or '').strip()
+                try:
+                    centro_clave_id = str(int(float(_centro_raw))) if _centro_raw else ''
+                except (ValueError, TypeError):
+                    centro_clave_id = _centro_raw.upper()
+                centro_clave = _centro_raw.upper()  # Para búsqueda por nombre
                 adscripcion = str(valores[7] or '').strip()[:200]
                 # valores[8] = Teléfono (informativo, no se guarda en User)
                 activo_raw = str(valores[9] or 'si').strip().lower()
@@ -915,10 +929,11 @@ class UserViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                     continue
                 
                 # Buscar centro desde caché (sin DB call)
+                # Intentar por ID numérico normalizado, luego por nombre
                 centro = None
-                if centro_clave:
-                    centro = centros_por_id.get(centro_clave) or centros_por_nombre.get(centro_clave)
-                    if not centro:
+                if centro_clave or centro_clave_id:
+                    centro = centros_por_id.get(centro_clave_id) or centros_por_nombre.get(centro_clave)
+                    if not centro and centro_clave:
                         errores.append({
                             'fila': row_idx,
                             'campo': 'centro_clave',
