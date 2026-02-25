@@ -1195,13 +1195,32 @@ class LoteSerializer(serializers.ModelSerializer):
         }
     
     def get_creado_por_nombre(self, obj):
-        """Retorna el nombre del usuario que creó este lote consultando AuditoriaLogs."""
+        """Retorna el nombre del usuario que creó este lote.
+        
+        Prioridad:
+        1. AuditoriaLogs accion='crear' con usuario (lotes creados vía API)
+        2. Primera LoteParcialidad con usuario (lotes importados en bulk)
+        """
         try:
             log = AuditoriaLogs.objects.filter(
                 modelo='Lote', objeto_id=str(obj.pk), accion='crear'
             ).select_related('usuario').order_by('timestamp').first()
             if log and log.usuario:
                 return log.usuario.get_full_name() or log.usuario.username
+        except Exception:
+            pass
+        # Fallback: usuario de la primera parcialidad registrada para este lote
+        try:
+            from core.models import LoteParcialidad
+            parcialidad = (
+                LoteParcialidad.objects
+                .filter(lote_id=obj.pk)
+                .select_related('usuario')
+                .order_by('created_at')
+                .first()
+            )
+            if parcialidad and parcialidad.usuario:
+                return parcialidad.usuario.get_full_name() or parcialidad.usuario.username
         except Exception:
             pass
         return None
