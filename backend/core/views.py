@@ -845,160 +845,146 @@ class UserViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
             actualizados = 0
             errores = []
             usuarios_con_reset = 0  # Solo conteo, NO exponemos contraseñas (ISS-002)
-            cambios_auditoria = []  # Para logging de cambios masivos
             
-            with transaction.atomic():
-                for row_idx, row in enumerate(ws.iter_rows(min_row=2, max_row=MAX_ROWS + 1, values_only=True), start=2):
-                    valores = list(row) + [None] * 10
-                    
-                    # === EXTRACCIÓN Y NORMALIZACIÓN (ISS-003) ===
-                    # Columnas: Username(0), Email(1), Nombre(2), Apellidos(3),
-                    #           Password(4), Rol(5), Centro ID(6), Adscripción(7),
-                    #           Teléfono(8), Activo(9)
-                    username_raw = str(valores[0] or '').strip()
-                    username = username_raw.lower()  # Normalizar a minúsculas
-                    email = str(valores[1] or '').strip().lower()
-                    first_name = str(valores[2] or '').strip()[:100]  # Limitar longitud
-                    last_name = str(valores[3] or '').strip()[:100]
-                    password = str(valores[4] or '').strip()
-                    rol = str(valores[5] or 'centro').strip().lower()
-                    centro_clave = str(valores[6] or '').strip().upper()
-                    adscripcion = str(valores[7] or '').strip()[:200]
-                    # valores[8] = Teléfono (informativo, no se guarda en User)
-                    activo_raw = str(valores[9] or 'si').strip().lower()
-                    is_active = activo_raw not in ('no', 'false', '0', 'inactivo')
-                    
-                    # Saltar filas vacías
-                    if not username:
-                        continue
-                    
-                    # === VALIDACIONES ESTRICTAS ===
-                    
-                    # Validar formato de username
-                    if not USERNAME_PATTERN.match(username):
-                        errores.append({
-                            'fila': row_idx, 
-                            'campo': 'username',
-                            'error': f'Username "{username}" inválido. Solo letras minúsculas, números, guiones y puntos (3-50 chars)'
-                        })
-                        continue
-                    
-                    # Validar rol estrictamente (NO usar default silencioso)
-                    if rol not in ROLES_VALIDOS:
-                        errores.append({
-                            'fila': row_idx,
-                            'campo': 'rol', 
-                            'error': f'Rol "{rol}" no válido. Roles permitidos: {ROLES_VALIDOS}'
-                        })
-                        continue
-                    
-                    # Validar email si se proporciona
-                    if email and not EMAIL_PATTERN.match(email):
-                        errores.append({
-                            'fila': row_idx,
-                            'campo': 'email',
-                            'error': f'Email "{email}" no tiene formato válido'
-                        })
-                        continue
-                    
-                    # Buscar centro si se proporcionó (por nombre o ID)
-                    centro = None
-                    if centro_clave:
-                        # Intentar buscar por ID primero, luego por nombre
-                        if centro_clave.isdigit():
-                            centro = Centro.objects.filter(id=int(centro_clave), activo=True).first()
-                        if not centro:
-                            centro = Centro.objects.filter(nombre__iexact=centro_clave, activo=True).first()
-                        if not centro:
-                            errores.append({
-                                'fila': row_idx,
-                                'campo': 'centro_clave',
-                                'error': f'Centro "{centro_clave}" no encontrado o inactivo'
-                            })
-                            continue
-                    
-                    # Generar password seguro si no se proporciona o es débil
-                    requiere_reset = False
-                    if not password or len(password) < 8:
-                        import secrets
-                        import string
-                        chars = string.ascii_letters + string.digits + '!@#$%&*'
-                        password = ''.join(secrets.choice(chars) for _ in range(12))
-                        requiere_reset = True
-                    
-                    # === CREAR O ACTUALIZAR USUARIO ===
-                    try:
-                        # Buscar case-insensitive para evitar duplicados (ISS-003)
-                        existing_user = User.objects.filter(username__iexact=username).first()
-                        
-                        if existing_user is None:
-                            # Crear nuevo usuario - usar create_user para manejar password correctamente
-                            user = User(
-                                username=username,
-                                email=email or f'{username}@sistema.local',
-                                first_name=first_name,
-                                last_name=last_name,
-                                rol=rol,
-                                centro=centro,
-                                adscripcion=adscripcion or '',
-                                is_active=is_active,
-                            )
-                            user.set_password(password)
-                            user.save()
-                            creados += 1
-                            if requiere_reset:
-                                usuarios_con_reset += 1
-                            
-                            cambios_auditoria.append({
-                                'accion': 'crear',
-                                'username': username,
-                                'rol': rol,
-                                'centro': centro_clave or None
-                            })
-                        else:
-                            # Actualizar usuario existente - registrar cambios
-                            cambios = []
-                            if email and existing_user.email != email:
-                                cambios.append(f'email: {existing_user.email} -> {email}')
-                                existing_user.email = email
-                            if first_name and existing_user.first_name != first_name:
-                                existing_user.first_name = first_name
-                            if last_name and existing_user.last_name != last_name:
-                                existing_user.last_name = last_name
-                            if existing_user.rol != rol:
-                                cambios.append(f'rol: {existing_user.rol} -> {rol}')
-                                existing_user.rol = rol
-                            if centro and existing_user.centro != centro:
-                                cambios.append(f'centro: {existing_user.centro} -> {centro}')
-                                existing_user.centro = centro
-                            if adscripcion and getattr(existing_user, 'adscripcion', None) != adscripcion:
-                                existing_user.adscripcion = adscripcion
-                            existing_user.is_active = is_active
-                            
-                            existing_user.save()
-                            actualizados += 1
-                            
-                            if cambios:
-                                cambios_auditoria.append({
-                                    'accion': 'actualizar',
-                                    'username': username,
-                                    'cambios': cambios
-                                })
-                                
-                    except Exception as e:
-                        logger.error(f"Error procesando fila {row_idx}: {e}")
-                        errores.append({
-                            'fila': row_idx,
-                            'campo': 'general',
-                            'error': f'Error al procesar: {str(e)[:100]}'
-                        })
+            # ── OPTIMIZACIÓN BULK: precargar en memoria para evitar N round-trips a BD ──
+            import secrets
+            import string
+            
+            # 1 query para todos los centros activos
+            centros_por_nombre = {c.nombre.upper(): c for c in Centro.objects.filter(activo=True)}
+            centros_por_id = {str(c.id): c for c in centros_por_nombre.values()}
+            
+            # 1 query para todos los usuarios existentes (para detectar duplicados)
+            existing_users = {u.username.lower(): u for u in User.objects.all().select_related('centro')}
+            
+            users_to_create = []    # User instances (in-memory, password ya hasheado)
+            users_to_update = []    # User instances existentes modificados
+            UPDATE_FIELDS = ['email', 'first_name', 'last_name', 'rol', 'centro', 'adscripcion', 'is_active']
+            
+            for row_idx, row in enumerate(ws.iter_rows(min_row=2, max_row=MAX_ROWS + 1, values_only=True), start=2):
+                valores = list(row) + [None] * 10
                 
-                # Registrar auditoría de importación masiva
-                if cambios_auditoria:
-                    logger.info(
-                        f"Importación masiva por {request.user.username}: "
-                        f"{creados} creados, {actualizados} actualizados, {len(errores)} errores"
+                # === EXTRACCIÓN Y NORMALIZACIÓN (ISS-003) ===
+                # Columnas: Username(0), Email(1), Nombre(2), Apellidos(3),
+                #           Password(4), Rol(5), Centro ID(6), Adscripción(7),
+                #           Teléfono(8), Activo(9)
+                username_raw = str(valores[0] or '').strip()
+                username = username_raw.lower()  # Normalizar a minúsculas
+                email = str(valores[1] or '').strip().lower()
+                first_name = str(valores[2] or '').strip()[:100]  # Limitar longitud
+                last_name = str(valores[3] or '').strip()[:100]
+                password = str(valores[4] or '').strip()
+                rol = str(valores[5] or 'centro').strip().lower()
+                centro_clave = str(valores[6] or '').strip().upper()
+                adscripcion = str(valores[7] or '').strip()[:200]
+                # valores[8] = Teléfono (informativo, no se guarda en User)
+                activo_raw = str(valores[9] or 'si').strip().lower()
+                is_active = activo_raw not in ('no', 'false', '0', 'inactivo')
+                
+                # Saltar filas vacías
+                if not username:
+                    continue
+                
+                # === VALIDACIONES ESTRICTAS ===
+                
+                # Validar formato de username
+                if not USERNAME_PATTERN.match(username):
+                    errores.append({
+                        'fila': row_idx, 
+                        'campo': 'username',
+                        'error': f'Username "{username}" inválido. Solo letras minúsculas, números, guiones y puntos (3-50 chars)'
+                    })
+                    continue
+                
+                # Validar rol estrictamente (NO usar default silencioso)
+                if rol not in ROLES_VALIDOS:
+                    errores.append({
+                        'fila': row_idx,
+                        'campo': 'rol', 
+                        'error': f'Rol "{rol}" no válido. Roles permitidos: {ROLES_VALIDOS}'
+                    })
+                    continue
+                
+                # Validar email si se proporciona
+                if email and not EMAIL_PATTERN.match(email):
+                    errores.append({
+                        'fila': row_idx,
+                        'campo': 'email',
+                        'error': f'Email "{email}" no tiene formato válido'
+                    })
+                    continue
+                
+                # Buscar centro desde caché (sin DB call)
+                centro = None
+                if centro_clave:
+                    centro = centros_por_id.get(centro_clave) or centros_por_nombre.get(centro_clave)
+                    if not centro:
+                        errores.append({
+                            'fila': row_idx,
+                            'campo': 'centro_clave',
+                            'error': f'Centro "{centro_clave}" no encontrado o inactivo'
+                        })
+                        continue
+                
+                # Generar password seguro si no se proporciona o es débil
+                requiere_reset = False
+                if not password or len(password) < 8:
+                    chars = string.ascii_letters + string.digits + '!@#$%&*'
+                    password = ''.join(secrets.choice(chars) for _ in range(12))
+                    requiere_reset = True
+                
+                # === ACUMULAR EN MEMORIA (sin DB calls) ===
+                existing_user = existing_users.get(username)
+                
+                if existing_user is None:
+                    # Nuevo usuario: construir en memoria con password hasheado
+                    user = User(
+                        username=username,
+                        email=email or f'{username}@sistema.local',
+                        first_name=first_name,
+                        last_name=last_name,
+                        rol=rol,
+                        centro=centro,
+                        adscripcion=adscripcion or '',
+                        is_active=is_active,
                     )
+                    user.set_password(password)  # Hashea sin tocar BD
+                    users_to_create.append(user)
+                    # Registrar en caché local para detectar duplicados dentro del mismo archivo
+                    existing_users[username] = user
+                    if requiere_reset:
+                        usuarios_con_reset += 1
+                else:
+                    # Actualizar usuario existente en memoria
+                    if email:
+                        existing_user.email = email
+                    if first_name:
+                        existing_user.first_name = first_name
+                    if last_name:
+                        existing_user.last_name = last_name
+                    existing_user.rol = rol
+                    if centro:
+                        existing_user.centro = centro
+                    if adscripcion:
+                        existing_user.adscripcion = adscripcion
+                    existing_user.is_active = is_active
+                    users_to_update.append(existing_user)
+            
+            # ── PERSISTIR EN BD: 2 llamadas bulk en lugar de N individuales ──
+            with transaction.atomic():
+                if users_to_create:
+                    User.objects.bulk_create(users_to_create, ignore_conflicts=False)
+                    creados = len(users_to_create)
+                
+                if users_to_update:
+                    User.objects.bulk_update(users_to_update, UPDATE_FIELDS)
+                    actualizados = len(users_to_update)
+            
+            # Registrar auditoría resumen
+            logger.info(
+                f"Importación masiva por {request.user.username}: "
+                f"{creados} creados, {actualizados} actualizados, {len(errores)} errores"
+            )
             
             # === RESPUESTA SIN CONTRASEÑAS (ISS-002) ===
             return Response({
