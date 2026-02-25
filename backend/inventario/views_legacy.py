@@ -13531,9 +13531,27 @@ def exportar_control_mensual(request):
         
         # Determinar centro
         centro_nombre = None
-        centro_filtro = None
+        centro_filtro = None  # None = Farmacia Central (centro__isnull=True)
+        es_todos_centros = False  # True = generar para TODOS los centros + FC
         
-        if centro_id and centro_id not in ['', 'null', 'undefined', 'central', 'todos']:
+        # Normalizar centro_id
+        centro_id_norm = (centro_id or '').strip().lower()
+        
+        if centro_id_norm in ('', 'null', 'undefined', 'central'):
+            # Farmacia Central (CIA) — default
+            if not is_farmacia_or_admin(user):
+                return Response({
+                    'error': 'Solo admin/farmacia pueden exportar datos de Farmacia Central'
+                }, status=status.HTTP_403_FORBIDDEN)
+        elif centro_id_norm == 'todos':
+            # Todos los centros — solo admin/farmacia
+            if not is_farmacia_or_admin(user):
+                return Response({
+                    'error': 'Solo admin/farmacia pueden exportar datos de todos los centros'
+                }, status=status.HTTP_403_FORBIDDEN)
+            es_todos_centros = True
+            centro_nombre = 'Todos los Centros'
+        else:
             try:
                 centro_obj = Centro.objects.get(pk=int(centro_id))
                 
@@ -13547,14 +13565,8 @@ def exportar_control_mensual(request):
                 
                 centro_nombre = centro_obj.nombre
                 centro_filtro = centro_obj
-            except Centro.DoesNotExist:
+            except (Centro.DoesNotExist, ValueError, TypeError):
                 return Response({'error': 'Centro no encontrado'}, status=status.HTTP_404_NOT_FOUND)
-        else:
-            # Farmacia Central (CIA)
-            if not is_farmacia_or_admin(user):
-                return Response({
-                    'error': 'Solo admin/farmacia pueden exportar datos de Farmacia Central'
-                }, status=status.HTTP_403_FORBIDDEN)
         
         # Calcular fechas del periodo
         fecha_inicio = datetime(anio, mes, 1)
@@ -13575,8 +13587,10 @@ def exportar_control_mensual(request):
         # Obtener lotes con movimientos en el periodo
         if centro_filtro:
             lotes_base = Lote.objects.filter(centro=centro_filtro, activo=True)
+        elif es_todos_centros:
+            lotes_base = Lote.objects.filter(activo=True)  # Sin filtro de centro
         else:
-            lotes_base = Lote.objects.filter(centro__isnull=True, activo=True)
+            lotes_base = Lote.objects.filter(centro__isnull=True, activo=True)  # Farmacia Central
         
         lotes_base = lotes_base.select_related('producto').order_by('producto__clave', 'numero_lote')
         
