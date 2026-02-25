@@ -758,14 +758,17 @@ class UserViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
     def importar_excel(self, request):
         """POST /api/usuarios/importar-excel/ - Importa usuarios desde Excel
         
-        Columnas esperadas:
-        - username (requerido, único, se normaliza a minúsculas)
-        - email (opcional, se genera si falta)
-        - first_name (opcional)
-        - last_name (opcional)
-        - rol (opcional: admin, farmacia, centro, vista; default: centro)
-        - password (opcional, mín 8 chars; default: temporal que requiere cambio)
-        - centro_clave (opcional: clave del centro a asignar)
+        Columnas esperadas (deben coincidir con la plantilla):
+        0. username (requerido, único, se normaliza a minúsculas)
+        1. email (opcional, se genera si falta)
+        2. first_name (opcional)
+        3. last_name (opcional)
+        4. password (opcional, mín 8 chars; default: temporal que requiere cambio)
+        5. rol (opcional: admin_sistema, admin_farmacia, farmacia, centro, vista, usuario_normal, usuario_vista; default: centro)
+        6. centro_clave (opcional: ID o nombre del centro a asignar)
+        7. adscripcion (opcional)
+        8. telefono (informativo, no se guarda)
+        9. activo (Si/No, default: Si)
         
         SEGURIDAD:
         - Tamaño máximo de archivo: 5MB
@@ -849,14 +852,21 @@ class UserViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                     valores = list(row) + [None] * 10
                     
                     # === EXTRACCIÓN Y NORMALIZACIÓN (ISS-003) ===
+                    # Columnas: Username(0), Email(1), Nombre(2), Apellidos(3),
+                    #           Password(4), Rol(5), Centro ID(6), Adscripción(7),
+                    #           Teléfono(8), Activo(9)
                     username_raw = str(valores[0] or '').strip()
                     username = username_raw.lower()  # Normalizar a minúsculas
                     email = str(valores[1] or '').strip().lower()
                     first_name = str(valores[2] or '').strip()[:100]  # Limitar longitud
                     last_name = str(valores[3] or '').strip()[:100]
-                    rol = str(valores[4] or 'centro').strip().lower()
-                    password = str(valores[5] or '').strip()
+                    password = str(valores[4] or '').strip()
+                    rol = str(valores[5] or 'centro').strip().lower()
                     centro_clave = str(valores[6] or '').strip().upper()
+                    adscripcion = str(valores[7] or '').strip()[:200]
+                    # valores[8] = Teléfono (informativo, no se guarda en User)
+                    activo_raw = str(valores[9] or 'si').strip().lower()
+                    is_active = activo_raw not in ('no', 'false', '0', 'inactivo')
                     
                     # Saltar filas vacías
                     if not username:
@@ -930,7 +940,8 @@ class UserViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                                 last_name=last_name,
                                 rol=rol,
                                 centro=centro,
-                                is_active=True,
+                                adscripcion=adscripcion or '',
+                                is_active=is_active,
                             )
                             user.set_password(password)
                             user.save()
@@ -960,6 +971,9 @@ class UserViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                             if centro and existing_user.centro != centro:
                                 cambios.append(f'centro: {existing_user.centro} -> {centro}')
                                 existing_user.centro = centro
+                            if adscripcion and getattr(existing_user, 'adscripcion', None) != adscripcion:
+                                existing_user.adscripcion = adscripcion
+                            existing_user.is_active = is_active
                             
                             existing_user.save()
                             actualizados += 1
