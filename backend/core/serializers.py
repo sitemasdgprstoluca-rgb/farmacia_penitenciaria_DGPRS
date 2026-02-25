@@ -1198,9 +1198,15 @@ class LoteSerializer(serializers.ModelSerializer):
         """Retorna el nombre del usuario que creó este lote.
         
         Prioridad:
-        1. AuditoriaLogs accion='crear' con usuario (lotes creados vía API)
-        2. Primera LoteParcialidad con usuario (lotes importados en bulk)
+        1. campo created_by en la tabla lotes (directo, más confiable)
+        2. AuditoriaLogs accion='crear' con usuario (lotes creados vía API)
+        3. Primera LoteParcialidad con usuario (lotes importados en bulk)
         """
+        try:
+            if obj.created_by_id and obj.created_by:
+                return obj.created_by.get_full_name() or obj.created_by.username
+        except Exception:
+            pass
         try:
             log = AuditoriaLogs.objects.filter(
                 modelo='Lote', objeto_id=str(obj.pk), accion='crear'

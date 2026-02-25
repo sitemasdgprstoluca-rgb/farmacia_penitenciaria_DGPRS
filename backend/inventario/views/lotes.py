@@ -85,7 +85,7 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
     - cantidad_contrato: Solo editable por Farmacia/Admin, con auditoría
     - Doble confirmación obligatoria para crear y actualizar lotes
     """
-    queryset = Lote.objects.select_related('producto').all()
+    queryset = Lote.objects.select_related('producto', 'created_by').all()
     serializer_class = LoteSerializer
     permission_classes = [IsFarmaciaAdminOrReadOnly]
     pagination_class = CustomPagination
@@ -93,6 +93,11 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
     # ISS-SEC: Configuración de confirmación obligatoria
     require_delete_confirmation = True
     require_update_confirmation = True  # Doble confirmación para edición
+
+    def perform_create(self, serializer):
+        """Asigna el usuario autenticado como creador del lote."""
+        user = self.request.user
+        serializer.save(created_by=user if user.is_authenticated else None)
 
     def get_queryset(self):
         """
@@ -108,7 +113,7 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
         Seguridad: Usuarios de centro solo ven lotes de su centro.
         Admin/farmacia/vista ven todo por defecto, pueden filtrar con ?centro=.
         """
-        queryset = Lote.objects.select_related('producto', 'centro').prefetch_related('parcialidades').all()
+        queryset = Lote.objects.select_related('producto', 'centro', 'created_by').prefetch_related('parcialidades').all()
         
         # SEGURIDAD: Filtrar por centro segun rol
         user = self.request.user

@@ -1502,6 +1502,7 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                     marca=marca,
                     ubicacion='Almacén Central',
                     activo=fila.get('activo', True),
+                    created_by=usuario if (usuario and getattr(usuario, 'is_authenticated', False)) else None,
                 )
                 
                 # Crear parcialidad inicial para el historial de entregas
