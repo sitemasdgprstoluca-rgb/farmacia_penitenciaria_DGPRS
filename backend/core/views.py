@@ -5740,6 +5740,12 @@ class AdminLimpiarDatosView(APIView):
             historial_count = cursor.fetchone()[0]
             cursor.execute("SELECT COUNT(*) FROM lote_parcialidades")
             lote_parcialidades_count = cursor.fetchone()[0]
+            # Fingerprints de importación (tabla puede no existir)
+            try:
+                cursor.execute("SELECT COUNT(*) FROM parcialidad_import_fingerprints")
+                fingerprints_count = cursor.fetchone()[0]
+            except Exception:
+                fingerprints_count = 0
         
         # Verificar si hay donaciones con productos
         productos_con_donaciones = DetalleDonacion.objects.values('producto_id').distinct().count()
@@ -5767,15 +5773,16 @@ class AdminLimpiarDatosView(APIView):
                 'lotes': {
                     'nombre': 'Solo Lotes',
                     'descripcion': 'Elimina lotes, documentos de lotes, parcialidades y hojas de recolección (mantiene productos)',
-                    'total': lotes_count + LoteDocumento.objects.count() + lote_parcialidades_count + hojas_recoleccion_count + DetalleHojaRecoleccion.objects.count(),
+                    'total': lotes_count + LoteDocumento.objects.count() + lote_parcialidades_count + fingerprints_count + hojas_recoleccion_count + DetalleHojaRecoleccion.objects.count(),
                     'detalle': {
                         'lotes': lotes_count,
                         'lote_documentos': LoteDocumento.objects.count(),
                         'lote_parcialidades': lote_parcialidades_count,
+                        'fingerprints_importacion': fingerprints_count,
                         'hojas_recoleccion': hojas_recoleccion_count,
                         'detalles_hojas_recoleccion': DetalleHojaRecoleccion.objects.count(),
                     },
-                    'dependencias': ['También eliminará: movimientos vinculados a lotes, entregas parciales'],
+                    'dependencias': ['También eliminará: movimientos vinculados a lotes, fingerprints de importación'],
                 },
                 'requisiciones': {
                     'nombre': 'Requisiciones',
@@ -6148,6 +6155,14 @@ class AdminLimpiarDatosView(APIView):
                         cursor.execute("DELETE FROM lote_parcialidades")
                         eliminados['lote_parcialidades'] = cursor.rowcount
                     
+                    # 4.2 Fingerprints de importación de parcialidades
+                    with connection.cursor() as cursor:
+                        try:
+                            cursor.execute("DELETE FROM parcialidad_import_fingerprints")
+                            eliminados['parcialidad_import_fingerprints'] = cursor.rowcount
+                        except Exception:
+                            pass  # Tabla puede no existir en algunos entornos
+                    
                     # 5. Actualizar detalles_requisicion para quitar referencia a lotes
                     with connection.cursor() as cursor:
                         cursor.execute("UPDATE detalles_requisicion SET lote_id = NULL")
@@ -6276,6 +6291,15 @@ class AdminLimpiarDatosView(APIView):
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM lote_parcialidades")
                         eliminados['lote_parcialidades'] = cursor.rowcount
+                    
+                    # 14.2 Fingerprints de importación de parcialidades
+                    with connection.cursor() as cursor:
+                        try:
+                            cursor.execute("DELETE FROM parcialidad_import_fingerprints")
+                            eliminados['parcialidad_import_fingerprints'] = cursor.rowcount
+                        except Exception:
+                            pass  # Tabla puede no existir en algunos entornos
+                    
                     # 15. Lotes
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM lotes")
@@ -6429,6 +6453,14 @@ class AdminLimpiarDatosView(APIView):
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM lote_parcialidades")
                         eliminados['lote_parcialidades'] = cursor.rowcount
+                    
+                    # 17.2 Fingerprints de importación de parcialidades
+                    with connection.cursor() as cursor:
+                        try:
+                            cursor.execute("DELETE FROM parcialidad_import_fingerprints")
+                            eliminados['parcialidad_import_fingerprints'] = cursor.rowcount
+                        except Exception:
+                            pass  # Tabla puede no existir en algunos entornos
                     
                     # 18. Lotes - con verificación
                     with connection.cursor() as cursor:
