@@ -5706,6 +5706,7 @@ class AdminLimpiarDatosView(APIView):
         lotes_count = Lote.objects.count()
         lotes_centros_count = Lote.objects.filter(centro__isnull=False).count()  # Lotes duplicados en centros
         movimientos_count = Movimiento.objects.count()
+        movimientos_salida_count = Movimiento.objects.filter(tipo='salida').count()  # Solo salidas (para requisiciones)
         requisiciones_count = Requisicion.objects.count()
         detalles_req_count = DetalleRequisicion.objects.count()
         hojas_recoleccion_count = HojaRecoleccion.objects.count()
@@ -5758,26 +5759,32 @@ class AdminLimpiarDatosView(APIView):
                     'nombre': 'Productos e Inventario',
                     'descripcion': 'Elimina productos, lotes, movimientos y requisiciones',
                     'total': (
-                        productos_count + ProductoImagen.objects.count() +  # productos
-                        lotes_count + LoteDocumento.objects.count() + lote_parcialidades_count + fingerprints_count +  # lotes
-                        movimientos_count +  # movimientos
-                        requisiciones_count + detalles_req_count + historial_count + ajustes_count +  # requisiciones
-                        hojas_recoleccion_count + DetalleHojaRecoleccion.objects.count() +  # hojas
-                        dispensaciones_count + detalle_dispensaciones_count + historial_dispensaciones_count +  # dispensaciones
-                        donaciones_count + detalles_donacion_count + salidas_donacion_count +  # donaciones
-                        compras_caja_chica_count + detalle_compras_caja_chica_count + inventario_caja_chica_count + movimientos_caja_chica_count + historial_compras_caja_chica_count  # caja chica
+                        # Productos
+                        productos_count + ProductoImagen.objects.count() +
+                        # Lotes
+                        lotes_count + LoteDocumento.objects.count() + lote_parcialidades_count + fingerprints_count +
+                        # Movimientos
+                        movimientos_count +
+                        # Requisiciones
+                        requisiciones_count + detalles_req_count + historial_count + ajustes_count +
+                        # Hojas
+                        hojas_recoleccion_count + DetalleHojaRecoleccion.objects.count() +
+                        # Dispensaciones (se eliminan por FK a productos)
+                        dispensaciones_count + detalle_dispensaciones_count + historial_dispensaciones_count +
+                        # Donaciones (se eliminan por FK a productos)
+                        donaciones_count + detalles_donacion_count + salidas_donacion_count +
+                        # Caja chica (se elimina por FK a productos)
+                        compras_caja_chica_count + detalle_compras_caja_chica_count + inventario_caja_chica_count + movimientos_caja_chica_count + historial_compras_caja_chica_count
+                        # NO incluye: pacientes, notificaciones (esos solo con 'todos')
                     ),
                     'detalle': {
                         'productos': productos_count,
-                        'producto_imagenes': ProductoImagen.objects.count(),
                         'lotes': lotes_count,
-                        'lote_documentos': LoteDocumento.objects.count(),
-                        'lote_parcialidades': lote_parcialidades_count,
                         'movimientos': movimientos_count,
                         'requisiciones': requisiciones_count,
-                        'detalles_requisicion': detalles_req_count,
                         'dispensaciones': dispensaciones_count,
                         'donaciones': donaciones_count,
+                        'caja_chica': compras_caja_chica_count,
                     },
                     'dependencias': ['Elimina TODO el inventario'],
                 },
@@ -5787,7 +5794,7 @@ class AdminLimpiarDatosView(APIView):
                     'total': (
                         lotes_count + LoteDocumento.objects.count() + lote_parcialidades_count + fingerprints_count +
                         hojas_recoleccion_count + DetalleHojaRecoleccion.objects.count() +
-                        movimientos_count  # Los movimientos referencian lotes
+                        movimientos_count  # TODOS los movimientos
                     ),
                     'detalle': {
                         'lotes': lotes_count,
@@ -5796,21 +5803,27 @@ class AdminLimpiarDatosView(APIView):
                         'fingerprints_importacion': fingerprints_count,
                         'movimientos': movimientos_count,
                         'hojas_recoleccion': hojas_recoleccion_count,
-                        'detalles_hojas_recoleccion': DetalleHojaRecoleccion.objects.count(),
                     },
-                    'dependencias': ['También eliminará: movimientos vinculados a lotes, fingerprints de importación'],
+                    'dependencias': ['Los productos quedarán con stock 0'],
                 },
                 'requisiciones': {
                     'nombre': 'Requisiciones',
-                    'descripcion': 'Elimina requisiciones, sus detalles, historial de estados y ajustes',
-                    'total': requisiciones_count + detalles_req_count + historial_count + ajustes_count,
+                    'descripcion': 'Elimina requisiciones, detalles, historial, movimientos de salida y lotes de centros',
+                    'total': (
+                        requisiciones_count + detalles_req_count + historial_count + ajustes_count +
+                        hojas_recoleccion_count + DetalleHojaRecoleccion.objects.count() +
+                        movimientos_salida_count + lotes_centros_count
+                    ),
                     'detalle': {
                         'requisiciones': requisiciones_count,
                         'detalles_requisicion': detalles_req_count,
                         'requisicion_historial_estados': historial_count,
                         'requisicion_ajustes_cantidad': ajustes_count,
+                        'hojas_recoleccion': hojas_recoleccion_count,
+                        'movimientos_salida': movimientos_salida_count,
+                        'lotes_centros': lotes_centros_count,
                     },
-                    'dependencias': ['También eliminará: movimientos vinculados a requisiciones'],
+                    'dependencias': ['Los productos quedarán con stock 0'],
                 },
                 'movimientos': {
                     'nombre': 'Movimientos',
@@ -6141,26 +6154,15 @@ class AdminLimpiarDatosView(APIView):
                         cursor.execute("DELETE FROM requisicion_historial_estados")
                         eliminados['requisicion_historial_estados'] = cursor.rowcount
                     
-                    # 6. Movimientos vinculados a requisiciones
+                    # 6. Movimientos de SALIDA (tipo='salida') - son los de requisiciones
                     with connection.cursor() as cursor:
-                        cursor.execute("DELETE FROM movimientos WHERE requisicion_id IS NOT NULL")
-                        eliminados['movimientos'] = cursor.rowcount
+                        cursor.execute("DELETE FROM movimientos WHERE tipo = 'salida'")
+                        eliminados['movimientos_salida'] = cursor.rowcount
                     
                     # ISS-FIX: Eliminar lotes de centros (creados por requisiciones)
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM lotes WHERE centro_id IS NOT NULL")
                         eliminados['lotes_centros'] = cursor.rowcount
-                    
-                    # ISS-FIX: Recalcular cantidad_inicial de lotes restantes
-                    # Después de eliminar movimientos de requisiciones, cantidad_inicial = cantidad_actual
-                    # Usar GREATEST(1, ...) para respetar CHECK constraint cantidad_inicial > 0
-                    with connection.cursor() as cursor:
-                        cursor.execute("""
-                            UPDATE lotes 
-                            SET cantidad_inicial = GREATEST(1, cantidad_actual)
-                            WHERE centro_id IS NULL
-                        """)
-                        eliminados['lotes_recalculados'] = cursor.rowcount
                     
                     # 7. Requisiciones
                     with connection.cursor() as cursor:
@@ -6168,9 +6170,9 @@ class AdminLimpiarDatosView(APIView):
                         eliminados['requisiciones'] = cursor.rowcount
                 
                 elif categoria == 'lotes':
-                    # 1. Movimientos vinculados a lotes
+                    # 1. Movimientos - TODOS porque sin lotes no tienen sentido
                     with connection.cursor() as cursor:
-                        cursor.execute("DELETE FROM movimientos WHERE lote_id IS NOT NULL")
+                        cursor.execute("DELETE FROM movimientos")
                         eliminados['movimientos'] = cursor.rowcount
                     
                     # 2. Detalles de hojas de recolección
@@ -6201,11 +6203,12 @@ class AdminLimpiarDatosView(APIView):
                         except Exception:
                             pass  # Tabla puede no existir en algunos entornos
                     
-                    # 5. Actualizar detalles_requisicion para quitar referencia a lotes
+                    # 5. Limpiar referencias a lotes en detalles_requisicion
                     with connection.cursor() as cursor:
-                        cursor.execute("UPDATE detalles_requisicion SET lote_id = NULL")
+                        cursor.execute("UPDATE detalles_requisicion SET lote_id = NULL WHERE lote_id IS NOT NULL")
+                        eliminados['detalles_requisicion_limpios'] = cursor.rowcount
                     
-                    # 5.1 Eliminar detalle_dispensaciones que referencian lotes
+                    # 5.1 Limpiar referencias a lotes en detalle_dispensaciones
                     with connection.cursor() as cursor:
                         cursor.execute("UPDATE detalle_dispensaciones SET lote_id = NULL WHERE lote_id IS NOT NULL")
                         eliminados['detalle_dispensaciones_limpios'] = cursor.rowcount
