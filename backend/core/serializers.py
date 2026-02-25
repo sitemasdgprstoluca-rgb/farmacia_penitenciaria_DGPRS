@@ -2090,7 +2090,11 @@ class RequisicionListSerializer(serializers.ModelSerializer):
     centro = serializers.IntegerField(source='centro_origen_id', read_only=True, allow_null=True)
     solicitante_nombre = serializers.SerializerMethodField()
     usuario_solicita_nombre = serializers.SerializerMethodField()  # Alias para frontend
-    
+    # AUDITORÍA: Quién autorizó, surtió o rechazó (para trazabilidad visual en lista)
+    usuario_autoriza_nombre = serializers.SerializerMethodField()
+    surtidor_nombre = serializers.SerializerMethodField()
+    rechazado_por_nombre = serializers.SerializerMethodField()
+
     # Campos anotados desde el queryset (evitan N+1)
     total_productos = serializers.IntegerField(read_only=True)
     total_items = serializers.IntegerField(source='total_productos', read_only=True)
@@ -2102,6 +2106,8 @@ class RequisicionListSerializer(serializers.ModelSerializer):
             'solicitante_nombre', 'usuario_solicita_nombre', 'fecha_solicitud', 'estado', 'tipo', 'prioridad',
             'es_urgente', 'total_productos', 'total_items',
             'fecha_autorizacion', 'fecha_surtido', 'fecha_entrega',
+            # AUDITORÍA: actores del flujo
+            'usuario_autoriza_nombre', 'surtidor_nombre', 'rechazado_por_nombre', 'motivo_rechazo',
         ]
         read_only_fields = fields
     
@@ -2113,6 +2119,28 @@ class RequisicionListSerializer(serializers.ModelSerializer):
     def get_usuario_solicita_nombre(self, obj):
         """Alias de solicitante_nombre para compatibilidad con frontend."""
         return self.get_solicitante_nombre(obj)
+
+    def get_usuario_autoriza_nombre(self, obj):
+        """Quien autorizó (autorizador_farmacia → autorizador director → autorizador_admin → autorizador)."""
+        for campo in ('autorizador_farmacia', 'director_centro', 'administrador_centro', 'autorizador'):
+            actor = getattr(obj, campo, None)
+            if actor:
+                return actor.get_full_name() or actor.username
+        return None
+
+    def get_surtidor_nombre(self, obj):
+        """Quien surtió la requisición."""
+        actor = getattr(obj, 'surtidor', None)
+        if actor:
+            return actor.get_full_name() or actor.username
+        return None
+
+    def get_rechazado_por_nombre(self, obj):
+        """Quien rechazó la requisición (usa historial o campo rechazado_por si existe)."""
+        actor = getattr(obj, 'rechazado_por', None)
+        if actor:
+            return actor.get_full_name() or actor.username
+        return None
 
 
 class RequisicionSerializer(serializers.ModelSerializer):
