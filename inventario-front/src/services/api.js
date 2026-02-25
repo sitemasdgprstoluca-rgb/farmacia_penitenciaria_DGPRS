@@ -1209,6 +1209,7 @@ export const usuariosAPI = {
   exportar: (params = {}) => apiClient.get('/usuarios/exportar-excel/', { params, responseType: 'blob' }),
   importar: (formData) => apiClient.post('/usuarios/importar-excel/', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 115000, // 115s: importación masiva bulk puede tardar en Supabase (Gunicorn permite 120s)
   }),
   plantilla: () => apiClient.get('/usuarios/plantilla/', { responseType: 'blob' }),
 };

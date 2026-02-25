@@ -788,7 +788,10 @@ function Usuarios() {
     try {
       setImportLoading(true);
       const response = await usuariosAPI.importar(formDataFile);
-      const { creados, actualizados, errores } = response.data;
+      // Backend devuelve { resumen: { creados, actualizados, errores }, errores: [...] }
+      const resumen = response.data.resumen || response.data;
+      const { creados, actualizados } = resumen;
+      const errores = response.data.errores || [];
       toast.success(`Importación completada: ${creados || 0} creados, ${actualizados || 0} actualizados`);
       
       if (errores?.length) {
