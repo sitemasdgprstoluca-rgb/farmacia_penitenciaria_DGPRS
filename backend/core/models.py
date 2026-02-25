@@ -1375,6 +1375,95 @@ class LoteParcialidad(models.Model):
         super().save(*args, **kwargs)
 
 
+class ParcialidadImportFingerprint(models.Model):
+    """
+    Tabla de control para idempotencia de importaciones de parcialidades.
+    
+    Garantiza que reimportar el mismo archivo (o retry por red) NO duplique
+    ni sume cantidades dobles. Cada fila importada genera un fingerprint único.
+    
+    El fingerprint se calcula como hash de:
+    - file_checksum (hash del archivo)
+    - row_number (número de fila en el archivo)
+    - lote_id + clave_producto + proveedor + factura + fecha_entrega (normalizados)
+    
+    IMPORTANTE: Esta tabla usa managed=False porque la tabla se crea en Supabase
+    mediante SQL directo para mejor control de índices UNIQUE.
+    """
+    fingerprint = models.CharField(
+        max_length=64, 
+        unique=True, 
+        db_index=True,
+        help_text='SHA256 hash de los datos únicos de la fila importada'
+    )
+    file_checksum = models.CharField(
+        max_length=64, 
+        blank=True, 
+        null=True,
+        db_index=True,
+        help_text='SHA256 del archivo completo (para tracking)'
+    )
+    row_number = models.IntegerField(
+        blank=True, 
+        null=True,
+        help_text='Número de fila en el archivo original'
+    )
+    lote = models.ForeignKey(
+        'Lote',
+        on_delete=models.CASCADE,
+        related_name='import_fingerprints',
+        db_column='lote_id',
+        help_text='Lote asociado a esta importación'
+    )
+    parcialidad = models.ForeignKey(
+        'LoteParcialidad',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='import_fingerprint_records',
+        db_column='parcialidad_id',
+        help_text='Parcialidad creada/actualizada por esta importación'
+    )
+    archivo_nombre = models.CharField(
+        max_length=255, 
+        blank=True, 
+        null=True,
+        help_text='Nombre del archivo importado'
+    )
+    imported_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_column='imported_by_id',
+        help_text='Usuario que realizó la importación'
+    )
+    action_taken = models.CharField(
+        max_length=20,
+        default='CREATED',
+        help_text='Acción realizada: CREATED, MERGED, SKIPPED'
+    )
+    cantidad_importada = models.IntegerField(
+        default=0,
+        help_text='Cantidad que se importó en esta fila'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'parcialidad_import_fingerprints'
+        managed = False  # Tabla creada via SQL en Supabase
+        verbose_name = 'Fingerprint de Importación'
+        verbose_name_plural = 'Fingerprints de Importación'
+        indexes = [
+            models.Index(fields=['file_checksum'], name='idx_pif_file_checksum'),
+            models.Index(fields=['lote'], name='idx_pif_lote_id'),
+            models.Index(fields=['created_at'], name='idx_pif_created_at'),
+        ]
+    
+    def __str__(self):
+        return f"ImportFP {self.fingerprint[:16]}... (lote={self.lote_id}, row={self.row_number})"
+
+
 class Movimiento(models.Model):
     """
     Modelo de Movimiento de inventario

@@ -774,6 +774,12 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
         resultado.agregar_error(0, 'archivo', 'Archivo Excel invalido o vacio')
         return resultado.get_dict()
 
+    # P0-1: Calcular checksum del archivo para idempotencia de reimportaciones
+    from core.utils.parcialidad_merge import calcular_file_checksum
+    file_checksum = calcular_file_checksum(archivo)
+    archivo_nombre = getattr(archivo, 'name', str(archivo)) if archivo else 'unknown'
+    logger.info(f"[IMPORT-CHECKSUM] Archivo: {archivo_nombre}, Checksum: {file_checksum[:16]}...")
+
     sheet = workbook.active
     
     # Detectar fila de encabezados (puede estar en fila 1, 2 o 3)
@@ -1324,7 +1330,8 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                         
                         # SIEMPRE actualizar fecha_fabricacion si viene en el Excel
                         # O si el lote existente no tiene fecha y ahora sí viene
-                        if nueva_fecha_fab is not None:
+                        tiene_fecha_valida = nueva_fecha_fab is not None
+                        if tiene_fecha_valida:
                             update_data['fecha_fabricacion'] = nueva_fecha_fab
                             logger.info(f"[LOTE-CONSOLIDAR] Actualizando fecha_fabricacion de {lote.numero_lote}: {lote.fecha_fabricacion} -> {nueva_fecha_fab}")
                         elif lote.fecha_fabricacion is None:
@@ -1337,13 +1344,44 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                         Lote.objects.filter(pk=lote.pk).update(**update_data)
                         lote.refresh_from_db()
                         
-                        # Crear o MERGE parcialidad para registrar esta entrega en el historial
-                        # Usa la misma lógica de consolidación inteligente que el endpoint web
-                        from core.utils.parcialidad_merge import merge_or_create_parcialidad
+                        # P0-1: IDEMPOTENCIA - Verificar fingerprint antes de procesar parcialidad
+                        from core.utils.parcialidad_merge import (
+                            merge_or_create_parcialidad,
+                            calcular_row_fingerprint,
+                            verificar_fingerprint_existente,
+                            registrar_fingerprint,
+                        )
                         from django.utils import timezone
+                        
+                        # Calcular fingerprint único para esta fila
+                        row_fingerprint = calcular_row_fingerprint(
+                            file_checksum=file_checksum,
+                            row_number=fila.get('fila_num'),
+                            lote_id=lote.pk,
+                            clave_producto=fila.get('clave_producto'),
+                            proveedor=fila.get('proveedor'),
+                            factura=fila.get('numero_factura'),
+                            fecha_entrega_raw=str(fila.get('fecha_fabricacion_raw', fila.get('fecha_fabricacion', ''))),
+                            cantidad=cantidad_inicial,
+                        )
+                        
+                        # Verificar si esta fila ya fue procesada (reimportación)
+                        fp_existe, fp_registro = verificar_fingerprint_existente(row_fingerprint)
+                        if fp_existe:
+                            logger.info(
+                                f"[IMPORT-SKIP] Fila {fila.get('fila_num')} ya importada previamente "
+                                f"(fingerprint: {row_fingerprint[:16]}...). Saltando."
+                            )
+                            # No contar como error ni éxito - es un skip válido
+                            continue
                         
                         fecha_parcialidad = nueva_fecha_fab or timezone.now().date()
                         nota_parcialidad = 'Entrega via importación Excel (consolidación)'
+                        
+                        # P0-2: Si no hay fecha válida, NO permitir merge (evita falsos positivos masivos)
+                        allow_merge = tiene_fecha_valida
+                        if not allow_merge:
+                            nota_parcialidad += f' | Fila {fila.get("fila_num")} sin fecha original'
                         
                         # Usar merge_or_create para evitar duplicados y consolidar entregas equivalentes
                         try:
@@ -1353,11 +1391,25 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                                 cantidad=cantidad_inicial,
                                 usuario=usuario,
                                 notas=nota_parcialidad,
-                                archivo_nombre=self.archivo_nombre if hasattr(self, 'archivo_nombre') else None,
+                                archivo_nombre=archivo_nombre,
                                 fila_num=fila.get('fila_num'),
+                                allow_merge=allow_merge,  # P0-2: False si no hay fecha válida
                             )
                             parcialidad = resultado_merge['parcialidad']
                             fue_merge = resultado_merge['merged']
+                            
+                            # P0-1: Registrar fingerprint después de éxito
+                            registrar_fingerprint(
+                                fingerprint=row_fingerprint,
+                                lote=lote,
+                                parcialidad=parcialidad,
+                                file_checksum=file_checksum,
+                                row_number=fila.get('fila_num'),
+                                archivo_nombre=archivo_nombre,
+                                usuario=usuario,
+                                action_taken='MERGED' if fue_merge else 'CREATED',
+                                cantidad=cantidad_inicial,
+                            )
                             
                             if fue_merge:
                                 logger.info(
@@ -1368,7 +1420,8 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                             else:
                                 logger.info(
                                     f"[PARCIALIDAD-IMPORT] Nueva entrega para lote {numero_lote}: "
-                                    f"+{cantidad_inicial} uds, fecha={fecha_parcialidad}"
+                                    f"+{cantidad_inicial} uds, fecha={fecha_parcialidad}, "
+                                    f"allow_merge={allow_merge}"
                                 )
                         except Exception as parcialidad_error:
                             logger.warning(
@@ -1452,32 +1505,83 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                 )
                 
                 # Crear parcialidad inicial para el historial de entregas
-                # IDEMPOTENCIA: Usar get_or_create para respetar constraint UNIQUE
-                from core.models import LoteParcialidad
-                from django.db import IntegrityError
+                # P0-1: IDEMPOTENCIA - Verificar fingerprint antes de procesar
+                from core.utils.parcialidad_merge import (
+                    merge_or_create_parcialidad,
+                    calcular_row_fingerprint,
+                    verificar_fingerprint_existente,
+                    registrar_fingerprint,
+                )
+                
+                # Determinar si hay fecha válida para permitir merge
+                tiene_fecha_valida_nuevo = fila.get('fecha_fabricacion') is not None
+                
+                # Calcular fingerprint único para esta fila (usando numero_lote porque el lote es nuevo)
+                row_fingerprint_nuevo = calcular_row_fingerprint(
+                    file_checksum=file_checksum,
+                    row_number=fila.get('fila_num'),
+                    numero_lote=numero_lote,  # Usar numero_lote porque aún no tenemos ID
+                    clave_producto=fila.get('clave_producto'),
+                    proveedor=fila.get('proveedor'),
+                    factura=fila.get('numero_factura'),
+                    fecha_entrega_raw=str(fila.get('fecha_fabricacion_raw', fila.get('fecha_fabricacion', ''))),
+                    cantidad=cantidad_inicial,
+                )
+                
+                # Verificar si esta fila ya fue procesada (reimportación)
+                fp_existe_nuevo, fp_registro_nuevo = verificar_fingerprint_existente(row_fingerprint_nuevo)
+                if fp_existe_nuevo:
+                    logger.info(
+                        f"[IMPORT-SKIP-NEW] Fila {fila.get('fila_num')} (lote {numero_lote}) ya importada "
+                        f"previamente (fingerprint: {row_fingerprint_nuevo[:16]}...). Saltando creación."
+                    )
+                    # No crear el lote ni la parcialidad - ya fue procesado
+                    continue
                 
                 # La fecha ya está garantizada (del Excel o fallback a fecha actual)
                 nota_inicial = 'Carga inicial por importación Excel'
                 
-                # Usar get_or_create con los campos del constraint UNIQUE
-                # UNIQUE: (lote_id, fecha_entrega, COALESCE(numero_factura, ''))
+                # P0-2: Si no hay fecha válida, NO permitir merge
+                allow_merge_nuevo = tiene_fecha_valida_nuevo
+                if not allow_merge_nuevo:
+                    nota_inicial += f' | Fila {fila.get("fila_num")} sin fecha original'
+                
+                # Usar merge_or_create para consistencia con la lógica de consolidación
                 try:
-                    parcialidad, created = LoteParcialidad.objects.get_or_create(
+                    resultado_merge_nuevo = merge_or_create_parcialidad(
                         lote=lote_nuevo,
-                        fecha_entrega=fecha_recepcion,  # Ya garantizada arriba
-                        numero_factura=None,  # Constraint incluye COALESCE para NULL
-                        defaults={
-                            'cantidad': cantidad_inicial,
-                            'notas': nota_inicial,
-                            'usuario': usuario,
-                        }
+                        fecha_entrega=fecha_recepcion,
+                        cantidad=cantidad_inicial,
+                        usuario=usuario,
+                        notas=nota_inicial,
+                        archivo_nombre=archivo_nombre,
+                        fila_num=fila.get('fila_num'),
+                        allow_merge=allow_merge_nuevo,
                     )
-                    if created:
-                        logger.info(f"[PARCIALIDAD] Creada para lote {numero_lote}: {cantidad_inicial} uds, fecha={fecha_recepcion}")
-                    else:
-                        logger.info(f"[PARCIALIDAD] Ya existe parcialidad para lote nuevo {numero_lote} - omitida")
-                except IntegrityError:
-                    logger.warning(f"[PARCIALIDAD] Conflicto de concurrencia para lote nuevo {numero_lote} - omitido")
+                    parcialidad = resultado_merge_nuevo['parcialidad']
+                    
+                    # Registrar fingerprint después de éxito
+                    registrar_fingerprint(
+                        fingerprint=row_fingerprint_nuevo,
+                        lote=lote_nuevo,
+                        parcialidad=parcialidad,
+                        file_checksum=file_checksum,
+                        row_number=fila.get('fila_num'),
+                        archivo_nombre=archivo_nombre,
+                        usuario=usuario,
+                        action_taken='CREATED',
+                        cantidad=cantidad_inicial,
+                    )
+                    
+                    logger.info(
+                        f"[PARCIALIDAD] Creada para lote nuevo {numero_lote}: "
+                        f"{cantidad_inicial} uds, fecha={fecha_recepcion}"
+                    )
+                except Exception as parcialidad_error:
+                    logger.warning(
+                        f"[PARCIALIDAD] Error creando parcialidad para lote nuevo {numero_lote}: "
+                        f"{parcialidad_error}"
+                    )
                 
                 Producto.objects.filter(pk=producto.pk).update(
                     stock_actual=F('stock_actual') + cantidad_inicial

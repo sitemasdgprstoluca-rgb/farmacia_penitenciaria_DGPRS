@@ -222,6 +222,192 @@ def buscar_parcialidad_candidata(
     return None, ''
 
 
+def calcular_file_checksum(archivo) -> str:
+    """
+    Calcula SHA256 del contenido del archivo para tracking de importaciones.
+    
+    Args:
+        archivo: File object o path string
+        
+    Returns:
+        str: SHA256 hex digest (64 chars)
+    """
+    import hashlib
+    
+    sha256 = hashlib.sha256()
+    
+    try:
+        if hasattr(archivo, 'read'):
+            # Es un file object
+            pos = archivo.tell()  # Guardar posición
+            archivo.seek(0)
+            for chunk in iter(lambda: archivo.read(8192), b''):
+                sha256.update(chunk)
+            archivo.seek(pos)  # Restaurar posición
+        elif hasattr(archivo, 'chunks'):
+            # Es un Django UploadedFile
+            for chunk in archivo.chunks():
+                sha256.update(chunk)
+        else:
+            # Es una ruta
+            with open(archivo, 'rb') as f:
+                for chunk in iter(lambda: f.read(8192), b''):
+                    sha256.update(chunk)
+    except Exception as e:
+        logger.warning(f"[CHECKSUM] Error calculando checksum: {e}")
+        return hashlib.sha256(str(archivo).encode()).hexdigest()
+    
+    return sha256.hexdigest()
+
+
+def calcular_row_fingerprint(
+    file_checksum: str,
+    row_number: int,
+    lote_id: int = None,
+    numero_lote: str = None,
+    clave_producto: str = None,
+    proveedor: str = None,
+    factura: str = None,
+    fecha_entrega_raw: str = None,
+    cantidad: int = None,
+) -> str:
+    """
+    Calcula fingerprint único para una fila de importación.
+    
+    El fingerprint garantiza idempotencia: si reimportas el mismo archivo,
+    las filas ya procesadas se detectan y no se duplican.
+    
+    Args:
+        file_checksum: Hash del archivo completo
+        row_number: Número de fila en el archivo
+        lote_id: ID del lote (si existe)
+        numero_lote: Número de lote (alternativo a lote_id para lotes nuevos)
+        clave_producto: Clave del producto (opcional)
+        proveedor: Nombre del proveedor normalizado (opcional)
+        factura: Número de factura normalizado (opcional)
+        fecha_entrega_raw: Fecha como string raw del Excel (opcional)
+        cantidad: Cantidad de la fila (opcional)
+    
+    Returns:
+        str: SHA256 fingerprint (64 chars)
+    """
+    # Usar lote_id si está disponible, sino numero_lote normalizado
+    lote_identifier = str(lote_id) if lote_id else (normalizar_texto(numero_lote) or 'NO_LOTE')
+    
+    partes = [
+        file_checksum or 'NO_CHECKSUM',
+        str(row_number) if row_number else 'NO_ROW',
+        lote_identifier,
+        normalizar_texto(clave_producto) or 'NULL',
+        normalizar_texto(proveedor) or 'NULL',
+        normalizar_texto(factura) or 'NULL',
+        str(fecha_entrega_raw).strip() if fecha_entrega_raw else 'NULL',
+        str(cantidad) if cantidad else 'NULL',
+    ]
+    texto = '|'.join(partes)
+    return hashlib.sha256(texto.encode()).hexdigest()
+
+
+def verificar_fingerprint_existente(fingerprint: str) -> tuple:
+    """
+    Verifica si un fingerprint ya existe en la tabla de control.
+    
+    Graceful degradation: si la tabla no existe, retorna (False, None)
+    para permitir que el sistema siga funcionando mientras se crea la tabla.
+    
+    Returns:
+        tuple: (existe: bool, registro: ParcialidadImportFingerprint or None)
+    """
+    try:
+        from core.models import ParcialidadImportFingerprint
+        registro = ParcialidadImportFingerprint.objects.filter(
+            fingerprint=fingerprint
+        ).first()
+        return (registro is not None, registro)
+    except Exception as e:
+        # Tabla puede no existir todavía - graceful degradation
+        error_str = str(e).lower()
+        if 'does not exist' in error_str or 'no such table' in error_str:
+            logger.warning(
+                f"[FINGERPRINT] Tabla parcialidad_import_fingerprints no existe. "
+                f"Ejecuta el SQL de migración. Continuando sin deduplicación."
+            )
+        else:
+            logger.warning(f"[FINGERPRINT] Error verificando: {e}")
+        return (False, None)
+
+
+def registrar_fingerprint(
+    fingerprint: str,
+    lote,
+    parcialidad=None,
+    file_checksum: str = None,
+    row_number: int = None,
+    archivo_nombre: str = None,
+    usuario=None,
+    action_taken: str = 'CREATED',
+    cantidad: int = 0,
+) -> tuple:
+    """
+    Registra un fingerprint de importación de forma atómica.
+    
+    Usa INSERT ... ON CONFLICT DO NOTHING equivalente (get_or_create)
+    para garantizar idempotencia ante concurrencia.
+    
+    Graceful degradation: si la tabla no existe, retorna (None, False)
+    y logea una advertencia.
+    
+    Returns:
+        tuple: (registro, created: bool)
+    """
+    try:
+        from core.models import ParcialidadImportFingerprint
+        from django.db import IntegrityError
+        
+        registro, created = ParcialidadImportFingerprint.objects.get_or_create(
+            fingerprint=fingerprint,
+            defaults={
+                'lote': lote,
+                'parcialidad': parcialidad,
+                'file_checksum': file_checksum,
+                'row_number': row_number,
+                'archivo_nombre': archivo_nombre,
+                'imported_by': usuario,
+                'action_taken': action_taken,
+                'cantidad_importada': cantidad,
+            }
+        )
+        
+        if not created:
+            logger.info(
+                f"[FINGERPRINT-DUP] Fila ya importada: {fingerprint[:16]}..., "
+                f"row={row_number}, acción original={registro.action_taken}"
+            )
+        
+        return registro, created
+        
+    except IntegrityError:
+        # Concurrencia: otro proceso insertó primero
+        logger.info(f"[FINGERPRINT-RACE] Conflicto concurrencia: {fingerprint[:16]}...")
+        try:
+            from core.models import ParcialidadImportFingerprint
+            registro = ParcialidadImportFingerprint.objects.filter(fingerprint=fingerprint).first()
+            return registro, False
+        except Exception:
+            return None, False
+    except Exception as e:
+        # Graceful degradation si la tabla no existe
+        error_str = str(e).lower()
+        if 'does not exist' in error_str or 'no such table' in error_str:
+            logger.warning(
+                f"[FINGERPRINT] Tabla parcialidad_import_fingerprints no existe. "
+                f"Ejecuta el SQL de migración. Continuando sin registro de fingerprint."
+            )
+        else:
+            logger.error(f"[FINGERPRINT-ERROR] Error registrando: {e}")
+        return None, False
+
+
 def merge_or_create_parcialidad(
     lote,
     fecha_entrega: date,
@@ -238,6 +424,8 @@ def merge_or_create_parcialidad(
     import_fingerprint: str = None,
     fila_num: int = None,
     archivo_nombre: str = None,
+    # Control de merge
+    allow_merge: bool = True,
     # Para auditoría
     request=None,
 ) -> Dict[str, Any]:
@@ -245,11 +433,16 @@ def merge_or_create_parcialidad(
     Crea o merge una parcialidad según criterio de equivalencia.
     
     Reglas:
-    1. Si existe parcialidad equivalente (matching) → MERGE (sumar cantidad + completar campos)
-    2. Si no existe → CREATE nuevo registro
+    1. Si allow_merge=False → CREATE directo (sin buscar candidatos)
+    2. Si existe parcialidad equivalente (matching) → MERGE (sumar cantidad + completar campos)
+    3. Si no existe → CREATE nuevo registro
     
     Idempotencia:
     - Si import_fingerprint coincide con una parcialidad existente, NO re-sumar
+    
+    Args:
+        allow_merge: Si False, no busca candidatos para merge (crea siempre nuevo).
+                     Usar False cuando no hay fecha válida para evitar merges incorrectos.
     
     Returns:
         Dict con:
@@ -260,6 +453,7 @@ def merge_or_create_parcialidad(
         - 'cantidad_despues': int
         - 'campos_rellenados': list de campos que se completaron
         - 'audit_log_id': id del registro de auditoría
+        - 'skipped': bool - True si se saltó por fingerprint duplicado
     """
     from core.models import LoteParcialidad, AuditoriaLogs
     
@@ -273,6 +467,7 @@ def merge_or_create_parcialidad(
         'audit_log_id': None,
         'mensaje': '',
         'fingerprint_dup': False,
+        'skipped': False,
     }
     
     with transaction.atomic():
@@ -280,15 +475,24 @@ def merge_or_create_parcialidad(
         from core.models import Lote
         lote_locked = Lote.objects.select_for_update().get(pk=lote.pk)
         
-        # Buscar candidato para merge
-        candidato, nivel = buscar_parcialidad_candidata(
-            lote=lote_locked,
-            fecha_entrega=fecha_entrega,
-            factura=factura,
-            proveedor=proveedor,
-            centro=centro,
-            numero_remision=numero_remision,
-        )
+        # Solo buscar candidato para merge si allow_merge=True
+        candidato = None
+        nivel = ''
+        
+        if allow_merge:
+            candidato, nivel = buscar_parcialidad_candidata(
+                lote=lote_locked,
+                fecha_entrega=fecha_entrega,
+                factura=factura,
+                proveedor=proveedor,
+                centro=centro,
+                numero_remision=numero_remision,
+            )
+        else:
+            logger.info(
+                f"[PARCIALIDAD-NO-MERGE] allow_merge=False para lote {lote.numero_lote}, "
+                f"fecha={fecha_entrega}. Creando nuevo registro sin buscar candidatos."
+            )
         
         if candidato:
             # Bloquear la parcialidad candidata
