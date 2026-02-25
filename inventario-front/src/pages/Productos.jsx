@@ -1602,6 +1602,8 @@ const Productos = () => {
 
                 'Nivel',
 
+                'Creado por',
+
                 ...(puede.tieneAcciones ? ['Acciones'] : []),
 
               ].map((col) => (
@@ -1689,6 +1691,24 @@ const Productos = () => {
                 <td className="px-2 sm:px-4 py-3 text-sm">{renderEstadoBadge(estadoInventario.label, estadoInventario.activo)}</td>
 
                 <td className="px-2 sm:px-4 py-3 text-sm">{renderStockBadge(nivelStock)}</td>
+
+                {/* Creado por / Modificado por */}
+                <td className="px-2 sm:px-4 py-3 text-xs">
+                  {producto.creado_por_nombre ? (
+                    <div>
+                      <div className="font-medium text-slate-700 truncate max-w-[90px]" title={producto.creado_por_nombre}>
+                        {producto.creado_por_nombre.length > 14 ? producto.creado_por_nombre.substring(0, 14) + '…' : producto.creado_por_nombre}
+                      </div>
+                      {producto.modificado_por_nombre && producto.modificado_por_nombre !== producto.creado_por_nombre && (
+                        <div className="text-amber-600 truncate max-w-[90px]" title={`Modificado por: ${producto.modificado_por_nombre}`}>
+                          ✏️ {producto.modificado_por_nombre.length > 12 ? producto.modificado_por_nombre.substring(0, 12) + '…' : producto.modificado_por_nombre}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-gray-400 italic">Sistema</span>
+                  )}
+                </td>
 
                 {puede.tieneAcciones && (
                 <td className="px-2 sm:px-4 py-3 text-sm">
