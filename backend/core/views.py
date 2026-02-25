@@ -868,6 +868,17 @@ class UserViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
             users_to_update = []    # User instances existentes modificados
             UPDATE_FIELDS = ['email', 'first_name', 'last_name', 'rol', 'centro', 'adscripcion', 'is_active']
             
+            # ── OPTIMIZACIÓN: cachear hashes para no recalcular PBKDF2 por cada usuario ──
+            # set_password() tarda ~200ms c/u × 272 users = ~54s → timeout
+            # Cacheando contraseñas únicas: 272 users con la misma pass → 1 solo hash (~200ms)
+            from django.contrib.auth.hashers import make_password
+            _password_hash_cache: dict[str, str] = {}
+
+            def get_or_make_hash(raw_password: str) -> str:
+                if raw_password not in _password_hash_cache:
+                    _password_hash_cache[raw_password] = make_password(raw_password)
+                return _password_hash_cache[raw_password]
+
             for row_idx, row in enumerate(ws.iter_rows(min_row=2, max_row=MAX_ROWS + 1, values_only=True), start=2):
                 valores = list(row) + [None] * 10
                 
@@ -952,7 +963,7 @@ class UserViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                 existing_user = existing_users.get(username)
                 
                 if existing_user is None:
-                    # Nuevo usuario: construir en memoria con password hasheado
+                    # Nuevo usuario: hash cacheado (si 272 users tienen la misma pass → 1 solo cálculo)
                     user = User(
                         username=username,
                         email=email or f'{username}@sistema.local',
@@ -963,7 +974,7 @@ class UserViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                         adscripcion=adscripcion or '',
                         is_active=is_active,
                     )
-                    user.set_password(password)  # Hashea sin tocar BD
+                    user.password = get_or_make_hash(password)  # reutiliza hash si misma contraseña
                     users_to_create.append(user)
                     # Registrar en caché local para detectar duplicados dentro del mismo archivo
                     existing_users[username] = user
