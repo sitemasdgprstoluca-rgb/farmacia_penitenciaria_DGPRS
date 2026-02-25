@@ -618,6 +618,16 @@ def confirmar_entrega(request, grupo_salida):
                 'message': 'Esta salida no está en estado pendiente'
             }, status=status.HTTP_400_BAD_REQUEST)
         
+        # SEGURIDAD: Solo el usuario que creó la salida (o admin) puede confirmarla
+        rol_actual = (getattr(request.user, 'rol_efectivo', None) or getattr(request.user, 'rol', '') or '').lower()
+        es_admin = rol_actual == 'admin' or request.user.is_superuser
+        if not es_admin and primer_mov.usuario_id and primer_mov.usuario_id != request.user.id:
+            return Response({
+                'error': True,
+                'message': f'Solo {primer_mov.usuario.get_full_name() or primer_mov.usuario.username} '
+                           f'(quien creó esta salida) puede confirmarla. Contacta a un administrador si necesitas intervenir.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
         items_confirmados = []
         
         # ISS-FIX FLUJO CORRECTO: Descontar stock, crear lote destino y marcar como confirmados
@@ -865,6 +875,16 @@ def cancelar_salida(request, grupo_salida):
                 'error': True,
                 'message': 'Esta salida no está en estado pendiente'
             }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # SEGURIDAD: Solo el usuario que creó la salida (o admin) puede cancelarla
+        rol_actual = (getattr(request.user, 'rol_efectivo', None) or getattr(request.user, 'rol', '') or '').lower()
+        es_admin = rol_actual == 'admin' or request.user.is_superuser
+        if not es_admin and primer_mov.usuario_id and primer_mov.usuario_id != request.user.id:
+            return Response({
+                'error': True,
+                'message': f'Solo {primer_mov.usuario.get_full_name() or primer_mov.usuario.username} '
+                           f'(quien creó esta salida) puede cancelarla. Contacta a un administrador si necesitas intervenir.'
+            }, status=status.HTTP_403_FORBIDDEN)
         
         items_cancelados = []
         

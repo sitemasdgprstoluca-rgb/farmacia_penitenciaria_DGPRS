@@ -2660,33 +2660,45 @@ const Movimientos = () => {
                                             >
                                               <FaClipboardCheck className="text-xs" />
                                             </button>
-                                            {/* Botón Confirmar Entrega - Abre modal de confirmación */}
-                                            <button
-                                              onClick={(e) => { 
-                                                e.stopPropagation(); 
-                                                setConfirmConfirmarGrupo({
-                                                  id: grupo.id,
-                                                  centro_nombre: grupo.centro_nombre,
-                                                  items: grupo.items || [],
-                                                  total_cantidad: grupo.total_cantidad,
-                                                  num_items: (grupo.items || []).length
-                                                });
-                                              }}
-                                              disabled={confirmandoGrupo === grupo.id}
-                                              className="p-1.5 bg-gradient-to-b from-green-500 to-green-600 text-white rounded hover:from-green-600 hover:to-green-700 transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
-                                              title="Confirmar Entrega (Descuenta Inventario)"
-                                            >
-                                              {confirmandoGrupo === grupo.id ? <FaSpinner className="text-xs animate-spin" /> : <FaCheckCircle className="text-xs" />}
-                                            </button>
-                                            {/* Botón Cancelar */}
-                                            <button
-                                              onClick={(e) => { e.stopPropagation(); setConfirmCancelarGrupo(grupo.id); }}
-                                              disabled={cancelandoGrupo === grupo.id}
-                                              className="p-1.5 bg-gradient-to-b from-red-500 to-red-600 text-white rounded hover:from-red-600 hover:to-red-700 transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
-                                              title="Cancelar salida"
-                                            >
-                                              {cancelandoGrupo === grupo.id ? <FaSpinner className="text-xs animate-spin" /> : <FaTrash className="text-xs" />}
-                                            </button>
+                                            {/* Confirmar y Cancelar: solo para el creador o admin */}
+                                            {(rolPrincipal === 'ADMIN' || !grupo.usuario_id || grupo.usuario_id === user?.id) ? (
+                                              <>
+                                                {/* Botón Confirmar Entrega - Abre modal de confirmación */}
+                                                <button
+                                                  onClick={(e) => { 
+                                                    e.stopPropagation(); 
+                                                    setConfirmConfirmarGrupo({
+                                                      id: grupo.id,
+                                                      centro_nombre: grupo.centro_nombre,
+                                                      items: grupo.items || [],
+                                                      total_cantidad: grupo.total_cantidad,
+                                                      num_items: (grupo.items || []).length
+                                                    });
+                                                  }}
+                                                  disabled={confirmandoGrupo === grupo.id}
+                                                  className="p-1.5 bg-gradient-to-b from-green-500 to-green-600 text-white rounded hover:from-green-600 hover:to-green-700 transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                                                  title="Confirmar Entrega (Descuenta Inventario)"
+                                                >
+                                                  {confirmandoGrupo === grupo.id ? <FaSpinner className="text-xs animate-spin" /> : <FaCheckCircle className="text-xs" />}
+                                                </button>
+                                                {/* Botón Cancelar */}
+                                                <button
+                                                  onClick={(e) => { e.stopPropagation(); setConfirmCancelarGrupo(grupo.id); }}
+                                                  disabled={cancelandoGrupo === grupo.id}
+                                                  className="p-1.5 bg-gradient-to-b from-red-500 to-red-600 text-white rounded hover:from-red-600 hover:to-red-700 transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                                                  title="Cancelar salida"
+                                                >
+                                                  {cancelandoGrupo === grupo.id ? <FaSpinner className="text-xs animate-spin" /> : <FaTrash className="text-xs" />}
+                                                </button>
+                                              </>
+                                            ) : (
+                                              <span
+                                                className="text-[10px] text-gray-400 italic px-1"
+                                                title={`Solo ${grupo.usuario_nombre || 'el creador'} puede confirmar o cancelar esta salida`}
+                                              >
+                                                🔒 {grupo.usuario_nombre?.split(' ')[0] || 'Otro'}
+                                              </span>
+                                            )}
                                           </div>
                                         ) : grupo.confirmado ? (
                                           <button
@@ -3277,17 +3289,23 @@ const Movimientos = () => {
                                                   Hoja de Entrega
                                                 </button>
                                               )}
-                                              <button
-                                                onClick={(e) => { e.stopPropagation(); confirmarEntregaIndividual(mov.id); }}
-                                                disabled={confirmandoMovimiento === mov.id}
-                                                className={`inline-flex items-center gap-2 px-4 py-2.5 text-white rounded-xl transition-all duration-200 text-sm font-semibold shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed
-                                                  ${mov.subtipo_salida === 'receta' ? 'bg-gradient-to-b from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700' : 'bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700'}
-                                                `}
-                                                title={mov.subtipo_salida === 'receta' ? 'Confirmar dispensación' : 'Confirmar entrega'}
-                                              >
-                                                {confirmandoMovimiento === mov.id ? <FaSpinner className="animate-spin text-base" /> : <FaClipboardCheck className="text-base" />}
-                                                {confirmandoMovimiento === mov.id ? 'Confirmando...' : (mov.subtipo_salida === 'receta' ? 'Confirmar Dispensación' : 'Confirmar Entrega')}
-                                              </button>
+                                              {(rolPrincipal === 'ADMIN' || !mov.usuario_id || mov.usuario_id === user?.id) ? (
+                                                <button
+                                                  onClick={(e) => { e.stopPropagation(); confirmarEntregaIndividual(mov.id); }}
+                                                  disabled={confirmandoMovimiento === mov.id}
+                                                  className={`inline-flex items-center gap-2 px-4 py-2.5 text-white rounded-xl transition-all duration-200 text-sm font-semibold shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed
+                                                    ${mov.subtipo_salida === 'receta' ? 'bg-gradient-to-b from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700' : 'bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700'}
+                                                  `}
+                                                  title={mov.subtipo_salida === 'receta' ? 'Confirmar dispensación' : 'Confirmar entrega'}
+                                                >
+                                                  {confirmandoMovimiento === mov.id ? <FaSpinner className="animate-spin text-base" /> : <FaClipboardCheck className="text-base" />}
+                                                  {confirmandoMovimiento === mov.id ? 'Confirmando...' : (mov.subtipo_salida === 'receta' ? 'Confirmar Dispensación' : 'Confirmar Entrega')}
+                                                </button>
+                                              ) : (
+                                                <span className="text-xs text-gray-400 italic">
+                                                  🔒 Solo {mov.usuario_nombre?.split(' ')[0] || 'el creador'} puede confirmar
+                                                </span>
+                                              )}
                                             </>
                                           ) : !esMedico ? (
                                             <button
@@ -3537,52 +3555,58 @@ const Movimientos = () => {
                                     </div>
                                   )}
 
-                                  {/* Acciones — solo farmacia/admin, solo salidas */}
-                                  {esFarmacia && mov.tipo === 'salida' && (
-                                    <div className="pt-3 border-t border-gray-200">
-                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-3">Acciones</span>
-                                      <div className="flex flex-wrap gap-3">
-                                        {!mov.confirmado ? (
-                                          <>
-                                            {mov.subtipo_salida !== 'receta' && (
-                                              <button
-                                                onClick={(e) => { e.stopPropagation(); descargarReciboSalida(mov); }}
-                                                className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-b from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 transition-all duration-200 text-sm font-semibold shadow-sm hover:shadow-md"
-                                                title="Descargar hoja de entrega"
-                                              >
-                                                <FaFilePdf className="text-base" />
-                                                Hoja de Entrega
-                                              </button>
-                                            )}
+                                    {/* Acciones — solo farmacia/admin, solo salidas */}
+                                    {esFarmacia && mov.tipo === 'salida' && (
+                                      <div className="pt-3 border-t border-gray-200">
+                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-3">Acciones</span>
+                                        <div className="flex flex-wrap gap-3">
+                                          {!mov.confirmado ? (
+                                            <>
+                                              {mov.subtipo_salida !== 'receta' && (
+                                                <button
+                                                  onClick={(e) => { e.stopPropagation(); descargarReciboSalida(mov); }}
+                                                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-b from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 transition-all duration-200 text-sm font-semibold shadow-sm hover:shadow-md"
+                                                  title="Descargar hoja de entrega"
+                                                >
+                                                  <FaFilePdf className="text-base" />
+                                                  Hoja de Entrega
+                                                </button>
+                                              )}
+                                              {(rolPrincipal === 'ADMIN' || !mov.usuario_id || mov.usuario_id === user?.id) ? (
+                                                <button
+                                                  onClick={(e) => { e.stopPropagation(); confirmarEntregaIndividual(mov.id); }}
+                                                  disabled={confirmandoMovimiento === mov.id}
+                                                  className={`inline-flex items-center gap-2 px-4 py-2.5 text-white rounded-xl transition-all duration-200 text-sm font-semibold shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed
+                                                    ${mov.subtipo_salida === 'receta' ? 'bg-gradient-to-b from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700' : 'bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700'}
+                                                  `}
+                                                  title={mov.subtipo_salida === 'receta' ? 'Confirmar dispensación' : 'Confirmar entrega'}
+                                                >
+                                                  {confirmandoMovimiento === mov.id ? <FaSpinner className="animate-spin text-base" /> : <FaClipboardCheck className="text-base" />}
+                                                  {confirmandoMovimiento === mov.id ? 'Confirmando...' : (mov.subtipo_salida === 'receta' ? 'Confirmar Dispensación' : 'Confirmar Entrega')}
+                                                </button>
+                                              ) : (
+                                                <span className="text-xs text-gray-400 italic">
+                                                  🔒 Solo {mov.usuario_nombre?.split(' ')[0] || 'el creador'} puede confirmar
+                                                </span>
+                                              )}
+                                            </>
+                                          ) : !esMedico ? (
                                             <button
-                                              onClick={(e) => { e.stopPropagation(); confirmarEntregaIndividual(mov.id); }}
-                                              disabled={confirmandoMovimiento === mov.id}
-                                              className={`inline-flex items-center gap-2 px-4 py-2.5 text-white rounded-xl transition-all duration-200 text-sm font-semibold shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed
-                                                ${mov.subtipo_salida === 'receta' ? 'bg-gradient-to-b from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700' : 'bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700'}
-                                              `}
-                                              title={mov.subtipo_salida === 'receta' ? 'Confirmar dispensación' : 'Confirmar entrega'}
+                                              onClick={(e) => { e.stopPropagation(); descargarReciboFinalizado(mov); }}
+                                              className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-b from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 transition-all duration-200 text-sm font-semibold shadow-sm hover:shadow-md"
+                                              title="Descargar comprobante"
                                             >
-                                              {confirmandoMovimiento === mov.id ? <FaSpinner className="animate-spin text-base" /> : <FaClipboardCheck className="text-base" />}
-                                              {confirmandoMovimiento === mov.id ? 'Confirmando...' : (mov.subtipo_salida === 'receta' ? 'Confirmar Dispensación' : 'Confirmar Entrega')}
+                                              <FaCheckCircle className="text-base" />
+                                              {mov.subtipo_salida === 'receta' ? 'Comprobante Dispensación' : 'Comprobante Entregado'}
                                             </button>
-                                          </>
-                                        ) : !esMedico ? (
-                                          <button
-                                            onClick={(e) => { e.stopPropagation(); descargarReciboFinalizado(mov); }}
-                                            className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-b from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 transition-all duration-200 text-sm font-semibold shadow-sm hover:shadow-md"
-                                            title="Descargar comprobante"
-                                          >
-                                            <FaCheckCircle className="text-base" />
-                                            {mov.subtipo_salida === 'receta' ? 'Comprobante Dispensación' : 'Comprobante Entregado'}
-                                          </button>
-                                        ) : (
-                                          <span className="inline-flex items-center gap-2 px-4 py-2.5 text-emerald-600 text-sm font-semibold">
-                                            <FaCheckCircle className="text-base" /> Entregado
-                                          </span>
-                                        )}
+                                          ) : (
+                                            <span className="inline-flex items-center gap-2 px-4 py-2.5 text-emerald-600 text-sm font-semibold">
+                                              <FaCheckCircle className="text-base" /> Entregado
+                                            </span>
+                                          )}
+                                        </div>
                                       </div>
-                                    </div>
-                                  )}
+                                    )}
 
                                 </div>
                               </div>

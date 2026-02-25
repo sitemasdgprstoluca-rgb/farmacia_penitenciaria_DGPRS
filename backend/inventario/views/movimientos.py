@@ -1075,6 +1075,7 @@ class MovimientoViewSet(
                     grupo['fecha'] = fecha_efectiva.isoformat() if fecha_efectiva else None
                     if mov.usuario:
                         grupo['usuario_nombre'] = mov.usuario.get_full_name() or mov.usuario.username
+                        grupo['usuario_id'] = mov.usuario.id
                 
                 # ISS-FIX: Actualizar estados pendiente/confirmado con CUALQUIER movimiento del grupo
                 # Un grupo está confirmado si ALGÚN movimiento tiene [CONFIRMADO]
@@ -1211,6 +1212,7 @@ class MovimientoViewSet(
                     'producto_nombre': mov.lote.producto.nombre if mov.lote and mov.lote.producto else None,
                     'centro_nombre': sg_centro,
                     'usuario_nombre': (mov.usuario.get_full_name() or mov.usuario.username) if mov.usuario else 'Sistema',
+                    'usuario_id': mov.usuario.id if mov.usuario else None,
                 })
         
         # Convertir grupos a lista y ordenar por fecha
@@ -1311,6 +1313,16 @@ class MovimientoViewSet(
                         'message': 'No tienes permiso para confirmar esta entrega'
                     }, status=status.HTTP_403_FORBIDDEN)
             
+            # SEGURIDAD: Solo el usuario que registró el movimiento (o admin) puede confirmarlo
+            rol_actual = (getattr(user, 'rol_efectivo', None) or getattr(user, 'rol', '') or '').lower()
+            es_admin = rol_actual == 'admin' or user.is_superuser
+            if not es_admin and movimiento.usuario_id and movimiento.usuario_id != user.id:
+                return Response({
+                    'error': True,
+                    'message': f'Solo {movimiento.usuario.get_full_name() or movimiento.usuario.username} '
+                               f'(quien registró este movimiento) puede confirmarlo.'
+                }, status=status.HTTP_403_FORBIDDEN)
+
             # Verificar si ya está confirmado
             motivo_actual = movimiento.motivo or ''
             if '[CONFIRMADO]' in motivo_actual:
