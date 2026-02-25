@@ -37,6 +37,7 @@ import {
   FaCamera,
   FaFileUpload,
   FaSpinner,
+  FaUserCheck,
 } from 'react-icons/fa';
 import { COLORS } from '../constants/theme';
 // ISS-004 FIX: Importar validadores de requisiciones
@@ -2034,6 +2035,26 @@ const Requisiciones = () => {
                     <p className="text-xs text-gray-500">
                       Fecha: {new Date(req.fecha_solicitud).toLocaleDateString()}
                     </p>
+                    {req.usuario_autoriza_nombre && ['autorizada', 'en_surtido', 'parcial', 'surtida', 'entregada'].includes(req.estado) && (
+                      <p className="text-xs text-emerald-700 mt-0.5">
+                        <FaUserCheck className="inline mr-1" />
+                        Autorizado por: <span className="font-semibold">{req.usuario_autoriza_nombre}</span>
+                        {req.fecha_autorizacion && <span className="text-gray-400 ml-1">({new Date(req.fecha_autorizacion).toLocaleDateString()})</span>}
+                      </p>
+                    )}
+                    {req.surtidor_nombre && ['surtida', 'entregada'].includes(req.estado) && (
+                      <p className="text-xs text-blue-700 mt-0.5">
+                        <FaBoxOpen className="inline mr-1" />
+                        Surtido por: <span className="font-semibold">{req.surtidor_nombre}</span>
+                        {req.fecha_surtido && <span className="text-gray-400 ml-1">({new Date(req.fecha_surtido).toLocaleDateString()})</span>}
+                      </p>
+                    )}
+                    {req.rechazado_por_nombre && req.estado === 'rechazada' && (
+                      <p className="text-xs text-red-600 mt-0.5">
+                        <FaTimes className="inline mr-1" />
+                        Rechazado por: <span className="font-semibold">{req.rechazado_por_nombre}</span>
+                      </p>
+                    )}
                   </div>
                   <span className={`px-3 py-1 rounded-full text-sm font-medium ${getEstadoBadge(req.estado)}`}>
                     {getEstadoLabel(req.estado)}

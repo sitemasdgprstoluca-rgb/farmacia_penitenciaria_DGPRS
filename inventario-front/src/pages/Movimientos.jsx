@@ -2749,7 +2749,8 @@ const Movimientos = () => {
                                                           <th className="px-2 py-2 text-left font-semibold">Presentación</th>
                                                           <th className="px-3 py-2 text-left font-semibold">Lote</th>
                                                           <th className="px-3 py-2 text-center font-semibold">Cantidad</th>
-                                                          <th className="px-3 py-2 text-right font-semibold">Fecha</th>
+                                                          <th className="px-3 py-2 text-center font-semibold">Fecha</th>
+                                                          <th className="px-3 py-2 text-right font-semibold">Realizado por</th>
                                                         </tr>
                                                       </thead>
                                                       <tbody className="divide-y divide-slate-100">
@@ -2769,8 +2770,11 @@ const Movimientos = () => {
                                                             <td className="px-3 py-2.5 text-center">
                                                               <span className="font-bold text-emerald-600 text-base">+{Math.abs(mov.cantidad)}</span>
                                                             </td>
-                                                            <td className="px-3 py-2.5 text-right text-xs text-slate-500">
+                                                            <td className="px-3 py-2.5 text-center text-xs text-slate-500">
                                                               {(mov.fecha_salida || mov.fecha) ? new Date(mov.fecha_salida || mov.fecha).toLocaleDateString('es-MX', {day: '2-digit', month: 'short'}) : '-'}
+                                                            </td>
+                                                            <td className="px-3 py-2.5 text-right">
+                                                              <span className="text-xs font-medium text-slate-700 bg-slate-100 px-2 py-0.5 rounded">{mov.usuario_nombre || 'Sistema'}</span>
                                                             </td>
                                                           </tr>
                                                         ))}
@@ -2800,7 +2804,8 @@ const Movimientos = () => {
                                                           <th className="px-2 py-2 text-left font-semibold">Presentación</th>
                                                           <th className="px-3 py-2 text-left font-semibold">Lote</th>
                                                           <th className="px-3 py-2 text-center font-semibold">Cantidad</th>
-                                                          <th className="px-3 py-2 text-right font-semibold">Fecha</th>
+                                                          <th className="px-3 py-2 text-center font-semibold">Fecha</th>
+                                                          <th className="px-3 py-2 text-right font-semibold">Realizado por</th>
                                                         </tr>
                                                       </thead>
                                                       <tbody className="divide-y divide-slate-100">
@@ -2820,8 +2825,11 @@ const Movimientos = () => {
                                                             <td className="px-3 py-2.5 text-center">
                                                               <span className="font-bold text-orange-600 text-base">-{Math.abs(mov.cantidad)}</span>
                                                             </td>
-                                                            <td className="px-3 py-2.5 text-right text-xs text-slate-500">
+                                                            <td className="px-3 py-2.5 text-center text-xs text-slate-500">
                                                               {(mov.fecha_salida || mov.fecha) ? new Date(mov.fecha_salida || mov.fecha).toLocaleDateString('es-MX', {day: '2-digit', month: 'short'}) : '-'}
+                                                            </td>
+                                                            <td className="px-3 py-2.5 text-right">
+                                                              <span className="text-xs font-medium text-slate-700 bg-slate-100 px-2 py-0.5 rounded">{mov.usuario_nombre || 'Sistema'}</span>
                                                             </td>
                                                           </tr>
                                                         ))}
