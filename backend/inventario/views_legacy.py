@@ -9990,48 +9990,17 @@ def reporte_movimientos(request):
         # =====================================================================
         
         if es_filtro_farmacia_central:
-            # FARMACIA CENTRAL: Solo movimientos INTERNOS de Farmacia Central
-            # - Entradas externas (compras): centro_origen=NULL, centro_destino=NULL
-            # - Ajustes/movimientos internos: ambos NULL
-            # EXCLUIR: Salidas hacia CPRs (centro_destino NOT NULL) - esas van al reporte de centros
-            tipo_lower = (tipo or '').lower()
-            if tipo_lower == 'entrada':
-                # Entradas A Farmacia Central: ambos NULL (entradas externas)
-                movimientos = movimientos.filter(
-                    centro_origen__isnull=True,
-                    centro_destino__isnull=True
-                )
-            elif tipo_lower == 'salida':
-                # Salidas INTERNAS de Farmacia Central: ambos NULL, EXCLUYENDO las que van a centros
-                # Las salidas a centros tienen destino NOT NULL
-                movimientos = movimientos.filter(
-                    centro_origen__isnull=True,
-                    centro_destino__isnull=True
-                )
-            else:
-                # Sin tipo: solo movimientos INTERNOS (ambos NULL)
-                movimientos = movimientos.filter(
-                    centro_origen__isnull=True,
-                    centro_destino__isnull=True
-                )
+            # FARMACIA CENTRAL: Movimientos donde FC participa.
+            # En la BD, Farmacia Central = centro NULL (no tiene registro Centro propio).
+            # Transferencias FC→CPR generan pares con centro_origen=NULL, centro_destino=CPR.
+            # Para ver actividad de FC: movimientos donde ALGUNO de los centros es NULL.
+            movimientos = movimientos.filter(
+                Q(centro_origen__isnull=True) | Q(centro_destino__isnull=True)
+            )
         
         elif es_filtro_todos_centros:
-            # TODOS LOS CENTROS: Movimientos de CPRs (excluir internos de Farmacia Central)
-            # Solo mostrar movimientos donde hay un centro específico involucrado
-            # - centro_origen NOT NULL (sale de un CPR)
-            # - centro_destino NOT NULL (entra a un CPR)
-            tipo_lower = (tipo or '').lower()
-            if tipo_lower == 'entrada':
-                # Entradas a CPRs: destino es un centro (NOT NULL)
-                movimientos = movimientos.filter(centro_destino__isnull=False)
-            elif tipo_lower == 'salida':
-                # Salidas desde CPRs: origen es un centro (NOT NULL)
-                movimientos = movimientos.filter(centro_origen__isnull=False)
-            else:
-                # Sin tipo: movimientos donde hay al menos un centro específico
-                movimientos = movimientos.filter(
-                    Q(centro_origen__isnull=False) | Q(centro_destino__isnull=False)
-                )
+            # TODOS: No aplicar filtro de centro – mostrar absolutamente todo.
+            pass
         
         elif filtrar_por_centro and user_centro:
             # CENTRO ESPECÍFICO: Solo movimientos de ese centro
@@ -12336,10 +12305,12 @@ def trazabilidad_global(request):
         # - 'todos': Todos los movimientos sin filtrar por centro
         # - ID numérico: Solo ese centro específico
         if not centro_param or centro_param == 'central':
-            # Por defecto: Solo movimientos de Farmacia Central
+            # Por defecto: Movimientos donde Farmacia Central participa
+            # FC = centro NULL. Transferencias FC→CPR tienen centro_origen=NULL.
             movimientos_query = movimientos_query.filter(
                 Q(lote__centro__isnull=True) |
-                Q(centro_origen__isnull=True, centro_destino__isnull=True)
+                Q(centro_origen__isnull=True) |
+                Q(centro_destino__isnull=True)
             )
         elif centro_param != 'todos':
             # Centro específico por ID
