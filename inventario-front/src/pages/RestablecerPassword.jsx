@@ -4,6 +4,7 @@ import { toast } from 'react-hot-toast';
 import { FaLock, FaCheck, FaArrowLeft, FaExclamationTriangle, FaSpinner, FaEye, FaEyeSlash, FaShieldAlt } from 'react-icons/fa';
 import { passwordResetAPI } from '../services/api';
 import { useTheme } from '../hooks/useTheme';
+import './RestablecerPassword.css';
 
 function RestablecerPassword() {
   const [searchParams] = useSearchParams();
@@ -131,9 +132,15 @@ function RestablecerPassword() {
     return (
       <div className="min-h-screen flex items-center justify-center" 
            style={{ background: 'linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 50%, #4a0f26 100%)' }}>
-        <div className="text-center text-white">
-          <FaSpinner className="animate-spin h-10 w-10 mx-auto mb-4" />
-          <p>Verificando enlace...</p>
+        <div className="text-center">
+          <div className="relative inline-flex items-center justify-center mb-6">
+            <div className="absolute w-24 h-24 bg-white/20 rounded-full animate-ping"></div>
+            <div className="relative w-20 h-20 bg-white/10 backdrop-blur-lg rounded-full flex items-center justify-center border-2 border-white/30 shadow-2xl">
+              <FaSpinner className="animate-spin h-10 w-10 text-white" />
+            </div>
+          </div>
+          <p className="text-white text-lg font-semibold drop-shadow-lg">Verificando enlace de seguridad...</p>
+          <p className="text-white/70 text-sm mt-2 drop-shadow">Un momento por favor</p>
         </div>
       </div>
     );
@@ -147,27 +154,28 @@ function RestablecerPassword() {
       }}
     >
       <div className="max-w-md w-full mx-auto">
-        {/* Header */}
-        <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center bg-white rounded-lg mb-4 shadow-lg p-3">
-            <img 
-              src={logoLoginUrl || "/logo-sistema.png"} 
-              alt="Logo del Sistema" 
-              className="h-32 w-64 object-contain"
-              onError={(e) => { e.target.src = "/logo-sistema.png"; }}
-            />
+        {/* Header ultra-moderno con glassmorphism */}
+        <div className="text-center mb-8 animate-fade-in">
+          <div className="relative inline-flex items-center justify-center mb-6">
+            <div className="absolute w-24 h-24 bg-white/10 rounded-full animate-pulse"></div>
+            <div className="relative w-20 h-20 bg-white/20 backdrop-blur-xl rounded-full flex items-center justify-center shadow-2xl border border-white/30 transition-all duration-500 hover:scale-110">
+              <span className="text-5xl animate-bounce-slow">{success ? '✅' : '🔐'}</span>
+            </div>
           </div>
-          <h1 className="text-3xl font-bold text-white mb-2">
+          <h1 className="text-5xl font-black text-white mb-3 drop-shadow-2xl tracking-tight leading-tight animate-slide-down">
             {success ? '¡Contraseña Actualizada!' : 'Nueva Contraseña'}
           </h1>
-          <p style={{ color: 'var(--color-sidebar-text, #FFFFFF)', opacity: 0.9 }} className="text-lg">
+          <p className="text-white text-xl drop-shadow-lg font-semibold mb-2 animate-slide-up">
             {nombreSistema || 'Sistema de Farmacia Penitenciaria'}
+          </p>
+          <p className="text-white/80 text-base drop-shadow-md font-medium animate-fade-in-delay">
+            {temaGlobal?.reporte_subtitulo || 'Subsecretaría de Seguridad'}
           </p>
         </div>
 
-        {/* Card principal */}
+        {/* Card principal ultra-premium con glassmorphism */}
         <div
-          className="bg-white rounded-2xl shadow-2xl p-8 mb-6 border-t-4"
+          className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl p-8 mb-6 border-t-4 transition-all duration-500 hover:shadow-[0_25px_50px_-12px_rgba(0,0,0,0.25)] hover:scale-[1.01] animate-slide-up"
           style={{ borderTopColor: 'var(--color-primary, #9F2241)' }}
         >
           {/* Token inválido */}
@@ -191,135 +199,185 @@ function RestablecerPassword() {
           {/* Formulario de nueva contraseña */}
           {validToken && !success && (
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Usuario identificado */}
+              {/* Usuario identificado - Design premium */}
               {userEmail && (
-                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-500 p-4 rounded-r-xl">
-                  <p className="text-sm text-gray-600 mb-1">Restableciendo contraseña para:</p>
-                  <p className="font-bold text-gray-800 flex items-center gap-2">
-                    <FaShieldAlt className="text-blue-600" />
-                    {userEmail}
+                <div className="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 border-l-4 border-blue-500 p-5 rounded-r-2xl shadow-lg hover:shadow-xl transition-all duration-300 animate-slide-right">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></span>
+                    Restableciendo contraseña para
+                  </p>
+                  <p className="font-extrabold text-gray-800 flex items-center gap-3 text-lg tracking-tight">
+                    <span className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center shadow-lg animate-pulse-slow">
+                      <FaShieldAlt className="text-white text-base" />
+                    </span>
+                    <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-purple-600">{userEmail}</span>
                   </p>
                 </div>
               )}
               
-              <p className="text-gray-600 text-center">
-                Ingresa tu nueva contraseña. Debe tener al menos 8 caracteres.
-              </p>
+              <div className="bg-gradient-to-r from-gray-50 to-gray-100 border-2 border-gray-200 rounded-2xl p-5 text-center shadow-sm">
+                <p className="text-gray-700 font-semibold text-base flex items-center justify-center gap-2">
+                  <FaLock className="text-gray-400" />
+                  <span>Ingresa tu nueva contraseña. Debe tener <strong className="text-gray-900">al menos 8 caracteres</strong>.</span>
+                </p>
+              </div>
 
-              {/* Campo Nueva Contraseña */}
-              <div>
-                <label className="block text-sm font-bold mb-2" style={{ color: 'var(--color-primary-hover, #6B1839)' }}>
+              {/* Campo Nueva Contraseña - Ultra premium */}
+              <div className="space-y-2">
+                <label className="block text-sm font-extrabold mb-3 tracking-wide" style={{ color: 'var(--color-primary-hover, #6B1839)' }}>
                   Nueva contraseña
                 </label>
-                <div className="relative">
-                  <FaLock className="absolute left-4 top-4 text-gray-400" />
-                  <input
-                    type={showNewPassword ? "text" : "password"}
-                    name="new_password"
-                    value={formData.new_password}
-                    onChange={handleChange}
-                    className="w-full pl-12 pr-12 py-3.5 border-2 border-gray-200 rounded-xl transition-all focus:border-transparent focus:ring-4 focus:outline-none"
-                    style={{ '--tw-ring-color': 'rgba(159, 34, 65, 0.2)' }}
-                    placeholder="Mínimo 8 caracteres"
-                    minLength={8}
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowNewPassword(!showNewPassword)}
-                    className="absolute right-4 top-4 text-gray-400 hover:text-gray-600 transition-colors"
-                    tabIndex={-1}
-                  >
-                    {showNewPassword ? <FaEyeSlash size={18} /> : <FaEye size={18} />}
-                  </button>
+                <div className="relative group">
+                  <div className="absolute -inset-0.5 bg-gradient-to-r from-pink-600 to-purple-600 rounded-2xl opacity-0 group-focus-within:opacity-20 blur transition duration-500"></div>
+                  <div className="relative">
+                    <FaLock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors duration-300" />
+                    <input
+                      type={showNewPassword ? "text" : "password"}
+                      name="new_password"
+                      value={formData.new_password}
+                      onChange={handleChange}
+                      className="w-full pl-12 pr-12 py-4 border-2 border-gray-200 rounded-2xl transition-all duration-300 focus:border-transparent focus:ring-4 focus:outline-none bg-white hover:border-gray-300 shadow-sm focus:shadow-lg"
+                      style={{ '--tw-ring-color': 'rgba(159, 34, 65, 0.15)' }}
+                      placeholder="●●●●●●●●"
+                      minLength={8}
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 transition-all duration-300 hover:scale-110 active:scale-95"
+                      tabIndex={-1}
+                    >
+                      {showNewPassword ? <FaEyeSlash size={20} /> : <FaEye size={20} />}
+                    </button>
+                  </div>
                 </div>
                 
-                {/* Indicador de fortaleza */}
+                {/* Indicador de fortaleza - Premium animated */}
                 {formData.new_password && (
-                  <div className="mt-3 bg-gray-50 rounded-lg p-4 border border-gray-200">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-semibold text-gray-700">Fortaleza de contraseña:</span>
-                      <span className={`text-sm font-bold ${
-                        passwordStrength < 40 ? 'text-red-600' : 
-                        passwordStrength < 70 ? 'text-yellow-600' : 
-                        'text-green-600'
-                      }`}>
+                  <div className="mt-4 bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl p-5 border-2 border-gray-200 shadow-md animate-slide-down">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
+                        Fortaleza de contraseña
+                      </span>
+                      <span className={`text-base font-extrabold px-3 py-1 rounded-full ${
+                        passwordStrength < 40 ? 'text-red-700 bg-red-100' : 
+                        passwordStrength < 70 ? 'text-yellow-700 bg-yellow-100' : 
+                        'text-green-700 bg-green-100'
+                      } transition-all duration-300 animate-pulse-slow`}>
                         {getStrengthLabel(passwordStrength).label}
                       </span>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden mb-3">
+                    <div className="relative w-full bg-gray-300 rounded-full h-3 overflow-hidden mb-4 shadow-inner">
                       <div 
-                        className={`h-full transition-all duration-300 ${getStrengthLabel(passwordStrength).color}`}
+                        className={`h-full transition-all duration-500 ease-out ${getStrengthLabel(passwordStrength).color} relative overflow-hidden`}
                         style={{ width: `${passwordStrength}%` }}
-                      />
+                      >
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-30 animate-shimmer"></div>
+                      </div>
                     </div>
-                    <div className="space-y-1.5 text-xs text-gray-600">
-                      <div className={`flex items-center gap-2 ${formData.new_password.length >= 8 ? 'text-green-600 font-semibold' : ''}`}>
-                        <span className="text-base">{formData.new_password.length >= 8 ? '✓' : '○'}</span>
-                        <span>Mínimo 8 caracteres</span>
+                    <div className="space-y-2.5 text-sm">
+                      <div className={`flex items-center gap-3 p-2 rounded-lg transition-all duration-300 ${formData.new_password.length >= 8 ? 'bg-green-50 text-green-700 font-bold scale-105' : 'text-gray-600'}`}>
+                        <span className={`text-lg font-bold transition-transform duration-300 ${formData.new_password.length >= 8 ? 'animate-bounce-once' : ''}`}>{formData.new_password.length >= 8 ? '✓' : '○'}</span>
+                        <span className="flex-1">Mínimo 8 caracteres</span>
+                        {formData.new_password.length >= 8 && <span className="text-xs font-bold px-2 py-0.5 bg-green-200 rounded-full">Cumple</span>}
                       </div>
-                      <div className={`flex items-center gap-2 ${/[A-Z]/.test(formData.new_password) && /[a-z]/.test(formData.new_password) ? 'text-green-600 font-semibold' : ''}`}>
-                        <span className="text-base">{/[A-Z]/.test(formData.new_password) && /[a-z]/.test(formData.new_password) ? '✓' : '○'}</span>
-                        <span>Mayúsculas y minúsculas</span>
+                      <div className={`flex items-center gap-3 p-2 rounded-lg transition-all duration-300 ${/[A-Z]/.test(formData.new_password) && /[a-z]/.test(formData.new_password) ? 'bg-green-50 text-green-700 font-bold scale-105' : 'text-gray-600'}`}>
+                        <span className={`text-lg font-bold transition-transform duration-300 ${/[A-Z]/.test(formData.new_password) && /[a-z]/.test(formData.new_password) ? 'animate-bounce-once' : ''}`}>{/[A-Z]/.test(formData.new_password) && /[a-z]/.test(formData.new_password) ? '✓' : '○'}</span>
+                        <span className="flex-1">Mayúsculas y minúsculas</span>
+                        {/[A-Z]/.test(formData.new_password) && /[a-z]/.test(formData.new_password) && <span className="text-xs font-bold px-2 py-0.5 bg-green-200 rounded-full">Cumple</span>}
                       </div>
-                      <div className={`flex items-center gap-2 ${/[0-9]/.test(formData.new_password) ? 'text-green-600 font-semibold' : ''}`}>
-                        <span className="text-base">{/[0-9]/.test(formData.new_password) ? '✓' : '○'}</span>
-                        <span>Al menos un número</span>
+                      <div className={`flex items-center gap-3 p-2 rounded-lg transition-all duration-300 ${/[0-9]/.test(formData.new_password) ? 'bg-green-50 text-green-700 font-bold scale-105' : 'text-gray-600'}`}>
+                        <span className={`text-lg font-bold transition-transform duration-300 ${/[0-9]/.test(formData.new_password) ? 'animate-bounce-once' : ''}`}>{/[0-9]/.test(formData.new_password) ? '✓' : '○'}</span>
+                        <span className="flex-1">Al menos un número</span>
+                        {/[0-9]/.test(formData.new_password) && <span className="text-xs font-bold px-2 py-0.5 bg-green-200 rounded-full">Cumple</span>}
                       </div>
-                      <div className={`flex items-center gap-2 ${/[^A-Za-z0-9]/.test(formData.new_password) ? 'text-green-600 font-semibold' : ''}`}>
-                        <span className="text-base">{/[^A-Za-z0-9]/.test(formData.new_password) ? '✓' : '○'}</span>
-                        <span>Caracteres especiales (!@#$%^&*)</span>
+                      <div className={`flex items-center gap-3 p-2 rounded-lg transition-all duration-300 ${/[^A-Za-z0-9]/.test(formData.new_password) ? 'bg-green-50 text-green-700 font-bold scale-105' : 'text-gray-600'}`}>
+                        <span className={`text-lg font-bold transition-transform duration-300 ${/[^A-Za-z0-9]/.test(formData.new_password) ? 'animate-bounce-once' : ''}`}>{/[^A-Za-z0-9]/.test(formData.new_password) ? '✓' : '○'}</span>
+                        <span className="flex-1">Caracteres especiales (!@#$%^&*)</span>
+                        {/[^A-Za-z0-9]/.test(formData.new_password) && <span className="text-xs font-bold px-2 py-0.5 bg-green-200 rounded-full">Cumple</span>}
                       </div>
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* Campo Confirmar Contraseña */}
-              <div>
-                <label className="block text-sm font-bold mb-2" style={{ color: 'var(--color-primary-hover, #6B1839)' }}>
+              {/* Campo Confirmar Contraseña - Ultra premium */}
+              <div className="space-y-2">
+                <label className="block text-sm font-extrabold mb-3 tracking-wide" style={{ color: 'var(--color-primary-hover, #6B1839)' }}>
                   Confirmar contraseña
                 </label>
-                <div className="relative">
-                  <FaLock className="absolute left-4 top-4 text-gray-400" />
-                  <input
-                    type={showConfirmPassword ? "text" : "password"}
-                    name="confirm_password"
-                    value={formData.confirm_password}
-                    onChange={handleChange}
-                    className="w-full pl-12 pr-12 py-3.5 border-2 border-gray-200 rounded-xl transition-all focus:border-transparent focus:ring-4 focus:outline-none"
-                    style={{ '--tw-ring-color': 'rgba(159, 34, 65, 0.2)' }}
-                    placeholder="Repite la contraseña"
-                    minLength={8}
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-4 top-4 text-gray-400 hover:text-gray-600 transition-colors"
-                    tabIndex={-1}
-                  >
-                    {showConfirmPassword ? <FaEyeSlash size={18} /> : <FaEye size={18} />}
-                  </button>
+                <div className="relative group">
+                  <div className="absolute -inset-0.5 bg-gradient-to-r from-pink-600 to-purple-600 rounded-2xl opacity-0 group-focus-within:opacity-20 blur transition duration-500"></div>
+                  <div className="relative">
+                    <FaLock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-green-500 transition-colors duration-300" />
+                    <input
+                      type={showConfirmPassword ? "text" : "password"}
+                      name="confirm_password"
+                      value={formData.confirm_password}
+                      onChange={handleChange}
+                      className={`w-full pl-12 pr-12 py-4 border-2 rounded-2xl transition-all duration-300 focus:outline-none bg-white hover:border-gray-300 shadow-sm focus:shadow-lg ${
+                        formData.confirm_password && formData.new_password === formData.confirm_password
+                          ? 'border-green-500 focus:border-green-500 focus:ring-4 focus:ring-green-200'
+                          : formData.confirm_password && formData.new_password !== formData.confirm_password
+                          ? 'border-red-300 focus:border-red-500 focus:ring-4 focus:ring-red-200'
+                          : 'border-gray-200 focus:border-transparent focus:ring-4'
+                      }`}
+                      style={{ '--tw-ring-color': formData.confirm_password ? 'transparent' : 'rgba(159, 34, 65, 0.15)' }}
+                      placeholder="●●●●●●●●"
+                      minLength={8}
+                      required
+                    />
+                    {formData.confirm_password && formData.new_password === formData.confirm_password && (
+                      <FaCheck className="absolute right-12 top-1/2 -translate-y-1/2 text-green-600 animate-bounce-once" />
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 transition-all duration-300 hover:scale-110 active:scale-95"
+                      tabIndex={-1}
+                    >
+                      {showConfirmPassword ? <FaEyeSlash size={20} /> : <FaEye size={20} />}
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              {/* Mensaje de error si no coinciden */}
-              {formData.new_password && formData.confirm_password && 
-               formData.new_password !== formData.confirm_password && (
-                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-center gap-2">
-                  <FaExclamationTriangle />
-                  <span className="text-sm font-semibold">Las contraseñas no coinciden</span>
+              {/* Validación visual mejorada */}
+              {formData.new_password && formData.confirm_password && formData.new_password !== formData.confirm_password && (
+                <div className="bg-gradient-to-r from-red-50 to-pink-50 border-2 border-red-300 text-red-700 px-5 py-4 rounded-2xl flex items-center gap-3 shadow-md animate-shake">
+                  <div className="w-10 h-10 bg-red-200 rounded-full flex items-center justify-center flex-shrink-0">
+                    <FaExclamationTriangle className="text-red-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold">Las contraseñas no coinciden</p>
+                    <p className="text-xs text-red-600 mt-0.5">Verifica que ambas contraseñas sean idénticas</p>
+                  </div>
+                </div>
+              )}
+              
+              {/* Confirmación positiva cuando coinciden */}
+              {formData.new_password && formData.confirm_password && formData.new_password === formData.confirm_password && passwordStrength >= 70 && (
+                <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-400 text-green-700 px-5 py-4 rounded-2xl flex items-center gap-3 shadow-md animate-slide-down">
+                  <div className="w-10 h-10 bg-green-200 rounded-full flex items-center justify-center flex-shrink-0 animate-pulse">
+                    <FaCheck className="text-green-600 text-lg" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold">¡Contraseña válida y segura!</p>
+                    <p className="text-xs text-green-600 mt-0.5">Las contraseñas coinciden perfectamente</p>
+                  </div>
                 </div>
               )}
 
-              {/* Botón Submit */}
+              {/* Botón Submit - Ultra premium */}
               <button
                 type="submit"
                 disabled={submitting || formData.new_password !== formData.confirm_password}
-                className="w-full text-white py-4 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 font-bold text-lg shadow-xl transition-all transform hover:scale-105 hover:shadow-2xl active:scale-95"
+                className="relative w-full text-white py-5 rounded-2xl disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-3 font-black text-xl shadow-2xl transition-all duration-500 transform hover:scale-[1.02] hover:shadow-[0_20px_50px_rgba(159,34,65,0.4)] active:scale-[0.98] overflow-hidden group"
                 style={{ background: 'linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 100%)' }}
               >
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-0 group-hover:opacity-20 transition-opacity duration-500 group-hover:animate-shimmer"></div>
                 {submitting ? (
                   <>
                     <FaSpinner className="animate-spin" />
@@ -335,20 +393,21 @@ function RestablecerPassword() {
             </form>
           )}
 
-          {/* Pantalla de Éxito */}
+          {/* Pantalla de Éxito con diseño impactante */}
           {success && (
-            <div className="text-center py-6">
-              {/* Ícono de éxito animado */}
-              <div className="relative inline-flex items-center justify-center mb-6">
-                <div className="absolute w-24 h-24 bg-green-500 rounded-full opacity-20 animate-ping"></div>
-                <div className="relative w-24 h-24 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center shadow-2xl">
-                  <FaCheck className="text-white text-4xl" />
+            <div className="text-center py-8">
+              {/* Ícono de éxito animado mejorado */}
+              <div className="relative inline-flex items-center justify-center mb-8">
+                <div className="absolute w-28 h-28 bg-green-500 rounded-full opacity-20 animate-ping"></div>
+                <div className="absolute w-32 h-32 bg-green-400 rounded-full opacity-10 animate-pulse"></div>
+                <div className="relative w-24 h-24 bg-gradient-to-br from-green-400 via-green-500 to-green-600 rounded-full flex items-center justify-center shadow-2xl">
+                  <FaCheck className="text-white text-5xl drop-shadow-lg" />
                 </div>
               </div>
               
-              <h3 className="text-2xl font-bold text-gray-800 mb-3">¡Contraseña actualizada exitosamente!</h3>
-              <p className="text-gray-600 mb-6 text-lg">
-                Tu contraseña ha sido restablecida. Ya puedes iniciar sesión con tu nueva contraseña.
+              <h3 className="text-3xl font-extrabold text-gray-800 mb-4 tracking-tight">¡Contraseña actualizada exitosamente!</h3>
+              <p className="text-gray-600 mb-8 text-lg leading-relaxed">
+                Tu contraseña ha sido restablecida de forma segura. Ya puedes iniciar sesión con tu nueva contraseña.
               </p>
               
               {/* Información de seguridad */}
@@ -457,11 +516,11 @@ function RestablecerPassword() {
           )}
         </div>
 
-        {/* Footer */}
-        <div className="text-center mt-6 text-white text-sm space-y-1">
-          <p className="font-bold text-base">{nombreSistema || 'Sistema de Control de Abasto'}</p>
-          <p className="font-semibold">{temaGlobal?.reporte_subtitulo || 'Subsecretaría de Seguridad'}</p>
-          <p className="text-xs" style={{ color: 'var(--color-sidebar-text, #FFFFFF)', opacity: 0.8 }}>
+        {/* Footer moderno con backdrop blur */}
+        <div className="text-center mt-8 bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20 shadow-lg">
+          <p className="font-bold text-white text-lg mb-2 drop-shadow">{nombreSistema || 'Sistema de Control de Abasto'}</p>
+          <p className="font-semibold text-white/90 text-base mb-1 drop-shadow-sm">{temaGlobal?.reporte_subtitulo || 'Subsecretaría de Seguridad'}</p>
+          <p className="text-white/80 text-sm drop-shadow-sm">
             {temaGlobal?.reporte_pie_pagina || 'Gobierno del Estado de México'} {temaGlobal?.reporte_ano_visible !== false ? '• 2025' : ''}
           </p>
         </div>

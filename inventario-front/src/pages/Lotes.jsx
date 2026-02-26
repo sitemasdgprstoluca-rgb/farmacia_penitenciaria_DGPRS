@@ -1804,7 +1804,7 @@ const handleImportar = async (e) => {
               <col className="w-32" /> {/* Marca / Lab */}
               <col className="w-24" /> {/* Inventario */}
               <col className="w-28" /> {/* Creado por */}
-              <col className="w-20" /> {/* Acciones */}}
+              <col className="w-20" /> {/* Acciones */}
             </colgroup>
             <thead className="bg-theme-gradient sticky top-0 z-10">
             <tr>
