@@ -25,6 +25,7 @@ function RestablecerPassword() {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [countdown, setCountdown] = useState(10);
+  const [hasNavigated, setHasNavigated] = useState(false);
 
   useEffect(() => {
     const validateToken = async () => {
@@ -53,13 +54,14 @@ function RestablecerPassword() {
 
   // Countdown automático
   useEffect(() => {
-    if (success && countdown > 0) {
+    if (success && countdown > 0 && !hasNavigated) {
       const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
       return () => clearTimeout(timer);
-    } else if (success && countdown === 0) {
-      navigate('/login');
+    } else if (success && countdown === 0 && !hasNavigated) {
+      setHasNavigated(true);
+      navigate('/login', { replace: true });
     }
-  }, [success, countdown, navigate]);
+  }, [success, countdown, navigate, hasNavigated]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -258,11 +260,24 @@ function RestablecerPassword() {
                 Ya puedes iniciar sesión con tu nueva contraseña.
               </p>
               <button
-                onClick={() => navigate('/login')}
-                className="w-full inline-flex items-center justify-center gap-2 text-white py-3 px-6 rounded-xl font-bold transition-all transform hover:scale-105 mb-4"
+                onClick={() => {
+                  if (!hasNavigated) {
+                    setHasNavigated(true);
+                    navigate('/login', { replace: true });
+                  }
+                }}
+                disabled={hasNavigated}
+                className="w-full inline-flex items-center justify-center gap-2 text-white py-3 px-6 rounded-xl font-bold transition-all transform hover:scale-105 mb-4 disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ background: 'linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 100%)' }}
               >
-                Ir a iniciar sesión
+                {hasNavigated ? (
+                  <>
+                    <FaSpinner className="animate-spin" />
+                    Redirigiendo...
+                  </>
+                ) : (
+                  'Ir a iniciar sesión'
+                )}
               </button>
               <p className="text-gray-500 text-sm">
                 Redirigiendo automáticamente en <span className="font-bold text-blue-600">{countdown}</span> segundos...
