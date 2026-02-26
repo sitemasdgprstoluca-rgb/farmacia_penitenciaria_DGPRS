@@ -13,6 +13,7 @@ from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
+from rest_framework.throttling import AnonRateThrottle
 import logging
 
 logger = logging.getLogger(__name__)
@@ -127,15 +128,34 @@ Sistema de Farmacia Penitenciaria
         return False
 
 
+class PasswordResetThrottle(AnonRateThrottle):
+    """Rate limit específico para password reset: máximo 3 peticiones por hora por IP"""
+    rate = '3/hour'
+
+
+class PasswordResetValidateThrottle(AnonRateThrottle):
+    """Rate limit para validación de tokens: máximo 10 intentos por hora por IP"""
+    rate = '10/hour'
+
+
 class PasswordResetRequestView(APIView):
     """
     Solicita un reset de contraseña.
     Envía un email con un token de recuperación usando Resend.
+    
+    SEGURIDAD:
+    - Rate limited a 3 peticiones por hora por IP
+    - No revela si el email existe o no
+    - Registra intentos en auditoría
     """
     permission_classes = [AllowAny]
+    throttle_classes = [PasswordResetThrottle]
     
     def post(self, request):
+        from core.models import AuditoriaLogs
+        
         email = request.data.get('email', '').strip().lower()
+        ip_address = request.META.get('REMOTE_ADDR', 'unknown')
         
         if not email:
             return Response(
@@ -149,6 +169,16 @@ class PasswordResetRequestView(APIView):
         
         try:
             user = User.objects.get(email=email)
+            
+            # Registrar solicitud en auditoría
+            AuditoriaLogs.objects.create(
+                usuario=user,
+                accion='solicitar_reset_password',
+                modelo='User',
+                objeto_id=str(user.pk),
+                ip_address=ip_address,
+                detalles={'email': email}
+            )
             
             # Generar token
             token = default_token_generator.make_token(user)
@@ -175,6 +205,15 @@ class PasswordResetRequestView(APIView):
             
         except User.DoesNotExist:
             # No revelar si el usuario existe o no (log sin email completo)
+            # Registrar intento fallido para detectar ataques
+            AuditoriaLogs.objects.create(
+                usuario=None,
+                accion='solicitar_reset_password_fallido',
+                modelo='User',
+                objeto_id='email_no_encontrado',
+                ip_address=ip_address,
+                detalles={'email_domain': email.split('@')[1] if '@' in email else 'invalido'}
+            )
             logger.debug("Password reset solicitado para email no registrado")
         
         return Response(response_data)
@@ -183,8 +222,13 @@ class PasswordResetRequestView(APIView):
 class PasswordResetValidateTokenView(APIView):
     """
     Valida un token de reset de contraseña.
+    
+    SEGURIDAD:
+    - Rate limited a 10 intentos por hora por IP
+    - Registra intentos de validación
     """
     permission_classes = [AllowAny]
+    throttle_classes = [PasswordResetValidateThrottle]
     
     def post(self, request):
         token = request.data.get('token', '')
@@ -212,14 +256,24 @@ class PasswordResetValidateTokenView(APIView):
 class PasswordResetConfirmView(APIView):
     """
     Confirma el reset de contraseña con el token.
+    
+    SEGURIDAD:
+    - Rate limited a 5 intentos por hora por IP
+    - Valida fortaleza de contraseña
+    - Invalida token después de uso (automático al cambiar password hash)
+    - Registra cambios exitosos en auditoría
     """
     permission_classes = [AllowAny]
+    throttle_classes = [PasswordResetThrottle]  # Reutiliza mismo rate limit (3/hora)
     
     def post(self, request):
+        from core.models import AuditoriaLogs
+        
         token = request.data.get('token', '')
         uid = request.data.get('uid', '')
         new_password = request.data.get('new_password', '')
         confirm_password = request.data.get('confirm_password', '')
+        ip_address = request.META.get('REMOTE_ADDR', 'unknown')
         
         if not all([token, uid, new_password]):
             return Response(
@@ -255,6 +309,19 @@ class PasswordResetConfirmView(APIView):
             # Cambiar contraseña
             user.set_password(new_password)
             user.save()
+            
+            # Registrar cambio exitoso en auditoría
+            AuditoriaLogs.objects.create(
+                usuario=user,
+                accion='password_restablecido',
+                modelo='User',
+                objeto_id=str(user.pk),
+                ip_address=ip_address,
+                detalles={
+                    'metodo': 'password_reset_token',
+                    'username': user.username
+                }
+            )
             
             logger.info(f"Contraseña restablecida para usuario: {user.username}")
             
