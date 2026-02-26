@@ -69,7 +69,30 @@ class ProductoViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
         return [IsAuthenticated(), HasProductosPermission()]
 
     def get_queryset(self):
-        queryset = Producto.objects.all()
+        queryset = Producto.objects.extra(
+            select={
+                '_creado_por_nombre': """
+                    (SELECT COALESCE(NULLIF(TRIM(u.first_name || ' ' || u.last_name), ''), u.username)
+                     FROM auditoria_logs al
+                     JOIN usuarios u ON u.id = al.usuario_id
+                     WHERE al.modelo = 'Producto'
+                       AND al.objeto_id = productos.id::text
+                       AND al.accion = 'crear'
+                       AND al.usuario_id IS NOT NULL
+                     ORDER BY al.timestamp ASC LIMIT 1)
+                """,
+                '_modificado_por_nombre': """
+                    (SELECT COALESCE(NULLIF(TRIM(u.first_name || ' ' || u.last_name), ''), u.username)
+                     FROM auditoria_logs al
+                     JOIN usuarios u ON u.id = al.usuario_id
+                     WHERE al.modelo = 'Producto'
+                       AND al.objeto_id = productos.id::text
+                       AND al.accion = 'actualizar'
+                       AND al.usuario_id IS NOT NULL
+                     ORDER BY al.timestamp DESC LIMIT 1)
+                """,
+            }
+        )
         user = self.request.user
         
         # ISS-SEC-FIX: Determinar el centro para filtrar stock

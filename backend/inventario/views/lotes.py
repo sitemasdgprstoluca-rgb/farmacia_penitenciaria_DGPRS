@@ -123,7 +123,31 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
         Seguridad: Usuarios de centro solo ven lotes de su centro.
         Admin/farmacia/vista ven todo por defecto, pueden filtrar con ?centro=.
         """
-        queryset = Lote.objects.select_related('producto', 'centro').prefetch_related('parcialidades').all()
+        queryset = Lote.objects.select_related('producto', 'centro').prefetch_related('parcialidades').extra(
+            select={
+                '_creado_por_nombre': """
+                    COALESCE(
+                      (SELECT COALESCE(NULLIF(TRIM(u.first_name || ' ' || u.last_name), ''), u.username)
+                       FROM usuarios u WHERE u.id = lotes.created_by_id LIMIT 1),
+                      (SELECT COALESCE(NULLIF(TRIM(u.first_name || ' ' || u.last_name), ''), u.username)
+                       FROM usuarios u
+                       JOIN lote_parcialidades lp ON lp.usuario_id = u.id
+                       WHERE lp.lote_id = lotes.id
+                       ORDER BY lp.created_at ASC LIMIT 1)
+                    )
+                """,
+                '_modificado_por_nombre': """
+                    (SELECT COALESCE(NULLIF(TRIM(u.first_name || ' ' || u.last_name), ''), u.username)
+                     FROM auditoria_logs al
+                     JOIN usuarios u ON u.id = al.usuario_id
+                     WHERE al.modelo = 'Lote'
+                       AND al.objeto_id = lotes.id::text
+                       AND al.accion = 'actualizar'
+                       AND al.usuario_id IS NOT NULL
+                     ORDER BY al.timestamp DESC LIMIT 1)
+                """,
+            }
+        ).all()
         
         # SEGURIDAD: Filtrar por centro segun rol
         user = self.request.user

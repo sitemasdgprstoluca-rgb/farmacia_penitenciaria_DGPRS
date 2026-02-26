@@ -795,28 +795,12 @@ class ProductoSerializer(serializers.ModelSerializer):
         return normalizar_unidad_medida(obj.unidad_medida)
 
     def get_creado_por_nombre(self, obj):
-        """Retorna el nombre del usuario que creó este producto consultando AuditoriaLogs."""
-        try:
-            log = AuditoriaLogs.objects.filter(
-                modelo='Producto', objeto_id=str(obj.pk), accion='crear'
-            ).select_related('usuario').order_by('timestamp').first()
-            if log and log.usuario:
-                return log.usuario.get_full_name() or log.usuario.username
-        except Exception:
-            pass
-        return None
+        """Lee nombre del creador desde anotación SQL (_creado_por_nombre) inyectada por el ViewSet."""
+        return getattr(obj, '_creado_por_nombre', None) or None
 
     def get_modificado_por_nombre(self, obj):
-        """Retorna el nombre del usuario que modificó este producto por última vez."""
-        try:
-            log = AuditoriaLogs.objects.filter(
-                modelo='Producto', objeto_id=str(obj.pk), accion='actualizar'
-            ).select_related('usuario').order_by('-timestamp').first()
-            if log and log.usuario:
-                return log.usuario.get_full_name() or log.usuario.username
-        except Exception:
-            pass
-        return None
+        """Lee nombre del último modificador desde anotación SQL (_modificado_por_nombre) inyectada por el ViewSet."""
+        return getattr(obj, '_modificado_por_nombre', None) or None
 
     def get_stock_actual(self, obj):
         # Priorizar stock_calculado (anotación) sobre el campo
@@ -1195,63 +1179,12 @@ class LoteSerializer(serializers.ModelSerializer):
         }
     
     def get_creado_por_nombre(self, obj):
-        """Retorna el nombre del usuario que creó este lote.
-        
-        Prioridad:
-        1. created_by_id en tabla lotes (raw SQL — columna existe en Supabase)
-        2. AuditoriaLogs accion='crear' con usuario (lotes creados vía API)
-        3. Primera LoteParcialidad con usuario (lotes importados en bulk)
-        """
-        try:
-            from django.db import connection
-            from django.contrib.auth import get_user_model
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    "SELECT created_by_id FROM lotes WHERE id = %s", [obj.pk]
-                )
-                row = cursor.fetchone()
-                if row and row[0]:
-                    User = get_user_model()
-                    u = User.objects.filter(pk=row[0]).first()
-                    if u:
-                        return u.get_full_name() or u.username
-        except Exception:
-            pass
-        try:
-            log = AuditoriaLogs.objects.filter(
-                modelo='Lote', objeto_id=str(obj.pk), accion='crear'
-            ).select_related('usuario').order_by('timestamp').first()
-            if log and log.usuario:
-                return log.usuario.get_full_name() or log.usuario.username
-        except Exception:
-            pass
-        # Fallback: usuario de la primera parcialidad registrada para este lote
-        try:
-            from core.models import LoteParcialidad
-            parcialidad = (
-                LoteParcialidad.objects
-                .filter(lote_id=obj.pk)
-                .select_related('usuario')
-                .order_by('created_at')
-                .first()
-            )
-            if parcialidad and parcialidad.usuario:
-                return parcialidad.usuario.get_full_name() or parcialidad.usuario.username
-        except Exception:
-            pass
-        return None
+        """Lee nombre del creador desde anotación SQL (_creado_por_nombre) inyectada por LoteViewSet."""
+        return getattr(obj, '_creado_por_nombre', None) or None
 
     def get_modificado_por_nombre(self, obj):
-        """Retorna el nombre del usuario que modificó este lote por última vez (excluye creación)."""
-        try:
-            log = AuditoriaLogs.objects.filter(
-                modelo='Lote', objeto_id=str(obj.pk), accion='actualizar'
-            ).select_related('usuario').order_by('-timestamp').first()
-            if log and log.usuario:
-                return log.usuario.get_full_name() or log.usuario.username
-        except Exception:
-            pass
-        return None
+        """Lee nombre del último modificador desde anotación SQL (_modificado_por_nombre) inyectada por LoteViewSet."""
+        return getattr(obj, '_modificado_por_nombre', None) or None
 
     def get_cantidad_pendiente(self, obj):
         """
