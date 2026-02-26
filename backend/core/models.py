@@ -1097,15 +1097,6 @@ class Lote(models.Model):
     activo = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    # Columna created_by_id existe en Supabase; declarada aquí para poder hacer select_related
-    created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='lotes_creados',
-        db_column='created_by_id',
-    )
     
     # ISS-AUDIT-001 FIX: Manager personalizado para filtrado por estado
     objects = LoteManager()

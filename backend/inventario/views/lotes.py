@@ -85,7 +85,7 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
     - cantidad_contrato: Solo editable por Farmacia/Admin, con auditoría
     - Doble confirmación obligatoria para crear y actualizar lotes
     """
-    queryset = Lote.objects.select_related('producto', 'created_by').all()
+    queryset = Lote.objects.select_related('producto').all()
     serializer_class = LoteSerializer
     permission_classes = [IsFarmaciaAdminOrReadOnly]
     pagination_class = CustomPagination
@@ -95,9 +95,19 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
     require_update_confirmation = True  # Doble confirmación para edición
 
     def perform_create(self, serializer):
-        """Asigna el usuario autenticado como creador del lote."""
+        """Guarda el usuario autenticado en created_by_id vía SQL directo."""
+        instance = serializer.save()
         user = self.request.user
-        serializer.save(created_by=user if user.is_authenticated else None)
+        if user and user.is_authenticated:
+            try:
+                from django.db import connection
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE lotes SET created_by_id = %s WHERE id = %s AND created_by_id IS NULL",
+                        [user.pk, instance.pk]
+                    )
+            except Exception:
+                pass
 
     def get_queryset(self):
         """
@@ -113,7 +123,7 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
         Seguridad: Usuarios de centro solo ven lotes de su centro.
         Admin/farmacia/vista ven todo por defecto, pueden filtrar con ?centro=.
         """
-        queryset = Lote.objects.select_related('producto', 'centro', 'created_by').prefetch_related('parcialidades').all()
+        queryset = Lote.objects.select_related('producto', 'centro').prefetch_related('parcialidades').all()
         
         # SEGURIDAD: Filtrar por centro segun rol
         user = self.request.user

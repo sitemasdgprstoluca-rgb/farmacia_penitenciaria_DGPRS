@@ -1198,13 +1198,23 @@ class LoteSerializer(serializers.ModelSerializer):
         """Retorna el nombre del usuario que creó este lote.
         
         Prioridad:
-        1. campo created_by en la tabla lotes (directo, más confiable)
+        1. created_by_id en tabla lotes (raw SQL — columna existe en Supabase)
         2. AuditoriaLogs accion='crear' con usuario (lotes creados vía API)
         3. Primera LoteParcialidad con usuario (lotes importados en bulk)
         """
         try:
-            if obj.created_by_id and obj.created_by:
-                return obj.created_by.get_full_name() or obj.created_by.username
+            from django.db import connection
+            from django.contrib.auth import get_user_model
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT created_by_id FROM lotes WHERE id = %s", [obj.pk]
+                )
+                row = cursor.fetchone()
+                if row and row[0]:
+                    User = get_user_model()
+                    u = User.objects.filter(pk=row[0]).first()
+                    if u:
+                        return u.get_full_name() or u.username
         except Exception:
             pass
         try:
