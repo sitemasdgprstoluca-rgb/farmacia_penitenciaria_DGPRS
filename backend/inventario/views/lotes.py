@@ -29,10 +29,10 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db import transaction
-from django.db.models import Q, Sum, Subquery, OuterRef, Value, CharField
+from django.db import transaction, models
+from django.db.models import Q, Sum, Subquery, OuterRef, Value, CharField, IntegerField
 from django.db.models.expressions import RawSQL
-from django.db.models.functions import Coalesce, NullIf, Trim, Concat
+from django.db.models.functions import Coalesce, NullIf, Trim, Concat, Cast
 from django.contrib.auth import get_user_model
 from django.http import HttpResponse
 from django.utils import timezone
@@ -136,9 +136,10 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
             'username',
             output_field=CharField(),
         )
+        # FIX: Usar Cast para convertir correctamente created_by_id a IntegerField
         creado_por_created_by = Subquery(
             User.objects.filter(
-                pk=RawSQL('"lotes"."created_by_id"', [], output_field=CharField())
+                pk=Cast(RawSQL('"lotes"."created_by_id"', []), output_field=IntegerField())
             ).annotate(display=_user_display).values('display')[:1],
             output_field=CharField(),
         )
