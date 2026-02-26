@@ -1181,25 +1181,25 @@ class LoteSerializer(serializers.ModelSerializer):
     def get_creado_por_nombre(self, obj):
         """
         Lee nombre del creador desde anotación SQL (_creado_por_nombre) inyectada por LoteViewSet.
-        Fallback: Si la anotación es None, intenta leer desde las parcialidades prefetched.
+        
+        El ViewSet ya maneja el fallback de forma eficiente con Coalesce en SQL:
+        - Primera opción: usuario desde created_by_id
+        - Fallback automático: usuario de la primera parcialidad
+        
+        Si este campo es None, indica un problema de integridad de datos (lote sin 
+        created_by_id Y sin parcialidades). Se loguea para auditoría.
         """
         nombre = getattr(obj, '_creado_por_nombre', None)
         
-        # Fallback: Si la anotación SQL es None, intentar desde parcialidades prefetched
-        if not nombre and hasattr(obj, 'parcialidades'):
-            parcialidades = obj.parcialidades.all() if hasattr(obj.parcialidades, 'all') else obj.parcialidades
-            if parcialidades:
-                # Obtener la primera parcialidad (la más antigua)
-                primera = None
-                for p in parcialidades:
-                    if primera is None or (hasattr(p, 'created_at') and p.created_at < primera.created_at):
-                        primera = p
-                
-                if primera and hasattr(primera, 'usuario') and primera.usuario:
-                    usuario = primera.usuario
-                    nombre = (usuario.get_full_name() or usuario.username) if hasattr(usuario, 'get_full_name') else usuario.username
+        # ALERTA: Si es None aquí, hay un problema de integridad de datos
+        if not nombre:
+            logger.warning(
+                f"Lote ID {obj.id} sin creador identificable: "
+                f"created_by_id es NULL y no tiene parcialidades con usuario. "
+                f"Revisar integridad de datos."
+            )
         
-        return nombre or None
+        return nombre
 
     def get_modificado_por_nombre(self, obj):
         """Lee nombre del último modificador desde anotación SQL (_modificado_por_nombre) inyectada por LoteViewSet."""
