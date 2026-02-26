@@ -28,6 +28,10 @@ def send_password_reset_email(user, uid, token):
     frontend_url = getattr(settings, 'FRONTEND_URL', 'https://farmacia-penitenciaria-front.onrender.com')
     reset_url = f"{frontend_url}/restablecer-password?uid={uid}&token={token}"
     
+    # Año actual para el footer
+    from datetime import datetime
+    current_year = datetime.now().year
+    
     # Intentar usar Resend primero (servicio de producción)
     resend_api_key = getattr(settings, 'RESEND_API_KEY', '')
     
@@ -38,41 +42,228 @@ def send_password_reset_email(user, uid, token):
             
             from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'Sistema Farmacia <onboarding@resend.dev>')
             
-            # Email HTML profesional
+            # Email HTML profesional mejorado
             html_content = f"""
             <!DOCTYPE html>
             <html>
             <head>
                 <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <style>
-                    body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-                    .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-                    .header {{ background: linear-gradient(135deg, #632842 0%, #8B3A5C 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
-                    .content {{ background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }}
-                    .button {{ display: inline-block; background: #632842; color: white !important; padding: 15px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; font-weight: bold; }}
-                    .footer {{ text-align: center; color: #666; font-size: 12px; margin-top: 20px; }}
+                    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+                    body {{ 
+                        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                        line-height: 1.6; 
+                        color: #333; 
+                        background-color: #f4f4f4;
+                        padding: 20px;
+                    }}
+                    .email-wrapper {{ max-width: 600px; margin: 0 auto; background: white; }}
+                    .header {{ 
+                        background: linear-gradient(135deg, #9F2241 0%, #6B1839 50%, #4a0f26 100%); 
+                        color: white; 
+                        padding: 40px 30px; 
+                        text-align: center; 
+                        border-radius: 10px 10px 0 0;
+                    }}
+                    .header h1 {{ 
+                        font-size: 24px; 
+                        margin-bottom: 10px; 
+                        font-weight: 600;
+                    }}
+                    .header p {{ 
+                        font-size: 14px; 
+                        opacity: 0.9; 
+                        margin: 0;
+                    }}
+                    .icon-badge {{
+                        width: 80px;
+                        height: 80px;
+                        background: rgba(255,255,255,0.2);
+                        border-radius: 50%;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        margin: 0 auto 15px auto;
+                        font-size: 40px;
+                    }}
+                    .content {{ 
+                        background: #ffffff; 
+                        padding: 40px 30px;
+                    }}
+                    .content h2 {{
+                        color: #6B1839;
+                        font-size: 22px;
+                        margin-bottom: 20px;
+                        font-weight: 600;
+                    }}
+                    .greeting {{
+                        font-size: 16px;
+                        color: #333;
+                        margin-bottom: 15px;
+                    }}
+                    .greeting strong {{
+                        color: #9F2241;
+                    }}
+                    .message {{
+                        font-size: 15px;
+                        color: #666;
+                        margin-bottom: 25px;
+                        line-height: 1.6;
+                    }}
+                    .button-container {{
+                        text-align: center;
+                        margin: 30px 0;
+                    }}
+                    .button {{ 
+                        display: inline-block; 
+                        background: linear-gradient(135deg, #9F2241 0%, #6B1839 100%);
+                        color: white !important; 
+                        padding: 16px 40px; 
+                        text-decoration: none; 
+                        border-radius: 8px; 
+                        font-weight: bold;
+                        font-size: 16px;
+                        box-shadow: 0 4px 15px rgba(159, 34, 65, 0.3);
+                        transition: all 0.3s ease;
+                    }}
+                    .button:hover {{
+                        background: linear-gradient(135deg, #6B1839 0%, #9F2241 100%);
+                        box-shadow: 0 6px 20px rgba(159, 34, 65, 0.4);
+                    }}
+                    .info-box {{
+                        background: #f8f9fa;
+                        border-left: 4px solid #9F2241;
+                        padding: 15px;
+                        margin: 25px 0;
+                        border-radius: 4px;
+                    }}
+                    .info-box p {{
+                        margin: 8px 0;
+                        font-size: 14px;
+                        color: #555;
+                    }}
+                    .warning-box {{
+                        background: #fff3cd;
+                        border: 1px solid #ffc107;
+                        border-radius: 6px;
+                        padding: 15px;
+                        margin: 20px 0;
+                    }}
+                    .warning-box p {{
+                        margin: 0;
+                        font-size: 14px;
+                        color: #856404;
+                        font-weight: 600;
+                    }}
+                    .link-section {{
+                        background: #f8f9fa;
+                        padding: 15px;
+                        border-radius: 6px;
+                        margin: 20px 0;
+                    }}
+                    .link-section p {{
+                        margin-bottom: 8px;
+                        font-size: 13px;
+                        color: #666;
+                    }}
+                    .link-text {{
+                        word-break: break-all;
+                        color: #9F2241;
+                        font-size: 12px;
+                        font-family: monospace;
+                        padding: 10px;
+                        background: white;
+                        border: 1px solid #dee2e6;
+                        border-radius: 4px;
+                        display: block;
+                    }}
+                    .security-note {{
+                        background: #e7f3ff;
+                        border-left: 4px solid #0066cc;
+                        padding: 15px;
+                        margin: 20px 0;
+                        border-radius: 4px;
+                    }}
+                    .security-note p {{
+                        margin: 5px 0;
+                        font-size: 13px;
+                        color: #004085;
+                    }}
+                    .footer {{ 
+                        background: #f8f9fa;
+                        text-align: center; 
+                        color: #666; 
+                        font-size: 12px; 
+                        padding: 30px;
+                        border-radius: 0 0 10px 10px;
+                        border-top: 3px solid #9F2241;
+                    }}
+                    .footer p {{
+                        margin: 8px 0;
+                    }}
+                    .footer strong {{
+                        color: #333;
+                        font-size: 13px;
+                    }}
+                    @media only screen and (max-width: 600px) {{
+                        .content {{ padding: 30px 20px; }}
+                        .button {{ padding: 14px 30px; font-size: 15px; }}
+                    }}
                 </style>
             </head>
             <body>
-                <div class="container">
+                <div class="email-wrapper">
                     <div class="header">
-                        <h1>🏥 Sistema de Farmacia Penitenciaria</h1>
+                        <div class="icon-badge">🔐</div>
+                        <h1>Sistema de Farmacia Penitenciaria</h1>
+                        <p>Subsecretaría de Seguridad • Estado de México</p>
                     </div>
+                    
                     <div class="content">
                         <h2>Recuperación de Contraseña</h2>
-                        <p>Hola <strong>{user.first_name or user.username}</strong>,</p>
-                        <p>Has solicitado restablecer tu contraseña. Haz clic en el siguiente botón para crear una nueva:</p>
-                        <p style="text-align: center;">
-                            <a href="{reset_url}" class="button">Restablecer Contraseña</a>
+                        
+                        <p class="greeting">Hola <strong>{user.first_name or user.username}</strong>,</p>
+                        
+                        <p class="message">
+                            Has solicitado restablecer tu contraseña para acceder al Sistema de Farmacia Penitenciaria. 
+                            Para continuar con el proceso de recuperación, haz clic en el siguiente botón:
                         </p>
-                        <p>O copia y pega este enlace en tu navegador:</p>
-                        <p style="word-break: break-all; color: #666; font-size: 12px;">{reset_url}</p>
-                        <p><strong>⚠️ Este enlace expirará en 24 horas.</strong></p>
-                        <p>Si no solicitaste este cambio, puedes ignorar este mensaje.</p>
+                        
+                        <div class="button-container">
+                            <a href="{reset_url}" class="button">Restablecer Contraseña</a>
+                        </div>
+                        
+                        <div class="warning-box">
+                            <p>⚠️ Este enlace expirará en 24 horas por seguridad.</p>
+                        </div>
+                        
+                        <div class="link-section">
+                            <p>Si el botón no funciona, copia y pega este enlace en tu navegador:</p>
+                            <span class="link-text">{reset_url}</span>
+                        </div>
+                        
+                        <div class="security-note">
+                            <p><strong>🛡️ Información de Seguridad:</strong></p>
+                            <p>• Este correo fue generado automáticamente por el sistema</p>
+                            <p>• Si no solicitaste este cambio, ignora este mensaje</p>
+                            <p>• Tu contraseña actual sigue siendo válida hasta que la cambies</p>
+                            <p>• Nunca compartas tu contraseña con nadie</p>
+                        </div>
+                        
+                        <div class="info-box">
+                            <p><strong>¿Necesitas ayuda?</strong></p>
+                            <p>Si tienes problemas para restablecer tu contraseña, contacta con el administrador del sistema.</p>
+                        </div>
                     </div>
+                    
                     <div class="footer">
-                        <p>Este es un mensaje automático. Por favor no respondas a este correo.</p>
-                        <p>Sistema de Farmacia Penitenciaria - Estado de México</p>
+                        <p><strong>Sistema de Farmacia Penitenciaria</strong></p>
+                        <p>Subsecretaría de Seguridad</p>
+                        <p>Gobierno del Estado de México • {current_year}</p>
+                        <p style="margin-top: 15px; font-size: 11px; color: #999;">
+                            Este es un mensaje automático. Por favor no respondas a este correo.
+                        </p>
                     </div>
                 </div>
             </body>
