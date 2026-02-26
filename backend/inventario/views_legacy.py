@@ -13395,7 +13395,7 @@ def exportar_control_inventarios(request):
                 producto.nombre_comercial or '',  # E - Nombre comercial del producto (vacío si no tiene)
                 producto.concentracion or '',  # F
                 producto.presentacion or '',  # G
-                f'=ROUND((I{row}-K{row})/30,0)',  # H - Fórmula MESES (redondeado a entero)
+                f'=ROUND((I{row}-TODAY())/30,0)',  # H - Meses RESTANTES hasta caducidad (desde hoy)
                 lote.fecha_caducidad,  # I - Fecha caducidad
                 cantidad_lote,  # J
                 fecha_ingreso_date,  # K
