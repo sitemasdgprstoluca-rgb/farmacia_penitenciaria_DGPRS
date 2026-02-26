@@ -881,7 +881,9 @@ RECAPTCHA_SITE_KEY = config('RECAPTCHA_SITE_KEY', default='')
 RECAPTCHA_SCORE_THRESHOLD = config('RECAPTCHA_SCORE_THRESHOLD', default=0.5, cast=float)  # Para v3
 
 # URL del frontend (para enlaces en emails de recuperación de contraseña)
-FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:5173')
+# Usa variable de entorno si está configurada, sino intenta detectar el entorno
+_default_frontend = 'http://localhost:5173' if DEBUG else 'https://farmacia-penitenciaria-front.onrender.com'
+FRONTEND_URL = config('FRONTEND_URL', default=_default_frontend)
 
 # ═══════════════════════════════════════════════════════════
 # CACHE CONFIGURATION (para optimizar dashboard y reportes)

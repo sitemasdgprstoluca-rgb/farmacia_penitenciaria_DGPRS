@@ -136,10 +136,10 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
             'username',
             output_field=CharField(),
         )
-        # FIX: Usar Cast para convertir correctamente created_by_id a IntegerField
+        # FIX: Referencia directa a la columna sin comillas para evitar problemas de escape
         creado_por_created_by = Subquery(
             User.objects.filter(
-                pk=Cast(RawSQL('"lotes"."created_by_id"', []), output_field=IntegerField())
+                pk=Cast(RawSQL('lotes.created_by_id', []), output_field=IntegerField())
             ).annotate(display=_user_display).values('display')[:1],
             output_field=CharField(),
         )

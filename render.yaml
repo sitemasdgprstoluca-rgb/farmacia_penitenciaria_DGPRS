@@ -77,6 +77,9 @@ services:
       
       - key: LOG_TO_STDOUT
         value: "True"  # Importante: Render tiene disco efímero
+      
+      - key: FRONTEND_URL
+        sync: false  # Configura con la URL de tu frontend, ej: https://farmacia-front.onrender.com
 
   # ═══════════════════════════════════════════════════════════════════════════
   # FRONTEND - Vite/React (Opcional)
