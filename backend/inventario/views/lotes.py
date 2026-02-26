@@ -30,7 +30,10 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
-from django.db.models import Q, Sum
+from django.db.models import Q, Sum, Subquery, OuterRef, Value, CharField
+from django.db.models.expressions import RawSQL
+from django.db.models.functions import Coalesce, NullIf, Trim, Concat
+from django.contrib.auth import get_user_model
 from django.http import HttpResponse
 from django.utils import timezone
 
@@ -123,31 +126,61 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
         Seguridad: Usuarios de centro solo ven lotes de su centro.
         Admin/farmacia/vista ven todo por defecto, pueden filtrar con ?centro=.
         """
-        queryset = Lote.objects.select_related('producto', 'centro').prefetch_related('parcialidades').extra(
-            select={
-                '_creado_por_nombre': """
-                    COALESCE(
-                      (SELECT COALESCE(NULLIF(TRIM(u.first_name || ' ' || u.last_name), ''), u.username)
-                       FROM usuarios u WHERE u.id = lotes.created_by_id LIMIT 1),
-                      (SELECT COALESCE(NULLIF(TRIM(u.first_name || ' ' || u.last_name), ''), u.username)
-                       FROM usuarios u
-                       JOIN lote_parcialidades lp ON lp.usuario_id = u.id
-                       WHERE lp.lote_id = lotes.id
-                       ORDER BY lp.created_at ASC LIMIT 1)
-                    )
-                """,
-                '_modificado_por_nombre': """
-                    (SELECT COALESCE(NULLIF(TRIM(u.first_name || ' ' || u.last_name), ''), u.username)
-                     FROM auditoria_logs al
-                     JOIN usuarios u ON u.id = al.usuario_id
-                     WHERE al.modelo = 'Lote'
-                       AND al.objeto_id = lotes.id::text
-                       AND al.accion = 'actualizar'
-                       AND al.usuario_id IS NOT NULL
-                     ORDER BY al.timestamp DESC LIMIT 1)
-                """,
-            }
-        ).all()
+        User = get_user_model()
+
+        # ── Subquery: nombre del usuario que creó el lote vía created_by_id ──
+        # `created_by_id` existe en la DB pero no está declarado en el modelo Django
+        # (managed=False), por eso usamos RawSQL para referenciar la columna.
+        _user_display = Coalesce(
+            NullIf(Trim(Concat('first_name', Value(' '), 'last_name')), Value('')),
+            'username',
+            output_field=CharField(),
+        )
+        creado_por_created_by = Subquery(
+            User.objects.filter(
+                pk=RawSQL('"lotes"."created_by_id"', [], output_field=CharField())
+            ).annotate(display=_user_display).values('display')[:1],
+            output_field=CharField(),
+        )
+        # Fallback: primer registro en lote_parcialidades (lotes importados sin created_by)
+        creado_por_parcialidad = Subquery(
+            LoteParcialidad.objects.filter(
+                lote_id=OuterRef('pk')
+            ).order_by('created_at').annotate(
+                display=Coalesce(
+                    NullIf(Trim(Concat('usuario__first_name', Value(' '), 'usuario__last_name')), Value('')),
+                    'usuario__username',
+                    output_field=CharField(),
+                )
+            ).values('display')[:1],
+            output_field=CharField(),
+        )
+        # ── Subquery: nombre del último usuario que actualizó el lote ──
+        modificado_por_sub = Subquery(
+            AuditoriaLogs.objects.filter(
+                modelo='Lote',
+                objeto_id=RawSQL('"lotes"."id"::text', [], output_field=CharField()),
+                accion='actualizar',
+                usuario__isnull=False,
+            ).order_by('-timestamp').annotate(
+                display=Coalesce(
+                    NullIf(Trim(Concat('usuario__first_name', Value(' '), 'usuario__last_name')), Value('')),
+                    'usuario__username',
+                    output_field=CharField(),
+                )
+            ).values('display')[:1],
+            output_field=CharField(),
+        )
+
+        queryset = (
+            Lote.objects
+            .select_related('producto', 'centro')
+            .prefetch_related('parcialidades')
+            .annotate(
+                _creado_por_nombre=Coalesce(creado_por_created_by, creado_por_parcialidad),
+                _modificado_por_nombre=modificado_por_sub,
+            )
+        )
         
         # SEGURIDAD: Filtrar por centro segun rol
         user = self.request.user

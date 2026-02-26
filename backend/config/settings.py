@@ -951,3 +951,42 @@ if DEBUG:
     ]
 else:
     SILENCED_SYSTEM_CHECKS = []
+
+# ═══════════════════════════════════════════════════════════
+# SENTRY — Error tracking & performance monitoring
+# ═══════════════════════════════════════════════════════════
+# Requiere agregar SENTRY_DSN en las variables de entorno de Render.
+# El paquete sentry-sdk[django] ya está en requirements.txt.
+# Con DSN vacío (por defecto) Sentry queda deshabilitado — sin efecto en dev.
+SENTRY_DSN = config('SENTRY_DSN', default='')
+
+if SENTRY_DSN:
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+    from sentry_sdk.integrations.logging import LoggingIntegration
+    import logging as _logging
+
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[
+            DjangoIntegration(
+                transaction_style='url',    # Agrupa trazas por URL (evita card explosion)
+                middleware_spans=True,
+                signals_spans=False,        # Señales de Django son ruidosas; deshabilitar
+            ),
+            LoggingIntegration(
+                level=_logging.WARNING,     # Captura WARNING y superiores
+                event_level=_logging.ERROR, # Solo ERROR+ crea Sentry events
+            ),
+        ],
+        # Muestreo de rendimiento: 5% de requests en producción
+        traces_sample_rate=0.05 if not DEBUG else 0.0,
+        # No enviar datos personales (IPs, cookies, headers de sesión)
+        send_default_pii=False,
+        environment='production' if not DEBUG else 'development',
+        # Ignorar errores 404 y PermissionDenied que generarían demasiado ruido
+        ignore_errors=[
+            'django.http.Http404',
+            'django.core.exceptions.PermissionDenied',
+        ],
+    )

@@ -1803,12 +1803,12 @@ const handleImportar = async (e) => {
               <col className="w-16" /> {/* Alerta */}
               <col className="w-32" /> {/* Marca / Lab */}
               <col className="w-24" /> {/* Inventario */}
-              <col className="w-28" /> {/* Registrado por */}
+              <col className="w-28" /> {/* Creado por */}
               <col className="w-20" /> {/* Acciones */}}
             </colgroup>
             <thead className="bg-theme-gradient sticky top-0 z-10">
             <tr>
-              {['#', 'Producto', 'Lote', 'Caducidad', 'Alerta', 'Marca / Lab', 'Inventario', 'Registrado por', 'Acciones'].map((col) => (
+              {['#', 'Producto', 'Lote', 'Caducidad', 'Alerta', 'Marca / Lab', 'Inventario', 'Creado por', 'Acciones'].map((col) => (
                 <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
                   {col}
                 </th>
@@ -1948,7 +1948,7 @@ const handleImportar = async (e) => {
                         </div>
                       )}
                     </td>
-                    {/* Registrado / Modificado por */}
+                    {/* Creado / Modificado por */}
                     <td className="px-3 py-2">
                       {lote.creado_por_nombre ? (
                         <div>

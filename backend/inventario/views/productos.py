@@ -13,8 +13,9 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.db import transaction
-from django.db.models import Q, Sum, F
-from django.db.models.functions import Coalesce
+from django.db.models import Q, Sum, F, Subquery, OuterRef, Value, CharField
+from django.db.models.expressions import RawSQL
+from django.db.models.functions import Coalesce, NullIf, Trim, Concat
 from django.http import HttpResponse
 from django.utils import timezone
 import openpyxl
@@ -69,29 +70,33 @@ class ProductoViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
         return [IsAuthenticated(), HasProductosPermission()]
 
     def get_queryset(self):
-        queryset = Producto.objects.extra(
-            select={
-                '_creado_por_nombre': """
-                    (SELECT COALESCE(NULLIF(TRIM(u.first_name || ' ' || u.last_name), ''), u.username)
-                     FROM auditoria_logs al
-                     JOIN usuarios u ON u.id = al.usuario_id
-                     WHERE al.modelo = 'Producto'
-                       AND al.objeto_id = productos.id::text
-                       AND al.accion = 'crear'
-                       AND al.usuario_id IS NOT NULL
-                     ORDER BY al.timestamp ASC LIMIT 1)
-                """,
-                '_modificado_por_nombre': """
-                    (SELECT COALESCE(NULLIF(TRIM(u.first_name || ' ' || u.last_name), ''), u.username)
-                     FROM auditoria_logs al
-                     JOIN usuarios u ON u.id = al.usuario_id
-                     WHERE al.modelo = 'Producto'
-                       AND al.objeto_id = productos.id::text
-                       AND al.accion = 'actualizar'
-                       AND al.usuario_id IS NOT NULL
-                     ORDER BY al.timestamp DESC LIMIT 1)
-                """,
-            }
+        # ── Subqueries para auditoría de creación / modificación ──────────────
+        _user_display = Coalesce(
+            NullIf(Trim(Concat('usuario__first_name', Value(' '), 'usuario__last_name')), Value('')),
+            'usuario__username',
+            output_field=CharField(),
+        )
+        creado_por_sub = Subquery(
+            AuditoriaLogs.objects.filter(
+                modelo='Producto',
+                objeto_id=RawSQL('"productos"."id"::text', [], output_field=CharField()),
+                accion='crear',
+                usuario__isnull=False,
+            ).order_by('timestamp').annotate(display=_user_display).values('display')[:1],
+            output_field=CharField(),
+        )
+        modificado_por_sub = Subquery(
+            AuditoriaLogs.objects.filter(
+                modelo='Producto',
+                objeto_id=RawSQL('"productos"."id"::text', [], output_field=CharField()),
+                accion='actualizar',
+                usuario__isnull=False,
+            ).order_by('-timestamp').annotate(display=_user_display).values('display')[:1],
+            output_field=CharField(),
+        )
+        queryset = Producto.objects.annotate(
+            _creado_por_nombre=creado_por_sub,
+            _modificado_por_nombre=modificado_por_sub,
         )
         user = self.request.user
         
@@ -689,21 +694,48 @@ class ProductoViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
         try:
             from core.models import AuditoriaLogs
             producto = self.get_object()
-            
+
             # Buscar logs de auditoría relacionados con este producto
             logs = AuditoriaLogs.objects.filter(
                 Q(modelo='producto') | Q(modelo='core_producto') | Q(modelo='Producto'),
                 objeto_id=str(producto.id)
-            ).order_by('-timestamp')[:50]
-            
+            ).select_related('usuario').order_by('-timestamp')[:50]
+
+            ACCIONES_DISPLAY = {
+                'crear':      'Registro inicial',
+                'actualizar': 'Actualización de datos',
+                'eliminar':   'Eliminación',
+                'importar':   'Importación masiva',
+                'activar':    'Activación',
+                'desactivar': 'Desactivación',
+                'restaurar':  'Restauración',
+            }
+            ACCIONES_ICONO = {
+                'crear':      'crear',
+                'actualizar': 'actualizar',
+                'eliminar':   'eliminar',
+                'importar':   'importar',
+                'activar':    'activar',
+                'desactivar': 'desactivar',
+            }
+
             historial = []
             for log in logs:
                 historial.append({
                     'id': log.id,
                     'fecha': log.timestamp.isoformat() if log.timestamp else None,
-                    'usuario': log.usuario.get_full_name() or log.usuario.username if log.usuario else 'Sistema',
+                    'usuario_nombre': (
+                        log.usuario.get_full_name() or log.usuario.username
+                        if log.usuario else 'Sistema'
+                    ),
                     'accion': log.accion,
-                    'cambios': log.datos_nuevos if log.datos_nuevos else None,
+                    'accion_display': ACCIONES_DISPLAY.get(
+                        (log.accion or '').lower(),
+                        (log.accion or '').replace('_', ' ').title()
+                    ),
+                    'accion_tipo': ACCIONES_ICONO.get((log.accion or '').lower(), 'otro'),
+                    'datos_anteriores': log.datos_anteriores,
+                    'datos_nuevos': log.datos_nuevos,
                     'ip': log.ip_address if log.ip_address else None,
                 })
             

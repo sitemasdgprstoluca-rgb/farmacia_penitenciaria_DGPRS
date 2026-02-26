@@ -16,7 +16,7 @@ from datetime import datetime, date, timezone as dt_timezone, timedelta
 from decimal import Decimal
 
 import openpyxl
-from django.db import transaction
+from django.db import transaction, connection
 from django.db.models import F
 from django.utils import timezone
 
@@ -1502,9 +1502,20 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                     marca=marca,
                     ubicacion='Almacén Central',
                     activo=fila.get('activo', True),
-                    created_by=usuario if (usuario and getattr(usuario, 'is_authenticated', False)) else None,
                 )
-                
+
+                # Registrar el usuario importador en created_by_id (columna existe en DB
+                # pero no está declarada en el modelo Django managed=False)
+                if usuario and getattr(usuario, 'is_authenticated', False) and getattr(usuario, 'pk', None):
+                    try:
+                        with connection.cursor() as cur:
+                            cur.execute(
+                                'UPDATE lotes SET created_by_id = %s WHERE id = %s AND created_by_id IS NULL',
+                                [usuario.pk, lote_nuevo.pk],
+                            )
+                    except Exception:
+                        pass  # No bloquear la importación si este UPDATE falla
+
                 # Crear parcialidad inicial para el historial de entregas
                 # P0-1: IDEMPOTENCIA - Verificar fingerprint antes de procesar
                 from core.utils.parcialidad_merge import (

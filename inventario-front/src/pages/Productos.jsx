@@ -397,6 +397,69 @@ const MOCK_PRODUCTS = Array.from({ length: 124 }).map((_, index) => {
   };
 });
 
+// ─── Helpers para el historial de auditoría ─────────────────────────────────
+const LABELS_CAMPO = {
+  clave: 'Clave',
+  nombre: 'Nombre del producto',
+  nombre_comercial: 'Nombre comercial',
+  descripcion: 'Descripción',
+  unidad_medida: 'Unidad de medida',
+  stock_minimo: 'Stock mínimo',
+  stock_actual: 'Stock actual',
+  categoria: 'Categoría',
+  presentacion: 'Presentación',
+  sustancia_activa: 'Sustancia activa',
+  concentracion: 'Concentración',
+  via_administracion: 'Vía de administración',
+  requiere_receta: 'Requiere receta',
+  es_controlado: 'Medicamento controlado',
+  activo: 'Estado activo',
+  precio_unitario: 'Precio unitario',
+  marca: 'Marca',
+  laboratorio: 'Laboratorio',
+  fabricante: 'Fabricante',
+};
+
+const formatearValorAudit = (campo, valor) => {
+  if (valor === null || valor === undefined || valor === '') return 'Sin dato';
+  if (typeof valor === 'boolean') return valor ? 'Sí' : 'No';
+  if (campo === 'activo') return valor ? 'Activo' : 'Inactivo';
+  if (campo === 'requiere_receta' || campo === 'es_controlado') return valor ? 'Sí' : 'No';
+  if (typeof valor === 'object') return JSON.stringify(valor);
+  return String(valor);
+};
+
+const calcularDiffAudit = (anterior, nuevo) => {
+  if (!anterior && !nuevo) return [];
+  const campos = new Set([
+    ...Object.keys(anterior || {}),
+    ...Object.keys(nuevo || {}),
+  ]);
+  const IGNORAR = ['id', 'created_at', 'updated_at', 'timestamp'];
+  const cambios = [];
+  campos.forEach((campo) => {
+    if (IGNORAR.includes(campo)) return;
+    const antes = (anterior || {})[campo];
+    const despues = (nuevo || {})[campo];
+    // eslint-disable-next-line eqeqeq
+    if (antes != despues) {
+      cambios.push({ campo, antes, despues });
+    }
+  });
+  return cambios;
+};
+
+const ACCION_ESTILOS = {
+  crear:      { bg: 'bg-emerald-100', text: 'text-emerald-800', border: 'border-emerald-300', punto: 'bg-emerald-500' },
+  actualizar: { bg: 'bg-blue-100',    text: 'text-blue-800',    border: 'border-blue-300',    punto: 'bg-blue-500' },
+  eliminar:   { bg: 'bg-red-100',     text: 'text-red-800',     border: 'border-red-300',     punto: 'bg-red-500' },
+  importar:   { bg: 'bg-violet-100',  text: 'text-violet-800',  border: 'border-violet-300',  punto: 'bg-violet-500' },
+  activar:    { bg: 'bg-emerald-100', text: 'text-emerald-800', border: 'border-emerald-300', punto: 'bg-emerald-500' },
+  desactivar: { bg: 'bg-amber-100',   text: 'text-amber-800',   border: 'border-amber-300',   punto: 'bg-amber-500' },
+  otro:       { bg: 'bg-gray-100',    text: 'text-gray-700',    border: 'border-gray-300',    punto: 'bg-gray-400' },
+};
+// ─────────────────────────────────────────────────────────────────────────────
+
 const Productos = () => {
 
   const { user, permisos, getRolPrincipal } = usePermissions();
@@ -2601,97 +2664,159 @@ const Productos = () => {
 
 
       {auditoriaVisible && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4" onClick={(e) => e.target === e.currentTarget && cerrarAuditoria()}>
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl flex flex-col max-h-[90vh]">
 
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
-
-          <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl">
-
-            <div
-
-              className="flex items-center justify-between rounded-t-2xl px-6 py-4 text-white bg-theme-gradient"
-
-            >
-
+            {/* Cabecera */}
+            <div className="flex items-start justify-between rounded-t-2xl px-6 py-4 text-white bg-theme-gradient shrink-0">
               <div>
-
-                <h3 className="text-xl font-bold">Historial de auditoría</h3>
-
-                <p className="text-sm text-white/80">
-
-                  {(auditoriaData?.producto?.clave) || 'Producto'} | {auditoriaData?.producto?.nombre || ''}
-
+                <h3 className="text-lg font-bold flex items-center gap-2">
+                  <FaHistory className="opacity-80" />
+                  Historial de auditoría
+                </h3>
+                <p className="text-sm text-white/70 mt-0.5">
+                  {auditoriaData?.producto?.clave && (
+                    <span className="font-mono mr-1 bg-white/20 px-1.5 py-0.5 rounded text-xs">{auditoriaData.producto.clave}</span>
+                  )}
+                  {auditoriaData?.producto?.nombre || 'Producto'}
                 </p>
-
               </div>
-
-              <button type="button" onClick={cerrarAuditoria} className="text-sm font-semibold text-white/90 hover:text-white">
-
-                Cerrar ✓
-
+              <button
+                type="button"
+                onClick={cerrarAuditoria}
+                className="mt-0.5 p-1.5 rounded-lg hover:bg-white/20 transition-colors"
+                title="Cerrar"
+              >
+                <FaTimes className="w-4 h-4" />
               </button>
-
             </div>
 
-            <div className="max-h-[60vh] overflow-y-auto px-6 py-5 space-y-4">
-
+            {/* Contenido */}
+            <div className="overflow-y-auto px-6 py-5 space-y-3 flex-1">
               {auditoriaLoading ? (
-
-                <p className="text-sm text-gray-500">Cargando historial...</p>
-
+                <div className="flex flex-col items-center justify-center py-12 gap-3 text-gray-400">
+                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-[#632842] border-t-transparent" />
+                  <p className="text-sm">Cargando historial...</p>
+                </div>
               ) : auditoriaData?.historial?.length ? (
+                <div className="relative">
+                  {/* Línea de tiempo vertical */}
+                  <span className="absolute left-[19px] top-4 bottom-4 w-0.5 bg-gray-200 rounded" />
 
-                auditoriaData.historial.map((log) => (
+                  <div className="space-y-4">
+                    {auditoriaData.historial.map((log, idx) => {
+                      const tipo = (log.accion_tipo || log.accion || 'otro').toLowerCase();
+                      const est = ACCION_ESTILOS[tipo] || ACCION_ESTILOS.otro;
+                      const diff = calcularDiffAudit(log.datos_anteriores, log.datos_nuevos);
+                      const esCreacion = tipo === 'crear' || tipo === 'importar';
+                      const camposIniciales = esCreacion && log.datos_nuevos
+                        ? Object.entries(log.datos_nuevos).filter(([k, v]) =>
+                            v !== null && v !== undefined && v !== '' &&
+                            !['id','created_at','updated_at','timestamp'].includes(k))
+                        : [];
 
-                  <div key={log.id} className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
+                      return (
+                        <div key={log.id || idx} className="relative flex gap-4 items-start">
+                          {/* Punto en la línea */}
+                          <div className={`relative z-10 w-10 h-10 rounded-full flex items-center justify-center shrink-0 border-2 border-white shadow-sm ${est.punto}`}>
+                            <span className="text-white text-xs font-bold">{auditoriaData.historial.length - idx}</span>
+                          </div>
 
-                    <div className="flex flex-wrap items-center justify-between gap-2">
+                          {/* Tarjeta */}
+                          <div className={`flex-1 rounded-xl border ${est.border} ${est.bg} px-4 py-3 shadow-sm`}>
+                            {/* Cabecera de la tarjeta */}
+                            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                              <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-white/70 ${est.text}`}>
+                                {log.accion_display || log.accion || 'Cambio'}
+                              </span>
+                              <span className="text-xs text-gray-500">{formatFecha(log.fecha)}</span>
+                            </div>
 
-                      <div>
+                            {/* Usuario */}
+                            <p className="text-xs text-gray-600 flex items-center gap-1 mb-3">
+                              <span className="inline-block w-4 h-4 rounded-full bg-[#632842]/10 text-[#632842] text-center leading-4 font-bold text-[10px]">U</span>
+                              <span className="font-medium text-gray-700">{log.usuario_nombre || 'Sistema'}</span>
+                            </p>
 
-                        <p className="text-sm font-semibold text-gray-800">{log.accion_display}</p>
+                            {/* Campos modificados (para actualizaciones) */}
+                            {diff.length > 0 && (
+                              <div className="space-y-2">
+                                <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Cambios realizados</p>
+                                <div className="grid gap-1.5">
+                                  {diff.map(({ campo, antes, despues }) => (
+                                    <div key={campo} className="bg-white/80 rounded-lg px-3 py-2 text-xs">
+                                      <span className="font-semibold text-gray-700 block mb-1">
+                                        {LABELS_CAMPO[campo] || campo.replace(/_/g, ' ')}
+                                      </span>
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        {antes !== undefined && antes !== null && antes !== '' && (
+                                          <span className="inline-flex items-center gap-1 bg-red-50 text-red-700 border border-red-200 px-2 py-0.5 rounded">
+                                            <span className="text-[9px] font-bold uppercase tracking-wider">Antes</span>
+                                            <span>{formatearValorAudit(campo, antes)}</span>
+                                          </span>
+                                        )}
+                                        <span className="text-gray-300 text-base">→</span>
+                                        <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded">
+                                          <span className="text-[9px] font-bold uppercase tracking-wider">Nuevo</span>
+                                          <span>{formatearValorAudit(campo, despues)}</span>
+                                        </span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
 
-                        <p className="text-xs text-gray-500">
+                            {/* Campos del registro inicial (para creación) */}
+                            {esCreacion && camposIniciales.length > 0 && (
+                              <div className="space-y-1.5">
+                                <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Datos registrados</p>
+                                <div className="grid grid-cols-2 gap-1.5">
+                                  {camposIniciales.map(([campo, valor]) => (
+                                    <div key={campo} className="bg-white/80 rounded-lg px-3 py-1.5 text-xs">
+                                      <span className="text-gray-500 block text-[10px]">{LABELS_CAMPO[campo] || campo.replace(/_/g, ' ')}</span>
+                                      <span className="font-medium text-gray-800">{formatearValorAudit(campo, valor)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
 
-                          Responsable: {log.usuario_nombre || 'Sistema'}
-
-                        </p>
-
-                      </div>
-
-                      <span className="text-xs font-semibold text-gray-500">
-
-                        {formatFecha(log.created_at || log.fecha)}
-
-                      </span>
-
-                    </div>
-
-                    {log.cambios && Object.keys(log.cambios).length > 0 && (
-
-                      <pre className="mt-2 overflow-x-auto rounded bg-white p-2 text-xs text-gray-600">
-
-                        {JSON.stringify(log.cambios, null, 2)}
-
-                      </pre>
-
-                    )}
-
+                            {/* Sin detalles disponibles */}
+                            {diff.length === 0 && !esCreacion && (
+                              <p className="text-xs text-gray-400 italic">Sin detalles adicionales registrados.</p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-
-                ))
-
+                </div>
               ) : (
-
-                <p className="text-sm text-gray-500">No hay cambios registrados para este producto.</p>
-
+                <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400">
+                  <FaHistory className="w-10 h-10 opacity-30" />
+                  <p className="text-sm">Sin cambios registrados para este producto.</p>
+                </div>
               )}
-
             </div>
 
+            {/* Pie */}
+            <div className="shrink-0 px-6 py-3 border-t bg-gray-50 rounded-b-2xl flex items-center justify-between">
+              <span className="text-xs text-gray-400">
+                {auditoriaData?.historial?.length
+                  ? `${auditoriaData.historial.length} registro${auditoriaData.historial.length !== 1 ? 's' : ''} en el historial`
+                  : ''}
+              </span>
+              <button
+                type="button"
+                onClick={cerrarAuditoria}
+                className="px-4 py-1.5 text-sm font-semibold text-[#632842] border border-[#632842]/30 rounded-lg hover:bg-[#632842] hover:text-white transition-colors"
+              >
+                Cerrar
+              </button>
+            </div>
           </div>
-
         </div>
-
       )}
 
       {/* Modal de Lotes del Producto */}
