@@ -233,20 +233,42 @@ export const checkApiHealth = async (options = {}) => {
       }
       
       // ISS-001: Usar endpoint parametrizable
-      const response = await publicApiClient.get(HEALTH_ENDPOINT, { timeout: HEALTH_TIMEOUT });
-      const data = response.data;
+      // ISS-FIX: Suprimir errores de consola durante health check
+      const originalConsoleError = console.error;
+      const originalConsoleWarn = console.warn;
+      if (!isDev) {
+        console.error = () => {};
+        console.warn = () => {};
+      }
       
-      apiHealthy = true;
-      
-      return {
-        healthy: true,
-        skipped: false,
-        version: data?.version || data?.api_version || API_VERSION,
-        database: data?.database ?? data?.db_status ?? 'unknown',
-        timestamp: data?.timestamp || new Date().toISOString(),
-        details: data,
-        attempts: attempt + 1,
-      };
+      try {
+        const response = await publicApiClient.get(HEALTH_ENDPOINT, { timeout: HEALTH_TIMEOUT });
+        const data = response.data;
+        
+        // Restaurar console
+        if (!isDev) {
+          console.error = originalConsoleError;
+          console.warn = originalConsoleWarn;
+        }
+        
+        apiHealthy = true;
+        
+        return {
+          healthy: true,
+          skipped: false,
+          version: data?.version || data?.api_version || API_VERSION,
+          database: data?.database ?? data?.db_status ?? 'unknown',
+          timestamp: data?.timestamp || new Date().toISOString(),
+          details: data,
+          attempts: attempt + 1,
+        };
+      } finally {
+        // Asegurar restauración de console
+        if (!isDev) {
+          console.error = originalConsoleError;
+          console.warn = originalConsoleWarn;
+        }
+      }
     } catch (error) {
       lastError = error;
       const status = error.response?.status;
@@ -353,6 +375,10 @@ const apiClient = axios.create({
   },
   withCredentials: true, // IMPORTANTE: Enviar cookies en cada request
   timeout: 60000, // ISS-FIX: 60 segundos de timeout para cold starts de Render
+  // ISS-FIX: Suprimir errores de red automáticos en producción
+  validateStatus: function (status) {
+    return status < 600; // No lanzar error automático, manejarlo en interceptor
+  },
 });
 
 // Cliente público para endpoints que NO requieren autenticación
@@ -363,6 +389,10 @@ const publicApiClient = axios.create({
     'Content-Type': 'application/json',
   },
   withCredentials: false, // No enviar cookies/tokens
+  // ISS-FIX: Suprimir errores automáticos en health checks
+  validateStatus: function (status) {
+    return status < 600;
+  },
 });
 
 let activityCallback = null;
@@ -488,7 +518,15 @@ apiClient.interceptors.request.use(
 );
 
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // ISS-FIX: Retornar error explícito para códigos 4xx y 5xx
+    if (response.status >= 400) {
+      const error = new Error(response.data?.detail || response.data?.error || `Error ${response.status}`);
+      error.response = response;
+      return Promise.reject(error);
+    }
+    return response;
+  },
   async (error) => {
     const originalRequest = error.config;
     const status = error.response?.status;
@@ -504,6 +542,10 @@ apiClient.interceptors.response.use(
       error.message?.includes('timeout') ||
       error.message?.includes('Network Error')
     );
+    
+    // ISS-FIX: Suprimir logs de consola para errores de red esperados (cold starts)
+    // Solo loguear en desarrollo o si no es error de red
+    const shouldLog = isDev || !isNetworkError;
     
     // ISS-005 FIX (audit32): Verificar límite de reintentos para errores de red/timeout
     // SEGURIDAD: Solo reintentar métodos idempotentes para evitar duplicación de operaciones
@@ -536,17 +578,10 @@ apiClient.interceptors.response.use(
         ? RETRY_CONFIG.retryDelay * Math.pow(2, retryCount)
         : RETRY_CONFIG.retryDelay;
       
-      // Silenciado para no confundir usuarios - solo en desarrollo
-      if (retryCount === 0 && isNetworkError && isDev) {
-        console.debug('[API] El servidor está iniciando, esperando respuesta...');
-      }
-      
-      // HALLAZGO #5: Solo loguear en desarrollo para evitar fuga de información
-      if (isDev) {
-        console.log(
-          `[API] Reintento ${originalRequest._retryCount}/${RETRY_CONFIG.maxRetries} ` +
-          `para ${originalRequest.url} (delay: ${delay}ms, status: ${status || 'network/timeout'})`
-        );
+      // ISS-FIX: Completamente silenciado para no mostrar errores en consola
+      // Solo loguear en modo desarrollo
+      if (isDev && retryCount === 0) {
+        console.debug('[API] Cold start detectado, esperando respuesta del servidor...');
       }
       
       await new Promise(resolve => setTimeout(resolve, delay));
@@ -554,9 +589,12 @@ apiClient.interceptors.response.use(
     }
     
     // ISS-FIX: Si todos los reintentos fallaron por error de red, NO redirigir al login
-    // Solo mostrar mensaje de error de conexión
+    // Solo mostrar mensaje de error de conexión (silencioso si es cold start)
     if (isNetworkError && retryCount >= RETRY_CONFIG.maxRetries) {
-      toastDebounce.error('El servidor no responde. Por favor, espera un momento e intenta de nuevo.');
+      // Solo mostrar toast si no es la primera carga (evitar spam de errors)
+      if (shouldLog && !originalRequest.url?.includes('/is-alive/')) {
+        toastDebounce.error('El servidor está iniciando. Esto puede tomar unos segundos.');
+      }
       return Promise.reject(error);
     }
     

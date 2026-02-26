@@ -17,8 +17,8 @@ const CONFIG = {
   HEALTH_CHECK_INTERVAL: 5 * 60 * 1000,
   // Intervalo cuando hay problemas (30 segundos)
   RECONNECT_INTERVAL: 30 * 1000,
-  // Intervalo rápido durante reconexión activa (10 segundos)
-  FAST_RECONNECT_INTERVAL: 10 * 1000,
+  // ISS-FIX: Intervalo más largo durante cold starts para evitar spam (15 segundos)
+  FAST_RECONNECT_INTERVAL: 15 * 1000,
   // Máximo de reintentos antes de mostrar error persistente
   MAX_SILENT_RETRIES: 3,
   // Tiempo antes de considerar que la conexión es estable (2 minutos sin errores)
@@ -208,12 +208,18 @@ export function useConnectionStatus(options = {}) {
     if (!enabled) return;
 
     const handleOnline = () => {
-      console.log('[Connection] Navegador reporta conexión online');
+      // ISS-FIX: Silencioso - solo en desarrollo
+      if (import.meta.env.DEV) {
+        console.debug('[Connection] Navegador reporta conexión online');
+      }
       forceReconnect();
     };
 
     const handleOffline = () => {
-      console.log('[Connection] Navegador reporta conexión offline');
+      // ISS-FIX: Silencioso - solo en desarrollo
+      if (import.meta.env.DEV) {
+        console.debug('[Connection] Navegador reporta conexión offline');
+      }
       setState(ConnectionState.DISCONNECTED);
       setLastError('Sin conexión a internet');
     };
