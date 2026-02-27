@@ -601,10 +601,10 @@ function Perfil() {
   const rolDisplay = perfil?.rol_efectivo || perfil?.rol || user?.rol_efectivo || user?.rol || "Usuario";
   const iniciales = `${perfil?.first_name?.[0] || ''}${perfil?.last_name?.[0] || perfil?.username?.[0] || 'U'}`.toUpperCase();
   
-  // ISS-SEC: Solo administradores pueden editar el correo electrónico
+  // ISS-SEC: Solo administradores pueden editar información del perfil
   const rolActual = (perfil?.rol || user?.rol || '').toUpperCase();
   const esAdmin = rolActual === 'ADMIN';
-  const puedeEditarEmail = esAdmin;
+  const puedeEditarPerfil = esAdmin;
 
   return (
     <div className="space-y-6 pb-8">
@@ -786,53 +786,60 @@ function Perfil() {
                     label="Nombre"
                     type="text"
                     value={form.first_name}
-                    onChange={(e) => setForm(f => ({ ...f, first_name: e.target.value }))}
+                    onChange={(e) => puedeEditarPerfil && setForm(f => ({ ...f, first_name: e.target.value }))}
                     placeholder="Tu nombre"
                     maxLength={150}
                     error={formErrors.first_name}
+                    disabled={!puedeEditarPerfil}
+                    readOnly={!puedeEditarPerfil}
                   />
                   <InputWithIcon
                     icon={FaUser}
                     label="Apellidos"
                     type="text"
                     value={form.last_name}
-                    onChange={(e) => setForm(f => ({ ...f, last_name: e.target.value }))}
+                    onChange={(e) => puedeEditarPerfil && setForm(f => ({ ...f, last_name: e.target.value }))}
                     placeholder="Tus apellidos"
                     maxLength={150}
+                    disabled={!puedeEditarPerfil}
+                    readOnly={!puedeEditarPerfil}
                   />
-                  <div className="space-y-1">
-                    <InputWithIcon
-                      icon={FaEnvelope}
-                      label="Correo electrónico"
-                      type="email"
-                      value={form.email}
-                      onChange={(e) => puedeEditarEmail && setForm(f => ({ ...f, email: e.target.value }))}
-                      placeholder="correo@ejemplo.com"
-                      maxLength={254}
-                      error={formErrors.email}
-                      disabled={!puedeEditarEmail}
-                      readOnly={!puedeEditarEmail}
-                      title={!puedeEditarEmail ? 'Solo administradores pueden modificar el correo' : ''}
-                    />
-                    {!puedeEditarEmail && (
-                      <p className="text-xs text-amber-600 flex items-center gap-1 mt-1">
-                        <FaLock className="w-3 h-3" />
-                        Solo administradores pueden modificar el correo electrónico
-                      </p>
-                    )}
-                  </div>
+                  <InputWithIcon
+                    icon={FaEnvelope}
+                    label="Correo electrónico"
+                    type="email"
+                    value={form.email}
+                    onChange={(e) => puedeEditarPerfil && setForm(f => ({ ...f, email: e.target.value }))}
+                    placeholder="correo@ejemplo.com"
+                    maxLength={254}
+                    error={formErrors.email}
+                    disabled={!puedeEditarPerfil}
+                    readOnly={!puedeEditarPerfil}
+                  />
                   <InputWithIcon
                     icon={FaPhone}
                     label="Teléfono"
                     type="tel"
                     value={form.telefono}
-                    onChange={(e) => setForm(f => ({ ...f, telefono: e.target.value }))}
+                    onChange={(e) => puedeEditarPerfil && setForm(f => ({ ...f, telefono: e.target.value }))}
                     placeholder="(123) 456-7890"
                     maxLength={20}
                     error={formErrors.telefono}
+                    disabled={!puedeEditarPerfil}
+                    readOnly={!puedeEditarPerfil}
                   />
                 </div>
                 
+                {!puedeEditarPerfil && (
+                  <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <p className="text-sm text-amber-700 flex items-center gap-2">
+                      <FaLock className="w-4 h-4 flex-shrink-0" />
+                      Solo administradores pueden modificar la información del perfil. Contacta a un administrador si necesitas realizar cambios.
+                    </p>
+                  </div>
+                )}
+                
+                {puedeEditarPerfil && (
                 <div className="mt-6 flex justify-end">
                   <button
                     type="submit"
@@ -855,6 +862,7 @@ function Perfil() {
                     )}
                   </button>
                 </div>
+                )}
               </form>
             </div>
           )}

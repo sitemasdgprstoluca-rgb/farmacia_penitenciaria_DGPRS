@@ -2736,22 +2736,27 @@ class UserMeSerializer(serializers.ModelSerializer):
         return profile.telefono if profile else None
 
     def update(self, instance, validated_data):
-        # ISS-SEC: Solo administradores pueden modificar su propio correo electrónico
-        # Usuarios de FARMACIA y CENTRO no pueden cambiar su email para evitar malas prácticas
+        # ISS-SEC: Solo administradores pueden modificar información del perfil
+        # Usuarios de FARMACIA y CENTRO no pueden cambiar ningún dato para evitar malas prácticas
         rol_usuario = _resolve_rol(instance)
         es_admin = rol_usuario == 'ADMIN'
         
-        if 'email' in validated_data and not es_admin:
-            # Silenciosamente ignorar cambio de email para usuarios no-ADMIN
-            # El frontend ya debería prevenir esto, pero el backend debe ser la fuente de verdad
+        # Campos restringidos para usuarios no-ADMIN
+        campos_restringidos = ['email', 'first_name', 'last_name']
+        
+        if not es_admin:
+            # Silenciosamente ignorar cambios para usuarios no-ADMIN
             from django.utils import timezone
             import logging
             logger = logging.getLogger(__name__)
-            logger.warning(
-                f"[ISS-SEC] Usuario {instance.username} (rol={rol_usuario}) intentó modificar email. "
-                f"Ignorando cambio. Timestamp: {timezone.now()}"
-            )
-            del validated_data['email']
+            
+            for campo in campos_restringidos:
+                if campo in validated_data:
+                    logger.warning(
+                        f"[ISS-SEC] Usuario {instance.username} (rol={rol_usuario}) intentó modificar {campo}. "
+                        f"Ignorando cambio. Timestamp: {timezone.now()}"
+                    )
+                    del validated_data[campo]
         
         # Extraer telefono de los datos (viene en request.data pero no en validated_data)
         telefono = self.initial_data.get('telefono')
@@ -2760,12 +2765,20 @@ class UserMeSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
         instance.save()
         
-        # Actualizar teléfono en UserProfile si se proporcionó
-        if telefono is not None:
+        # Actualizar teléfono en UserProfile si se proporcionó (solo si es admin)
+        if telefono is not None and es_admin:
             profile = getattr(instance, 'profile', None)
             if profile:
                 profile.telefono = telefono
                 profile.save(update_fields=['telefono', 'updated_at'])
+        elif telefono is not None and not es_admin:
+            from django.utils import timezone
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                f"[ISS-SEC] Usuario {instance.username} (rol={rol_usuario}) intentó modificar telefono. "
+                f"Ignorando cambio. Timestamp: {timezone.now()}"
+            )
         
         return instance
 
