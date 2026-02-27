@@ -5440,9 +5440,11 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 Q(centro_origen=user_centro) | Q(centro_destino=user_centro)
             )
             
-            # 3.1 Médico: Solo sus propias requisiciones (las que creó)
+            # 3.1 Médico: Ve todas las requisiciones de su centro (lectura)
+            # ISS-VIS-FIX: Médicos pueden ver todas las requisiciones de su centro
+            # para coordinación y seguimiento. Solo pueden modificar las que crearon.
             if rol == 'medico':
-                queryset = queryset.filter(solicitante=user)
+                pass  # El filtro por centro ya se aplicó arriba
             
             # 3.2 Administrador Centro: Ve desde pendiente_admin en adelante
             # FLUJO V2: Admin NO ve borradores de otros ni pendiente_director (eso es del director)
