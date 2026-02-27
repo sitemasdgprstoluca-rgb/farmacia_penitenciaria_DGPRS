@@ -16,7 +16,8 @@ import {
   FaTimes,
   FaChevronDown,
   FaHistory,
-  FaBoxes
+  FaBoxes,
+  FaCheck
 } from 'react-icons/fa';
 import { DEV_CONFIG } from '../config/dev';
 import PageHeader from '../components/PageHeader';
@@ -145,6 +146,8 @@ const Lotes = () => {
   const [requiereOverride, setRequiereOverride] = useState(false);
   const [motivoOverride, setMotivoOverride] = useState('');
   const [infoContratoCumplido, setInfoContratoCumplido] = useState(null);
+  // ISS-SEC: Doble confirmación para agregar entregas (modifica inventario)
+  const [confirmarEntrega, setConfirmarEntrega] = useState({ show: false, forceOverride: false });
   // Auto-completado de Contrato Global
   const [cargandoCCG, setCargandoCCG] = useState(false);
   const [ccgAutoCompletado, setCcgAutoCompletado] = useState(false);
@@ -860,7 +863,8 @@ const Lotes = () => {
     }
   };
 
-  const handleAgregarParcialidad = async (forceOverride = false) => {
+  // ISS-SEC: Paso 1 - Solicitar confirmación antes de agregar entrega
+  const solicitarConfirmacionEntrega = (forceOverride = false) => {
     if (!nuevaParcialidad.fecha_entrega || !nuevaParcialidad.cantidad) {
       toast.error('Fecha y cantidad son obligatorios');
       return;
@@ -877,6 +881,17 @@ const Lotes = () => {
       toast.error('Debe proporcionar un motivo detallado (mínimo 10 caracteres)');
       return;
     }
+    
+    // Mostrar modal de confirmación
+    setConfirmarEntrega({ show: true, forceOverride });
+  };
+
+  // ISS-SEC: Paso 2 - Ejecutar registro de entrega después de confirmación
+  const handleAgregarParcialidad = async (forceOverride = false) => {
+    // Cerrar modal de confirmación
+    setConfirmarEntrega({ show: false, forceOverride: false });
+    
+    const cantidad = parseInt(nuevaParcialidad.cantidad, 10);
     
     try {
       setLoadingParcialidades(true);
@@ -955,27 +970,42 @@ const Lotes = () => {
     }
   };
 
-  const handleEliminarParcialidad = async (parcialidadId) => {
-    if (!confirm('¿Está seguro de eliminar esta entrega?')) return;
-    
-    try {
-      setLoadingParcialidades(true);
-      await lotesAPI.eliminarParcialidad(selectedLoteParcialidades.id, parcialidadId);
-      toast.success('Entrega eliminada correctamente');
-      
-      // Recargar parcialidades
-      const response = await lotesAPI.listarParcialidades(selectedLoteParcialidades.id);
-      setParcialidadesData(response.data);
-      
-      // Recargar lotes para actualizar métricas en tabla
-      cargarLotes();
-    } catch (error) {
-      console.error('Error al eliminar parcialidad:', error);
-      const errorMsg = error.response?.data?.error || 'Error al eliminar entrega';
-      toast.error(errorMsg);
-    } finally {
-      setLoadingParcialidades(false);
-    }
+  // ISS-SEC: Eliminar parcialidad con doble confirmación
+  const handleEliminarParcialidad = async (parcialidad) => {
+    requestDeleteConfirmation({
+      title: 'Eliminar Entrega',
+      message: `¿Está seguro de eliminar esta entrega de ${parcialidad.cantidad?.toLocaleString()} unidades?`,
+      warnings: [
+        'Esta acción restará del inventario',
+        `Fecha de entrega: ${new Date(parcialidad.fecha_entrega).toLocaleDateString('es-MX')}`,
+        parcialidad.notas ? `Notas: ${parcialidad.notas}` : null,
+      ].filter(Boolean),
+      itemInfo: {
+        nombre: `Entrega #${parcialidad.id}`,
+        descripcion: `${parcialidad.cantidad?.toLocaleString()} unidades del lote ${selectedLoteParcialidades?.numero_lote}`,
+      },
+      onConfirm: async () => {
+        try {
+          setLoadingParcialidades(true);
+          await lotesAPI.eliminarParcialidad(selectedLoteParcialidades.id, parcialidad.id);
+          toast.success('Entrega eliminada correctamente');
+          
+          // Recargar parcialidades
+          const response = await lotesAPI.listarParcialidades(selectedLoteParcialidades.id);
+          setParcialidadesData(response.data);
+          
+          // Recargar lotes para actualizar métricas en tabla
+          cargarLotes();
+        } catch (error) {
+          console.error('Error al eliminar parcialidad:', error);
+          const errorMsg = error.response?.data?.error || 'Error al eliminar entrega';
+          toast.error(errorMsg);
+          throw error; // Re-lanzar para que el modal maneje el estado
+        } finally {
+          setLoadingParcialidades(false);
+        }
+      },
+    });
   };
 
   // Exportar historial de entregas a PDF o Excel
@@ -3074,7 +3104,7 @@ const handleImportar = async (e) => {
                             {puede.editar && (
                               <td className="px-3 py-2 text-center">
                                 <button
-                                  onClick={() => handleEliminarParcialidad(parcialidad.id)}
+                                  onClick={() => handleEliminarParcialidad(parcialidad)}
                                   disabled={loadingParcialidades}
                                   className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded disabled:opacity-50"
                                   title="Eliminar entrega"
@@ -3196,7 +3226,7 @@ const handleImportar = async (e) => {
                       {/* P0-2 FIX: Botón de override solo visible si tiene permiso */}
                       {puede.overrideSobreentrega && (
                         <button
-                          onClick={() => handleAgregarParcialidad(true)}
+                          onClick={() => solicitarConfirmacionEntrega(true)}
                           disabled={loadingParcialidades || !nuevaParcialidad.fecha_entrega || !nuevaParcialidad.cantidad || motivoOverride.trim().length < 10}
                           className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                         >
@@ -3213,7 +3243,7 @@ const handleImportar = async (e) => {
                     </div>
                   ) : (
                     <button
-                      onClick={() => handleAgregarParcialidad(false)}
+                      onClick={() => solicitarConfirmacionEntrega(false)}
                       disabled={loadingParcialidades || !nuevaParcialidad.fecha_entrega || !nuevaParcialidad.cantidad}
                       className="mt-3 w-full px-4 py-2 bg-primary text-white rounded-lg hover:bg-[#6B1839] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
@@ -3241,6 +3271,108 @@ const handleImportar = async (e) => {
                 className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100"
               >
                 Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* ISS-SEC: Modal de confirmación para registrar entrega (doble confirmación) */}
+      {confirmarEntrega.show && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
+            <div className="bg-gradient-to-r from-primary to-[#6B1839] text-white px-6 py-4">
+              <h3 className="text-lg font-bold flex items-center gap-2">
+                <FaBoxes /> Confirmar Registro de Entrega
+              </h3>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-sm text-blue-800 font-medium mb-2">
+                  ¿Está seguro de registrar esta entrega?
+                </p>
+                <p className="text-xs text-blue-600">
+                  Esta acción sumará unidades al inventario del lote.
+                </p>
+              </div>
+              
+              {/* Resumen de la entrega */}
+              <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Lote:</span>
+                  <span className="font-semibold">{selectedLoteParcialidades?.numero_lote}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Producto:</span>
+                  <span className="font-semibold truncate max-w-[200px]">
+                    {selectedLoteParcialidades?.producto_nombre}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Fecha de entrega:</span>
+                  <span className="font-semibold">
+                    {nuevaParcialidad.fecha_entrega ? new Date(nuevaParcialidad.fecha_entrega).toLocaleDateString('es-MX') : '-'}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm border-t pt-2 mt-2">
+                  <span className="text-gray-600">Cantidad a registrar:</span>
+                  <span className="font-bold text-lg text-primary">
+                    +{parseInt(nuevaParcialidad.cantidad || 0).toLocaleString()} uds
+                  </span>
+                </div>
+                {nuevaParcialidad.notas && (
+                  <div className="text-xs text-gray-500 mt-2">
+                    <span className="font-medium">Notas:</span> {nuevaParcialidad.notas}
+                  </div>
+                )}
+              </div>
+              
+              {/* Advertencia para sobre-entregas */}
+              {confirmarEntrega.forceOverride && (
+                <div className="bg-red-50 border border-red-300 rounded-lg p-3">
+                  <p className="text-sm font-semibold text-red-800 flex items-center gap-2">
+                    <FaExclamationTriangle /> Sobre-entrega Autorizada
+                  </p>
+                  <p className="text-xs text-red-700 mt-1">
+                    Esta entrega excede el contrato y quedará registrada en auditoría.
+                  </p>
+                </div>
+              )}
+              
+              {/* Impacto en inventario */}
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                <p className="text-xs text-green-800">
+                  <strong>Impacto:</strong> El inventario del lote aumentará en{' '}
+                  <span className="font-bold">{parseInt(nuevaParcialidad.cantidad || 0).toLocaleString()}</span> unidades.
+                </p>
+              </div>
+            </div>
+            
+            <div className="px-6 py-4 border-t bg-gray-50 flex gap-3">
+              <button
+                onClick={() => setConfirmarEntrega({ show: false, forceOverride: false })}
+                className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-100 font-medium"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => handleAgregarParcialidad(confirmarEntrega.forceOverride)}
+                disabled={loadingParcialidades}
+                className={`flex-1 px-4 py-2.5 rounded-lg font-medium flex items-center justify-center gap-2 ${
+                  confirmarEntrega.forceOverride
+                    ? 'bg-red-600 text-white hover:bg-red-700'
+                    : 'bg-primary text-white hover:bg-[#6B1839]'
+                } disabled:opacity-50`}
+              >
+                {loadingParcialidades ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                ) : (
+                  <>
+                    <FaCheck />
+                    Confirmar Entrega
+                  </>
+                )}
               </button>
             </div>
           </div>
