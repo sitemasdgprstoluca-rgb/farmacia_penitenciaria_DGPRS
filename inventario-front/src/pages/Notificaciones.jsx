@@ -109,12 +109,12 @@ function Notificaciones() {
   };
 
   useEffect(() => {
-    // Solo cargar si tiene permiso
-    if (tienePermisoVer) {
+    // Solo cargar si tiene permiso Y permisos ya fueron validados
+    if (tienePermisoVer && !loadingPermisos && !permisos?._isValidating) {
       fetchData(1);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.tipo, filters.desde, filters.hasta, filters.leida, pageSize, tienePermisoVer]);
+  }, [filters.tipo, filters.desde, filters.hasta, filters.leida, pageSize, tienePermisoVer, loadingPermisos, permisos?._isValidating]);
 
   // Ya no necesitamos filtrado local - el backend ya filtró
   const filtered = notificaciones;
@@ -198,6 +198,16 @@ function Notificaciones() {
   };
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  // Si los permisos están cargando o en proceso de validación, mostrar spinner
+  if (loadingPermisos || permisos?._isValidating) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px]">
+        <FaSpinner className="w-8 h-8 text-primary-500 animate-spin" />
+        <p className="mt-4 text-gray-600">Verificando permisos...</p>
+      </div>
+    );
+  }
 
   // Si el usuario no tiene permiso para ver notificaciones, mostrar mensaje
   if (!tienePermisoVer) {
