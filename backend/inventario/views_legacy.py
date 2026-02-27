@@ -5467,10 +5467,13 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 # requisiciones que fueron devueltas al médico para corrección
                 queryset = queryset.exclude(estado__in=['borrador', 'pendiente_admin', 'devuelta'])
             
-            # 3.4 Centro genérico: Solo ve sus propias requisiciones (seguridad RBAC)
-            # ISS-SEC-001: Usuarios de centro sin rol específico solo ven lo que crearon
+            # 3.4 Centro genérico: Ve todas las requisiciones de su centro
+            # ISS-FIX: Usuarios de centro deben ver todas las requisiciones de su centro
+            # para poder coordinar y dar seguimiento. La restricción por centro ya se aplicó arriba.
+            # Esto resuelve la inconsistencia donde resumen_estados mostraba contadores
+            # pero la lista estaba vacía.
             else:
-                queryset = queryset.filter(solicitante=user)
+                pass  # El filtro por centro ya se aplicó arriba
             filter_applied = True
         
         # Aplicar filtros adicionales de query params

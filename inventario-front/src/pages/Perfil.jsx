@@ -605,6 +605,10 @@ function Perfil() {
   const rolActual = (perfil?.rol || user?.rol || '').toUpperCase();
   const esAdmin = rolActual === 'ADMIN';
   const puedeEditarPerfil = esAdmin;
+  
+  // ISS-MANUALES: Solo mostrar manuales para perfiles de Farmacia/Admin
+  const rolesFarmacia = ['ADMIN', 'FARMACIA', 'ADMIN_SISTEMA', 'SUPERUSUARIO'];
+  const puedeVerManuales = rolesFarmacia.includes(rolActual);
 
   return (
     <div className="space-y-6 pb-8">
@@ -612,7 +616,7 @@ function Perfil() {
         icon={FaUserCircle}
         title="Mi Perfil"
         subtitle="Gestiona tu información personal y seguridad"
-        actions={
+        actions={puedeVerManuales ? (
           <a
             href="https://drive.google.com/drive/folders/1w3TBJQL1lYUBfgUdYdRtPpcI6aePiv_H?usp=sharing"
             target="_blank"
@@ -624,7 +628,7 @@ function Perfil() {
             <span>Manuales</span>
             <FaExternalLinkAlt className="w-2.5 h-2.5 opacity-70" />
           </a>
-        }
+        ) : null}
       />
 
       {/* Header con avatar y acciones - Colores dinámicos del tema */}
