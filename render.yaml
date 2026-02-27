@@ -128,3 +128,27 @@ services:
     envVars:
       - key: VITE_API_URL
         sync: false  # Ejemplo: https://farmacia-api.onrender.com/api
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CRON JOB - Alertas de Inventario (notificaciones automáticas)
+# ═══════════════════════════════════════════════════════════════════════════
+# NOTA: Los cron jobs requieren plan "Starter" ($7/mes) o superior en Render.
+# Si usas plan gratuito, ejecuta manualmente:
+#   python manage.py generar_alertas_inventario
+#
+# Cuando actualices a plan pago, descomenta la siguiente sección:
+#
+#  - type: cron
+#    name: farmacia-alertas
+#    runtime: python
+#    region: oregon
+#    plan: starter
+#    rootDir: backend
+#    schedule: "0 7 * * *"  # Diariamente a las 7:00 AM UTC
+#    buildCommand: pip install -r requirements.txt
+#    startCommand: python manage.py generar_alertas_inventario
+#    envVars:
+#      - key: DATABASE_URL
+#        sync: false
+#      - key: DEBUG
+#        value: "False"
