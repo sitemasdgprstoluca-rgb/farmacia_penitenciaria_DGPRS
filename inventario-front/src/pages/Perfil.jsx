@@ -598,6 +598,11 @@ function Perfil() {
 
   const rolDisplay = perfil?.rol_efectivo || perfil?.rol || user?.rol_efectivo || user?.rol || "Usuario";
   const iniciales = `${perfil?.first_name?.[0] || ''}${perfil?.last_name?.[0] || perfil?.username?.[0] || 'U'}`.toUpperCase();
+  
+  // ISS-SEC: Solo administradores pueden editar el correo electrónico
+  const rolActual = (perfil?.rol || user?.rol || '').toUpperCase();
+  const esAdmin = rolActual === 'ADMIN';
+  const puedeEditarEmail = esAdmin;
 
   return (
     <div className="space-y-6 pb-8">
@@ -777,16 +782,27 @@ function Perfil() {
                     placeholder="Tus apellidos"
                     maxLength={150}
                   />
-                  <InputWithIcon
-                    icon={FaEnvelope}
-                    label="Correo electrónico"
-                    type="email"
-                    value={form.email}
-                    onChange={(e) => setForm(f => ({ ...f, email: e.target.value }))}
-                    placeholder="correo@ejemplo.com"
-                    maxLength={254}
-                    error={formErrors.email}
-                  />
+                  <div className="space-y-1">
+                    <InputWithIcon
+                      icon={FaEnvelope}
+                      label="Correo electrónico"
+                      type="email"
+                      value={form.email}
+                      onChange={(e) => puedeEditarEmail && setForm(f => ({ ...f, email: e.target.value }))}
+                      placeholder="correo@ejemplo.com"
+                      maxLength={254}
+                      error={formErrors.email}
+                      disabled={!puedeEditarEmail}
+                      readOnly={!puedeEditarEmail}
+                      title={!puedeEditarEmail ? 'Solo administradores pueden modificar el correo' : ''}
+                    />
+                    {!puedeEditarEmail && (
+                      <p className="text-xs text-amber-600 flex items-center gap-1 mt-1">
+                        <FaLock className="w-3 h-3" />
+                        Solo administradores pueden modificar el correo electrónico
+                      </p>
+                    )}
+                  </div>
                   <InputWithIcon
                     icon={FaPhone}
                     label="Teléfono"

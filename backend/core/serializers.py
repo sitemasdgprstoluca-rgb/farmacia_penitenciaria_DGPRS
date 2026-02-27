@@ -2736,6 +2736,23 @@ class UserMeSerializer(serializers.ModelSerializer):
         return profile.telefono if profile else None
 
     def update(self, instance, validated_data):
+        # ISS-SEC: Solo administradores pueden modificar su propio correo electrónico
+        # Usuarios de FARMACIA y CENTRO no pueden cambiar su email para evitar malas prácticas
+        rol_usuario = _resolve_rol(instance)
+        es_admin = rol_usuario == 'ADMIN'
+        
+        if 'email' in validated_data and not es_admin:
+            # Silenciosamente ignorar cambio de email para usuarios no-ADMIN
+            # El frontend ya debería prevenir esto, pero el backend debe ser la fuente de verdad
+            from django.utils import timezone
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                f"[ISS-SEC] Usuario {instance.username} (rol={rol_usuario}) intentó modificar email. "
+                f"Ignorando cambio. Timestamp: {timezone.now()}"
+            )
+            del validated_data['email']
+        
         # Extraer telefono de los datos (viene en request.data pero no en validated_data)
         telefono = self.initial_data.get('telefono')
         

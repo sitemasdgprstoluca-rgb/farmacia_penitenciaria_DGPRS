@@ -2048,17 +2048,52 @@ const Movimientos = () => {
                 </div>
               )}
 
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-700">Cantidad *</label>
-                <input
-                  type="number"
-                  min="1"
-                  value={formData.cantidad}
-                  onChange={(e) => handleFormChange("cantidad", e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Cantidad"
-                />
-              </div>
+              {/* ISS-VAL: Input de cantidad con validación en tiempo real */}
+              {(() => {
+                const loteInfo = formData.lote ? lotesDisponibles.find(l => l.id === parseInt(formData.lote)) : null;
+                const cantidadIngresada = Number(formData.cantidad) || 0;
+                const stockDisponible = loteInfo?.cantidad_actual ?? 0;
+                const esSalida = formData.tipo === 'salida';
+                const excedeInventario = esSalida && loteInfo && cantidadIngresada > stockDisponible;
+                
+                return (
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-gray-700">Cantidad *</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={formData.cantidad}
+                      onChange={(e) => handleFormChange("cantidad", e.target.value)}
+                      className={`w-full rounded-lg border px-3 py-2 focus:outline-none focus:ring-2 ${
+                        excedeInventario 
+                          ? 'border-red-500 bg-red-50 focus:ring-red-500 focus:border-red-500' 
+                          : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
+                      }`}
+                      placeholder="Cantidad"
+                    />
+                    {/* Advertencia si la cantidad excede el inventario disponible */}
+                    {excedeInventario && (
+                      <div className="p-3 bg-red-50 border border-red-300 rounded-lg">
+                        <div className="flex items-center gap-2 text-red-800">
+                          <FaExclamationTriangle className="text-red-600" />
+                          <span className="font-semibold">Cantidad excede inventario disponible</span>
+                        </div>
+                        <div className="mt-1 text-sm text-red-700">
+                          <p>
+                            <strong>Solicitado:</strong> <span className="text-red-900 font-bold">{cantidadIngresada.toLocaleString()}</span> unidades
+                          </p>
+                          <p>
+                            <strong>Disponible:</strong> <span className="text-green-700 font-bold">{stockDisponible.toLocaleString()}</span> unidades
+                          </p>
+                          <p className="mt-1 text-xs">
+                            ⚠️ Ajuste la cantidad a máximo <strong>{stockDisponible.toLocaleString()}</strong> unidades para continuar.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* FORMATO B: Folio del documento oficial - AUTO-GENERADO */}
               <div className="space-y-2">
