@@ -1461,12 +1461,13 @@ class NotificacionViewSet(
             return Response({'marcadas': 0})
 
     @action(detail=False, methods=['get'], url_path='no-leidas-count',
-           permission_classes=[AllowAny])
+           permission_classes=[AllowAny],
+           authentication_classes=[])
     def no_leidas_count(self, request):
         """GET /api/notificaciones/no-leidas-count/
         
-        ISS-FIX: Permite acceso sin autenticación para evitar errores 401
-        durante el polling del frontend cuando el token expira.
+        ISS-FIX: authentication_classes=[] para que tokens inválidos/expirados
+        sean ignorados en lugar de lanzar InvalidToken (401).
         Devuelve 0 si el usuario no está autenticado.
         """
         if not request.user or not request.user.is_authenticated:

@@ -49,7 +49,8 @@ gunicorn==22.0.0
 cryptography==44.0.1
 
 # HTTP requests (para reCAPTCHA y APIs externas)
-requests>=2.31.0
+# 2.32+ es requerido para compatibilidad con urllib3 2.x (evita RequestsDependencyWarning)
+requests>=2.32.0
 
 # Utilidades Python
 pytz==2024.1

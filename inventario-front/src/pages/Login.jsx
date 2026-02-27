@@ -151,7 +151,7 @@ function Login() {
   const [serverStatus, setServerStatus] = useState('checking'); // 'checking' | 'ready' | 'waking' | 'error'
   const [serverCheckRetry, setServerCheckRetry] = useState(0);
   const serverCheckIntervalRef = useRef(null);
-  const maxRetriesRef = useRef(15); // Máximo 15 intentos (75 segundos con interval de 5s)
+  const maxRetriesRef = useRef(6); // Máximo 6 intentos (30 segundos con interval de 5s)
   const startTimeRef = useRef(null);
   
   const navigate = useNavigate();
@@ -179,10 +179,10 @@ function Login() {
       return false;
     }
 
-    // Timeout de seguridad (90 segundos totales)
+    // Timeout de seguridad (30 segundos totales)
     if (startTimeRef.current) {
       const elapsed = Date.now() - startTimeRef.current;
-      if (elapsed > 90000) {
+      if (elapsed > 30000) {
         clearHealthCheckInterval();
         setServerStatus('error');
         toast.error('Tiempo de espera agotado. Verifique su conexión a internet.', { duration: 5000 });
@@ -198,8 +198,8 @@ function Login() {
     setServerStatus('checking');
     
     try {
-      // Usar timeout reducido (15 segundos) para mejor UX
-      const health = await checkApiHealth({ retries: 1, timeout: 15000 });
+      // Timeout corto (5 segundos) para no bloquear al usuario
+      const health = await checkApiHealth({ retries: 1, timeout: 5000 });
       
       if (health.healthy) {
         setServerStatus('ready');
@@ -454,8 +454,8 @@ function Login() {
               {/* Botón de submit */}
               <button
                 type="submit"
-                disabled={loading || serverStatus === 'checking'}
-                className={`relative w-full overflow-hidden text-white py-4 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed font-bold shadow-lg transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl active:scale-[0.98] group ${
+                disabled={loading}
+                className={`relative w-full overflow-hidden text-white py-4 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed font-bold shadow-lg transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl active:scale-[0.98] group ${`
                   serverStatus === 'waking' 
                     ? 'bg-gradient-to-r from-amber-500 to-orange-500' 
                     : 'bg-theme-gradient'
@@ -471,8 +471,8 @@ function Login() {
                     </>
                   ) : serverStatus === 'checking' ? (
                     <>
-                      <FaSpinner className="animate-spin" size={18} />
-                      <span>Conectando...</span>
+                      <FaSignInAlt size={18} />
+                      <span>Iniciar Sesión</span>
                     </>
                   ) : serverStatus === 'waking' ? (
                     <>
