@@ -223,6 +223,7 @@ const Movimientos = () => {
   const [centros, setCentros] = useState([]);
   const [lotes, setLotes] = useState([]);
   const [lotesDisponibles, setLotesDisponibles] = useState([]);
+  const [loadingCatalogos, setLoadingCatalogos] = useState(true);
 
   // Formulario de registro de movimientos
   // - FARMACIA/ADMIN: pueden elegir entre "entrada" y "salida"
@@ -286,6 +287,13 @@ const Movimientos = () => {
     return map;
   }, [productos]);
 
+  // ISS-PERF: Mapa de lotes para lookup O(1)
+  const lotesMap = useMemo(() => {
+    const map = {};
+    lotes.forEach(l => { map[l.id] = l; });
+    return map;
+  }, [lotes]);
+
   // Filtrar productos según texto de búsqueda Y tipo de movimiento
   const productosFiltrados = useMemo(() => {
     let filtrados = productos;
@@ -319,6 +327,7 @@ const Movimientos = () => {
   }, []);
 
   const cargarCatalogos = useCallback(async () => {
+    setLoadingCatalogos(true);
     try {
       // ISS-PERF: Cargar productos, centros y lotes en paralelo
       const lotesParamsBase = { 
@@ -375,6 +384,8 @@ const Movimientos = () => {
       }
     } catch (err) {
       console.warn("No se pudieron cargar catálogos", err.message);
+    } finally {
+      setLoadingCatalogos(false);
     }
   }, [puedeVerTodosCentros, centroUsuario, user?.centro]);
 
@@ -1862,7 +1873,7 @@ const Movimientos = () => {
                 </div>
                 {/* Mostrar producto seleccionado */}
                 {productoFiltro && (() => {
-                  const prod = productos.find(p => p.id.toString() === productoFiltro);
+                  const prod = productosMap[parseInt(productoFiltro)];
                   return prod ? (
                     <div className="flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded-lg text-sm">
                       <FaCheckCircle className="text-blue-600" />
@@ -1879,21 +1890,25 @@ const Movimientos = () => {
                   {formData.subtipo_salida === 'caducidad' && (
                     <span className="ml-2 text-amber-600 text-xs font-normal">- Solo lotes vencidos</span>
                   )}
+                  {loadingCatalogos && (
+                    <span className="ml-2 text-blue-500 text-xs font-normal animate-pulse">Cargando...</span>
+                  )}
                 </label>
                 <select
                   value={formData.lote}
                   onChange={(e) => handleFormChange("lote", e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-wait"
                   required
+                  disabled={loadingCatalogos}
                 >
-                  <option value="">-- Selecciona un lote --</option>
+                  <option value="">{loadingCatalogos ? "Cargando lotes..." : "-- Selecciona un lote --"}</option>
                   {lotesDisponibles.map((l) => (
                     <option key={l.id} value={l.id}>
                       {getLoteLabel(l)}
                     </option>
                   ))}
                 </select>
-                {lotesDisponibles.length === 0 && (
+                {!loadingCatalogos && lotesDisponibles.length === 0 && (
                   <div className="text-xs p-2 bg-orange-50 border border-orange-200 rounded">
                     <p className="text-orange-700 font-medium">
                       {formData.subtipo_salida === 'caducidad' 
@@ -1915,7 +1930,7 @@ const Movimientos = () => {
                 {/* ISS-MEDICO FIX v2: Mostrar stock disponible del lote seleccionado */}
                 {formData.lote && (() => {
                   const loteInfo = lotesDisponibles.find(l => l.id === parseInt(formData.lote));
-                  const productoInfo = loteInfo ? productos.find(p => p.id === loteInfo.producto) : null;
+                  const productoInfo = loteInfo ? productosMap[loteInfo.producto] : null;
                   if (!loteInfo) return null;
                   
                   const sinStock = loteInfo.cantidad_actual === 0;
@@ -2293,7 +2308,7 @@ const Movimientos = () => {
                       ? lotes.filter(l => l.producto === parseInt(filtros.producto))
                       : lotes
                     ).map((l) => {
-                      const prod = productos.find(p => p.id === l.producto);
+                      const prod = productosMap[l.producto];
                       const fechaCad = l.fecha_caducidad ? new Date(l.fecha_caducidad).toLocaleDateString('es-MX', { month: 'short', year: 'numeric' }) : 'S/F';
                       return (
                         <option key={l.id} value={l.id}>
@@ -2373,13 +2388,13 @@ const Movimientos = () => {
                       )}
                       {filtrosAplicados.producto && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-medium">
-                          Producto: {productos.find(p => p.id === parseInt(filtrosAplicados.producto))?.clave || filtrosAplicados.producto}
+                          Producto: {productosMap[parseInt(filtrosAplicados.producto)]?.clave || filtrosAplicados.producto}
                           <button onClick={() => { handleFiltro('producto', ''); setFiltrosAplicados(p => ({ ...p, producto: '' })); setPage(1); setPageGrupos(1); }} className="ml-0.5 hover:text-emerald-900">✕</button>
                         </span>
                       )}
                       {filtrosAplicados.lote && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs font-medium">
-                          Lote: {lotes.find(l => l.id === parseInt(filtrosAplicados.lote))?.numero_lote || filtrosAplicados.lote}
+                          Lote: {lotesMap[parseInt(filtrosAplicados.lote)]?.numero_lote || filtrosAplicados.lote}
                           <button onClick={() => { handleFiltro('lote', ''); setFiltrosAplicados(p => ({ ...p, lote: '' })); setPage(1); setPageGrupos(1); }} className="ml-0.5 hover:text-amber-900">✕</button>
                         </span>
                       )}
@@ -3987,19 +4002,13 @@ const Movimientos = () => {
                       <div className="flex justify-between py-1 border-b">
                         <span className="text-gray-600">Producto:</span>
                         <span className="font-medium text-gray-800">
-                          {(() => {
-                            const lote = lotes.find(l => l.id === parseInt(formData.lote));
-                            return lote?.producto_nombre || 'N/A';
-                          })()}
+                          {lotesMap[parseInt(formData.lote)]?.producto_nombre || 'N/A'}
                         </span>
                       </div>
                       <div className="flex justify-between py-1 border-b">
                         <span className="text-gray-600">Lote:</span>
                         <span className="font-mono bg-gray-200 px-2 rounded">
-                          {(() => {
-                            const lote = lotes.find(l => l.id === parseInt(formData.lote));
-                            return lote?.numero_lote || 'N/A';
-                          })()}
+                          {lotesMap[parseInt(formData.lote)]?.numero_lote || 'N/A'}
                         </span>
                       </div>
                       <div className="flex justify-between py-1 border-b">
