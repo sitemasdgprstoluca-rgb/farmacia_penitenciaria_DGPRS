@@ -455,7 +455,7 @@ function Login() {
               <button
                 type="submit"
                 disabled={loading}
-                className={`relative w-full overflow-hidden text-white py-4 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed font-bold shadow-lg transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl active:scale-[0.98] group ${`
+                className={`relative w-full overflow-hidden text-white py-4 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed font-bold shadow-lg transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl active:scale-[0.98] group ${
                   serverStatus === 'waking' 
                     ? 'bg-gradient-to-r from-amber-500 to-orange-500' 
                     : 'bg-theme-gradient'
