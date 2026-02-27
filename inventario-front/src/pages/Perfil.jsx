@@ -19,7 +19,9 @@ import {
   FaEdit,
   FaLock,
   FaCheck,
-  FaExclamationTriangle
+  FaExclamationTriangle,
+  FaVideo,
+  FaExternalLinkAlt
 } from "react-icons/fa";
 import ConfirmModal from "../components/ConfirmModal";
 import PageHeader from "../components/PageHeader";
@@ -651,24 +653,40 @@ function Perfil() {
             </div>
           </div>
           
-          {/* Botón de logout */}
-          <button
-            onClick={() => setShowLogoutConfirm(true)}
-            disabled={loggingOut}
-            className="px-5 py-2.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-sm font-semibold transition-all duration-200 inline-flex items-center gap-2 backdrop-blur"
-          >
-            {loggingOut ? (
-              <>
-                <FaSpinner className="animate-spin" />
-                Cerrando...
-              </>
-            ) : (
-              <>
-                <FaSignOutAlt />
-                Cerrar sesión
-              </>
-            )}
-          </button>
+          {/* Botones de acción */}
+          <div className="flex items-center gap-3">
+            {/* Botón de Manuales de Video */}
+            <a
+              href="https://drive.google.com/drive/folders/1w3TBJQL1lYUBfgUdYdRtPpcI6aePiv_H?usp=sharing"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-4 py-2.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-sm font-semibold transition-all duration-200 inline-flex items-center gap-2 backdrop-blur"
+              title="Ver manuales de video del sistema"
+            >
+              <FaVideo className="w-4 h-4" />
+              <span className="hidden sm:inline">Manuales</span>
+              <FaExternalLinkAlt className="w-3 h-3 opacity-70" />
+            </a>
+            
+            {/* Botón de logout */}
+            <button
+              onClick={() => setShowLogoutConfirm(true)}
+              disabled={loggingOut}
+              className="px-5 py-2.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-sm font-semibold transition-all duration-200 inline-flex items-center gap-2 backdrop-blur"
+            >
+              {loggingOut ? (
+                <>
+                  <FaSpinner className="animate-spin" />
+                  Cerrando...
+                </>
+              ) : (
+                <>
+                  <FaSignOutAlt />
+                  Cerrar sesión
+                </>
+              )}
+            </button>
+          </div>
         </div>
         
         {/* Tabs */}

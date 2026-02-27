@@ -1833,12 +1833,11 @@ const handleImportar = async (e) => {
               <col className="w-16" /> {/* Alerta */}
               <col className="w-32" /> {/* Marca / Lab */}
               <col className="w-24" /> {/* Inventario */}
-              <col className="w-28" /> {/* Creado por */}
-              <col className="w-20" /> {/* Acciones */}
+              <col className="w-24" /> {/* Acciones */}
             </colgroup>
             <thead className="bg-theme-gradient sticky top-0 z-10">
             <tr>
-              {['#', 'Producto', 'Lote', 'Caducidad', 'Alerta', 'Marca / Lab', 'Inventario', 'Creado por', 'Acciones'].map((col) => (
+              {['#', 'Producto', 'Lote', 'Caducidad', 'Alerta', 'Marca / Lab', 'Inventario', 'Acciones'].map((col) => (
                 <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
                   {col}
                 </th>
@@ -1848,13 +1847,13 @@ const handleImportar = async (e) => {
             <tbody className="bg-white divide-y divide-gray-100">
               {loading ? (
                 <tr>
-                  <td colSpan="9" className="p-0">
+                  <td colSpan="8" className="p-0">
                     <LotesSkeleton />
                   </td>
                 </tr>
               ) : lotes.length === 0 ? (
                 <tr>
-                  <td colSpan="9" className="text-center py-12">
+                  <td colSpan="8" className="text-center py-12">
                     {searchTerm ? (
                       <div className="space-y-3">
                         <div className="text-gray-600 text-lg">
@@ -1976,23 +1975,6 @@ const handleImportar = async (e) => {
                         <div className="mt-1 text-xs text-indigo-600 truncate max-w-[120px]" title={lote.numero_contrato}>
                           📋 {lote.numero_contrato}
                         </div>
-                      )}
-                    </td>
-                    {/* Creado / Modificado por */}
-                    <td className="px-3 py-2">
-                      {lote.creado_por_nombre ? (
-                        <div>
-                          <div className="text-xs font-medium text-slate-700 truncate max-w-[100px]" title={lote.creado_por_nombre}>
-                            {lote.creado_por_nombre.length > 14 ? lote.creado_por_nombre.substring(0, 14) + '…' : lote.creado_por_nombre}
-                          </div>
-                          {lote.modificado_por_nombre && lote.modificado_por_nombre !== lote.creado_por_nombre && (
-                            <div className="text-xs text-amber-600 truncate max-w-[100px]" title={`Modificado por: ${lote.modificado_por_nombre}`}>
-                              ✏️ {lote.modificado_por_nombre.length > 12 ? lote.modificado_por_nombre.substring(0, 12) + '…' : lote.modificado_por_nombre}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-gray-400 italic">Sistema</span>
                       )}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm">
