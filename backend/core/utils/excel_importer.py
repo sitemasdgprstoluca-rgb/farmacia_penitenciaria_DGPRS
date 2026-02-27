@@ -21,6 +21,7 @@ from django.db.models import F
 from django.utils import timezone
 
 from core.models import Producto, Lote, Centro, ImportacionLog
+from core.utils.producto_variante import extraer_codigo_base
 
 logger = logging.getLogger(__name__)
 
@@ -1044,9 +1045,13 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
             try:
                 producto = Producto.objects.get(clave__iexact=clave_producto)
             except Producto.DoesNotExist:
-                # Intentar buscar con clave base (sin sufijo como .2, .3)
-                clave_base = clave_producto.split('.')[0] if '.' in clave_producto else clave_producto
-                productos_posibles = list(Producto.objects.filter(clave__istartswith=clave_base))
+                # ISS-VARIANTE-FIX: Usar extraer_codigo_base para manejar claves tipo 010.000.0001.2
+                # donde los puntos son parte de la clave, no solo sufijos de variante
+                clave_base = extraer_codigo_base(clave_producto)
+                # Buscar productos con clave base exacta o variantes (base, base.2, base.3...)
+                patron_variante = re.compile(r'^' + re.escape(clave_base) + r'(\.\d+)?$', re.IGNORECASE)
+                productos_posibles = [p for p in Producto.objects.filter(clave__istartswith=clave_base) 
+                                      if patron_variante.match(p.clave)]
                 
                 if productos_posibles:
                     # Buscar el que tenga la presentación correcta
@@ -1069,9 +1074,11 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
             # Verificar que la presentación del producto coincida
             presentacion_bd_norm = normalizar_presentacion(producto.presentacion)
             if presentacion_bd_norm != presentacion_excel_norm:
-                # Buscar otro producto con la misma clave base pero diferente sufijo
-                clave_base = clave_producto.split('.')[0] if '.' in clave_producto else clave_producto
-                productos_con_misma_base = list(Producto.objects.filter(clave__istartswith=clave_base))
+                # ISS-VARIANTE-FIX: Buscar producto con misma clave base y presentación correcta
+                clave_base = extraer_codigo_base(clave_producto)
+                patron_variante = re.compile(r'^' + re.escape(clave_base) + r'(\.\d+)?$', re.IGNORECASE)
+                productos_con_misma_base = [p for p in Producto.objects.filter(clave__istartswith=clave_base)
+                                            if patron_variante.match(p.clave)]
                 
                 producto_correcto = None
                 for p in productos_con_misma_base:
