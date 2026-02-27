@@ -28,7 +28,6 @@ from datetime import date
 from typing import Optional, Dict, Any, Tuple
 
 from django.db import transaction
-from django.db.models import F
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -519,8 +518,9 @@ def merge_or_create_parcialidad(
                 cantidad_antes = parcialidad.cantidad
                 campos_rellenados = []
                 
-                # Sumar cantidad
-                parcialidad.cantidad = F('cantidad') + cantidad
+                # Sumar cantidad (Python side – parcialidad ya está
+                # bloqueada con select_for_update, no hay race condition)
+                parcialidad.cantidad = cantidad_antes + cantidad
                 
                 # Completar campos faltantes
                 if not parcialidad.numero_factura and factura:

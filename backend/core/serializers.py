@@ -1164,7 +1164,7 @@ class LoteSerializer(serializers.ModelSerializer):
             # AUDITORÍA
             'creado_por_nombre', 'modificado_por_nombre',
         ]
-        read_only_fields = ['created_at', 'updated_at', 'estado', 'documentos', 'tiene_documentos', 'tiene_movimientos', 'cantidad_pendiente', 'cantidad_pendiente_global', 'cantidad_recibido_global', 'total_inventario_global', 'parcialidades', 'total_parcialidades', 'num_entregas', 'ultima_fecha_entrega', 'creado_por_nombre', 'modificado_por_nombre']
+        read_only_fields = ['created_at', 'updated_at', 'estado', 'documentos', 'tiene_documentos', 'tiene_movimientos', 'cantidad_pendiente', 'cantidad_pendiente_global', 'cantidad_recibido_global', 'total_inventario_global', 'parcialidades', 'total_parcialidades', 'num_entregas', 'ultima_fecha_entrega', 'creado_por_nombre', 'modificado_por_nombre', 'created_by']
         extra_kwargs = {
             'cantidad_inicial': {'required': False},  # Requerido solo en creación (validate_cantidad_inicial)
             'cantidad_contrato': {'required': False, 'allow_null': True},

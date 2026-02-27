@@ -98,19 +98,12 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
     require_update_confirmation = True  # Doble confirmación para edición
 
     def perform_create(self, serializer):
-        """Guarda el usuario autenticado en created_by_id vía SQL directo."""
-        instance = serializer.save()
+        """Guarda el usuario autenticado en created_by."""
         user = self.request.user
         if user and user.is_authenticated:
-            try:
-                from django.db import connection
-                with connection.cursor() as cursor:
-                    cursor.execute(
-                        "UPDATE lotes SET created_by_id = %s WHERE id = %s AND created_by_id IS NULL",
-                        [user.pk, instance.pk]
-                    )
-            except Exception:
-                pass
+            serializer.save(created_by=user)
+        else:
+            serializer.save()
 
     def get_queryset(self):
         """
@@ -128,18 +121,15 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
         """
         User = get_user_model()
 
-        # ── Subquery: nombre del usuario que creó el lote vía created_by_id ──
-        # `created_by_id` existe en la DB pero no está declarado en el modelo Django
-        # (managed=False), por eso usamos RawSQL para referenciar la columna.
+        # ── Subquery: nombre del usuario que creó el lote vía created_by (FK) ──
         _user_display = Coalesce(
             NullIf(Trim(Concat('first_name', Value(' '), 'last_name')), Value('')),
             'username',
             output_field=CharField(),
         )
-        # FIX: Referencia directa a la columna sin comillas para evitar problemas de escape
         creado_por_created_by = Subquery(
             User.objects.filter(
-                pk=Cast(RawSQL('lotes.created_by_id', []), output_field=IntegerField())
+                pk=OuterRef('created_by_id')
             ).annotate(display=_user_display).values('display')[:1],
             output_field=CharField(),
         )
@@ -2628,6 +2618,24 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
             
             estado_nuevo = self._calcular_estado_contrato(total_nuevo, cantidad_contrato)
             
+            # ISS-INV-FIX: Actualizar cantidad_inicial y cantidad_actual del lote
+            # La entrega agrega inventario: cantidad_inicial sube (total recibido)
+            # y cantidad_actual sube igual (stock disponible crece).
+            cantidad_agregada = cantidad  # Lo que el usuario ingresó como nueva entrega
+            ini_antes = lote_locked.cantidad_inicial
+            act_antes = lote_locked.cantidad_actual
+            Lote.objects.filter(pk=lote_locked.pk).update(
+                cantidad_inicial=models.F('cantidad_inicial') + cantidad_agregada,
+                cantidad_actual=models.F('cantidad_actual') + cantidad_agregada,
+            )
+            # Refrescar el objeto para que las comparaciones siguientes usen valores reales
+            lote_locked.refresh_from_db()
+            logger.info(
+                f"Inventario actualizado - Lote: {lote_locked.numero_lote}, "
+                f"+{cantidad_agregada} uds (inicial: {ini_antes}->{lote_locked.cantidad_inicial}, "
+                f"actual: {act_antes}->{lote_locked.cantidad_actual})"
+            )
+            
             # Calcular métricas del lote
             pendiente_lote = max(0, cantidad_contrato - total_nuevo) if cantidad_contrato > 0 else None
             porcentaje_lote = min(100, (total_nuevo / cantidad_contrato) * 100) if cantidad_contrato > 0 else 0
@@ -2932,6 +2940,12 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
             cantidad = parcialidad.cantidad
             fecha = parcialidad.fecha_entrega
             parcialidad.delete()
+            
+            # ISS-INV-FIX: Revertir inventario al eliminar entrega
+            Lote.objects.filter(pk=lote.pk).update(
+                cantidad_inicial=models.F('cantidad_inicial') - cantidad,
+                cantidad_actual=models.F('cantidad_actual') - cantidad,
+            )
             
             # Calcular estado actualizado del contrato
             from django.db.models import Sum

@@ -279,6 +279,13 @@ const Movimientos = () => {
     return ids;
   }, [lotes, estaVencido]);
 
+  // ISS-PERF: Mapa de productos para lookup O(1) en lugar de O(n)
+  const productosMap = useMemo(() => {
+    const map = {};
+    productos.forEach(p => { map[p.id] = p; });
+    return map;
+  }, [productos]);
+
   // Filtrar productos según texto de búsqueda Y tipo de movimiento
   const productosFiltrados = useMemo(() => {
     let filtrados = productos;
@@ -313,9 +320,35 @@ const Movimientos = () => {
 
   const cargarCatalogos = useCallback(async () => {
     try {
-      // Cargar productos (todos pueden ver el catálogo de productos)
-      const prodResp = await productosAPI.getAll({ page_size: 500, ordering: "clave", activo: true });
-      // Ordenar por clave numérica
+      // ISS-PERF: Cargar productos, centros y lotes en paralelo
+      const lotesParamsBase = { 
+        page_size: 500, 
+        ordering: "-fecha_caducidad", 
+      };
+      
+      if (puedeVerTodosCentros) {
+        lotesParamsBase.centro = "central";
+        lotesParamsBase.incluir_inactivos = true;
+      } else if (centroUsuario) {
+        lotesParamsBase.centro = centroUsuario;
+        lotesParamsBase.activo = true;
+      }
+
+      // Preparar promesas
+      const productosPromise = productosAPI.getAll({ page_size: 500, ordering: "clave", activo: true });
+      const centrosPromise = puedeVerTodosCentros 
+        ? centrosAPI.getAll({ page_size: 100, ordering: "nombre", activo: true })
+        : Promise.resolve(null);
+      const lotesPromise = lotesAPI.getAll(lotesParamsBase);
+
+      // Ejecutar en paralelo
+      const [prodResp, centroResp, lotesResp] = await Promise.all([
+        productosPromise,
+        centrosPromise,
+        lotesPromise
+      ]);
+
+      // Procesar productos
       const productosOrdenados = (prodResp.data.results || prodResp.data || []).sort((a, b) => {
         const claveA = parseInt(a.clave) || 0;
         const claveB = parseInt(b.clave) || 0;
@@ -323,50 +356,21 @@ const Movimientos = () => {
       });
       setProductos(productosOrdenados);
       
-      // Cargar centros según permisos
-      if (puedeVerTodosCentros) {
-        // Admin/Farmacia/Vista: ver todos los centros
-        const centroResp = await centrosAPI.getAll({ page_size: 100, ordering: "nombre", activo: true });
+      // Procesar centros
+      if (centroResp) {
         setCentros(centroResp.data.results || centroResp.data || []);
       } else if (centroUsuario && user?.centro) {
-        // Usuario de centro: usar info del usuario directamente (evita llamada API)
         setCentros([user.centro]);
       } else {
         setCentros([]);
       }
       
-      // ISS-FIX (lotes-central): Para Farmacia/Admin, cargar lotes de Farmacia Central
-      // Para usuarios de centro/médico, cargar lotes de su centro (los que farmacia les ha enviado)
-      // ISS-FIX (reabastecimiento): FARMACIA/ADMIN necesitan ver lotes sin stock para reabastecer
-      const lotesParamsBase = { 
-        page_size: 500, 
-        ordering: "-fecha_caducidad", 
-      };
-      
-      // ISS-FIX: Farmacia/Admin ven lotes de farmacia central para transferencias
-      // FARMACIA/ADMIN: cargar TODOS los lotes (activos e inactivos) para poder reabastecer
-      // CENTRO/MEDICO: solo lotes activos con stock
-      if (puedeVerTodosCentros) {
-        lotesParamsBase.centro = "central";  // Farmacia central
-        // ISS-FIX: Incluir lotes inactivos (cantidad=0) para reabastecimiento
-        // NO pasar filtro activo = backend devuelve todos
-        lotesParamsBase.incluir_inactivos = true;  // Parámetro explícito para incluir inactivos
-      } else if (centroUsuario) {
-        // Usuario de centro/médico ve lotes de su centro (los surtidos por farmacia)
-        lotesParamsBase.centro = centroUsuario;
-        lotesParamsBase.activo = true;  // Centro solo ve lotes activos (con stock)
-      }
-      
-      const lotesResp = await lotesAPI.getAll(lotesParamsBase);
+      // Procesar lotes
       const lotesData = lotesResp.data.results || lotesResp.data || [];
       setLotes(lotesData);
-      // ISS-FIX: FARMACIA/ADMIN pueden ver lotes sin stock (para entradas/reabastecimiento)
-      // CENTRO solo ve lotes con stock > 0 (solo hacen salidas)
       if (puedeVerTodosCentros) {
-        // Farmacia/Admin: mostrar todos los lotes (con y sin stock para reabastecimiento)
         setLotesDisponibles(lotesData);
       } else {
-        // Centro: solo lotes con stock disponible
         setLotesDisponibles(lotesData.filter(l => l.cantidad_actual > 0));
       }
     } catch (err) {
@@ -900,7 +904,8 @@ const Movimientos = () => {
   };
 
   const getLoteLabel = (lote) => {
-    const producto = productos.find(p => p.id === lote.producto);
+    // ISS-PERF: Usar productosMap para lookup O(1)
+    const producto = productosMap[lote.producto];
     const fechaCad = lote.fecha_caducidad ? new Date(lote.fecha_caducidad).toLocaleDateString() : 'S/F';
     const stockInfo = lote.cantidad_actual > 0 
       ? `${lote.cantidad_actual} uds` 
