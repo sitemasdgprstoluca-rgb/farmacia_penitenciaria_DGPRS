@@ -168,11 +168,12 @@ def generar_plantilla_lotes(centro=None):
     Genera plantilla Excel para carga masiva de lotes/inventario inicial.
     Basado en tabla: public.lotes
     
-    Versión de plantilla: 2.0.0 (Febrero 2026)
+    Versión de plantilla: 2.1.0 (Febrero 2026)
     
     Columnas OBLIGATORIAS:
     - Clave Producto*: Código único del producto en el catálogo
     - Nombre Producto*: Nombre del producto (debe coincidir con la clave)
+    - Presentación*: Presentación del producto (DEBE COINCIDIR EXACTAMENTE)
     - Número Lote*: Identificador único del lote
     - Fecha Caducidad*: Fecha de vencimiento (YYYY-MM-DD)
     - Cantidad Inicial*: Unidades recibidas/surtidas
@@ -191,7 +192,7 @@ def generar_plantilla_lotes(centro=None):
     """
     from datetime import date, timedelta
     
-    PLANTILLA_VERSION = "2.0.0"
+    PLANTILLA_VERSION = "2.1.0"
     FECHA_GENERACION = date.today().strftime('%Y-%m-%d')
     
     wb = openpyxl.Workbook()
@@ -201,6 +202,7 @@ def generar_plantilla_lotes(centro=None):
     headers = [
         "Clave Producto",
         "Nombre Producto",
+        "Presentación",
         "Número Lote",
         "Fecha Recepción",
         "Fecha Caducidad",
@@ -213,7 +215,7 @@ def generar_plantilla_lotes(centro=None):
         "Activo"
     ]
 
-    column_widths = [15, 40, 20, 18, 18, 16, 20, 22, 15, 18, 35, 12]
+    column_widths = [15, 40, 25, 20, 18, 18, 16, 20, 22, 15, 18, 35, 12]
     
     for col_num, header in enumerate(headers, 1):
         ws.cell(row=1, column=col_num, value=header)
@@ -233,24 +235,24 @@ def generar_plantilla_lotes(centro=None):
     ejemplos = [
         # EJEMPLO CONTRATO GLOBAL: Total contratado 1000, llega en 3 lotes
         # Lote 1: 300 unidades, caducidad 1 año
-        ["615", "[EJEMPLO] PARACETAMOL 500MG - ELIMINAR", "LOTE-2026-001",
+        ["615", "[EJEMPLO] PARACETAMOL 500MG - ELIMINAR", "CAJA CON 20 TABLETAS", "LOTE-2026-001",
          fecha_fab, fecha_cad, 300, "", 1000, 15.50, "CONT-2026-PAR-001",
          "[EJEMPLO] Laboratorio A - ELIMINAR", "Activo"],
         # Lote 2: 250 unidades, misma caducidad
-        ["615", "[EJEMPLO] PARACETAMOL 500MG - ELIMINAR", "LOTE-2026-002",
+        ["615", "[EJEMPLO] PARACETAMOL 500MG - ELIMINAR", "CAJA CON 20 TABLETAS", "LOTE-2026-002",
          fecha_fab, fecha_cad, 250, "", 1000, 15.50, "CONT-2026-PAR-001",
          "[EJEMPLO] Laboratorio A - ELIMINAR", "Activo"],
         # Lote 3: 200 unidades, caducidad 2 años
-        ["615", "[EJEMPLO] PARACETAMOL 500MG - ELIMINAR", "LOTE-2026-003",
+        ["615", "[EJEMPLO] PARACETAMOL 500MG - ELIMINAR", "CAJA CON 20 TABLETAS", "LOTE-2026-003",
          fecha_fab, fecha_cad2, 200, "", 1000, 15.50, "CONT-2026-PAR-001",
          "[EJEMPLO] Laboratorio A - ELIMINAR", "Activo"],
         # El sistema calculará: Pendiente Global = 1000 - (300+250+200) = 250
         
-        # Ejemplo con Cantidad Contrato por Lote (entrega parcial)
-        ["616", "[EJEMPLO] IBUPROFENO 400MG - ELIMINAR", "LOTE-IBU-001",
-         fecha_fab, fecha_cad, 80, 100, "", 18.75, "CONT-2026-IBU-001",
+        # Ejemplo con presentación diferente (CAJA CON 14 TABLETAS)
+        ["702.2", "[EJEMPLO] TRIMETOPRIMA/SULFAMETOXAZOL - ELIMINAR", "CAJA CON 14 TABLETAS", "LOTE-TRI-001",
+         fecha_fab, fecha_cad, 80, 100, "", 18.75, "CONT-2026-TRI-001",
          "[EJEMPLO] Farmacéutica B - ELIMINAR", "Activo"],
-        # Llegaron solo 80 de 100 contratadas para este lote específico
+        # ⚠️ IMPORTANTE: La presentación DEBE coincidir con el catálogo de productos
     ]
     
     for ejemplo in ejemplos:
@@ -280,17 +282,25 @@ def generar_plantilla_lotes(centro=None):
         ["ELIMÍNELAS antes de cargar sus datos reales."],
         [""],
         ["════════════════════════════════════════════════════════════════════════"],
-        ["⚠️  VERIFICACIÓN DE DOBLE CAMPO: CLAVE + NOMBRE"],
+        ["⚠️  VERIFICACIÓN DE TRIPLE CAMPO: CLAVE + NOMBRE + PRESENTACIÓN"],
         ["════════════════════════════════════════════════════════════════════════"],
-        ["El sistema verifica que AMBOS campos (Clave y Nombre) coincidan con"],
-        ["el producto en la base de datos. Si hay discrepancia, se reportará error."],
-        ["Esto evita errores al sumar cantidades a productos incorrectos."],
+        ["El sistema verifica que los TRES campos coincidan con el producto en"],
+        ["la base de datos. Si hay discrepancia en cualquiera, se reportará error."],
+        [""],
+        ["⚠️ EJEMPLO CRÍTICO: Productos con misma clave base:"],
+        ["  - Clave 702: TRIMETOPRIMA/SULFAMETOXAZOL, Presentación: CAJA CON 20 TABLETAS"],
+        ["  - Clave 702.2: TRIMETOPRIMA/SULFAMETOXAZOL, Presentación: CAJA CON 14 TABLETAS"],
+        [""],
+        ["Si importa con Clave=702 pero Presentación='CAJA CON 14 TABLETAS', el"],
+        ["sistema buscará el producto correcto (702.2) automáticamente."],
         [""],
         ["────────────────────────────────────────────────────────────────────────"],
         ["COLUMNAS REQUERIDAS (obligatorias):"],
         ["────────────────────────────────────────────────────────────────────────"],
         ["• Clave Producto* - OBLIGATORIA: Clave única del producto en el sistema"],
         ["• Nombre Producto* - OBLIGATORIO: Debe coincidir con la clave"],
+        ["• Presentación*   - OBLIGATORIA: Ej: CAJA CON 14 TABLETAS"],
+        ["                    ⚠️ DEBE COINCIDIR EXACTAMENTE con el catálogo"],
         ["• Número Lote*    - Identificador único del lote"],
         ["• Fecha Caducidad* - Formato: YYYY-MM-DD (ej: 2026-12-31)"],
         ["• Cantidad Inicial* - Cantidad de unidades RECIBIDAS/SURTIDAS"],

@@ -879,10 +879,11 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
     else:
         logger.warning(f"[IMPORTADOR] Columna FECHA ENTREGA NO encontrada. Headers: {encabezados}")
     
-    # FIX: Validar columnas mínimas - CLAVE y NOMBRE son OBLIGATORIAS
-    # Ambos deben coincidir con el producto en la base de datos
+    # FIX: Validar columnas mínimas - CLAVE, NOMBRE y PRESENTACIÓN son OBLIGATORIAS
+    # Todos deben coincidir con el producto en la base de datos
     tiene_clave = ('producto_clave' in col_map or 'producto_id' in col_map)
     tiene_nombre = 'producto_nombre' in col_map
+    tiene_presentacion = 'presentacion' in col_map
     tiene_lote = 'numero_lote' in col_map
     tiene_cantidad = 'cantidad_inicial' in col_map
     tiene_caducidad = 'caducidad' in col_map
@@ -915,12 +916,14 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
             f'Por favor use la plantilla de Lotes (botón "Plantilla" en la página de Lotes).')
         return resultado.get_dict()
     
-    if not (tiene_clave and tiene_nombre and tiene_lote and tiene_cantidad and tiene_caducidad):
+    if not (tiene_clave and tiene_nombre and tiene_presentacion and tiene_lote and tiene_cantidad and tiene_caducidad):
         faltantes = []
         if not tiene_clave:
             faltantes.append('Clave Producto (obligatoria)')
         if not tiene_nombre:
-            faltantes.append('Nombre Producto (obligatorio - debe coincidir con clave)')
+            faltantes.append('Nombre Producto (obligatorio)')
+        if not tiene_presentacion:
+            faltantes.append('Presentación (OBLIGATORIA - ej: CAJA CON 14 TABLETAS)')
         if not tiene_lote:
             faltantes.append('Número Lote')
         if not tiene_cantidad:
@@ -930,7 +933,7 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
         
         resultado.agregar_error(1, 'encabezados', 
             f'Columnas faltantes: {", ".join(faltantes)}. Detectadas: {encabezados}. '
-            f'NOTA: Tanto Clave como Nombre del producto son obligatorios y deben coincidir.')
+            f'NOTA: Clave, Nombre y Presentación del producto son OBLIGATORIOS y deben coincidir exactamente con el catálogo.')
         return resultado.get_dict()
     
     # Centro: NULL = Almacén Central (FARMACIA)
@@ -996,15 +999,18 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                 resultado.agregar_omitido()
                 continue
             
-            # ========== PRODUCTO (requerido - CLAVE Y NOMBRE son OBLIGATORIOS) ==========
+            # ========== PRODUCTO (requerido - CLAVE, NOMBRE Y PRESENTACIÓN son OBLIGATORIOS) ==========
             producto = None
             clave_producto = None
             nombre_producto = None
+            presentacion_producto = None
             
             if 'producto_clave' in col_map:
                 clave_producto = get_val('producto_clave')
             if 'producto_nombre' in col_map:
                 nombre_producto = get_val('producto_nombre')
+            if 'presentacion' in col_map:
+                presentacion_producto = get_val('presentacion')
             
             if not clave_producto:
                 resultado.agregar_error(fila_num, 'producto', 
@@ -1016,13 +1022,74 @@ def importar_lotes_desde_excel(archivo, usuario, centro_id=None):
                     f'Nombre de producto es OBLIGATORIO. Clave proporcionada: {clave_producto}')
                 continue
             
+            if not presentacion_producto:
+                resultado.agregar_error(fila_num, 'producto', 
+                    f'Presentación es OBLIGATORIA. Clave: {clave_producto}, Nombre: {nombre_producto}. '
+                    f'Ejemplo: "CAJA CON 14 TABLETAS"')
+                continue
+            
+            # ISS-PRESENTACION-FIX: Normalizar presentación para comparación
+            def normalizar_presentacion(pres):
+                """Normaliza presentación para comparación tolerante."""
+                if not pres:
+                    return ''
+                p = pres.strip().upper()
+                # Normalizar espacios múltiples
+                p = re.sub(r'\s+', ' ', p)
+                return p
+            
+            presentacion_excel_norm = normalizar_presentacion(presentacion_producto)
+            
+            # Buscar producto por CLAVE exacta primero
             try:
                 producto = Producto.objects.get(clave__iexact=clave_producto)
             except Producto.DoesNotExist:
-                resultado.agregar_error(fila_num, 'producto', 
-                    f'Clave "{clave_producto}" no encontrada en el catálogo de productos. '
-                    f'Nombre: {nombre_producto}. Verifique que el producto exista.')
-                continue
+                # Intentar buscar con clave base (sin sufijo como .2, .3)
+                clave_base = clave_producto.split('.')[0] if '.' in clave_producto else clave_producto
+                productos_posibles = list(Producto.objects.filter(clave__istartswith=clave_base))
+                
+                if productos_posibles:
+                    # Buscar el que tenga la presentación correcta
+                    for p in productos_posibles:
+                        pres_bd_norm = normalizar_presentacion(p.presentacion)
+                        if pres_bd_norm == presentacion_excel_norm:
+                            producto = p
+                            logger.info(f"Fila {fila_num}: Producto encontrado por presentación: {p.clave} - {p.presentacion}")
+                            break
+                
+                if not producto:
+                    pres_disponibles = [f"{p.clave}: {p.presentacion}" for p in productos_posibles] if productos_posibles else []
+                    resultado.agregar_error(fila_num, 'producto', 
+                        f'Clave "{clave_producto}" no encontrada. '
+                        f'Presentación buscada: "{presentacion_producto}". '
+                        f'Productos similares disponibles: {pres_disponibles or "ninguno"}. '
+                        f'Verifique clave y presentación en el catálogo.')
+                    continue
+            
+            # Verificar que la presentación del producto coincida
+            presentacion_bd_norm = normalizar_presentacion(producto.presentacion)
+            if presentacion_bd_norm != presentacion_excel_norm:
+                # Buscar otro producto con la misma clave base pero diferente sufijo
+                clave_base = clave_producto.split('.')[0] if '.' in clave_producto else clave_producto
+                productos_con_misma_base = list(Producto.objects.filter(clave__istartswith=clave_base))
+                
+                producto_correcto = None
+                for p in productos_con_misma_base:
+                    if normalizar_presentacion(p.presentacion) == presentacion_excel_norm:
+                        producto_correcto = p
+                        break
+                
+                if producto_correcto:
+                    logger.info(f"Fila {fila_num}: Redirigiendo de {producto.clave} a {producto_correcto.clave} por presentación")
+                    producto = producto_correcto
+                else:
+                    pres_disponibles = [f"{p.clave}: {p.presentacion or 'SIN PRES'}" for p in productos_con_misma_base]
+                    resultado.agregar_error(fila_num, 'producto', 
+                        f'⚠️ PRESENTACIÓN NO COINCIDE: Clave "{clave_producto}" tiene presentación '
+                        f'"{producto.presentacion or "N/A"}" en BD, pero Excel dice "{presentacion_producto}". '
+                        f'Productos disponibles con clave similar: {pres_disponibles}. '
+                        f'Use la clave y presentación exactas del catálogo.')
+                    continue
             
             # ISS-NOMBRES-TOLERANTES: Normalizar nombres para comparación flexible
             # Esto maneja variaciones como "KETOCONAZOL /CLINDAMICINA" vs "KETOCONAZOL / CLINDAMICINA"

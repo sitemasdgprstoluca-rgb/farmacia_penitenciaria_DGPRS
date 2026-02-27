@@ -3509,18 +3509,19 @@ class LoteViewSet(viewsets.ModelViewSet):
         COLUMNAS OBLIGATORIAS (en orden):
         1. Clave Producto* (REQUERIDO) - Clave única del producto
         2. Nombre Producto* (REQUERIDO) - Debe coincidir con la clave
-        3. Nombre Comercial (referencia) - Solo informativo
-        4. Numero Lote* (REQUERIDO) - Identificador único del lote
-        5. Fecha Caducidad* (REQUERIDO, YYYY-MM-DD)
-        6. Cantidad Inicial* (REQUERIDO) - Cantidad recibida/surtida
+        3. Presentación* (REQUERIDO) - DEBE COINCIDIR EXACTAMENTE con el catálogo
+        4. Nombre Comercial (referencia) - Solo informativo
+        5. Numero Lote* (REQUERIDO) - Identificador único del lote
+        6. Fecha Caducidad* (REQUERIDO, YYYY-MM-DD)
+        7. Cantidad Inicial* (REQUERIDO) - Cantidad recibida/surtida
         
         COLUMNAS OPCIONALES:
-        7. Cantidad Contrato - Total según contrato (si aplica)
-        8. Fecha Fabricacion (YYYY-MM-DD)
-        9. Precio Unitario (default = 0)
-        10. Numero Contrato
-        11. Marca
-        12. Activo (default = Activo)
+        8. Cantidad Contrato - Total según contrato (si aplica)
+        9. Fecha Fabricacion (YYYY-MM-DD)
+        10. Precio Unitario (default = 0)
+        11. Numero Contrato
+        12. Marca
+        13. Activo (default = Activo)
         
         ISS-INV-001: SOPORTE PARA CONTRATOS PARCIALES
         Si el contrato establece 100 unidades pero solo llegaron 80:
@@ -3531,9 +3532,10 @@ class LoteViewSet(viewsets.ModelViewSet):
         Al re-importar un lote existente (mismo producto, lote, contrato, marca, caducidad),
         las cantidades se sumarán al lote existente.
         
-        IMPORTANTE: El sistema verifica que CLAVE y NOMBRE coincidan con el producto
-        en la base de datos. Si hay discrepancia (clave correcta pero nombre incorrecto),
-        se reportará un error para evitar confusiones.
+        ⚠️ IMPORTANTE - PRESENTACIÓN:
+        La columna PRESENTACIÓN es OBLIGATORIA y debe coincidir EXACTAMENTE
+        con el catálogo de productos. Si la presentación no coincide, el
+        sistema rechazará la fila para evitar asignar existencia incorrecta.
         
         NOTA: La ubicación se asigna automáticamente como "Almacén Central"
         y el centro queda NULL (representa Farmacia Central).
@@ -3542,9 +3544,9 @@ class LoteViewSet(viewsets.ModelViewSet):
         ws = wb.active
         ws.title = 'Lotes'
         
-        # Headers con Nombre Comercial como referencia visual y Cantidad Contrato (ISS-INV-001)
+        # Headers con Presentación OBLIGATORIA y Nombre Comercial como referencia
         headers = [
-            'Clave Producto', 'Nombre Producto', 'Nombre Comercial', 'Numero Lote', 
+            'Clave Producto', 'Nombre Producto', 'Presentación', 'Nombre Comercial', 'Numero Lote', 
             'Fecha Caducidad', 'Cantidad Inicial', 'Cantidad Contrato',
             'Fecha Fabricacion', 'Precio Unitario',
             'Numero Contrato', 'Marca', 'Activo'
@@ -3561,21 +3563,21 @@ class LoteViewSet(viewsets.ModelViewSet):
         
         # Ejemplo 1: Lote completo (cantidad recibida = cantidad contrato)
         ws.append([
-            'PRUEBA001', '[EJEMPLO] Paracetamol - ELIMINAR', 'Tempra', 'LOTE-PRUEBA-001', 
+            'PRUEBA001', '[EJEMPLO] Paracetamol - ELIMINAR', 'CAJA CON 20 TABLETAS', 'Tempra', 'LOTE-PRUEBA-001', 
             fecha_cad_ejemplo, 100, 100,  # Recibido = Contrato
             fecha_fab_ejemplo, 25.50,
             'CONT-PRUEBA-001', '[EJEMPLO] Laboratorio - ELIMINAR', 'Activo'
         ])
         # Ejemplo 2: Lote parcial (solo llegó parte del contrato)
         ws.append([
-            'PRUEBA002', '[EJEMPLO] Ibuprofeno - ELIMINAR', 'Advil', 'LOTE-PRUEBA-002', 
+            'PRUEBA002', '[EJEMPLO] Ibuprofeno - ELIMINAR', 'FRASCO CON 30 CAPSULAS', 'Advil', 'LOTE-PRUEBA-002', 
             fecha_cad_ejemplo, 40, 50,  # Solo llegaron 40 de 50
             fecha_fab_ejemplo, 18.75,
             'CONT-PRUEBA-002', '[EJEMPLO] Farmacéutica - ELIMINAR', 'Activo'
         ])
         # Ejemplo 3: Sin contrato específico
         ws.append([
-            'PRUEBA003', '[EJEMPLO] Jeringa - ELIMINAR', '', 'LOTE-PRUEBA-003', 
+            'PRUEBA003', '[EJEMPLO] Jeringa - ELIMINAR', 'JERINGA 10 ML', '', 'LOTE-PRUEBA-003', 
             fecha_cad_ejemplo, 200, '',  # Sin cantidad contrato (se deja vacío)
             '', 5.00,
             '', '[EJEMPLO] Material - ELIMINAR', 'Activo'
@@ -3597,19 +3599,21 @@ class LoteViewSet(viewsets.ModelViewSet):
                 cell = ws.cell(row=row_num, column=col)
                 cell.font = example_font
         
-        # Ajustar ancho de columnas
+        # Ajustar ancho de columnas (ahora con Presentación en C)
         column_widths = {
             'A': 15,  # Clave Producto
             'B': 40,  # Nombre Producto (referencia)
-            'C': 18,  # Nombre Comercial
-            'D': 20,  # Numero Lote
-            'E': 16,  # Fecha Caducidad
-            'F': 16,  # Cantidad Inicial
-            'G': 18,  # Fecha Fabricacion
-            'H': 15,  # Precio Unitario
-            'I': 18,  # Numero Contrato
-            'J': 35,  # Marca (más ancho para ver el texto de ejemplo)
-            'K': 12,  # Activo
+            'C': 25,  # Presentación (NUEVO - OBLIGATORIO)
+            'D': 18,  # Nombre Comercial
+            'E': 20,  # Numero Lote
+            'F': 16,  # Fecha Caducidad
+            'G': 16,  # Cantidad Inicial
+            'H': 18,  # Cantidad Contrato
+            'I': 18,  # Fecha Fabricacion
+            'J': 15,  # Precio Unitario
+            'K': 18,  # Numero Contrato
+            'L': 35,  # Marca (más ancho para ver el texto de ejemplo)
+            'M': 12,  # Activo
         }
         for col_letter, width in column_widths.items():
             ws.column_dimensions[col_letter].width = width
@@ -3628,25 +3632,32 @@ class LoteViewSet(viewsets.ModelViewSet):
             ['    ELIMÍNELAS antes de cargar sus datos reales.'],
             [''],
             ['════════════════════════════════════════════════════════════════════════'],
-            ['⚠️  VERIFICACIÓN DE DOBLE CAMPO: CLAVE + NOMBRE'],
+            ['🚨 VERIFICACIÓN TRIPLE: CLAVE + NOMBRE + PRESENTACIÓN'],
             ['════════════════════════════════════════════════════════════════════════'],
-            ['El sistema verifica que AMBOS campos (Clave y Nombre) coincidan con'],
-            ['el producto en la base de datos. Si hay discrepancia, se reportará error.'],
-            ['Esto evita errores al sumar cantidades a productos incorrectos.'],
+            ['El sistema verifica que los TRES campos (Clave, Nombre y Presentación)'],
+            ['coincidan con el producto en la base de datos.'],
+            ['Si hay discrepancia, se reportará error para evitar asignar'],
+            ['existencia a la presentación incorrecta del producto.'],
+            [''],
+            ['⚠️  La PRESENTACIÓN debe coincidir EXACTAMENTE con el catálogo.'],
+            ['    Ejemplo: "CAJA CON 20 TABLETAS" no es igual a "Caja con 20 tabletas"'],
+            ['    Copie la presentación exacta del catálogo de productos.'],
             [''],
             ['────────────────────────────────────────────────────────────────────────'],
             ['COLUMNAS REQUERIDAS (obligatorias):'],
             ['────────────────────────────────────────────────────────────────────────'],
-            ['• Clave Producto* - OBLIGATORIA: Clave única del producto en el sistema'],
+            ['• Clave Producto*  - OBLIGATORIA: Clave única del producto en el sistema'],
             ['• Nombre Producto* - OBLIGATORIO: Debe coincidir con la clave'],
+            ['• Presentación*    - OBLIGATORIA: Debe coincidir EXACTAMENTE con catálogo'],
             ['• Nombre Comercial - Solo referencia visual (ej: Tempra, Advil)'],
-            ['• Numero Lote*    - Identificador único del lote'],
+            ['• Numero Lote*     - Identificador único del lote'],
             ['• Fecha Caducidad* - Formato: YYYY-MM-DD (ej: 2026-12-31)'],
-            ['• Cantidad Inicial* - Cantidad de unidades recibidas'],
+            ['• Cantidad Inicial*- Cantidad de unidades recibidas'],
             [''],
             ['────────────────────────────────────────────────────────────────────────'],
             ['COLUMNAS OPCIONALES:'],
             ['────────────────────────────────────────────────────────────────────────'],
+            ['• Cantidad Contrato - Total según contrato (para parcialidades)'],
             ['• Fecha Fabricacion - Formato: YYYY-MM-DD'],
             ['• Precio Unitario  - Precio por unidad (default: 0)'],
             ['• Numero Contrato  - Referencia del contrato de adquisición'],
@@ -3658,7 +3669,7 @@ class LoteViewSet(viewsets.ModelViewSet):
             ['────────────────────────────────────────────────────────────────────────'],
             ['• Los lotes se asignan automáticamente al Almacén Central (FARMACIA).'],
             ['• El PRODUCTO debe existir antes de importar lotes.'],
-            ['• Verifique la CLAVE y NOMBRE del producto en el catálogo.'],
+            ['• Verifique CLAVE, NOMBRE y PRESENTACIÓN del producto en el catálogo.'],
             ['• Si el lote ya existe (mismo producto + número de lote), se ACTUALIZARÁ.'],
             ['• La cantidad_actual se inicializa igual a cantidad_inicial.'],
             ['• El stock del producto se actualiza automáticamente.'],

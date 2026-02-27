@@ -49,7 +49,7 @@ const IMPORT_CONFIGS = {
   lotes: {
     titulo: 'Lotes de Inventario',
     descripcion: 'Importar lotes de productos al almacén',
-    columnasRequeridas: ['Clave Producto', 'Nombre Producto', 'Número Lote', 'Fecha Caducidad', 'Cantidad Inicial'],
+    columnasRequeridas: ['Clave Producto', 'Nombre Producto', 'Presentación', 'Número Lote', 'Fecha Caducidad', 'Cantidad Inicial'],
     columnasOpcionales: ['Cantidad Contrato Lote', 'Cantidad Contrato Global', 'Fecha Entrega', 'Precio Unitario', 'Número Contrato', 'Marca', 'Activo'],
     formatos: {
       'Fecha Caducidad': 'YYYY-MM-DD o DD/MM/YYYY',
@@ -58,11 +58,13 @@ const IMPORT_CONFIGS = {
       'Cantidad Contrato Lote': 'Número entero positivo (opcional) - esperado para este lote',
       'Cantidad Contrato Global': 'Número entero positivo (opcional) - total contratado por clave',
       'Precio Unitario': 'Número decimal (ej: 15.50)',
+      'Presentación': 'Texto exacto del catálogo (ej: CAJA CON 14 TABLETAS)',
       'Activo': 'Activo / Inactivo'
     },
     sinonimosCols: {
       'clave producto': ['clave', 'codigo', 'sku', 'key', 'clave producto'],
       'nombre producto': ['nombre', 'articulo', 'descripcion', 'nombre producto'],
+      'presentacion': ['presentacion', 'presentación', 'pres', 'envase', 'empaque'],
       'numero lote': ['lote', 'numero lote', 'num lote', 'batch', 'número lote'],
       'fecha caducidad': ['caducidad', 'vencimiento', 'fecha caducidad', 'expiracion'],
       'fecha entrega': ['fecha entrega', 'entrega', 'fecha de entrega', 'fecha recepcion', 'recepcion', 'fecha de recepcion', 'fec recepcion', 'fecha fabricacion', 'fabricacion', 'elaboracion', 'fecha elaboracion', 'fec fab', 'fecha recepción'],
@@ -75,13 +77,14 @@ const IMPORT_CONFIGS = {
       maxTamanio: '10 MB'
     },
     pasos: [
-      { numero: 1, titulo: 'Descargar plantilla', descripcion: 'Descarga la plantilla actualizada con el formato correcto' },
-      { numero: 2, titulo: 'Llenar datos', descripcion: 'Completa tus datos en Excel. Elimina las filas de ejemplo marcadas con [EJEMPLO]' },
-      { numero: 3, titulo: 'Importar', descripcion: 'Arrastra el archivo o selecciónalo. El sistema validará antes de importar' }
+      { numero: 1, titulo: 'Descargar plantilla', descripcion: 'Descarga la plantilla v2.1 con el campo Presentación obligatorio' },
+      { numero: 2, titulo: 'Llenar datos', descripcion: 'Completa tus datos. ⚠️ La Presentación DEBE coincidir con el catálogo' },
+      { numero: 3, titulo: 'Importar', descripcion: 'El sistema validará Clave + Nombre + Presentación' }
     ],
     ejemploRegistro: {
-      'Clave Producto': 'MED001',
-      'Nombre Producto': 'Paracetamol 500mg',
+      'Clave Producto': '702.2',
+      'Nombre Producto': 'TRIMETOPRIMA/SULFAMETOXAZOL',
+      'Presentación': 'CAJA CON 14 TABLETAS',
       'Número Lote': 'LOT-2026-001',
       'Fecha Caducidad': '2027-12-31',
       'Cantidad Inicial': 100,

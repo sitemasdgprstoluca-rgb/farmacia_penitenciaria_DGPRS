@@ -1,0 +1,2 @@
+const r=(t,e)=>typeof window<"u"&&document.documentElement&&getComputedStyle(document.documentElement).getPropertyValue(t).trim()||e,o={get primary(){return r("--color-primary","#9F2241")},success:"#10B981",danger:"#EF4444",warning:"#F59E0B",info:"#0284C7"},u="var(--color-sidebar-bg, linear-gradient(135deg, #6B1839 0%, #9F2241 100%))";export{o as C,u as S};
+//# sourceMappingURL=theme-eIsHt5Up.js.map
