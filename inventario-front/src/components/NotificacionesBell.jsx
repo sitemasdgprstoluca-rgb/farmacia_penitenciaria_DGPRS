@@ -29,17 +29,6 @@ const NotificacionesBell = ({ externalCount, onCountChange }) => {
 
   // Verificar si tiene permiso de ver notificaciones
   const tienePermiso = permisos?.verNotificaciones;
-  
-  // DEBUG: Log de estado
-  useEffect(() => {
-    console.log('[NotificacionesBell] Estado:', {
-      user: !!user,
-      tienePermiso,
-      hasToken: hasAccessToken(),
-      sinLeer,
-      displayCount,
-    });
-  }, [user, tienePermiso, sinLeer, displayCount]);
 
   // Cargar contador de no leídas (endpoint dedicado)
   const cargarContador = useCallback(async () => {
@@ -96,27 +85,16 @@ const NotificacionesBell = ({ externalCount, onCountChange }) => {
 
   useEffect(() => {
     // No iniciar polling sin permiso
-    console.log('[NotificacionesBell-Effect] Evaluando:', {
-      user: !!user,
-      tienePermiso,
-      externalCount,
-    });
-    
     if (!user || !tienePermiso) {
-      console.log('[NotificacionesBell-Effect] NO se inicia carga (falta user o permiso)');
       return;
     }
     
-    console.log('[NotificacionesBell-Effect] Iniciando carga de notificaciones');
     cargar();
     // Refresco cada 30s solo del contador para minimizar tráfico
     // Solo si no hay contador externo (evita doble polling)
     if (externalCount === undefined) {
-      console.log('[NotificacionesBell-Effect] Iniciando polling interno');
       const id = setInterval(cargarContador, 30000);
       return () => clearInterval(id);
-    } else {
-      console.log('[NotificacionesBell-Effect] Usando contador externo, no hay polling interno');
     }
   }, [user, tienePermiso, cargar, cargarContador, externalCount]);
 

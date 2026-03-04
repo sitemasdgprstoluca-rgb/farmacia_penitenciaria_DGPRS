@@ -337,19 +337,6 @@ function Layout() {
 
   const tienePermisoNotificaciones = permisos?.verNotificaciones;
   const rolPrincipal = getRolPrincipal();
-  
-  // DEBUG: Log de estado de notificaciones
-  useEffect(() => {
-    console.log('[Layout-Notificaciones] Estado:', {
-      user: !!user,
-      userId: user?.id,
-      rol: user?.rol,
-      tienePermisoNotificaciones,
-      permisosValidados,
-      hasToken: hasAccessToken(),
-      permisos: Object.keys(permisos || {}).length,
-    });
-  }, [user, tienePermisoNotificaciones, permisosValidados, permisos]);
 
   // Nombre completo del usuario
   const nombreUsuario = useMemo(() => {
@@ -498,25 +485,14 @@ function Layout() {
         else if (typeof data === 'number') total = data;
         
         setUnreadCount(Math.max(0, total));
-        console.log('[Layout-Polling] Notificaciones no leídas:', total);
       } catch (error) {
         // Silenciar errores (401 ya no debería ocurrir, pero por si acaso)
-        console.error('[Layout-Polling] Error cargando notificaciones:', error);
       }
     };
     
     // ISS-SEC FIX: Verificar que permisos estén validados Y haya token
     // permisosValidados indica que el backend confirmó la sesión
-    console.log('[Layout-Polling] Evaluando condiciones:', {
-      user: !!user,
-      tienePermisoNotificaciones,
-      permisosValidados,
-      hasToken: hasAccessToken(),
-      cumpleCondiciones: !!(user && tienePermisoNotificaciones && permisosValidados && hasAccessToken()),
-    });
-    
     if (user && tienePermisoNotificaciones && permisosValidados && hasAccessToken()) {
-      console.log('[Layout-Polling] INICIANDO polling de notificaciones');
       cargarUnread();
       const id = setInterval(cargarUnread, 30000);
       window.notificationInterval = id;
