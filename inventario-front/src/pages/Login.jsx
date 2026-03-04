@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
-import { FaUser, FaLock, FaSignInAlt, FaSpinner, FaEye, FaEyeSlash, FaShieldAlt, FaRoute, FaServer, FaCoffee } from 'react-icons/fa';
-import { authAPI, checkApiHealth } from '../services/api';
+import { FaUser, FaLock, FaSignInAlt, FaSpinner, FaEye, FaEyeSlash, FaShieldAlt, FaRoute } from 'react-icons/fa';
+import { authAPI } from '../services/api';
 import { usePermissions } from '../hooks/usePermissions';
 import { useTheme } from '../hooks/useTheme';
 import { setAccessToken, clearTokens } from '../services/tokenManager';
@@ -109,36 +109,7 @@ const PremiumInput = ({ icon: Icon, label, error, ...props }) => {
   );
 };
 
-// 🔄 Componente de banner de servidor iniciando
-const ServerWakingBanner = ({ retryCount, isChecking, onRetry }) => (
-  <div className="animate-pulse-slow rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 px-4 py-4 flex flex-col sm:flex-row items-center gap-3">
-    <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
-      {isChecking ? (
-        <FaSpinner className="text-amber-600 animate-spin" size={18} />
-      ) : (
-        <FaCoffee className="text-amber-600" size={18} />
-      )}
-    </div>
-    <div className="flex-1 text-center sm:text-left">
-      <p className="text-sm text-amber-800 font-semibold">
-        {isChecking ? 'Conectando con el servidor...' : 'El servidor está despertando'}
-      </p>
-      <p className="text-xs text-amber-600 mt-0.5">
-        {isChecking 
-          ? `Verificando conexión${retryCount > 0 ? ` (intento ${retryCount})` : ''}...`
-          : 'Esto puede tomar unos segundos. Por favor espera.'}
-      </p>
-    </div>
-    {!isChecking && (
-      <button
-        onClick={onRetry}
-        className="text-xs bg-amber-100 hover:bg-amber-200 text-amber-700 px-3 py-1.5 rounded-lg transition-colors font-medium"
-      >
-        Reintentar
-      </button>
-    )}
-  </div>
-);
+
 
 function Login() {
   const [credentials, setCredentials] = useState({ username: '', password: '' });
@@ -147,105 +118,10 @@ function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [exiting, setExiting] = useState(false);
-  // Estados para verificación del servidor
-  const [serverStatus, setServerStatus] = useState('checking'); // 'checking' | 'ready' | 'waking' | 'error'
-  const [serverCheckRetry, setServerCheckRetry] = useState(0);
-  const serverCheckIntervalRef = useRef(null);
-  const maxRetriesRef = useRef(6); // Máximo 6 intentos (30 segundos con interval de 5s)
-  const startTimeRef = useRef(null);
   
   const navigate = useNavigate();
   const { recargarUsuario } = usePermissions();
   const { temaGlobal, logoLoginUrl, nombreSistema } = useTheme();
-
-  // Limpiar intervalo de verificación
-  const clearHealthCheckInterval = useCallback(() => {
-    if (serverCheckIntervalRef.current) {
-      clearInterval(serverCheckIntervalRef.current);
-      serverCheckIntervalRef.current = null;
-    }
-  }, []);
-
-  // Verificar salud del servidor
-  const checkServerHealth = useCallback(async (isRetry = false) => {
-    // Límite de reintentos
-    if (isRetry && serverCheckRetry >= maxRetriesRef.current) {
-      clearHealthCheckInterval();
-      setServerStatus('error');
-      toast.error(
-        'No se pudo conectar con el servidor después de varios intentos. Por favor, contacte al administrador.',
-        { duration: 6000 }
-      );
-      return false;
-    }
-
-    // Timeout de seguridad (30 segundos totales)
-    if (startTimeRef.current) {
-      const elapsed = Date.now() - startTimeRef.current;
-      if (elapsed > 30000) {
-        clearHealthCheckInterval();
-        setServerStatus('error');
-        toast.error('Tiempo de espera agotado. Verifique su conexión a internet.', { duration: 5000 });
-        return false;
-      }
-    } else {
-      startTimeRef.current = Date.now();
-    }
-    
-    if (isRetry) {
-      setServerCheckRetry(prev => prev + 1);
-    }
-    setServerStatus('checking');
-    
-    try {
-      // Timeout corto (5 segundos) para no bloquear al usuario
-      const health = await checkApiHealth({ retries: 1, timeout: 5000 });
-      
-      if (health.healthy) {
-        setServerStatus('ready');
-        setServerCheckRetry(0);
-        startTimeRef.current = null;
-        clearHealthCheckInterval();
-        return true;
-      } else if (health.isServerStarting) {
-        setServerStatus('waking');
-        // Programar reintento automático si no hay uno ya
-        if (!serverCheckIntervalRef.current) {
-          serverCheckIntervalRef.current = setInterval(() => {
-            checkServerHealth(true);
-          }, 5000); // Reintentar cada 5 segundos
-        }
-        return false;
-      } else {
-        // Error definitivo (no timeout)
-        clearHealthCheckInterval();
-        setServerStatus('error');
-        setServerCheckRetry(0);
-        startTimeRef.current = null;
-        return false;
-      }
-    } catch (error) {
-      // Asumir que el servidor está despertando
-      setServerStatus('waking');
-      // Programar reintento automático si no hay uno ya
-      if (!serverCheckIntervalRef.current) {
-        serverCheckIntervalRef.current = setInterval(() => {
-          checkServerHealth(true);
-        }, 5000);
-      }
-      return false;
-    }
-  }, [serverCheckRetry, clearHealthCheckInterval]);
-
-  // Verificar servidor al montar componente - SIN checkServerHealth en dependencias
-  useEffect(() => {
-    checkServerHealth();
-    
-    return () => {
-      clearHealthCheckInterval();
-      startTimeRef.current = null;
-    };
-  }, []); // Array vacío - solo ejecutar al montar
 
   // Animación de entrada
   useEffect(() => {
@@ -306,22 +182,6 @@ function Login() {
       } else if (error.response?.data?.detail) {
         setErrorMessage(error.response.data.detail);
         toast.error('No fue posible iniciar sesión');
-      } else if (error.isServerStarting || error.retriesExhausted || !error.response) {
-        // ISS-FIX: El servidor está despertando - no mostrar error, cambiar estado
-        setServerStatus('waking');
-        setServerCheckRetry(0); // Reset contador
-        startTimeRef.current = Date.now(); // Reset timer
-        setErrorMessage(''); // Limpiar error - el banner informativo es suficiente
-        toast('El servidor está iniciando, espera unos segundos...', { 
-          icon: '☕', 
-          duration: 4000,
-          style: { background: '#FFFBEB', color: '#92400E' }
-        });
-        // Programar verificación automática si no hay una ya
-        clearHealthCheckInterval(); // Limpiar primero por si acaso
-        serverCheckIntervalRef.current = setInterval(() => {
-          checkServerHealth(true);
-        }, 5000);
       } else {
         setErrorMessage('Error al procesar la solicitud. Intenta de nuevo.');
         toast.error('No fue posible iniciar sesión');
@@ -359,51 +219,6 @@ function Login() {
             
             {/* Formulario */}
             <form onSubmit={handleSubmit} className="space-y-5">
-              {/* Banner de servidor iniciando */}
-              {(serverStatus === 'checking' || serverStatus === 'waking') && (
-                <ServerWakingBanner 
-                  retryCount={serverCheckRetry}
-                  isChecking={serverStatus === 'checking'}
-                  onRetry={() => {
-                    // Limpiar intervalo anterior y resetear contadores
-                    clearHealthCheckInterval();
-                    setServerCheckRetry(0);
-                    startTimeRef.current = null;
-                    // Reintentar verificación
-                    checkServerHealth(false);
-                  }}
-                />
-              )}
-              
-              {/* Banner de error de conexión definitivo */}
-              {serverStatus === 'error' && !errorMessage && (
-                <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-4 flex flex-col sm:flex-row items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
-                    <span className="text-red-500 text-lg">⚠️</span>
-                  </div>
-                  <div className="flex-1 text-center sm:text-left">
-                    <p className="text-sm text-red-800 font-semibold">
-                      No se pudo conectar con el servidor
-                    </p>
-                    <p className="text-xs text-red-600 mt-0.5">
-                      Verifica tu conexión a internet o contacta al administrador
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      clearHealthCheckInterval();
-                      setServerCheckRetry(0);
-                      startTimeRef.current = null;
-                      checkServerHealth(false);
-                    }}
-                    className="text-xs bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded-lg transition-colors font-medium"
-                  >
-                    Reintentar
-                  </button>
-                </div>
-              )}
-              
               {/* Mensaje de error de credenciales */}
               {errorMessage && (
                 <div className="animate-shake rounded-xl bg-red-50 border border-red-200 px-4 py-3 flex items-center gap-3">
@@ -455,11 +270,7 @@ function Login() {
               <button
                 type="submit"
                 disabled={loading}
-                className={`relative w-full overflow-hidden text-white py-4 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed font-bold shadow-lg transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl active:scale-[0.98] group ${
-                  serverStatus === 'waking' 
-                    ? 'bg-gradient-to-r from-amber-500 to-orange-500' 
-                    : 'bg-theme-gradient'
-                }`}
+                className="relative w-full overflow-hidden text-white py-4 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed font-bold shadow-lg transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl active:scale-[0.98] group bg-theme-gradient"
               >
                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
                 
@@ -468,16 +279,6 @@ function Login() {
                     <>
                       <FaSpinner className="animate-spin" size={18} />
                       <span>Verificando...</span>
-                    </>
-                  ) : serverStatus === 'checking' ? (
-                    <>
-                      <FaSignInAlt size={18} />
-                      <span>Iniciar Sesión</span>
-                    </>
-                  ) : serverStatus === 'waking' ? (
-                    <>
-                      <FaCoffee size={18} />
-                      <span>Iniciar Sesión (servidor despertando)</span>
                     </>
                   ) : (
                     <>
@@ -626,17 +427,8 @@ function Login() {
           20%, 40%, 60%, 80% { transform: translateX(4px); }
         }
         
-        @keyframes pulse-slow {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.85; }
-        }
-        
         .animate-float {
           animation: float linear infinite;
-        }
-        
-        .animate-pulse-slow {
-          animation: pulse-slow 2s ease-in-out infinite;
         }
         
         .animate-pulse-ring {
