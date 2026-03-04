@@ -939,6 +939,15 @@ CACHE_TTL_ESTADISTICAS = config('CACHE_TTL_ESTADISTICAS', default=300, cast=int)
 CACHE_TTL_REPORTES = config('CACHE_TTL_REPORTES', default=600, cast=int)  # 10 minutos
 
 # ═══════════════════════════════════════════════════════════
+# SUPPRESS KNOWN-HARMLESS THIRD-PARTY WARNINGS
+# ═══════════════════════════════════════════════════════════
+import warnings
+# supabase jala urllib3>=2 y chardet>=7 que son más nuevos que lo que
+# requests <=2.32 verificaba internamente — completamente inofensivo.
+warnings.filterwarnings('ignore', message='urllib3', category=Warning)
+warnings.filterwarnings('ignore', category=Warning, module='requests')
+
+# ═══════════════════════════════════════════════════════════
 # SILENCED SYSTEM CHECKS (para desarrollo)
 # ═══════════════════════════════════════════════════════════
 # En modo DEBUG, silenciar warnings de seguridad que no aplican en desarrollo
