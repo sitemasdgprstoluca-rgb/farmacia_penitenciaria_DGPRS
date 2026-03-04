@@ -9,6 +9,7 @@ import {
   catalogosAPI,
 } from '../services/api';
 import { usePermissions } from '../hooks/usePermissions';
+import { useSafeAction } from '../hooks/useSafeAction';
 import { ProtectedButton } from '../components/ProtectedAction';
 import ConfirmModal from '../components/ConfirmModal';
 import InputModal from '../components/InputModal';
@@ -138,6 +139,8 @@ const Requisiciones = () => {
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(null); // Loading específico por acción (evita bloquear todo)
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // useSafeAction: client_request_id para idempotencia end-to-end
+  const { getRequestId: getReqRequestId, resetRequestId: resetReqRequestId } = useSafeAction();
   const [navegando, setNavegando] = useState(false); // Bloquea navegaciones múltiples
   // FIX: Inicializar filtroCentro siempre vacío - se resuelve en useEffect de hidratación
   // Esto evita problemas cuando esAdminOFarmacia aún no se ha determinado al montar
@@ -1363,9 +1366,9 @@ const Requisiciones = () => {
       
       let resp;
       if (editRequisicion) {
-        resp = await requisicionesAPI.update(editRequisicion.id, payload);
+        resp = await requisicionesAPI.update(editRequisicion.id, { ...payload, client_request_id: getReqRequestId() });
       } else {
-        resp = await requisicionesAPI.create(payload);
+        resp = await requisicionesAPI.create({ ...payload, client_request_id: getReqRequestId() });
       }
       const reqId = resp?.data?.id || editRequisicion?.id;
       if (enviar && reqId) {
@@ -1375,6 +1378,7 @@ const Requisiciones = () => {
       setShowModal(false);
       setEditRequisicion(null);
       resetForm();
+      resetReqRequestId(); // Nueva operación = nuevo ID
       cargarRequisiciones();
       cargarResumenEstados();
     } catch (error) {

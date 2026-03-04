@@ -401,6 +401,38 @@ let redirectingToLogin = false;
 let isRefreshing = false;
 let failedQueue = [];
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Multi-tab coordination: sincroniza logout y token refresh entre pestañas
+// Safari <15.4 no soporta BroadcastChannel → graceful degradation
+// ─────────────────────────────────────────────────────────────────────────────
+const authChannel = typeof BroadcastChannel !== 'undefined'
+  ? (() => {
+      try { return new BroadcastChannel('farmacia_auth'); }
+      catch { return null; }
+    })()
+  : null;
+
+if (authChannel) {
+  authChannel.onmessage = ({ data }) => {
+    if (data?.type === 'LOGOUT') {
+      // Otra pestaña inició logout → limpiar tokens y redirigir silenciosamente
+      if (!redirectingToLogin && window.location.pathname !== '/login') {
+        clearTokens();
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+      }
+    } else if (data?.type === 'TOKEN_REFRESHED' && data.accessToken) {
+      // Otra pestaña refrescó el token → adoptar el nuevo token aquí
+      // Evita que esta pestaña intente otro refresh innecesario
+      setAccessToken(data.accessToken);
+      if (data.refreshToken) setRefreshToken(data.refreshToken);
+    }
+  };
+}
+
+/** Exportado para que el componente de logout pueda notificar otras pestañas */
+export const broadcastLogout = () => authChannel?.postMessage({ type: 'LOGOUT' });
+
 // ISS-005 FIX (audit32): Configuración de reintentos para cold starts de Render
 const RETRY_CONFIG = {
   maxRetries: 5,              // Máximo 5 reintentos para cold starts (~50s de espera total)
@@ -481,6 +513,8 @@ export const setApiActivityHandler = (callback) => {
 const redirectToLogin = () => {
   if (redirectingToLogin) return;
   redirectingToLogin = true;
+  // Notificar otras pestañas para que también cierren sesión
+  authChannel?.postMessage({ type: 'LOGOUT' });
   // Limpiar tokens de memoria
   clearTokens();
   // Limpiar cualquier dato de usuario del localStorage (no tokens)
@@ -670,6 +704,9 @@ apiClient.interceptors.response.use(
         if (newRefreshToken) {
           setRefreshToken(newRefreshToken);
         }
+        
+        // Notificar otras pestañas del nuevo token (evita que también hagan refresh)
+        authChannel?.postMessage({ type: 'TOKEN_REFRESHED', accessToken: newAccessToken, refreshToken: newRefreshToken || null });
         
         // Actualizar headers del request original
         originalRequest.headers['Authorization'] = 'Bearer ' + newAccessToken;

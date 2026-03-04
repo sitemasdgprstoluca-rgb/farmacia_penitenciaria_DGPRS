@@ -4413,16 +4413,19 @@ class IdempotencyKey(models.Model):
 
     DDL (ejecutar en Supabase SQL Editor):
         CREATE TABLE IF NOT EXISTS idempotency_keys (
-            id            SERIAL PRIMARY KEY,
-            key           VARCHAR(100) NOT NULL UNIQUE,
-            endpoint      VARCHAR(100) NOT NULL,
-            user_id       INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
-            response_data JSONB NOT NULL DEFAULT '{}',
+            id              SERIAL PRIMARY KEY,
+            key             VARCHAR(100) NOT NULL UNIQUE,
+            endpoint        VARCHAR(100) NOT NULL,
+            user_id         INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+            payload_hash    VARCHAR(64)  NOT NULL DEFAULT '',
+            status          VARCHAR(20)  NOT NULL DEFAULT 'success',
+            response_data   JSONB NOT NULL DEFAULT '{}',
             response_status INTEGER NOT NULL DEFAULT 201,
-            created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
-        CREATE INDEX IF NOT EXISTS idx_idempotency_keys_key ON idempotency_keys (key);
-        CREATE INDEX IF NOT EXISTS idx_idempotency_keys_user_created ON idempotency_keys (user_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_idempotency_keys_key     ON idempotency_keys (key);
+        CREATE INDEX IF NOT EXISTS idx_idempotency_keys_user    ON idempotency_keys (user_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_idempotency_keys_status  ON idempotency_keys (status) WHERE status = 'processing';
     """
 
     key = models.CharField(max_length=100, unique=True)
@@ -4432,6 +4435,14 @@ class IdempotencyKey(models.Model):
         on_delete=models.CASCADE,
         related_name='idempotency_keys',
         db_column='user_id',
+    )
+    payload_hash = models.CharField(max_length=64, blank=True, default='',
+                                    help_text='SHA-256 del payload para detectar retries con datos distintos')
+    status = models.CharField(
+        max_length=20,
+        default='success',
+        choices=[('processing', 'En proceso'), ('success', 'Exitoso'), ('failed', 'Fallido')],
+        help_text='Estado: processing (en curso), success (completado), failed (error)'
     )
     response_data = models.JSONField(default=dict)
     response_status = models.IntegerField(default=201)

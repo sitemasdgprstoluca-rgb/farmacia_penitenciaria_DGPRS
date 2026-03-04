@@ -30,6 +30,7 @@ import {
   FaFilePdf,
 } from 'react-icons/fa';
 import { detallesDonacionAPI, salidasDonacionesAPI, centrosAPI } from '../services/api';
+import { useSafeAction } from '../hooks/useSafeAction';
 
 const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
   // Estado del formulario
@@ -56,6 +57,7 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
   // Estado de procesamiento
   const [procesando, setProcesando] = useState(false);
   const [resultado, setResultado] = useState(null);
+  const { getRequestId: getDonacionRequestId, resetRequestId: resetDonacionRequestId } = useSafeAction();
   
   // Ref para debounce de búsqueda
   const searchTimeoutRef = useRef(null);
@@ -294,6 +296,7 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
             destinatario: destinatarioFinal,
             motivo: motivo.trim() || null,
             notas: notas.trim() || null,
+            client_request_id: `${getDonacionRequestId()}_${item.detalle_id}`,
           };
           
           // Agregar centro_destino solo si es tipo centro
@@ -344,6 +347,7 @@ const SalidaMasivaDonaciones = ({ onClose, onSuccess }) => {
       toast.error('Error al procesar entregas');
     } finally {
       setProcesando(false);
+      resetDonacionRequestId();
     }
   };
   

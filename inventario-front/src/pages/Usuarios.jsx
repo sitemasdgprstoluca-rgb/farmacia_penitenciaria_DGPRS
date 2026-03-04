@@ -5,6 +5,7 @@ import { FaPlus, FaEdit, FaTrash, FaKey, FaUsers, FaTimes, FaDownload, FaFileUpl
 import PageHeader from '../components/PageHeader';
 import { COLORS } from '../constants/theme';
 import { usePermissions } from '../hooks/usePermissions';
+import { useSafeAction } from '../hooks/useSafeAction';
 import { UsuariosSkeleton } from '../components/skeletons';
 import Pagination from '../components/Pagination';
 // ISS-SEC: Componentes para confirmación en 2 pasos
@@ -79,6 +80,7 @@ function Usuarios() {
   const [exportLoading, setExportLoading] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
   const [savingUser, setSavingUser] = useState(false); // Guardando en modal
+  const { getRequestId: getUserRequestId, resetRequestId: resetUserRequestId } = useSafeAction();
   const [actionLoading, setActionLoading] = useState(null); // ID del usuario en acción
   const [showModal, setShowModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -539,13 +541,14 @@ function Usuarios() {
       }
       
       if (editingUsuario) {
-        await usuariosAPI.update(editingUsuario.id, payload);
+        await usuariosAPI.update(editingUsuario.id, { ...payload, client_request_id: getUserRequestId() });
         toast.success('Usuario actualizado correctamente');
       } else {
-        await usuariosAPI.create(payload);
+        await usuariosAPI.create({ ...payload, client_request_id: getUserRequestId() });
         toast.success('Usuario creado correctamente');
       }
       
+      resetUserRequestId();
       handleCloseModal();
       cargarUsuarios();
     } catch (error) {

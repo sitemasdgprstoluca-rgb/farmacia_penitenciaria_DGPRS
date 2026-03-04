@@ -67,6 +67,7 @@ from core.permissions import IsFarmaciaAdminOrReadOnly, IsFarmaciaRole, IsCentro
 
 # ISS-SEC: Mixin de confirmación
 from core.mixins import ConfirmationRequiredMixin
+from inventario.utils.idempotency import check_idempotency, save_idempotency, _get_key
 
 
 class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
@@ -401,6 +402,11 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
         la primera entrega (parcialidad inicial). Esto permite trazabilidad
         completa desde la primera carga, ya sea manual o por importación.
         """
+        # Idempotencia transversal
+        idem_hit, idem_response = check_idempotency(request, 'lotes')
+        if idem_hit:
+            return idem_response
+
         try:
             with transaction.atomic():
                 serializer = self.get_serializer(data=request.data)
@@ -471,12 +477,16 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                         f'Se asignó automáticamente: "{auto_renombrado["asignado"]}".'
                     )
 
+                # Idempotencia: guardar antes de retornar
+                _idem_key = _get_key(request)
+                if _idem_key:
+                    save_idempotency(request, 'lotes', _idem_key, response_data, 201)
+
                 return Response(
                     response_data,
                     status=status.HTTP_201_CREATED,
                     headers=headers
                 )
-        except serializers.ValidationError as e:
             return Response(
                 {'error': 'Error de validacion', 'detalles': e.detail}, 
                 status=status.HTTP_400_BAD_REQUEST
