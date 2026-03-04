@@ -72,9 +72,18 @@ export const useRealtimeSync = (
     }, debounceMs);
   }, [debounceMs]);
 
+  // ── Polling de respaldo cuando Supabase no está disponible ────────────────
+  // Si no hay cliente Supabase (env vars no configuradas), hace polling cada 30s
+  // para que los cambios de otros usuarios se vean aunque sea con algo de delay.
+  useEffect(() => {
+    if (supabase || !enabled) return; // Solo si NO hay Supabase
+    const interval = setInterval(() => onRefreshRef.current?.(), 30_000);
+    return () => clearInterval(interval);
+  }, [enabled]);
+
   // ── Suscripción Supabase Realtime ────────────────────────────────────────
   useEffect(() => {
-    // Sin cliente (env vars no configuradas) → no-op silencioso
+    // Sin cliente (env vars no configuradas) → ya manejado por polling arriba
     if (!supabase || !enabled) return;
 
     const entities = Array.isArray(entity) ? entity : [entity];
@@ -121,7 +130,9 @@ export const useRealtimeSync = (
           case 'CHANNEL_ERROR':
           case 'TIMED_OUT':
             setIsLive(false);
-            console.warn(`[useRealtimeSync] canal ${entities.join('+')} — estado: ${status}`);
+            console.warn(`[useRealtimeSync] canal ${entities.join('+')} — estado: ${status}. Verifica que la tabla realtime_events existe en Supabase y tiene la publicación habilitada.`);
+            // Fallback: recargar una vez al reconectar y luego cada 30s mientras esté caído
+            onRefreshRef.current?.();
             break;
           case 'CLOSED':
             setIsLive(false);

@@ -13,6 +13,12 @@ import { COLORS } from "../constants/theme";
 // ISS-FIX: Constantes de paginación
 const PAGE_SIZE_INDIVIDUAL = 25;
 const PAGE_SIZE_AGRUPADA = 200;
+
+// ─── Cache de productos a nivel módulo (compartido entre re-renders) ────────
+// Los productos cambian raramente; evita una llamada de 500 registros en cada
+// vez que el usuario abre el formulario o recarga la vista.
+const _productosCache = { data: null, ts: 0 };
+const PRODUCTOS_CACHE_TTL = 5 * 60 * 1000; // 5 minutos
 const GRUPOS_POR_PAGINA = 15;
 
 // 🎨 DISEÑO PREMIUM: Configuración de colores y estilos por tipo de grupo
@@ -348,14 +354,22 @@ const Movimientos = () => {
         lotesParamsBase.activo = true;
       }
 
-      // ISS-PERF: Cargar productos primero para desbloquear el input rápido.
-      // Centros y lotes se cargan en paralelo después sin bloquear la UI de productos.
-      const prodResp = await productosAPI.getAll({ page_size: 500, ordering: "clave", activo: true });
-      const productosOrdenados = (prodResp.data.results || prodResp.data || []).sort((a, b) => {
-        const claveA = parseInt(a.clave) || 0;
-        const claveB = parseInt(b.clave) || 0;
-        return claveA - claveB;
-      });
+      // ISS-PERF: Usar cache de módulo para productos (TTL 5 min).
+      // Evita solicitar 500 productos al servidor en cada carga de la vista.
+      let productosOrdenados;
+      const ahora = Date.now();
+      if (_productosCache.data && (ahora - _productosCache.ts) < PRODUCTOS_CACHE_TTL) {
+        productosOrdenados = _productosCache.data;
+      } else {
+        const prodResp = await productosAPI.getAll({ page_size: 500, ordering: "clave", activo: true });
+        productosOrdenados = (prodResp.data.results || prodResp.data || []).sort((a, b) => {
+          const claveA = parseInt(a.clave) || 0;
+          const claveB = parseInt(b.clave) || 0;
+          return claveA - claveB;
+        });
+        _productosCache.data = productosOrdenados;
+        _productosCache.ts = ahora;
+      }
       setProductos(productosOrdenados);
       setLoadingProductos(false); // Desbloquear input de productos inmediatamente
 
