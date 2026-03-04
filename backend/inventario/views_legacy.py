@@ -5388,6 +5388,9 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         if not user or not user.is_authenticated:
             return Requisicion.objects.none()
         
+        # DEBUG: Log de parámetros de búsqueda
+        logger.info(f"[Requisiciones-GET] usuario={user.username}, query_params={dict(self.request.query_params)}")
+        
         filter_applied = False  # ISS-006: Rastrear si se aplica filtro de centro
         
         # ISS-DIRECTOR FIX: Usar rol efectivo para consistencia con frontend
@@ -5411,7 +5414,9 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             # - pendiente_admin: pendiente de admin del centro
             # - pendiente_director: pendiente de director del centro
             # - devuelta: fue devuelta al centro para correcciones
+            logger.info(f"[Requisiciones-Farmacia] ANTES de exclude: {queryset.count()} registros totales")
             queryset = queryset.exclude(estado__in=['borrador', 'pendiente_admin', 'pendiente_director', 'devuelta'])
+            logger.info(f"[Requisiciones-Farmacia] DESPUÉS de exclude: {queryset.count()} registros filtrados")
             filter_applied = True
         
         # ISS-019 FIX: 2.5 Rol Vista (Auditoría/Control): Lectura global para trazabilidad
@@ -5491,7 +5496,9 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
 
         estado = self.request.query_params.get('estado')
         if estado:
+            logger.info(f"[Requisiciones-Filtro] Filtrando por estado: '{estado}' (usuario={user.username}, rol={rol})")
             queryset = queryset.filter(estado=estado.lower())
+            logger.info(f"[Requisiciones-Filtro] Resultados después de filtrar: {queryset.count()}")
 
         grupo = self.request.query_params.get('grupo_estado')
         if grupo and grupo in REQUISICION_GRUPOS_ESTADO:

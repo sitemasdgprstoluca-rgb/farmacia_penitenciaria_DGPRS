@@ -503,6 +503,15 @@ const Requisiciones = () => {
       if (filtroFechaHasta) params.fecha_hasta = filtroFechaHasta;
 
       const response = await requisicionesAPI.getAll(params);
+      console.log('[Requisiciones] Respuesta del servidor:', {
+        total: response.data?.count || 0,
+        resultados: response.data?.results?.length || 0,
+        primeros: response.data?.results?.slice(0, 3).map(r => ({
+          id: r.id,
+          numero: r.numero,
+          estado: r.estado,
+        })),
+      });
       const results = response.data.results || response.data;
       const orderedResults = [...results].sort(
         (a, b) => new Date(b.fecha_solicitud) - new Date(a.fecha_solicitud),
