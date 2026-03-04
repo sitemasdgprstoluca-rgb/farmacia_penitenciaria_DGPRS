@@ -5676,7 +5676,8 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 return Response({'error': 'Solo se pueden editar requisiciones en estado BORRADOR o DEVUELTA', 'estado_actual': requisicion.estado}, status=status.HTTP_400_BAD_REQUEST)
 
             centro_user = self._user_centro(request.user)
-            if not request.user.is_superuser and centro_user and requisicion.centro_id != centro_user.id:
+            req_centro_id = requisicion.centro_origen_id or requisicion.centro_destino_id
+            if not request.user.is_superuser and centro_user and req_centro_id != centro_user.id:
                 return Response({'error': 'No puedes editar requisiciones de otro centro'}, status=status.HTTP_403_FORBIDDEN)
             
             # ISS-SEC-002: Validar que es el solicitante original (o superusuario)
@@ -5701,7 +5702,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 # ISS-001, ISS-004, ISS-005: Validar stock en modo informativo (solo advertir)
                 advertencias_stock = self._validar_stock_items(
                     items_data, 
-                    centro=requisicion.centro,
+                    centro=requisicion.centro_origen,
                     validar_farmacia_central=True,
                     modo='informativo'  # ISS-005: Solo advertir en edición
                 )
@@ -5748,7 +5749,8 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             return Response({'error': 'Solo se pueden eliminar requisiciones en estado BORRADOR', 'estado_actual': requisicion.estado}, status=status.HTTP_400_BAD_REQUEST)
         centro_user = self._user_centro(request.user)
         if not request.user.is_superuser:
-            if not centro_user or requisicion.centro_id != centro_user.id:
+            req_centro_id = requisicion.centro_origen_id or requisicion.centro_destino_id
+            if not centro_user or req_centro_id != centro_user.id:
                 return Response({'error': 'No puedes eliminar requisiciones de otro centro'}, status=status.HTTP_403_FORBIDDEN)
             # ISS-SEC-003: Validar que es el solicitante original
             if requisicion.solicitante_id != request.user.id:
@@ -5880,7 +5882,8 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         if not request.user.is_superuser and not es_privilegiado:
             if not centro_user:
                 return Response({'error': 'El usuario no tiene centro asignado'}, status=status.HTTP_403_FORBIDDEN)
-            if requisicion.centro_id != centro_user.id:
+            req_centro_id = requisicion.centro_origen_id or requisicion.centro_destino_id
+            if req_centro_id != centro_user.id:
                 return Response({'error': 'No puedes autorizar requisiciones de otro centro'}, status=status.HTTP_403_FORBIDDEN)
         # ISS-DIRECTOR FIX: Usar rol efectivo en lugar de rol campo directo
         rol_efectivo = _get_rol_efectivo(request.user)
@@ -6164,7 +6167,8 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 # Validar permisos de centro
                 centro_user = self._user_centro(request.user)
                 if not request.user.is_superuser:
-                    if not centro_user or requisicion.centro_id != centro_user.id:
+                    req_centro_id = requisicion.centro_origen_id or requisicion.centro_destino_id
+                    if not centro_user or req_centro_id != centro_user.id:
                         return Response({
                             'error': 'No puedes cancelar requisiciones de otro centro'
                         }, status=status.HTTP_403_FORBIDDEN)
@@ -6277,8 +6281,8 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 'numero': requisicion.numero,
                 'folio': getattr(requisicion, 'folio', requisicion.numero),
                 'estado': requisicion.estado,
-                'centro': requisicion.centro.nombre if requisicion.centro else None,
-                'centro_id': requisicion.centro_id,
+                'centro': requisicion.centro_origen.nombre if requisicion.centro_origen else None,
+                'centro_id': requisicion.centro_origen_id,
                 'solicitante': requisicion.solicitante.username if requisicion.solicitante else None,
                 'fecha_creacion': requisicion.created_at.isoformat() if requisicion.created_at else None,
             },
@@ -6601,7 +6605,8 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         user = request.user
         if not user.is_superuser:
             centro_user = self._user_centro(user)
-            if not centro_user or requisicion.centro_id != centro_user.id:
+            req_centro_id = requisicion.centro_origen_id or requisicion.centro_destino_id
+            if not centro_user or req_centro_id != centro_user.id:
                 return Response({
                     'error': 'Solo el centro receptor puede confirmar la recepción'
                 }, status=status.HTTP_403_FORBIDDEN)
@@ -6864,7 +6869,8 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         user = request.user
         if not user.is_superuser:
             centro_user = self._user_centro(user)
-            if not centro_user or requisicion.centro_id != centro_user.id:
+            req_centro_id = requisicion.centro_origen_id or requisicion.centro_destino_id
+            if not centro_user or req_centro_id != centro_user.id:
                 return Response({
                     'error': 'Solo el centro receptor puede subir la firma de recepción'
                 }, status=status.HTTP_403_FORBIDDEN)
