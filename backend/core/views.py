@@ -1461,21 +1461,16 @@ class NotificacionViewSet(
             return Response({'marcadas': 0})
 
     @action(detail=False, methods=['get'], url_path='no-leidas-count',
-           permission_classes=[AllowAny],
-           authentication_classes=[])
+           permission_classes=[CanViewNotifications])
     def no_leidas_count(self, request):
         """GET /api/notificaciones/no-leidas-count/
         
-        ISS-FIX: authentication_classes=[] para que tokens inválidos/expirados
-        sean ignorados en lugar de lanzar InvalidToken (401).
-        Devuelve 0 si el usuario no está autenticado.
+        Devuelve el contador de notificaciones no leídas del usuario autenticado.
+        Requiere autenticación JWT y permiso verNotificaciones.
         """
-        if not request.user or not request.user.is_authenticated:
-            logger.info(f"[Notificaciones] Usuario no autenticado en no-leidas-count")
-            return Response({'no_leidas': 0})
         try:
             count = self.get_queryset().filter(leida=False).count()
-            logger.info(f"[Notificaciones] Usuario {request.user.id} tiene {count} notificaciones no leídas")
+            logger.info(f"[Notificaciones] Usuario {request.user.username} ({request.user.id}) tiene {count} notificaciones no leídas")
             return Response({'no_leidas': count})
         except Exception as e:
             # ISS-FIX: Si la tabla no existe o hay error, devolver 0 sin fallar
