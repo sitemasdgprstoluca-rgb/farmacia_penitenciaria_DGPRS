@@ -857,11 +857,11 @@ CREATE TRIGGER update_hojas_recoleccion_updated_at
 -- =============================================================================
 -- TABLA DE DETALLE DE HOJAS DE RECOLECCIÓN
 -- =============================================================================
+-- NOTA: requisicion_id removido porque no existe en la BD de producción
 
 CREATE TABLE IF NOT EXISTS public.detalle_hojas_recoleccion (
     id SERIAL PRIMARY KEY,
     hoja_recoleccion_id INTEGER NOT NULL REFERENCES hojas_recoleccion(id) ON DELETE CASCADE,
-    requisicion_id INTEGER NOT NULL REFERENCES requisiciones(id) ON DELETE CASCADE,
     orden INTEGER NOT NULL DEFAULT 0,
     recolectado BOOLEAN NOT NULL DEFAULT FALSE,
     fecha_recoleccion TIMESTAMP WITH TIME ZONE NULL,
@@ -870,7 +870,6 @@ CREATE TABLE IF NOT EXISTS public.detalle_hojas_recoleccion (
 );
 
 CREATE INDEX IF NOT EXISTS idx_detalle_hojas_hoja ON public.detalle_hojas_recoleccion(hoja_recoleccion_id);
-CREATE INDEX IF NOT EXISTS idx_detalle_hojas_requisicion ON public.detalle_hojas_recoleccion(requisicion_id);
 
 -- =============================================================================
 -- TABLA DE NOTIFICACIONES

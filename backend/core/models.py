@@ -2864,12 +2864,12 @@ class DetalleHojaRecoleccion(models.Model):
     Detalle de Hoja de Recolección - Supabase
     
     Campos en Supabase (según crear_bd_desarrollo.sql):
-    id, hoja_recoleccion_id, requisicion_id, orden, recolectado, fecha_recoleccion, notas, created_at
+    id, hoja_recoleccion_id, orden, recolectado, fecha_recoleccion, notas, created_at
     
     ISS-DB-ALIGN: Alineado con esquema real de BD
+    NOTA: requisicion_id removido del modelo porque no existe en la BD de producción
     """
     hoja = models.ForeignKey(HojaRecoleccion, on_delete=models.CASCADE, related_name='detalles', db_column='hoja_recoleccion_id')
-    requisicion = models.ForeignKey('Requisicion', on_delete=models.CASCADE, related_name='detalles_hoja_recoleccion', db_column='requisicion_id', null=True, blank=True)
     orden = models.IntegerField(default=0)
     recolectado = models.BooleanField(default=False)
     fecha_recoleccion = models.DateTimeField(null=True, blank=True)
