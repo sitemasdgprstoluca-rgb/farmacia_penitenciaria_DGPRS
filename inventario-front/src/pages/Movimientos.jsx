@@ -224,6 +224,7 @@ const Movimientos = () => {
   const [lotes, setLotes] = useState([]);
   const [lotesDisponibles, setLotesDisponibles] = useState([]);
   const [loadingCatalogos, setLoadingCatalogos] = useState(true);
+  const [loadingProductos, setLoadingProductos] = useState(true);
 
   // Formulario de registro de movimientos
   // - FARMACIA/ADMIN: pueden elegir entre "entrada" y "salida"
@@ -328,8 +329,8 @@ const Movimientos = () => {
 
   const cargarCatalogos = useCallback(async () => {
     setLoadingCatalogos(true);
+    setLoadingProductos(true);
     try {
-      // ISS-PERF: Cargar productos, centros y lotes en paralelo
       const lotesParamsBase = { 
         page_size: 500, 
         ordering: "-fecha_caducidad", 
@@ -343,28 +344,25 @@ const Movimientos = () => {
         lotesParamsBase.activo = true;
       }
 
-      // Preparar promesas
-      const productosPromise = productosAPI.getAll({ page_size: 500, ordering: "clave", activo: true });
-      const centrosPromise = puedeVerTodosCentros 
-        ? centrosAPI.getAll({ page_size: 100, ordering: "nombre", activo: true })
-        : Promise.resolve(null);
-      const lotesPromise = lotesAPI.getAll(lotesParamsBase);
-
-      // Ejecutar en paralelo
-      const [prodResp, centroResp, lotesResp] = await Promise.all([
-        productosPromise,
-        centrosPromise,
-        lotesPromise
-      ]);
-
-      // Procesar productos
+      // ISS-PERF: Cargar productos primero para desbloquear el input rápido.
+      // Centros y lotes se cargan en paralelo después sin bloquear la UI de productos.
+      const prodResp = await productosAPI.getAll({ page_size: 500, ordering: "clave", activo: true });
       const productosOrdenados = (prodResp.data.results || prodResp.data || []).sort((a, b) => {
         const claveA = parseInt(a.clave) || 0;
         const claveB = parseInt(b.clave) || 0;
         return claveA - claveB;
       });
       setProductos(productosOrdenados);
-      
+      setLoadingProductos(false); // Desbloquear input de productos inmediatamente
+
+      // Cargar centros y lotes en paralelo (en background)
+      const centrosPromise = puedeVerTodosCentros 
+        ? centrosAPI.getAll({ page_size: 100, ordering: "nombre", activo: true })
+        : Promise.resolve(null);
+      const lotesPromise = lotesAPI.getAll(lotesParamsBase);
+
+      const [centroResp, lotesResp] = await Promise.all([centrosPromise, lotesPromise]);
+
       // Procesar centros
       if (centroResp) {
         setCentros(centroResp.data.results || centroResp.data || []);
@@ -384,6 +382,7 @@ const Movimientos = () => {
       }
     } catch (err) {
       console.warn("No se pudieron cargar catálogos", err.message);
+      setLoadingProductos(false);
     } finally {
       setLoadingCatalogos(false);
     }
@@ -1791,7 +1790,7 @@ const Movimientos = () => {
                     <span className="ml-2 text-amber-600 normal-case font-normal">- Solo productos con lotes vencidos</span>
                   )}
                 </label>
-                {loadingCatalogos && (
+                {loadingProductos && (
                   <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <FaSpinner className="animate-spin text-blue-600" />
                     <span className="text-sm text-blue-700">Cargando productos...</span>
@@ -1817,7 +1816,7 @@ const Movimientos = () => {
                     }}
                     onFocus={() => setShowProductoDropdown(true)}
                     className="w-full rounded-xl border border-gray-200 px-4 py-3 pr-10 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50 transition-all duration-200"
-                    disabled={loadingCatalogos}
+                    disabled={loadingProductos}
                   />
                   {(productoFiltro || productoBusqueda) && (
                     <button
@@ -1835,7 +1834,7 @@ const Movimientos = () => {
                     </button>
                   )}
                   {/* Dropdown de productos filtrados */}
-                  {showProductoDropdown && !loadingCatalogos && (
+                  {showProductoDropdown && !loadingProductos && (
                     <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
                       {productosFiltrados.length > 0 ? (
                         <>
