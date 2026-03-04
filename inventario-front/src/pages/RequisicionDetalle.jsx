@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { requisicionesAPI, hojasRecoleccionAPI, descargarArchivo, lotesAPI } from '../services/api';
 import { usePermissions } from '../hooks/usePermissions';
 import { useConfirmation } from '../hooks/useConfirmation';
+import { useSafeAction } from '../hooks/useSafeAction';
 import { getEstadoBadgeClasses, getEstadoLabel } from '../components/EstadoBadge';
 import RequisicionHistorial from '../components/RequisicionHistorial';
 import { RequisicionAcciones } from '../components/RequisicionAcciones';
@@ -91,6 +92,7 @@ const RequisicionDetalle = () => {
   const [catalogoBusqueda, setCatalogoBusqueda] = useState('');
   const [showAgregarProducto, setShowAgregarProducto] = useState(false);
   const [guardandoCambios, setGuardandoCambios] = useState(false);
+  const { getRequestId: getDetalleRequestId, resetRequestId: resetDetalleRequestId } = useSafeAction();
   
   // Refs para búsqueda con debounce y cancelación
   const searchTimeoutRef = useRef(null);
@@ -821,10 +823,12 @@ const RequisicionDetalle = () => {
       console.log('Enviando detalles:', detallesParaEnviar);
       
       await requisicionesAPI.update(id, {
-        detalles: detallesParaEnviar
+        detalles: detallesParaEnviar,
+        client_request_id: getDetalleRequestId(),
       });
       
       toast.success('Cambios guardados correctamente');
+      resetDetalleRequestId();
       setModoEdicionProductos(false);
       setShowAgregarProducto(false);
       // Limpiar parámetro de URL

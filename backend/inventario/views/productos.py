@@ -26,6 +26,7 @@ from core.models import Producto, AuditoriaLogs
 from core.serializers import ProductoSerializer
 from core.constants import UNIDADES_MEDIDA
 from core.permissions import HasProductosPermission, IsFarmaciaRole
+from inventario.utils.idempotency import check_idempotency, save_idempotency, _get_key
 from core.mixins import ConfirmationRequiredMixin
 from .base import (
     CustomPagination,
@@ -280,6 +281,10 @@ class ProductoViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
         Responde con `variante_info` indicando el código asignado y si es variante.
         """
         from core.utils.producto_variante import obtener_o_crear_variante
+        # Idempotencia transversal
+        idem_hit, idem_response = check_idempotency(request, 'productos')
+        if idem_hit:
+            return idem_response
 
         try:
             data = request.data
@@ -322,6 +327,11 @@ class ProductoViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
 
             http_status = status.HTTP_201_CREATED if created else status.HTTP_200_OK
             headers = self.get_success_headers(response_data)
+            # Idempotencia: solo para creates (201)
+            if created:
+                _idem_key = _get_key(request)
+                if _idem_key:
+                    save_idempotency(request, 'productos', _idem_key, response_data, 201)
             return Response(response_data, status=http_status, headers=headers)
 
         except ValueError as e:

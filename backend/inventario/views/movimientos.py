@@ -25,6 +25,7 @@ from core.models import Producto, Lote, Movimiento, Centro, IdempotencyKey
 from core.serializers import MovimientoSerializer
 # ISS-MEDICO FIX: Usar IsCentroCanManageInventory para excluir mÃ©dico
 from core.permissions import IsFarmaciaRole, IsCentroRole, IsCentroCanManageInventory, RoleHelper
+from inventario.utils.idempotency import check_idempotency, save_idempotency, _get_key
 
 from .base import (
     CustomPagination,
@@ -76,13 +77,10 @@ class MovimientoViewSet(
 
     def create(self, request, *args, **kwargs):
         """ISS-INV-003: Override para incluir alerta de contrato global en respuesta."""
-        # Idempotencia: evita duplicados por doble-click / red lenta
-        client_request_id = request.data.get('client_request_id')
-        if client_request_id:
-            existing = IdempotencyKey.objects.filter(key=client_request_id).first()
-            if existing:
-                logger.info(f'Idempotency hit movimientos: key={client_request_id} user={request.user.username}')
-                return Response(existing.response_data, status=existing.response_status)
+        # Idempotencia transversal
+        idem_hit, idem_response = check_idempotency(request, 'movimientos')
+        if idem_hit:
+            return idem_response
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -93,19 +91,9 @@ class MovimientoViewSet(
         # Nota: la validación de contrato global (CCG) es un bloqueo duro en
         # registrar_movimiento_stock (base.py). Si llegamos aquí, la entrada
         # ya fue validada y aprobada. No se requiere verificación post-save.
-        if client_request_id:
-            try:
-                IdempotencyKey.objects.get_or_create(
-                    key=client_request_id,
-                    defaults={
-                        'endpoint': 'movimientos',
-                        'user': request.user,
-                        'response_data': response_data,
-                        'response_status': 201,
-                    }
-                )
-            except Exception as idem_err:
-                logger.warning(f'No se pudo guardar IdempotencyKey: {idem_err}')
+        key = _get_key(request)
+        if key:
+            save_idempotency(request, 'movimientos', key, response_data, 201)
         return Response(response_data, status=status.HTTP_201_CREATED, headers=headers)
 
     def _get_producto_display(self, mov):

@@ -44,6 +44,7 @@ import uuid
 
 from core.models import Lote, Movimiento, Centro, Producto, IdempotencyKey
 from core.permissions import IsFarmaciaRole, IsCentroRole
+from inventario.utils.idempotency import check_idempotency, save_idempotency, _get_key
 
 logger = logging.getLogger(__name__)
 
@@ -86,13 +87,11 @@ def salida_masiva(request):
         auto_confirmar = request.data.get('auto_confirmar', True)
         # Fecha de salida física (puede diferir de la fecha de procesamiento en el sistema)
         fecha_salida_raw = request.data.get('fecha_salida', None)
-        # Idempotencia: el frontend envía un UUID por operación para evitar duplicados por doble-click
-        client_request_id = request.data.get('client_request_id')
-        if client_request_id:
-            existing = IdempotencyKey.objects.filter(key=client_request_id).first()
-            if existing:
-                logger.info(f'Idempotency hit salida_masiva: key={client_request_id} user={request.user.username}')
-                return Response(existing.response_data, status=existing.response_status)
+        # Idempotencia transversal
+        idem_hit, idem_response = check_idempotency(request, 'salida_masiva')
+        if idem_hit:
+            return idem_response
+        client_request_id = _get_key(request)
         fecha_salida = None
         if fecha_salida_raw:
             from django.utils.dateparse import parse_datetime, parse_date
@@ -384,18 +383,7 @@ def salida_masiva(request):
         }
         # Guardar para idempotencia (próximas peticiones con mismo client_request_id)
         if client_request_id:
-            try:
-                IdempotencyKey.objects.get_or_create(
-                    key=client_request_id,
-                    defaults={
-                        'endpoint': 'salida_masiva',
-                        'user': request.user,
-                        'response_data': response_body,
-                        'response_status': 201,
-                    }
-                )
-            except Exception as idem_err:
-                logger.warning(f'No se pudo guardar IdempotencyKey: {idem_err}')
+            save_idempotency(request, 'salida_masiva', client_request_id, response_body, 201)
         return Response(response_body, status=status.HTTP_201_CREATED)
         
     except Exception as e:

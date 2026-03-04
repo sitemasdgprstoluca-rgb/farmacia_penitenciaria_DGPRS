@@ -25,6 +25,7 @@ import { COLORS, SECONDARY_GRADIENT } from '../constants/theme';
 import Pagination from '../components/Pagination';
 import { LotesSkeleton } from '../components/skeletons';
 import { usePermissions } from '../hooks/usePermissions';
+import { useSafeAction } from '../hooks/useSafeAction';
 import { puedeVerGlobal as checkPuedeVerGlobal, esFarmaciaAdmin as checkEsFarmaciaAdmin } from '../utils/roles';
 // ISS-SEC: Componentes para confirmación en 2 pasos
 import TwoStepConfirmModal from '../components/TwoStepConfirmModal';
@@ -125,6 +126,8 @@ const Lotes = () => {
   const [centros, setCentros] = useState([]);
   const [loading, setLoading] = useState(false); // Solo para carga de tabla
   const [savingLote, setSavingLote] = useState(false); // Para guardar en modal
+  // useSafeAction: idempotencia end-to-end (client_request_id para backend)
+  const { getRequestId: getLoteRequestId, resetRequestId: resetLoteRequestId } = useSafeAction();
   const [exportLoading, setExportLoading] = useState(false); // Para exportar Excel
   const [exportPdfLoading, setExportPdfLoading] = useState(false); // Para exportar PDF
   const [importLoading, setImportLoading] = useState(false); // Para importar
@@ -584,11 +587,11 @@ const Lotes = () => {
         let respData;
         if (editingLote) {
           // PATCH con confirmed=true (doble confirmación)
-          const resp = await lotesAPI.update(editingLote.id, { ...dataToSend, confirmed: true });
+          const resp = await lotesAPI.update(editingLote.id, { ...dataToSend, confirmed: true, client_request_id: getLoteRequestId() });
           respData = resp.data || resp;
           toast.success('Lote actualizado correctamente');
         } else {
-          const resp = await lotesAPI.create(dataToSend);
+          const resp = await lotesAPI.create({ ...dataToSend, client_request_id: getLoteRequestId() });
           respData = resp.data || resp;
           toast.success('Lote creado correctamente');
         }
@@ -620,6 +623,7 @@ const Lotes = () => {
         
         setShowModal(false);
         resetForm();
+        resetLoteRequestId(); // Nueva operación = nuevo ID
         cargarLotes();
       } catch (error) {
         // Extraer mensajes de error detallados del backend
