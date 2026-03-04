@@ -1452,6 +1452,12 @@ const RequisicionDetalle = () => {
                       <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase text-white">Presentación</th>
                       <th className="px-2 py-2 text-center text-[10px] font-semibold uppercase text-white whitespace-nowrap">Lote</th>
                       <th className="px-2 py-2 text-center text-[10px] font-semibold uppercase text-white whitespace-nowrap">Unidad</th>
+                      {/* EXISTENCIAS CENTRO: Solo visible para usuarios del centro (no farmacia) */}
+                      {esCentro && (
+                        <th className="px-2 py-2 text-center text-[10px] font-semibold uppercase text-white bg-emerald-600 whitespace-nowrap">
+                          Exist. Centro
+                        </th>
+                      )}
                       {/* ISS-UI-FIX: Mostrar Inventario Almacén y Centro para tomar decisiones */}
                       {(modoAutorizar || esFarmacia) && (
                         <>
@@ -1503,6 +1509,16 @@ const RequisicionDetalle = () => {
                     <td className="px-2 py-2 text-xs text-center text-gray-600">
                       {detalle.producto_unidad || detalle.producto?.unidad_medida || '-'}
                     </td>
+                    {/* EXISTENCIAS CENTRO: Solo visible para usuarios del centro (no farmacia) */}
+                    {esCentro && (
+                      <td className="px-2 py-2 text-center bg-emerald-50">
+                        <span className={`font-bold text-xs ${
+                          (detalle.stock_centro || 0) > 0 ? 'text-emerald-700' : 'text-gray-400'
+                        }`}>
+                          {detalle.stock_centro ?? 0}
+                        </span>
+                      </td>
+                    )}
                     {/* ISS-UI-FIX: Inventario Almacén y Centro visible en modo autorización */}
                     {(modoAutorizar || esFarmacia) && (
                       <>
