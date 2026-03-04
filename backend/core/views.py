@@ -1471,13 +1471,15 @@ class NotificacionViewSet(
         Devuelve 0 si el usuario no está autenticado.
         """
         if not request.user or not request.user.is_authenticated:
+            logger.info(f"[Notificaciones] Usuario no autenticado en no-leidas-count")
             return Response({'no_leidas': 0})
         try:
             count = self.get_queryset().filter(leida=False).count()
+            logger.info(f"[Notificaciones] Usuario {request.user.id} tiene {count} notificaciones no leídas")
             return Response({'no_leidas': count})
         except Exception as e:
             # ISS-FIX: Si la tabla no existe o hay error, devolver 0 sin fallar
-            logger.warning(f"Error contando notificaciones no leídas: {e}")
+            logger.warning(f"Error contando notificaciones no leídas para usuario {request.user.id}: {e}")
             return Response({'no_leidas': 0})
     
     @action(detail=False, methods=['get'], url_path='diagnostico')
