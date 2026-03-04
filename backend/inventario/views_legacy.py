@@ -6097,20 +6097,19 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 }, status=status.HTTP_403_FORBIDDEN)
         
         # ISS-SEC-RECHAZO: Motivo obligatorio (mínimo 10 caracteres)
-        motivo = request.data.get('observaciones') or request.data.get('comentario') or request.data.get('motivo_rechazo') or ''
+        motivo = (
+            request.data.get('observaciones') or 
+            request.data.get('motivo') or 
+            request.data.get('comentario') or 
+            request.data.get('motivo_rechazo') or 
+            ''
+        )
         motivo = motivo.strip()
-        
-        # DEBUG: Log para diagnosticar
-        logger.info(f"[Rechazar] request.data={request.data}, motivo='{motivo}', len={len(motivo)}")
         
         if not motivo or len(motivo) < 10:
             return Response({
                 'error': 'Debe proporcionar un motivo de rechazo (mínimo 10 caracteres)',
-                'debug': {
-                    'motivo_recibido': motivo,
-                    'longitud': len(motivo),
-                    'request_data_keys': list(request.data.keys())
-                }
+                'recibido': list(request.data.keys())
             }, status=status.HTTP_400_BAD_REQUEST)
         
         # ISS-SEC-RECHAZO FIX: Usar cambiar_estado_con_historial para trazabilidad
