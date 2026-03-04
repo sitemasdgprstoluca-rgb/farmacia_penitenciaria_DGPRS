@@ -10,6 +10,7 @@ import {
 } from '../services/api';
 import { usePermissions } from '../hooks/usePermissions';
 import { useSafeAction } from '../hooks/useSafeAction';
+import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { ProtectedButton } from '../components/ProtectedAction';
 import ConfirmModal from '../components/ConfirmModal';
 import InputModal from '../components/InputModal';
@@ -517,6 +518,10 @@ const Requisiciones = () => {
       setLoading(false);
     }
   }, [currentPage, filtroEstado, grupoEstado, searchTerm, filtroCentro, filtroFechaDesde, filtroFechaHasta, centroResuelto, errorCentroNoAsignado]);
+
+  // ── Sincronización multi-usuario en tiempo real ──────────────────────────
+  // Cualquier cambio de estado (create/envio/surtido/confirmed) dispara un refetch.
+  useRealtimeSync('requisicion', cargarRequisiciones, { debounceMs: 600 });
 
   const cargarResumenEstados = useCallback(async () => {
     // BLOQUEAR si usuario sin centro asignado (misma lógica que cargarRequisiciones)

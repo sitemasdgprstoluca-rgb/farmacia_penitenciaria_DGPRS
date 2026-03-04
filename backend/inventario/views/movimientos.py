@@ -26,6 +26,7 @@ from core.serializers import MovimientoSerializer
 # ISS-MEDICO FIX: Usar IsCentroCanManageInventory para excluir mÃ©dico
 from core.permissions import IsFarmaciaRole, IsCentroRole, IsCentroCanManageInventory, RoleHelper
 from inventario.utils.idempotency import check_idempotency, save_idempotency, _get_key
+from inventario.utils.realtime import on_commit_publish
 
 from .base import (
     CustomPagination,
@@ -94,6 +95,7 @@ class MovimientoViewSet(
         key = _get_key(request)
         if key:
             save_idempotency(request, 'movimientos', key, response_data, 201)
+        on_commit_publish('created', 'movimiento', response_data['id'])
         return Response(response_data, status=status.HTTP_201_CREATED, headers=headers)
 
     def _get_producto_display(self, mov):
@@ -1351,6 +1353,7 @@ class MovimientoViewSet(
                 f'Entrega de movimiento {movimiento.id} confirmada por {request.user.username}'
             )
             
+            on_commit_publish('confirmed', 'movimiento', movimiento.id)
             return Response({
                 'success': True,
                 'message': 'Entrega confirmada exitosamente',

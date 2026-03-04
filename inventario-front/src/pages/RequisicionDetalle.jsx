@@ -4,6 +4,7 @@ import { requisicionesAPI, hojasRecoleccionAPI, descargarArchivo, lotesAPI } fro
 import { usePermissions } from '../hooks/usePermissions';
 import { useConfirmation } from '../hooks/useConfirmation';
 import { useSafeAction } from '../hooks/useSafeAction';
+import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { getEstadoBadgeClasses, getEstadoLabel } from '../components/EstadoBadge';
 import RequisicionHistorial from '../components/RequisicionHistorial';
 import { RequisicionAcciones } from '../components/RequisicionAcciones';
@@ -153,6 +154,12 @@ const RequisicionDetalle = () => {
     }
   // ISS-SEC FIX: Incluir flags de rol en deps para recargar cuando user cambie
   }, [id, navigate, esFarmaciaRol, esCentroRol]);
+
+  // ── Sincronización multi-usuario en tiempo real ──────────────────────────
+  // Cuando otra sesión cambia el estado de CUALQUIER requisición,
+  // esta página recarga los datos de la requisición actual.
+  // El refetch es barato y el DRF aplica permisos normales.
+  useRealtimeSync('requisicion', cargarRequisicion, { debounceMs: 600 });
 
   const cargarHojaRecoleccion = async () => {
     try {
