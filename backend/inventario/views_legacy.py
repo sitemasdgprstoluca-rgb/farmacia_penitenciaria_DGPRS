@@ -20,6 +20,7 @@ import os
 import logging
 import random  # ISS-FIX: Necesario para generar números de requisición
 from io import BytesIO
+from inventario.utils.realtime import on_commit_publish
 
 # ISS-004 FIX (audit9): Pillow para validación profunda de imágenes
 try:
