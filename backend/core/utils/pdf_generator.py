@@ -447,6 +447,7 @@ def generar_pdf_rechazo(requisicion):
     """
     Genera PDF para una requisicion en estado rechazado.
     Con fondo oficial del Gobierno del Estado de México.
+    Usa formato consistente con otros reportes del sistema.
     """
     buffer = BytesIO()
     
@@ -454,24 +455,26 @@ def generar_pdf_rechazo(requisicion):
     fondo_institucional = get_fondo_institucional_path()
     fondo_path = str(fondo_institucional) if fondo_institucional else None
     
+    # Usar márgenes consistentes con otros reportes del sistema
     doc = SimpleDocTemplate(
         buffer, 
         pagesize=letter,
-        topMargin=1*inch,
+        topMargin=1.5*inch,  # Más espacio para el encabezado del fondo
         bottomMargin=0.8*inch,
-        leftMargin=0.5*inch,
-        rightMargin=0.5*inch
+        leftMargin=0.6*inch,
+        rightMargin=0.6*inch
     )
     story = []
     styles = getSampleStyleSheet()
 
+    # Estilos actualizados con colores institucionales
     titulo_style = ParagraphStyle(
         'RejectTitle',
         parent=styles['Heading1'],
-        fontSize=18,
+        fontSize=16,
         textColor=colors.HexColor('#dc2626'),
-        spaceAfter=20,
-        spaceBefore=10,
+        spaceAfter=16,
+        spaceBefore=0,
         alignment=TA_CENTER,
         fontName='Helvetica-Bold'
     )
@@ -479,9 +482,9 @@ def generar_pdf_rechazo(requisicion):
     motivo_style = ParagraphStyle(
         'RejectReason',
         parent=styles['Heading2'],
-        fontSize=14,
+        fontSize=13,
         textColor=colors.HexColor('#7f1d1d'),
-        spaceAfter=20,
+        spaceAfter=16,
         alignment=TA_CENTER,
         fontName='Helvetica-Bold',
         borderColor=colors.HexColor('#dc2626'),
@@ -640,11 +643,47 @@ def generar_pdf_rechazo(requisicion):
     story.append(proximos_texto)
     story.append(Spacer(1, 0.2 * inch))
 
-    # Construir PDF con canvas de fondo oficial
-    def make_canvas(*args, **kwargs):
-        return RequisicionCanvas(*args, fondo_path=fondo_path, **kwargs)
+    # Construir PDF con canvas de fondo oficial - Usar canvas simple como otros reportes
+    class FondoCanvas(canvas.Canvas):
+        """Canvas simple que dibuja el fondo institucional."""
+        def __init__(self, *args, **kwargs):
+            canvas.Canvas.__init__(self, *args, **kwargs)
+            self._draw_background()
+        
+        def showPage(self):
+            self._add_page_footer()
+            canvas.Canvas.showPage(self)
+            self._draw_background()
+        
+        def _draw_background(self):
+            """Dibuja la imagen de fondo institucional"""
+            if fondo_path and os.path.exists(fondo_path):
+                try:
+                    page_width, page_height = letter
+                    self.drawImage(
+                        str(fondo_path),
+                        0, 0,
+                        width=page_width,
+                        height=page_height,
+                        preserveAspectRatio=False,
+                        mask='auto'
+                    )
+                except Exception as e:
+                    logger.warning(f"No se pudo cargar imagen de fondo: {e}")
+        
+        def _add_page_footer(self):
+            """Agrega pie de página con info de generación"""
+            self.saveState()
+            page_width = letter[0]
+            self.setFont('Helvetica', 7)
+            self.setFillColor(colors.HexColor('#6b7280'))
+            self.drawString(0.6*inch, 0.5*inch, 
+                            f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+            self.drawRightString(page_width - 0.6*inch, 0.5*inch, 
+                                 "Sistema de Control de Abasto - Farmacia Penitenciaria")
+            self.restoreState()
     
-    doc.build(story, canvasmaker=make_canvas)
+    doc.build(story, canvasmaker=FondoCanvas)
     buffer.seek(0)
     logger.info(f"PDF de rechazo generado para requisicion {requisicion.folio}")
     return buffer
