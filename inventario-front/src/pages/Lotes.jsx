@@ -42,6 +42,14 @@ const formatFecha = (fechaStr) => {
   return `${day}/${month}/${year}`;
 };
 
+// FIX TIMEZONE: Parsear fecha string (YYYY-MM-DD) como LOCAL sin desfase UTC
+// Evita que "2025-09-15" se muestre como "14 septiembre" en timezone UTC-6
+const parseFechaLocal = (fechaStr) => {
+  if (!fechaStr) return null;
+  const [year, month, day] = fechaStr.split('-').map(Number);
+  return new Date(year, month - 1, day); // Mes es 0-indexed
+};
+
 const MOCK_PRODUCTOS = Array.from({ length: 40 }).map((_, index) => ({
   id: index + 1,
   clave: `MED-${String(index + 1).padStart(3, '0')}`,
@@ -987,7 +995,7 @@ const Lotes = () => {
       message: `¿Está seguro de eliminar esta entrega de ${parcialidad.cantidad?.toLocaleString()} unidades?`,
       warnings: [
         'Esta acción restará del inventario',
-        `Fecha de entrega: ${new Date(parcialidad.fecha_entrega).toLocaleDateString('es-MX')}`,
+        `Fecha de entrega: ${parseFechaLocal(parcialidad.fecha_entrega)?.toLocaleDateString('es-MX')}`,
         parcialidad.notas ? `Notas: ${parcialidad.notas}` : null,
       ].filter(Boolean),
       itemInfo: {
@@ -2890,13 +2898,13 @@ const handleImportar = async (e) => {
                   <p className="text-sm font-semibold text-gray-800">
                     {/* Prioridad: lote_info del backend > fecha_fabricacion del lote > resumen > primera parcialidad */}
                     {parcialidadesData.lote_info?.fecha_fabricacion 
-                      ? new Date(parcialidadesData.lote_info.fecha_fabricacion).toLocaleDateString('es-MX')
+                      ? parseFechaLocal(parcialidadesData.lote_info.fecha_fabricacion)?.toLocaleDateString('es-MX')
                       : parcialidadesData.resumen?.fecha_entrega
-                        ? new Date(parcialidadesData.resumen.fecha_entrega).toLocaleDateString('es-MX')
+                        ? parseFechaLocal(parcialidadesData.resumen.fecha_entrega)?.toLocaleDateString('es-MX')
                         : selectedLoteParcialidades.fecha_fabricacion 
-                          ? new Date(selectedLoteParcialidades.fecha_fabricacion).toLocaleDateString('es-MX')
+                          ? parseFechaLocal(selectedLoteParcialidades.fecha_fabricacion)?.toLocaleDateString('es-MX')
                           : parcialidadesData.resumen?.primera_entrega
-                            ? new Date(parcialidadesData.resumen.primera_entrega).toLocaleDateString('es-MX')
+                            ? parseFechaLocal(parcialidadesData.resumen.primera_entrega)?.toLocaleDateString('es-MX')
                             : 'Sin fecha'}
                   </p>
                 </div>
@@ -3073,12 +3081,19 @@ const handleImportar = async (e) => {
                         </tr>
                       </thead>
                       <tbody className="divide-y">
-                        {parcialidadesData.parcialidades.map((parcialidad, idx) => (
+                        {parcialidadesData.parcialidades.map((parcialidad, idx) => {
+                          // FIX TIMEZONE: Parsear fecha como LOCAL evitando desfase UTC
+                          const fechaLocal = parcialidad.fecha_entrega ? (() => {
+                            const [year, month, day] = parcialidad.fecha_entrega.split('-').map(Number);
+                            return new Date(year, month - 1, day); // Mes es 0-indexed
+                          })() : null;
+                          
+                          return (
                           <tr key={parcialidad.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                             <td className="px-3 py-2">
                               <span className="font-medium">
-                                {parcialidad.fecha_entrega 
-                                  ? new Date(parcialidad.fecha_entrega).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })
+                                {fechaLocal 
+                                  ? fechaLocal.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })
                                   : 'Sin fecha'}
                               </span>
                             </td>
@@ -3106,7 +3121,8 @@ const handleImportar = async (e) => {
                               </td>
                             )}
                           </tr>
-                        ))}
+                        );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -3304,7 +3320,7 @@ const handleImportar = async (e) => {
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Fecha de entrega:</span>
                   <span className="font-semibold">
-                    {nuevaParcialidad.fecha_entrega ? new Date(nuevaParcialidad.fecha_entrega).toLocaleDateString('es-MX') : '-'}
+                    {nuevaParcialidad.fecha_entrega ? parseFechaLocal(nuevaParcialidad.fecha_entrega)?.toLocaleDateString('es-MX') : '-'}
                   </span>
                 </div>
                 <div className="flex justify-between text-sm border-t pt-2 mt-2">
