@@ -26,6 +26,7 @@ import Pagination from '../components/Pagination';
 import { LotesSkeleton } from '../components/skeletons';
 import { usePermissions } from '../hooks/usePermissions';
 import { useSafeAction } from '../hooks/useSafeAction';
+import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { puedeVerGlobal as checkPuedeVerGlobal, esFarmaciaAdmin as checkEsFarmaciaAdmin } from '../utils/roles';
 // ISS-SEC: Componentes para confirmación en 2 pasos
 import TwoStepConfirmModal from '../components/TwoStepConfirmModal';
@@ -415,6 +416,11 @@ const Lotes = () => {
       setLoading(false);
     }
   }, [applyMockLotes, currentPage, filtroActivo, filtroCaducidad, filtroConStock, filtroProducto, filtroCentro, pageSize, searchTerm, puedeVerGlobal, centroUsuario, errorSinCentro]);
+
+  // ── Sincronización multi-usuario en tiempo real ──────────────────────────
+  // Los eventos de 'lote' (creación/actualización) y 'movimiento' (que afectan stock)
+  // disparan un refetch de la lista de lotes automáticamente.
+  useRealtimeSync(['lote', 'movimiento'], cargarLotes, { debounceMs: 800 });
 
   // Debounce para búsqueda y filtros - aplica delay solo a searchTerm
   useEffect(() => {

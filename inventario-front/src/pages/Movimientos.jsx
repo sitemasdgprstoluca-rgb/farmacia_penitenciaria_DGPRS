@@ -6,6 +6,7 @@ import SalidaMasiva from "../components/SalidaMasiva";
 import { movimientosAPI, productosAPI, centrosAPI, lotesAPI, salidaMasivaAPI, descargarArchivo, abrirPdfEnNavegador } from "../services/api";
 import { usePermissions } from "../hooks/usePermissions";
 import { useSubmitGuard } from "../hooks/useSubmitGuard";
+import { useRealtimeSync } from "../hooks/useRealtimeSync";
 import { FaFilter, FaChevronDown, FaChevronRight, FaExchangeAlt, FaFileExcel, FaFilePdf, FaSpinner, FaInfoCircle, FaExclamationTriangle, FaTruck, FaLayerGroup, FaList, FaFileDownload, FaCheckCircle, FaClipboardCheck, FaTrash, FaBoxes, FaHistory, FaClock } from "react-icons/fa";
 import { COLORS } from "../constants/theme";
 
@@ -696,6 +697,11 @@ const Movimientos = () => {
       }
     }
   }, [page, pageGrupos, filtrosAplicados, vistaAgrupada]);
+
+  // ── Sincronización multi-usuario en tiempo real ──────────────────────────
+  // Al recibir un evento de movimiento/salida_masiva, refresca la lista
+  // automáticamente (debounce 600ms para coalescer ráfagas de eventos).
+  useRealtimeSync(['movimiento', 'salida_masiva'], cargarMovimientos, { debounceMs: 600 });
 
   useEffect(() => {
     cargarCatalogos();

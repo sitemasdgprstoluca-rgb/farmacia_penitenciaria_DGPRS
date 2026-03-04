@@ -4457,3 +4457,74 @@ class IdempotencyKey(models.Model):
 
     def __str__(self):
         return f"{self.endpoint}:{self.key}"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Realtime Events — only metadata, no sensitive data
+# ─────────────────────────────────────────────────────────────────────────────
+
+class RealtimeEvent(models.Model):
+    """
+    Tabla de notificaciones near-real-time para sincronización multi-usuario.
+
+    Solo almacena METADATOS del evento (event_type, entity, entity_id, scope_id).
+    Nunca almacena precios, cantidades de stock, nombres de medicamentos ni datos
+    clínicos/personales.
+
+    Flujo:
+        1. El backend inserta una fila aquí después del commit (on_commit_publish).
+        2. Supabase Realtime detecta el INSERT y multicast a suscriptores.
+        3. Cada cliente React reacciona con un refetch a la API DRF (que aplica
+           permisos normales). El cliente nunca ve datos que no le corresponden.
+
+    DDL (ejecutar en Supabase SQL Editor — migration 0029):
+        CREATE TABLE IF NOT EXISTS realtime_events (
+            id         BIGSERIAL    PRIMARY KEY,
+            event_type VARCHAR(20)  NOT NULL,
+            entity     VARCHAR(50)  NOT NULL,
+            entity_id  INTEGER      NOT NULL,
+            scope_id   INTEGER,
+            created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_re_entity_created
+            ON realtime_events (entity, created_at DESC);
+        ALTER PUBLICATION supabase_realtime ADD TABLE realtime_events;
+        ALTER TABLE realtime_events ENABLE ROW LEVEL SECURITY;
+        CREATE POLICY "anon_select" ON realtime_events FOR SELECT USING (true);
+    """
+
+    EVENT_CHOICES = [
+        ('created',   'Creado'),
+        ('updated',   'Actualizado'),
+        ('deleted',   'Eliminado'),
+        ('confirmed', 'Confirmado'),
+        ('cancelled', 'Cancelado'),
+        ('surtido',   'Surtido'),
+        ('enviado',   'Enviado'),
+        ('autorizado','Autorizado'),
+        ('rechazado', 'Rechazado'),
+    ]
+
+    ENTITY_CHOICES = [
+        ('movimiento',   'Movimiento'),
+        ('salida_masiva','Salida Masiva'),
+        ('requisicion',  'Requisición'),
+        ('lote',         'Lote'),
+        ('producto',     'Producto'),
+    ]
+
+    event_type = models.CharField(max_length=20, choices=EVENT_CHOICES)
+    entity     = models.CharField(max_length=50, choices=ENTITY_CHOICES)
+    entity_id  = models.IntegerField()
+    scope_id   = models.IntegerField(null=True, blank=True,
+                                     help_text='ID del centro/almacén para filtrar suscripciones')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'realtime_events'
+        managed = False
+        ordering = ['-created_at']
+        verbose_name = 'Evento Realtime'
+        verbose_name_plural = 'Eventos Realtime'
+
+    def __str__(self):
+        return f"{self.entity}/{self.event_type}/{self.entity_id}"

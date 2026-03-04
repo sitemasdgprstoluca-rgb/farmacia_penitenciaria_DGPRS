@@ -45,6 +45,7 @@ import uuid
 from core.models import Lote, Movimiento, Centro, Producto, IdempotencyKey
 from core.permissions import IsFarmaciaRole, IsCentroRole
 from inventario.utils.idempotency import check_idempotency, save_idempotency, _get_key
+from inventario.utils.realtime import on_commit_publish
 
 logger = logging.getLogger(__name__)
 
@@ -384,6 +385,7 @@ def salida_masiva(request):
         # Guardar para idempotencia (próximas peticiones con mismo client_request_id)
         if client_request_id:
             save_idempotency(request, 'salida_masiva', client_request_id, response_body, 201)
+        on_commit_publish('created', 'salida_masiva', centro_destino.id, scope_id=centro_destino.id)
         return Response(response_body, status=status.HTTP_201_CREATED)
         
     except Exception as e:

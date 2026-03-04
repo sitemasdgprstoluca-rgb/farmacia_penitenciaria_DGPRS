@@ -5649,6 +5649,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                     'La requisición se creó pero puede ser rechazada en autorización.'
                 )
 
+            on_commit_publish('created', 'requisicion', requisicion.id)
             return Response(response_data, status=status.HTTP_201_CREATED)
         except serializers.ValidationError as exc:
             logger.error(f"[RequisicionViewSet.create] ValidationError: {exc.detail}")
@@ -5845,6 +5846,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 'La requisición puede ser ajustada o rechazada en autorización.'
             )
         
+        on_commit_publish('enviado', 'requisicion', requisicion.id)
         return Response(response_data)
 
     @action(detail=True, methods=['post'])
@@ -6523,6 +6525,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 else:
                     logger.warning(f"ISS-004: Firma rechazada en surtir {requisicion.folio}: {error_msg}")
             
+            on_commit_publish('surtido', 'requisicion', requisicion.id)
             return Response({
                 'mensaje': 'Requisición surtida exitosamente',
                 'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data,
@@ -7222,6 +7225,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             datos_adicionales={'observaciones': observaciones}
         )
         
+        on_commit_publish('autorizado', 'requisicion', requisicion.id)
         return Response({
             'mensaje': 'Requisición autorizada por administrador, pendiente de director',
             'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data
@@ -7754,6 +7758,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             }
         )
         
+        on_commit_publish('confirmed', 'requisicion', requisicion.id)
         return Response({
             'mensaje': 'Entrega confirmada exitosamente',
             'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data
