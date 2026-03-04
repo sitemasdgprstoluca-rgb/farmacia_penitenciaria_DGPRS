@@ -156,11 +156,11 @@ export const getSecurityMetrics = () => securityMetrics.getMetrics();
 const API_VERSION = import.meta.env.VITE_API_VERSION || 'v1';
 const HEALTH_ENDPOINT = import.meta.env.VITE_HEALTH_ENDPOINT || '/health/';
 const HEALTH_CHECK_ENABLED = import.meta.env.VITE_ENABLE_HEALTHCHECK !== 'false';
-// ISS-FIX: Aumentar timeout default a 60s para cold starts de Render (free tier tarda ~50s)
-const HEALTH_TIMEOUT = parseInt(import.meta.env.VITE_HEALTHCHECK_TIMEOUT || '60000', 10);
+// Timeout por intento de health check - 15s es suficiente
+const HEALTH_TIMEOUT = parseInt(import.meta.env.VITE_HEALTHCHECK_TIMEOUT || '15000', 10);
 const AUTH_ONLY_MODE = import.meta.env.VITE_AUTH_ONLY_MODE === 'true'; // Modo sin healthcheck
-// ISS-FIX: Configuración de reintentos para cold starts - aumentado a 5 reintentos
-const HEALTH_RETRIES = parseInt(import.meta.env.VITE_HEALTHCHECK_RETRIES || '5', 10);
+// Máximo 2 reintentos (total ~30s en el peor caso) en vez de 5 (total ~5min)
+const HEALTH_RETRIES = parseInt(import.meta.env.VITE_HEALTHCHECK_RETRIES || '2', 10);
 const HEALTH_RETRY_DELAY = parseInt(import.meta.env.VITE_HEALTHCHECK_RETRY_DELAY || '3000', 10);
 
 // ISS-003 FIX (audit33): Configuración parametrizable de rutas de autenticación
@@ -389,6 +389,7 @@ const publicApiClient = axios.create({
     'Content-Type': 'application/json',
   },
   withCredentials: false, // No enviar cookies/tokens
+  timeout: 15000, // 15 segundos máximo para peticiones públicas (tema, health)
   // ISS-FIX: Suprimir errores automáticos en health checks
   validateStatus: function (status) {
     return status < 600;

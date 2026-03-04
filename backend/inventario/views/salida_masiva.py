@@ -42,7 +42,7 @@ from django.http import HttpResponse
 import logging
 import uuid
 
-from core.models import Lote, Movimiento, Centro, Producto
+from core.models import Lote, Movimiento, Centro, Producto, IdempotencyKey
 from core.permissions import IsFarmaciaRole, IsCentroRole
 
 logger = logging.getLogger(__name__)
@@ -86,6 +86,13 @@ def salida_masiva(request):
         auto_confirmar = request.data.get('auto_confirmar', True)
         # Fecha de salida física (puede diferir de la fecha de procesamiento en el sistema)
         fecha_salida_raw = request.data.get('fecha_salida', None)
+        # Idempotencia: el frontend envía un UUID por operación para evitar duplicados por doble-click
+        client_request_id = request.data.get('client_request_id')
+        if client_request_id:
+            existing = IdempotencyKey.objects.filter(key=client_request_id).first()
+            if existing:
+                logger.info(f'Idempotency hit salida_masiva: key={client_request_id} user={request.user.username}')
+                return Response(existing.response_data, status=existing.response_status)
         fecha_salida = None
         if fecha_salida_raw:
             from django.utils.dateparse import parse_datetime, parse_date
@@ -363,7 +370,7 @@ def salida_masiva(request):
             f'{len(movimientos_creados)} items a centro {centro_destino.nombre}'
         )
         
-        return Response({
+        response_body = {
             'success': True,
             'message': f'Salida procesada exitosamente. {len(movimientos_creados)} productos {"entregados" if auto_confirmar else "pendientes de confirmar"}.',
             'grupo_salida': grupo_salida,
@@ -374,7 +381,22 @@ def salida_masiva(request):
             },
             'total_items': len(movimientos_creados),
             'movimientos': movimientos_creados
-        }, status=status.HTTP_201_CREATED)
+        }
+        # Guardar para idempotencia (próximas peticiones con mismo client_request_id)
+        if client_request_id:
+            try:
+                IdempotencyKey.objects.get_or_create(
+                    key=client_request_id,
+                    defaults={
+                        'endpoint': 'salida_masiva',
+                        'user': request.user,
+                        'response_data': response_body,
+                        'response_status': 201,
+                    }
+                )
+            except Exception as idem_err:
+                logger.warning(f'No se pudo guardar IdempotencyKey: {idem_err}')
+        return Response(response_body, status=status.HTTP_201_CREATED)
         
     except Exception as e:
         logger.error(f'Error en salida masiva: {str(e)}')
