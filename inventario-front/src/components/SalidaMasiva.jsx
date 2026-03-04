@@ -26,6 +26,7 @@ import {
   FaExclamationTriangle,
 } from 'react-icons/fa';
 import { salidaMasivaAPI, centrosAPI, descargarArchivo } from '../services/api';
+import { useSubmitGuard } from '../hooks/useSubmitGuard';
 
 const SalidaMasiva = ({ onClose, onSuccess }) => {
   // Estado del formulario
@@ -48,7 +49,15 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
   const [loadingCentros, setLoadingCentros] = useState(true);
   
   // Estado de procesamiento
-  const [procesando, setProcesando] = useState(false);
+  // useSubmitGuard usa useRef (sincónico) como guard principal + state para UI
+  const {
+    submitting: procesando,
+    guard: submitGuard,
+    getRequestId,
+    resetRequestId,
+  } = useSubmitGuard();
+  // Guard separado para confirmar entrega
+  const { submitting: confirmando, guard: confirmGuard } = useSubmitGuard();
   const [resultado, setResultado] = useState(null);
   // MOV-FECHA: Doble confirmación cuando se establece fecha de salida
   const [showConfirmFecha, setShowConfirmFecha] = useState(false);
@@ -272,7 +281,7 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
   const totalProductos = items.length;
   
   // Procesar salida masiva
-  const procesarSalida = async () => {
+  const procesarSalida = () => submitGuard(async () => {
     if (!centroDestino) {
       toast.error('Seleccione un centro destino');
       return;
@@ -302,10 +311,9 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
     }
     setShowConfirmFecha(false);
     
-    setProcesando(true);
-    
     try {
       const payload = {
+        client_request_id: getRequestId(), // Para idempotencia en backend
         centro_destino_id: parseInt(centroDestino),
         observaciones: observaciones,
         auto_confirmar: false, // PENDIENTE hasta confirmar entrega física (igual que salida unitaria)
@@ -321,6 +329,7 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
       if (resp.data.success) {
         setResultado(resp.data);
         toast.success(resp.data.message);
+        resetRequestId(); // Nueva operación = nuevo ID
         
         if (onSuccess) {
           onSuccess(resp.data);
@@ -332,10 +341,8 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
       console.error('Error procesando salida:', err);
       const errorMsg = err.response?.data?.message || err.response?.data?.errores?.join('\n') || 'Error al procesar salida';
       toast.error(errorMsg);
-    } finally {
-      setProcesando(false);
     }
-  };
+  });
   
   // Descargar hoja de entrega (con campos para firmas)
   const descargarHojaEntrega = async () => {
@@ -366,13 +373,11 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
   };
   
   // Confirmar entrega física
-  const [confirmando, setConfirmando] = useState(false);
   const [entregaConfirmada, setEntregaConfirmada] = useState(false);
   
-  const confirmarEntrega = async () => {
+  const confirmarEntrega = () => confirmGuard(async () => {
     if (!resultado?.grupo_salida) return;
     
-    setConfirmando(true);
     try {
       await salidaMasivaAPI.confirmarEntrega(resultado.grupo_salida);
       setEntregaConfirmada(true);
@@ -386,10 +391,8 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
         setEntregaConfirmada(true);
       }
       toast.error(msg);
-    } finally {
-      setConfirmando(false);
     }
-  };
+  });
   
   // Reiniciar formulario
   const reiniciar = () => {
@@ -1023,9 +1026,10 @@ const SalidaMasiva = ({ onClose, onSuccess }) => {
               </button>
               <button
                 onClick={() => procesarSalida()}
-                className="px-6 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-colors font-medium shadow-md flex items-center gap-2"
+                disabled={procesando}
+                className="px-6 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-colors font-medium shadow-md flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                ✓ Confirmar y Procesar
+                {procesando ? <><FaSpinner className="animate-spin" /> Procesando...</> : <>✓ Confirmar y Procesar</>}
               </button>
             </div>
           </div>

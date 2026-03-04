@@ -5,6 +5,7 @@ import Pagination from "../components/Pagination";
 import SalidaMasiva from "../components/SalidaMasiva";
 import { movimientosAPI, productosAPI, centrosAPI, lotesAPI, salidaMasivaAPI, descargarArchivo, abrirPdfEnNavegador } from "../services/api";
 import { usePermissions } from "../hooks/usePermissions";
+import { useSubmitGuard } from "../hooks/useSubmitGuard";
 import { FaFilter, FaChevronDown, FaChevronRight, FaExchangeAlt, FaFileExcel, FaFilePdf, FaSpinner, FaInfoCircle, FaExclamationTriangle, FaTruck, FaLayerGroup, FaList, FaFileDownload, FaCheckCircle, FaClipboardCheck, FaTrash, FaBoxes, FaHistory, FaClock } from "react-icons/fa";
 import { COLORS } from "../constants/theme";
 
@@ -226,6 +227,9 @@ const Movimientos = () => {
   const [loadingCatalogos, setLoadingCatalogos] = useState(true);
   const [loadingProductos, setLoadingProductos] = useState(true);
 
+  // useSubmitGuard usa useRef (sincónico) para evitar double-submit + genera client_request_id
+  const { submitting, guard: submitGuard, getRequestId, resetRequestId } = useSubmitGuard();
+
   // Formulario de registro de movimientos
   // - FARMACIA/ADMIN: pueden elegir entre "entrada" y "salida"
   // - MEDICO/CENTRO: solo pueden hacer "salida" (dispensación/consumo)
@@ -244,7 +248,6 @@ const Movimientos = () => {
   const [productoBusqueda, setProductoBusqueda] = useState(""); // Texto de búsqueda del producto
   const [showProductoDropdown, setShowProductoDropdown] = useState(false); // Mostrar dropdown de productos
   const productoDropdownRef = useRef(null); // Ref para cerrar al hacer click fuera
-  const [submitting, setSubmitting] = useState(false);
   const [exporting, setExporting] = useState(null); // 'pdf' | 'excel' | null
   const [showFiltersMenu, setShowFiltersMenu] = useState(false);
   const [showSalidaMasiva, setShowSalidaMasiva] = useState(false); // Modal salida masiva
@@ -923,7 +926,7 @@ const Movimientos = () => {
     return `${lote.numero_lote} - ${producto?.nombre?.substring(0, 25) || 'Producto'} (${stockInfo}, Cad: ${fechaCad})`;
   };
 
-  const registrarMovimiento = async () => {
+  const registrarMovimiento = () => submitGuard(async () => {
     // Validaciones básicas
     if (!formData.lote) {
       toast.error("Selecciona un lote");
@@ -1101,7 +1104,6 @@ const Movimientos = () => {
       return; // No continuar hasta confirmar
     }
 
-    setSubmitting(true);
     try {
       // ISS-SEC FIX: Merma/Caducidad usa flujo normal (no salida_masiva) y NO tiene centro_destino
       const esMermaOCaducidad = ['merma', 'caducidad'].includes(formData.subtipo_salida);
@@ -1110,6 +1112,7 @@ const Movimientos = () => {
       // Usar API de salida_masiva para seguir flujo PENDIENTE
       if (esSalida && puedeHacerEntradas && formData.centro && formData.subtipo_salida === 'transferencia') {
         const payloadMasiva = {
+          client_request_id: getRequestId(), // Idempotencia backend
           centro_destino_id: parseInt(formData.centro),
           observaciones: formData.observaciones || '',
           auto_confirmar: false, // PENDIENTE hasta confirmar entrega física
@@ -1150,6 +1153,7 @@ const Movimientos = () => {
         
         // CASO NORMAL: Merma/caducidad, entradas, dispensaciones, consumos
         const payload = {
+          client_request_id: getRequestId(), // Idempotencia backend
           lote: parseInt(formData.lote),
           tipo: formData.tipo,
           cantidad: Number(formData.cantidad),
@@ -1202,6 +1206,7 @@ const Movimientos = () => {
       setShowConfirmMerma(false);
       setShowConfirmFechaSalida(false);
       setConfirmStep(1);
+      resetRequestId(); // Nueva operación = nuevo ID
       
       // Reset del formulario
       setFormData({
@@ -1253,9 +1258,9 @@ const Movimientos = () => {
       setShowConfirmFechaSalida(false);
       setConfirmStep(1);
     } finally {
-      setSubmitting(false);
+      // no-op: useSubmitGuard maneja el estado submitting automáticamente
     }
-  };
+  });
 
   // Detectar si hay filtros pendientes de aplicar (mover antes de exportar)
   const hayFiltrosPendientes = useMemo(() => {

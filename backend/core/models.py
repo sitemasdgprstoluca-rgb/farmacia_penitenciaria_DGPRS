@@ -4399,3 +4399,50 @@ class HistorialCompraCajaChica(models.Model):
 
     def __str__(self):
         return f"{self.compra.folio} - {self.accion}"
+
+
+# ============================================================================
+# IDEMPOTENCIA: Evita operaciones duplicadas por doble-click / red lenta
+# ============================================================================
+
+class IdempotencyKey(models.Model):
+    """
+    Registra operaciones completadas exitosamente para evitar duplicados.
+    El frontend envía client_request_id (UUID v4) en cada POST crítico.
+    Si el mismo ID llega dos veces → devolver la respuesta cached.
+
+    DDL (ejecutar en Supabase SQL Editor):
+        CREATE TABLE IF NOT EXISTS idempotency_keys (
+            id            SERIAL PRIMARY KEY,
+            key           VARCHAR(100) NOT NULL UNIQUE,
+            endpoint      VARCHAR(100) NOT NULL,
+            user_id       INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+            response_data JSONB NOT NULL DEFAULT '{}',
+            response_status INTEGER NOT NULL DEFAULT 201,
+            created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_idempotency_keys_key ON idempotency_keys (key);
+        CREATE INDEX IF NOT EXISTS idx_idempotency_keys_user_created ON idempotency_keys (user_id, created_at DESC);
+    """
+
+    key = models.CharField(max_length=100, unique=True)
+    endpoint = models.CharField(max_length=100)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='idempotency_keys',
+        db_column='user_id',
+    )
+    response_data = models.JSONField(default=dict)
+    response_status = models.IntegerField(default=201)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'idempotency_keys'
+        managed = False
+        ordering = ['-created_at']
+        verbose_name = 'Clave de Idempotencia'
+        verbose_name_plural = 'Claves de Idempotencia'
+
+    def __str__(self):
+        return f"{self.endpoint}:{self.key}"
