@@ -1443,7 +1443,7 @@ const Requisiciones = () => {
     if (!confirmDelete || isSubmitting) return;
     setIsSubmitting(true);
     try {
-      await requisicionesAPI.delete(confirmDelete.id);
+      await requisicionesAPI.delete(confirmDelete.id, { confirmed: true });
       toast.success('Requisición eliminada');
       setConfirmDelete(null);
       cargarRequisiciones();
