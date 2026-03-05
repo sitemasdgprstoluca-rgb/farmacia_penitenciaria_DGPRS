@@ -48,6 +48,7 @@ import LimpiarInventario from '../components/LimpiarInventario';
 import TwoStepConfirmModal from '../components/TwoStepConfirmModal';
 import { useConfirmation } from '../hooks/useConfirmation';
 import ImportadorModerno from '../components/ImportadorModerno';
+import useEscapeToClose from '../hooks/useEscapeToClose';
 
 import { COLORS } from '../constants/theme';
 
@@ -587,6 +588,35 @@ const Productos = () => {
 
     stock: '',
 
+  });
+
+  // ESC para cerrar modales
+  useEscapeToClose({
+    isOpen: showModal,
+    onClose: () => setShowModal(false),
+    modalId: 'productos-form-modal',
+    disabled: false
+  });
+
+  useEscapeToClose({
+    isOpen: auditoriaVisible,
+    onClose: () => setAuditoriaVisible(false),
+    modalId: 'productos-auditoria-modal',
+    disabled: auditoriaLoading
+  });
+
+  useEscapeToClose({
+    isOpen: lotesModalVisible,
+    onClose: () => setLotesModalVisible(false),
+    modalId: 'productos-lotes-modal',
+    disabled: lotesModalLoading
+  });
+
+  useEscapeToClose({
+    isOpen: showImportModal,
+    onClose: () => setShowImportModal(false),
+    modalId: 'productos-import-modal',
+    disabled: importLoading
   });
 
 

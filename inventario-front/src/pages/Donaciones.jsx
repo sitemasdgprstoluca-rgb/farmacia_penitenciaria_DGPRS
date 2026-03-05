@@ -44,6 +44,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import TwoStepConfirmModal from '../components/TwoStepConfirmModal';
 import { esFarmaciaAdmin as checkEsFarmaciaAdmin } from '../utils/roles';
 import SalidaMasivaDonaciones from '../components/SalidaMasivaDonaciones';
+import useEscapeToClose from '../hooks/useEscapeToClose';
 
 const PAGE_SIZE = 25;
 
@@ -247,6 +248,85 @@ const Donaciones = () => {
     productosAgotados: 0,
     productosPorCaducar: 0,
   });
+
+  // ESC para cerrar modales
+  useEscapeToClose({
+    isOpen: showModal,
+    onClose: () => setShowModal(false),
+    modalId: 'donaciones-form-modal',
+    disabled: loading
+  });
+
+  useEscapeToClose({
+    isOpen: showDetalleModal,
+    onClose: () => setShowDetalleModal(false),
+    modalId: 'donaciones-detalle-modal',
+    disabled: false
+  });
+
+  useEscapeToClose({
+    isOpen: showSalidaModal,
+    onClose: () => setShowSalidaModal(false),
+    modalId: 'donaciones-salida-modal',
+    disabled: false
+  });
+
+  useEscapeToClose({
+    isOpen: showHistorialModal,
+    onClose: () => setShowHistorialModal(false),
+    modalId: 'donaciones-historial-modal',
+    disabled: loadingSalidas
+  });
+
+  useEscapeToClose({
+    isOpen: showCatalogoModal,
+    onClose: () => setShowCatalogoModal(false),
+    modalId: 'donaciones-catalogo-modal',
+    disabled: loadingCatalogo
+  });
+
+  useEscapeToClose({
+    isOpen: !!importResultModal,
+    onClose: () => setImportResultModal(null),
+    modalId: 'donaciones-import-result-modal',
+    disabled: false
+  });
+
+  useEscapeToClose({
+    isOpen: !!importDonacionResultModal,
+    onClose: () => setImportDonacionResultModal(null),
+    modalId: 'donaciones-import-donacion-result-modal',
+    disabled: false
+  });
+
+  useEscapeToClose({
+    isOpen: showSalidaMasiva,
+    onClose: () => setShowSalidaMasiva(false),
+    modalId: 'donaciones-salida-masiva-modal',
+    disabled: false
+  });
+
+  useEscapeToClose({
+    isOpen: showQuickProductModal,
+    onClose: () => setShowQuickProductModal(false),
+    modalId: 'donaciones-quick-product-modal',
+    disabled: false
+  });
+
+  useEscapeToClose({
+    isOpen: showBulkAddModal,
+    onClose: () => setShowBulkAddModal(false),
+    modalId: 'donaciones-bulk-add-modal',
+    disabled: false
+  });
+
+  useEscapeToClose({
+    isOpen: !!detalleEntregaModal,
+    onClose: () => setDetalleEntregaModal(null),
+    modalId: 'donaciones-detalle-entrega-modal',
+    disabled: false
+  });
+
 
   // Paginación
   const [currentPage, setCurrentPage] = useState(1);

@@ -33,6 +33,7 @@ import TwoStepConfirmModal from '../components/TwoStepConfirmModal';
 import { useConfirmation } from '../hooks/useConfirmation';
 // ISS-IMPORT: Componente moderno de importación
 import ImportadorModerno from '../components/ImportadorModerno';
+import useEscapeToClose from '../hooks/useEscapeToClose';
 
 // Formatear fecha YYYY-MM-DD sin conversión de timezone
 // Evita el bug de restar 1 día cuando JavaScript interpreta "2027-06-01" como UTC medianoche
@@ -219,6 +220,35 @@ const Lotes = () => {
     { value: 'proximo', label: '🟡 Próximo (3-6 meses)' },
     { value: 'normal', label: '🟢 Normal (> 6 meses)' }
   ];
+
+  // ESC para cerrar modales
+  useEscapeToClose({
+    isOpen: showModal,
+    onClose: () => { setShowModal(false); resetForm(); },
+    modalId: 'lotes-form-modal',
+    disabled: false
+  });
+
+  useEscapeToClose({
+    isOpen: showImportModal,
+    onClose: () => setShowImportModal(false),
+    modalId: 'lotes-import-modal',
+    disabled: importLoading
+  });
+
+  useEscapeToClose({
+    isOpen: showDocModal,
+    onClose: () => setShowDocModal(false),
+    modalId: 'lotes-doc-modal',
+    disabled: false
+  });
+
+  useEscapeToClose({
+    isOpen: showParcialidadesModal,
+    onClose: () => setShowParcialidadesModal(false),
+    modalId: 'lotes-parcialidades-modal',
+    disabled: loadingParcialidades
+  });
 
   useEffect(() => {
     cargarProductos();

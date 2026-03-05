@@ -7,6 +7,7 @@ import { movimientosAPI, productosAPI, centrosAPI, lotesAPI, salidaMasivaAPI, de
 import { usePermissions } from "../hooks/usePermissions";
 import { useSubmitGuard } from "../hooks/useSubmitGuard";
 import { useRealtimeSync } from "../hooks/useRealtimeSync";
+import useEscapeToClose from "../hooks/useEscapeToClose";
 import { FaFilter, FaChevronDown, FaChevronRight, FaExchangeAlt, FaFileExcel, FaFilePdf, FaSpinner, FaInfoCircle, FaExclamationTriangle, FaTruck, FaLayerGroup, FaList, FaFileDownload, FaCheckCircle, FaClipboardCheck, FaTrash, FaBoxes, FaHistory, FaClock } from "react-icons/fa";
 import { COLORS } from "../constants/theme";
 
@@ -265,6 +266,31 @@ const Movimientos = () => {
   const [confirmStep, setConfirmStep] = useState(1); // 1: mostrar resumen, 2: confirmar texto
   // MOV-FECHA: Modal de doble confirmación cuando se establece fecha de salida diferente
   const [showConfirmFechaSalida, setShowConfirmFechaSalida] = useState(false);
+
+  // ESC para cerrar modales
+  useEscapeToClose({
+    isOpen: showSalidaMasiva,
+    onClose: () => setShowSalidaMasiva(false),
+    modalId: 'movimientos-salida-masiva-modal',
+    disabled: false
+  });
+
+  useEscapeToClose({
+    isOpen: showConfirmMerma,
+    onClose: () => {
+      setShowConfirmMerma(false);
+      setConfirmStep(1);
+    },
+    modalId: 'movimientos-confirm-merma-modal',
+    disabled: false
+  });
+
+  useEscapeToClose({
+    isOpen: showConfirmFechaSalida,
+    onClose: () => setShowConfirmFechaSalida(false),
+    modalId: 'movimientos-confirm-fecha-modal',
+    disabled: false
+  });
 
   const columnas = useMemo(
     () => ["producto", "tipo", "cantidad", "centro", "fecha"],
@@ -1409,6 +1435,28 @@ const Movimientos = () => {
   const [confirmConfirmarGrupo, setConfirmConfirmarGrupo] = useState(null); // {id, centro_nombre, items, total_cantidad}
   const [resultadoConfirmacion, setResultadoConfirmacion] = useState(null); // Resultado exitoso para mostrar modal
   
+  // ESC para cerrar modales de grupos
+  useEscapeToClose({
+    isOpen: !!confirmCancelarGrupo,
+    onClose: () => setConfirmCancelarGrupo(null),
+    modalId: 'movimientos-confirm-cancelar-grupo-modal',
+    disabled: !!cancelandoGrupo
+  });
+
+  useEscapeToClose({
+    isOpen: !!confirmConfirmarGrupo,
+    onClose: () => setConfirmConfirmarGrupo(null),
+    modalId: 'movimientos-confirm-confirmar-grupo-modal',
+    disabled: !!confirmandoGrupo
+  });
+
+  useEscapeToClose({
+    isOpen: !!resultadoConfirmacion,
+    onClose: () => setResultadoConfirmacion(null),
+    modalId: 'movimientos-resultado-confirmacion-modal',
+    disabled: false
+  });
+
   const confirmarEntregaGrupo = async (grupoId) => {
     setConfirmandoGrupo(grupoId);
     try {

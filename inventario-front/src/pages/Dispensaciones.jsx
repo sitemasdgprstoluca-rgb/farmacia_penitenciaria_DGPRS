@@ -1289,11 +1289,16 @@ const Dispensaciones = () => {
                       type="text"
                       name="medico_prescriptor"
                       value={formData.medico_prescriptor}
-                      onChange={handleInputChange}
-                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-guinda"
+                      readOnly
+                      className="w-full px-3 py-2 border rounded-lg bg-gray-50 text-gray-700 cursor-not-allowed"
                       placeholder="Nombre del médico"
                       required
+                      title="Este campo se llena automáticamente con el usuario actual"
                     />
+                    <p className="text-xs text-gray-500 mt-1">
+                      <FaInfoCircle className="inline mr-1" />
+                      Auto-rellenado con su usuario actual
+                    </p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Diagnóstico</label>

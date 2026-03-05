@@ -37,6 +37,7 @@ import PageHeader from '../components/PageHeader';
 import Pagination from '../components/Pagination';
 import { usePermissions } from '../hooks/usePermissions';
 import { esFarmaciaAdmin, esCentro } from '../utils/roles';
+import useEscapeToClose from '../hooks/useEscapeToClose';
 
 const PAGE_SIZE = 20;
 
@@ -77,6 +78,35 @@ const InventarioCajaChica = () => {
   const [salidaModal, setSalidaModal] = useState({ show: false, item: null, cantidad: '', motivo: '', referencia: '' });
   const [ajusteModal, setAjusteModal] = useState({ show: false, item: null, cantidad: '', motivo: '' });
   const [movimientosModal, setMovimientosModal] = useState({ show: false, item: null, movimientos: [] });
+
+  // ESC para cerrar modales
+  useEscapeToClose({
+    isOpen: detailModal.show,
+    onClose: () => setDetailModal({ show: false, item: null }),
+    modalId: 'inventario-caja-chica-detail-modal',
+    disabled: false
+  });
+
+  useEscapeToClose({
+    isOpen: salidaModal.show,
+    onClose: () => setSalidaModal({ show: false, item: null, cantidad: '', motivo: '', referencia: '' }),
+    modalId: 'inventario-caja-chica-salida-modal',
+    disabled: false
+  });
+
+  useEscapeToClose({
+    isOpen: ajusteModal.show,
+    onClose: () => setAjusteModal({ show: false, item: null, cantidad: '', motivo: '' }),
+    modalId: 'inventario-caja-chica-ajuste-modal',
+    disabled: false
+  });
+
+  useEscapeToClose({
+    isOpen: movimientosModal.show,
+    onClose: () => setMovimientosModal({ show: false, item: null, movimientos: [] }),
+    modalId: 'inventario-caja-chica-movimientos-modal',
+    disabled: false
+  });
 
   // Expandir filtros automáticamente para farmacia
   useEffect(() => {

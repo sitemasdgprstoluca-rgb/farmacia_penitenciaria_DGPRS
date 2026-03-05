@@ -29,6 +29,7 @@ import Pagination from '../components/Pagination';
 import ConfirmModal from '../components/ConfirmModal';
 import { usePermissions } from '../hooks/usePermissions';
 import { esFarmaciaAdmin } from '../utils/roles';
+import useEscapeToClose from '../hooks/useEscapeToClose';
 
 const PAGE_SIZE = 25;
 
@@ -105,6 +106,42 @@ const Pacientes = () => {
   const [importLoading, setImportLoading] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const fileInputRef = useRef(null);
+
+  // ESC para cerrar modales
+  useEscapeToClose({
+    isOpen: showModal,
+    onClose: () => setShowModal(false),
+    modalId: 'pacientes-form-modal',
+    disabled: false
+  });
+
+  useEscapeToClose({
+    isOpen: detailModal.show,
+    onClose: () => setDetailModal({ show: false, paciente: null }),
+    modalId: 'pacientes-detail-modal',
+    disabled: false
+  });
+
+  useEscapeToClose({
+    isOpen: traspasoModal.show,
+    onClose: () => setTraspasoModal({ show: false, paciente: null }),
+    modalId: 'pacientes-traspaso-modal',
+    disabled: false
+  });
+
+  useEscapeToClose({
+    isOpen: deleteModal.show,
+    onClose: () => setDeleteModal({ show: false, paciente: null }),
+    modalId: 'pacientes-delete-modal',
+    disabled: false
+  });
+
+  useEscapeToClose({
+    isOpen: importModal,
+    onClose: () => setImportModal(false),
+    modalId: 'pacientes-import-modal',
+    disabled: importLoading
+  });
 
   // Cargar centros al montar
   useEffect(() => {

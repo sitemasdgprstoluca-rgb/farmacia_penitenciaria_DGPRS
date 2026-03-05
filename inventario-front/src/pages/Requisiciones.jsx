@@ -18,6 +18,7 @@ import PageHeader from '../components/PageHeader';
 import Pagination from '../components/Pagination';
 import { getEstadoBadgeClasses, getEstadoLabel } from '../components/EstadoBadge';
 import { RequisicionAcciones } from '../components/RequisicionAcciones';
+import useEscapeToClose from '../hooks/useEscapeToClose';
 import { toast } from 'react-hot-toast';
 import {
   FaPlus,
@@ -191,6 +192,14 @@ const Requisiciones = () => {
   // eslint-disable-next-line no-unused-vars
   const [loadingLotes, setLoadingLotes] = useState(false);
   
+  // ESC para cerrar modales
+  useEscapeToClose({
+    isOpen: showModal,
+    onClose: () => { setShowModal(false); resetForm(); },
+    modalId: 'requisiciones-form-modal',
+    disabled: false
+  });
+
   const [form, setForm] = useState({
     centro: '',
     items: [],

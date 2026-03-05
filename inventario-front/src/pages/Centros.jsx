@@ -14,6 +14,7 @@ import { COLORS, SECONDARY_GRADIENT } from '../constants/theme';
 // ISS-SEC: Componentes para confirmación en 2 pasos
 import TwoStepConfirmModal from '../components/TwoStepConfirmModal';
 import { useConfirmation } from '../hooks/useConfirmation';
+import useEscapeToClose from '../hooks/useEscapeToClose';
 
 const PAGE_SIZE = 25;
 
@@ -74,6 +75,21 @@ const Centros = () => {
     telefono: '',
     email: '',
     activo: true
+  });
+
+  // ESC para cerrar modales
+  useEscapeToClose({
+    isOpen: showModal,
+    onClose: () => { setShowModal(false); resetForm(); },
+    modalId: 'centros-form-modal',
+    disabled: false
+  });
+
+  useEscapeToClose({
+    isOpen: showImportModal,
+    onClose: () => setShowImportModal(false),
+    modalId: 'centros-import-modal',
+    disabled: importLoading
   });
 
   // eslint-disable-next-line no-unused-vars
