@@ -415,6 +415,12 @@ const ComprasCajaChica = () => {
   // Abrir modal para nueva compra
   const handleNew = () => {
     setEditingCompra(null);
+    
+    // ISS-AUDIT: Auto-llenar datos del solicitante para trazabilidad
+    const nombreSolicitante = user?.first_name && user?.last_name 
+      ? `${user.first_name} ${user.last_name}`.trim()
+      : user?.username || '';
+    
     setFormData({
       centro: centroUsuario || '',
       motivo_compra: '',
@@ -423,6 +429,8 @@ const ComprasCajaChica = () => {
       observaciones: '',
       requisicion_origen: '',
       detalles: [],
+      // Campo oculto/readonly - se muestra automáticamente en detalle
+      solicitante_nombre: nombreSolicitante,
     });
     setShowModal(true);
   };
@@ -450,12 +458,24 @@ const ComprasCajaChica = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
+    // ISS-FIX: Prevenir doble envío
+    if (loading) {
+      return;
+    }
+    
     // ISS-SEC FIX: Validación de permisos en handler (no solo en UI)
     if (editingCompra) {
       if (!puedeEditar) {
         toast.error('No tienes permisos para editar compras');
         return;
       }
+      
+      // ISS-SEC: Solo el creador puede editar (a menos que sea admin/superuser)
+      if (editingCompra.solicitante_id !== user?.id && !user?.is_superuser && !esAdmin) {
+        toast.error('Solo quien creó la compra puede editarla');
+        return;
+      }
+      
       // Verificar que el estado permite edición
       if (!['pendiente', 'rechazada', 'devuelta', 'rechazada_farmacia'].includes(editingCompra.estado)) {
         toast.error('Esta compra no puede ser editada en su estado actual');
@@ -541,6 +561,9 @@ const ComprasCajaChica = () => {
       return;
     }
     
+    // ISS-FIX: Activar loading state para prevenir doble envío
+    setLoading(true);
+    
     try {
       const dataToSend = {
         centro: formData.centro || undefined,
@@ -574,6 +597,9 @@ const ComprasCajaChica = () => {
     } catch (error) {
       console.error('Error al guardar compra:', error);
       toast.error(error.response?.data?.detail || 'Error al guardar la compra');
+    } finally {
+      // ISS-FIX: Restablecer loading state
+      setLoading(false);
     }
   };
 
@@ -1628,7 +1654,7 @@ const ComprasCajaChica = () => {
       {/* Modal de detalles */}
       {detailModal.show && detailModal.compra && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-5xl max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white px-6 py-4 border-b flex justify-between items-center">
               <h2 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
                 <FaFileInvoice className="text-green-600" />
