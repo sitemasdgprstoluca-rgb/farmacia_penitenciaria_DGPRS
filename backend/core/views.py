@@ -9565,7 +9565,7 @@ class InventarioCajaChicaViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'])
     def ajustar(self, request, pk=None):
-        """Realiza un ajuste de inventario"""
+        """Realiza un ajuste de inventario - SOLO DISMINUCIONES (mermas, roturas, faltantes)"""
         inventario = self.get_object()
         
         # SEGURIDAD: Validar que el usuario pertenezca al centro del inventario
@@ -9581,7 +9581,7 @@ class InventarioCajaChicaViewSet(viewsets.ModelViewSet):
         
         if nueva_cantidad is None or nueva_cantidad < 0:
             return Response(
-                {'error': 'Debe proporcionar una cantidad válida'},
+                {'error': 'Debe proporcionar una cantidad válida (mayor o igual a 0)'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -9591,28 +9591,30 @@ class InventarioCajaChicaViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # VALIDACIÓN CRÍTICA: Solo permitir ajustes negativos o igual
+        cantidad_anterior = inventario.cantidad_actual
+        if nueva_cantidad > cantidad_anterior:
+            return Response(
+                {'error': 'No se permiten ajustes positivos. Los aumentos de inventario solo pueden realizarse mediante compras autorizadas.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if nueva_cantidad == cantidad_anterior:
+            return Response(
+                {'error': 'La cantidad nueva es igual a la actual. No hay ajuste que realizar.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         with transaction.atomic():
-            cantidad_anterior = inventario.cantidad_actual
-            diferencia = nueva_cantidad - cantidad_anterior
+            diferencia = nueva_cantidad - cantidad_anterior  # Será negativa
             
             inventario.cantidad_actual = nueva_cantidad
             inventario.save()
             
-            # Determinar tipo de ajuste
-            if diferencia > 0:
-                tipo = 'ajuste_positivo'
-            elif diferencia < 0:
-                tipo = 'ajuste_negativo'
-            else:
-                return Response(
-                    {'error': 'La cantidad nueva es igual a la actual'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Registrar movimiento
+            # Registrar movimiento como ajuste negativo
             MovimientoCajaChica.objects.create(
                 inventario=inventario,
-                tipo=tipo,
+                tipo='ajuste_negativo',
                 cantidad=abs(diferencia),
                 cantidad_anterior=cantidad_anterior,
                 cantidad_nueva=nueva_cantidad,
