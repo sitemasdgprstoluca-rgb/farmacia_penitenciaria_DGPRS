@@ -140,6 +140,19 @@ const ComprasCajaChica = () => {
     if (!compra || !user) return false;
     return compra.solicitante === user.id || compra.solicitante?.id === user.id;
   };
+  
+  // Verificar si el usuario pertenece al mismo centro que la compra
+  const esMismoCentro = (compra) => {
+    if (!compra || !user) return false;
+    const centroCompra = compra.centro?.id || compra.centro;
+    const centroUser = user.centro?.id || user.centro_id;
+    return centroCompra === centroUser;
+  };
+  
+  // Verificar si puede registrar la compra (solicitante O mismo centro)
+  const puedeRegistrarCompra = (compra) => {
+    return esSolicitante(compra) || esMismoCentro(compra);
+  };
 
   // Estados principales
   const [compras, setCompras] = useState([]);
@@ -1091,13 +1104,15 @@ const ComprasCajaChica = () => {
       console.log('Estado compra:', compraCompleta.estado);
       console.log('Solicitante compra:', compraCompleta.solicitante);
       console.log('esSolicitante result:', esSolicitante(compraCompleta));
+      console.log('esMismoCentro result:', esMismoCentro(compraCompleta));
+      console.log('puedeRegistrarCompra result:', puedeRegistrarCompra(compraCompleta));
       console.log('Tiene detalles:', compraCompleta.detalles?.length);
       console.log('================================');
       
       setDetailModal({ show: true, compra: compraCompleta });
       
       // Si está autorizada, inicializar formulario de captura
-      if (compraCompleta.estado === 'autorizada' && esSolicitante(compraCompleta)) {
+      if (compraCompleta.estado === 'autorizada' && puedeRegistrarCompra(compraCompleta)) {
         const hoy = new Date();
         const fechaLocal = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
         
@@ -2040,13 +2055,13 @@ const ComprasCajaChica = () => {
                   {(() => {
                     const condicion1 = esUsuarioCentro;
                     const condicion2 = detailModal.compra.estado === 'autorizada';
-                    const condicion3 = esSolicitante(detailModal.compra);
+                    const condicion3 = puedeRegistrarCompra(detailModal.compra); // Cambiado: acepta mismo centro
                     const condicion4 = detailModal.compra.detalles && detailModal.compra.detalles.length > 0;
                     
                     console.log('=== EVALUACIÓN FORMULARIO ===');
                     console.log('esUsuarioCentro:', condicion1);
                     console.log('estado === autorizada:', condicion2, '- Estado real:', detailModal.compra.estado);
-                    console.log('esSolicitante:', condicion3);
+                    console.log('puedeRegistrarCompra (solicitante O mismo centro):', condicion3);
                     console.log('tiene detalles:', condicion4, '- Detalles:', detailModal.compra.detalles?.length);
                     console.log('TODAS las condiciones:', condicion1 && condicion2 && condicion3 && condicion4);
                     console.log('============================');

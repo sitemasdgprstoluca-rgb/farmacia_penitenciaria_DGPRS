@@ -9040,13 +9040,19 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # ISS-FIX: Validar que solo el solicitante pueda registrar su propia compra
-        if compra.solicitante != request.user and not request.user.is_superuser:
-            if not compra.centro or compra.centro.id != request.user.centro_id:
-                return Response(
-                    {'error': 'Solo el solicitante de esta compra puede registrar la compra realizada'},
-                    status=status.HTTP_403_FORBIDDEN
-                )
+        # ISS-FIX: Validar permisos - puede registrar si:
+        # 1. Es el solicitante, O
+        # 2. Es del mismo centro, O  
+        # 3. Es superuser
+        es_solicitante = compra.solicitante == request.user
+        es_mismo_centro = compra.centro and compra.centro.id == request.user.centro_id
+        es_superuser = request.user.is_superuser
+        
+        if not (es_solicitante or es_mismo_centro or es_superuser):
+            return Response(
+                {'error': 'No tiene permisos para registrar esta compra. Debe ser del mismo centro que la solicitud.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
         
         # ISS-FIX: Capturar estado anterior antes de cambiarlo
         estado_anterior = compra.estado
