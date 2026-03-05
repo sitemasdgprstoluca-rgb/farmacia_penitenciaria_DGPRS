@@ -548,6 +548,11 @@ const Dispensaciones = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
+    // ISS-FIX: Prevenir doble envío
+    if (loading) {
+      return;
+    }
+    
     // Validaciones de campos obligatorios
     if (!formData.centro) {
       toast.error('Seleccione un centro');
@@ -586,6 +591,9 @@ const Dispensaciones = () => {
         return;
       }
     }
+    
+    // ISS-FIX: Activar loading state
+    setLoading(true);
     
     try {
       const dataToSend = {
@@ -626,6 +634,9 @@ const Dispensaciones = () => {
                        error.response?.data?.message ||
                        'Error al guardar dispensación';
       toast.error(errorMsg);
+    } finally {
+      // ISS-FIX: Restablecer loading state
+      setLoading(false);
     }
   };
 
@@ -1438,9 +1449,10 @@ const Dispensaciones = () => {
                 </button>
                 <button
                   type="submit"
-                  disabled={formData.detalles.length === 0}
-                  className="px-4 py-2 bg-guinda text-white rounded-lg hover:bg-guinda-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={formData.detalles.length === 0 || loading}
+                  className="px-4 py-2 bg-guinda text-white rounded-lg hover:bg-guinda-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
+                  {loading && <FaSpinner className="animate-spin" />}
                   {editingDispensacion ? 'Actualizar' : 'Crear Dispensación'}
                 </button>
               </div>
