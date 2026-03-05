@@ -8542,7 +8542,7 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
         # Registrar en historial
         HistorialCompraCajaChica.objects.create(
             compra=compra,
-            estado_anterior='pendiente',
+            estado_anterior='sin_stock_farmacia',
             estado_nuevo='enviada_admin',
             usuario=request.user,
             accion='enviar_admin',
@@ -8839,6 +8839,9 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # ISS-FIX: Capturar estado anterior antes de cambiarlo
+        estado_anterior = compra.estado
+        
         fecha_compra = request.data.get('fecha_compra')
         numero_factura = request.data.get('numero_factura')
         
@@ -8891,7 +8894,7 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
         # Registrar en historial
         HistorialCompraCajaChica.objects.create(
             compra=compra,
-            estado_anterior='autorizada',
+            estado_anterior=estado_anterior,
             estado_nuevo='comprada',
             usuario=request.user,
             accion='registrar_compra',
