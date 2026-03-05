@@ -47,6 +47,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import PropTypes from 'prop-types';
 import { FaExclamationTriangle, FaCheckCircle, FaTimesCircle, FaShieldAlt, FaSave, FaTrash } from 'react-icons/fa';
+import useEscapeToClose from '../hooks/useEscapeToClose';
 
 function TwoStepConfirmModal({
   open,
@@ -67,6 +68,14 @@ function TwoStepConfirmModal({
   const [step, setStep] = useState(1);
   const [inputValue, setInputValue] = useState('');
   const [isValid, setIsValid] = useState(false);
+
+  // ISS-UX: Cerrar con ESC (equivale a Cancelar, NO a Confirmar)
+  useEscapeToClose({
+    isOpen: open,
+    onClose: onCancel,
+    modalId: 'two-step-confirm-modal',
+    disabled: loading, // No cerrar durante operación crítica
+  });
 
   // Reset al abrir/cerrar
   useEffect(() => {

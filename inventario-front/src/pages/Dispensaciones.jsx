@@ -32,6 +32,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import TwoStepConfirmModal from '../components/TwoStepConfirmModal';
 import { usePermissions } from '../hooks/usePermissions';
 import { esFarmaciaAdmin } from '../utils/roles';
+import useEscapeToClose from '../hooks/useEscapeToClose';
 
 const PAGE_SIZE = 20;
 
@@ -164,6 +165,52 @@ const Dispensaciones = () => {
     hora_inicio: '00:00',
     hora_fin: '23:59',
     loading: false,
+  });
+
+  // ISS-UX: Cerrar modales con ESC
+  useEscapeToClose({
+    isOpen: showModal,
+    onClose: () => setShowModal(false),
+    modalId: 'dispensaciones-form-modal',
+    disabled: loading, // No cerrar si está guardando
+  });
+
+  useEscapeToClose({
+    isOpen: detailModal.show,
+    onClose: () => setDetailModal({ show: false, dispensacion: null, loading: false }),
+    modalId: 'dispensaciones-detail-modal',
+  });
+
+  useEscapeToClose({
+    isOpen: cancelModal.show,
+    onClose: () => setCancelModal({ show: false, dispensacion: null, motivo: '' }),
+    modalId: 'dispensaciones-cancel-modal',
+  });
+
+  useEscapeToClose({
+    isOpen: dispensarModal.show,
+    onClose: () => setDispensarModal({ show: false, dispensacion: null, loading: false }),
+    modalId: 'dispensaciones-dispensar-modal',
+    disabled: dispensarModal.loading,
+  });
+
+  useEscapeToClose({
+    isOpen: historialModal.show,
+    onClose: () => setHistorialModal({ show: false, dispensacion: null, historial: [] }),
+    modalId: 'dispensaciones-historial-modal',
+  });
+
+  useEscapeToClose({
+    isOpen: reporteModal.show,
+    onClose: () => setReporteModal({ show: false, loading: false, centroId: '', fechaInicio: '', fechaFin: '', tipo: '' }),
+    modalId: 'dispensaciones-reporte-modal',
+  });
+
+  useEscapeToClose({
+    isOpen: formatoCModal.show,
+    onClose: () => setFormatoCModal({ show: false, fecha_inicio: new Date().toISOString().slice(0, 10), fecha_fin: new Date().toISOString().slice(0, 10), hora_inicio: '00:00', hora_fin: '23:59', loading: false }),
+    modalId: 'dispensaciones-formatoc-modal',
+    disabled: formatoCModal.loading,
   });
 
   // Función para abrir modal de detalle con carga de datos completos

@@ -63,6 +63,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import TwoStepConfirmModal from '../components/TwoStepConfirmModal';
 import { usePermissions } from '../hooks/usePermissions';
 import { esFarmaciaAdmin, esCentro } from '../utils/roles';
+import useEscapeToClose from '../hooks/useEscapeToClose';
 
 const PAGE_SIZE = 20;
 
@@ -202,6 +203,50 @@ const ComprasCajaChica = () => {
   const [recibirModal, setRecibirModal] = useState({ show: false, compra: null, detalles: [] });
   const [confirmRecibirModal, setConfirmRecibirModal] = useState({ show: false }); // ISS-SEC: Confirmación de 2 pasos
   const [stockRechazoModal, setStockRechazoModal] = useState({ show: false, compra: null, observaciones: '' });
+
+  // ISS-UX: Cerrar modales con ESC
+  useEscapeToClose({
+    isOpen: showModal,
+    onClose: () => setShowModal(false),
+    modalId: 'compras-caja-chica-form-modal',
+    disabled: loading, // No cerrar si está guardando
+  });
+
+  useEscapeToClose({
+    isOpen: detailModal.show,
+    onClose: () => setDetailModal({ show: false, compra: null }),
+    modalId: 'compras-caja-chica-detail-modal',
+  });
+
+  useEscapeToClose({
+    isOpen: cancelModal.show,
+    onClose: () => setCancelModal({ show: false, compra: null, motivo: '' }),
+    modalId: 'compras-caja-chica-cancel-modal',
+  });
+
+  useEscapeToClose({
+    isOpen: autorizarModal.show,
+    onClose: () => setAutorizarModal({ show: false, compra: null, observaciones: '' }),
+    modalId: 'compras-caja-chica-autorizar-modal',
+  });
+
+  useEscapeToClose({
+    isOpen: registrarCompraModal.show,
+    onClose: () => setRegistrarCompraModal({ show: false, compra: null, facturas: [], total: '', observaciones: '', fecha_compra: '', proveedor: '' }),
+    modalId: 'compras-caja-chica-registrar-modal',
+  });
+
+  useEscapeToClose({
+    isOpen: recibirModal.show,
+    onClose: () => setRecibirModal({ show: false, compra: null, detalles: [] }),
+    modalId: 'compras-caja-chica-recibir-modal',
+  });
+
+  useEscapeToClose({
+    isOpen: stockRechazoModal.show,
+    onClose: () => setStockRechazoModal({ show: false, compra: null, observaciones: '' }),
+    modalId: 'compras-caja-chica-stock-rechazo-modal',
+  });
 
   // Expandir filtros automáticamente para farmacia
   useEffect(() => {

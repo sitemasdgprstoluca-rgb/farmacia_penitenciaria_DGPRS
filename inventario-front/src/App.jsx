@@ -4,6 +4,7 @@ import { Toaster } from 'react-hot-toast';
 import { Suspense, lazy, useEffect, useState, createContext, useContext } from 'react';
 import { PermissionProvider } from './context/PermissionContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { ModalStackProvider } from './contexts/ModalStackContext';
 import { usePermissions } from './hooks/usePermissions';
 import { useInactivityLogout } from './hooks/useInactivityLogout';
 import PermissionsGuard from './components/PermissionsGuard';
@@ -622,9 +623,10 @@ function App() {
 
   return (
     <Router>
-      <HealthContext.Provider value={healthContextValue}>
-      <PermissionProvider>
-        <ThemeProvider>
+      <ModalStackProvider>
+        <HealthContext.Provider value={healthContextValue}>
+        <PermissionProvider>
+          <ThemeProvider>
           {showHttpWarning && <HttpWarningBanner />}
           {/* ISS-005 FIX: Banners de healthcheck */}
           {showHealthSkippedBanner && (
@@ -795,6 +797,7 @@ function App() {
         </ThemeProvider>
       </PermissionProvider>
       </HealthContext.Provider>
+      </ModalStackProvider>
     </Router>
   );
 }

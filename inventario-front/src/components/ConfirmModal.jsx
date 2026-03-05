@@ -1,4 +1,5 @@
 ﻿import PropTypes from 'prop-types';
+import useEscapeToClose from '../hooks/useEscapeToClose';
 
 function ConfirmModal({
   open,
@@ -11,6 +12,14 @@ function ConfirmModal({
   onCancel,
   tone = "danger",
 }) {
+  // ISS-UX: Cerrar con ESC (equivale a Cancelar, NO a Confirmar)
+  useEscapeToClose({
+    isOpen: open,
+    onClose: onCancel,
+    modalId: 'confirm-modal',
+    disabled: loading, // No cerrar durante operación crítica
+  });
+
   if (!open) return null;
 
   const toneClasses = tone === "danger"
