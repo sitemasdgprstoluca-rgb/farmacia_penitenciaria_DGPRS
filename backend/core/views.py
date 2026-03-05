@@ -7329,6 +7329,14 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                 if 'indicaciones_medicas' in data and 'indicaciones' not in data:
                     data['indicaciones'] = data.pop('indicaciones_medicas')
                 
+                # ISS-AUDIT: Si medico_prescriptor viene vacío, usar nombre del usuario para trazabilidad
+                if not data.get('medico_prescriptor'):
+                    nombre_medico = f"{user.first_name} {user.last_name}".strip()
+                    if not nombre_medico:
+                        nombre_medico = user.username
+                    data['medico_prescriptor'] = nombre_medico
+                    logger.info(f"Médico prescriptor auto-llenado: {nombre_medico} (user_id={user.id})")
+                
                 # Extraer detalles para procesarlos después
                 detalles_data = data.pop('detalles', [])
                 

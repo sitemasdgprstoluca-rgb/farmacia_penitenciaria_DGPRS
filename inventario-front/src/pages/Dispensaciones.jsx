@@ -400,13 +400,18 @@ const Dispensaciones = () => {
   };
 
   const resetForm = () => {
+    // ISS-AUDIT: Auto-llenar médico_prescriptor con datos del usuario para trazabilidad
+    const nombreMedico = user?.first_name && user?.last_name 
+      ? `${user.first_name} ${user.last_name}`.trim()
+      : user?.username || '';
+    
     setFormData({
       paciente: '',
       // ISS-SEC: Usar centroUsuario para asegurar que usuarios de centro solo creen en su centro
       centro: centroUsuario || '',
       tipo_dispensacion: 'normal',
       fecha_prescripcion: new Date().toISOString().split('T')[0],
-      medico_prescriptor: '',
+      medico_prescriptor: nombreMedico,
       diagnostico: '',
       indicaciones_medicas: '',
       observaciones: '',
