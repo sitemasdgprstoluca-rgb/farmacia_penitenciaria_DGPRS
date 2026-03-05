@@ -9471,6 +9471,14 @@ class InventarioCajaChicaViewSet(viewsets.ModelViewSet):
         """Registra una salida del inventario de caja chica"""
         inventario = self.get_object()
         
+        # SEGURIDAD: Validar que el usuario pertenezca al centro del inventario
+        if not request.user.is_superuser and request.user.rol not in ['admin', 'admin_sistema', 'farmacia']:
+            if not request.user.centro or request.user.centro.id != inventario.centro.id:
+                return Response(
+                    {'error': 'Solo puede registrar salidas del inventario de su propio centro'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
         cantidad = request.data.get('cantidad')
         if not cantidad or cantidad <= 0:
             return Response(
@@ -9510,6 +9518,14 @@ class InventarioCajaChicaViewSet(viewsets.ModelViewSet):
     def ajustar(self, request, pk=None):
         """Realiza un ajuste de inventario"""
         inventario = self.get_object()
+        
+        # SEGURIDAD: Validar que el usuario pertenezca al centro del inventario
+        if not request.user.is_superuser and request.user.rol not in ['admin', 'admin_sistema', 'farmacia']:
+            if not request.user.centro or request.user.centro.id != inventario.centro.id:
+                return Response(
+                    {'error': 'Solo puede ajustar el inventario de su propio centro'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
         
         nueva_cantidad = request.data.get('cantidad')
         motivo = request.data.get('motivo')
