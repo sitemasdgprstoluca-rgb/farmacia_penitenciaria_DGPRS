@@ -1513,7 +1513,7 @@ const ComprasCajaChica = () => {
                           {/* ISS-SEC: Una vez enviada a director, SOLO el director puede cancelar */}
                           {puedeCancelar && 
                            !['comprada', 'recibida', 'cancelada', 'rechazada'].includes(compra.estado) &&
-                           (compra.estado !== 'enviada_director' || esDirector) && (
+                           (compra.estado !== 'enviada_director' || esDirector) && 
                             <button
                               onClick={() => setCancelModal({ show: true, compra, motivo: '' })}
                               className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"
@@ -1521,7 +1521,7 @@ const ComprasCajaChica = () => {
                             >
                               <FaBan className="text-xs" />
                             </button>
-                          )}
+                          }
                           
                           {/* Eliminar: pendientes para todos, otros estados solo admin farmacia */}
                           {((puedeEditar && compra.estado === 'pendiente') || 
@@ -2050,7 +2050,7 @@ const ComprasCajaChica = () => {
                   {puedeCancelar && 
                    !['comprada', 'recibida', 'cancelada', 'rechazada'].includes(detailModal.compra.estado) && 
                    (detailModal.compra.estado !== 'enviada_director' || esDirector) &&
-                   esSolicitante(detailModal.compra) && (
+                   esSolicitante(detailModal.compra) && 
                     <button
                       onClick={() => {
                         setDetailModal({ show: false, compra: null });
@@ -2061,7 +2061,7 @@ const ComprasCajaChica = () => {
                       <FaBan />
                       Cancelar Solicitud
                     </button>
-                  )}
+                  }
 
                   {/* Si no hay acciones disponibles */}
                   {!esMedico && !puedeVerificarStock && !esAdmin && !esDirector && !esUsuarioCentro && !puedeEditar && !puedeCancelar && (
