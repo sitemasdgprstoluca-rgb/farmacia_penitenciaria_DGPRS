@@ -8419,7 +8419,7 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
                         'num_productos': num_productos,
                         'total': float(total_compra)
                     },
-                    url='/caja-chica/compras'
+                    url='/compras-caja-chica'
                 )
             
             logger.info(f"Notificaciones de verificación de stock enviadas a {usuarios_farmacia.count()} usuarios de farmacia para compra {compra.folio}")
@@ -8486,7 +8486,7 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
                         'folio': compra.folio,
                         'verificado_por_id': request.user.id
                     },
-                    url='/caja-chica/compras'
+                    url='/compras-caja-chica'
                 )
                 logger.info(f"Notificación sin stock enviada al solicitante {compra.solicitante.username} para compra {compra.folio}")
         except Exception as e:
@@ -8553,7 +8553,7 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
                         'folio': compra.folio,
                         'stock_disponible': stock_disponible
                     },
-                    url='/caja-chica/compras'
+                    url='/compras-caja-chica'
                 )
                 logger.info(f"Notificación rechazo (hay stock) enviada al solicitante {compra.solicitante.username} para compra {compra.folio}")
         except Exception as e:
@@ -8633,7 +8633,7 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
                         'folio': compra.folio,
                         'centro_id': compra.centro.id if compra.centro else None
                     },
-                    url='/caja-chica/compras'
+                    url='/compras-caja-chica'
                 )
             
             logger.info(f"Notificaciones enviadas a {usuarios_admin_centro.count()} administradores para compra {compra.folio}")
@@ -8693,7 +8693,7 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
                         'folio': compra.folio,
                         'autorizado_por_id': request.user.id
                     },
-                    url='/caja-chica/compras'
+                    url='/compras-caja-chica'
                 )
         except Exception as e:
             logger.error(f"Error creando notificación autorizar_admin para compra {compra.folio}: {e}")
@@ -8758,7 +8758,7 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
                         'folio': compra.folio,
                         'centro_id': compra.centro.id if compra.centro else None
                     },
-                    url='/caja-chica/compras'
+                    url='/compras-caja-chica'
                 )
             
             logger.info(f"Notificaciones enviadas a {usuarios_director_centro.count()} directores para compra {compra.folio}")
@@ -8819,7 +8819,7 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
                         'folio': compra.folio,
                         'director_id': request.user.id
                     },
-                    url='/caja-chica/compras'
+                    url='/compras-caja-chica'
                 )
                 logger.info(f"Notificación autorización final enviada al solicitante {compra.solicitante.username} para compra {compra.folio}")
         except Exception as e:
@@ -8879,7 +8879,7 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
                         'folio': compra.folio,
                         'rechazado_por_id': request.user.id
                     },
-                    url='/caja-chica/compras'
+                    url='/compras-caja-chica'
                 )
                 logger.info(f"Notificación rechazo enviada al solicitante {compra.solicitante.username} para compra {compra.folio}")
         except Exception as e:
@@ -9141,7 +9141,7 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
                         'folio': compra.folio,
                         'numero_factura': numero_factura
                     },
-                    url='/caja-chica/compras'
+                    url='/compras-caja-chica'
                 )
             
             logger.info(f"Notificaciones compra realizada enviadas a {len(usuarios_notificar)} usuarios para compra {compra.folio}")
@@ -9274,7 +9274,7 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
                             'folio': compra.folio,
                             'productos_recibidos': productos_count
                         },
-                        url='/caja-chica/inventario'
+                        url='/inventario-caja-chica'
                     )
                 
                 logger.info(f"Notificaciones recepción enviadas a {len(usuarios_notificar)} usuarios para compra {compra.folio}")
