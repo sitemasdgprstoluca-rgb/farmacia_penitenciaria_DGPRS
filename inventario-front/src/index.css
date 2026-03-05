@@ -582,13 +582,13 @@ code {
   background: transparent;
 }
 .btn-theme-outline:hover {
-  background: color-mix(in srgb, var(--color-primary, #932043) 10%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #9F2241) 10%, transparent);
 }
 
 /* Gradiente de fondo del tema - para botones y elementos destacados */
-/* Fallbacks: Pantone 7420C (#932043) y Pantone 504C (#632842) */
+/* Colores institucionales: Vino #9F2241 y Guinda #6B1839 */
 .bg-theme-gradient {
-  background: linear-gradient(135deg, var(--color-primary, #932043) 0%, var(--color-primary-hover, #632842) 100%) !important;
+  background: linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 100%) !important;
 }
 
 /* ===== RESPONSIVE DESIGN IMPROVEMENTS ===== */

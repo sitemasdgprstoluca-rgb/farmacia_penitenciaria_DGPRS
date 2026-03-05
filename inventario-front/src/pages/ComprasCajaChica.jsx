@@ -25,7 +25,7 @@
  * - Director: Autorizar final
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   comprasCajaChicaAPI, 
   detallesComprasCajaChicaAPI,
@@ -304,6 +304,17 @@ const ComprasCajaChica = () => {
     fetchProductos();
   }, []);
 
+  // Optimización: Memorizar parámetros de búsqueda para evitar re-renders innecesarios
+  const queryParams = useMemo(() => ({
+    page: currentPage,
+    page_size: PAGE_SIZE,
+    search: searchTerm || undefined,
+    centro: centroFiltro || undefined,
+    estado: estadoFiltro || undefined,
+    fecha_desde: fechaDesde || undefined,
+    fecha_hasta: fechaHasta || undefined,
+  }), [currentPage, searchTerm, centroFiltro, estadoFiltro, fechaDesde, fechaHasta]);
+
   // Cargar compras
   const fetchCompras = useCallback(async () => {
     // ISS-SEC: No cargar hasta que el usuario esté hidratado
@@ -319,17 +330,7 @@ const ComprasCajaChica = () => {
     
     setLoading(true);
     try {
-      const params = {
-        page: currentPage,
-        page_size: PAGE_SIZE,
-        search: searchTerm || undefined,
-        centro: centroFiltro || undefined,
-        estado: estadoFiltro || undefined,
-        fecha_desde: fechaDesde || undefined,
-        fecha_hasta: fechaHasta || undefined,
-      };
-      
-      const response = await comprasCajaChicaAPI.getAll(params);
+      const response = await comprasCajaChicaAPI.getAll(queryParams);
       const data = response.data;
       
       setCompras(data?.results || data || []);
@@ -341,7 +342,7 @@ const ComprasCajaChica = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, searchTerm, centroFiltro, estadoFiltro, fechaDesde, fechaHasta, usuarioListo, esUsuarioCentro]);
+  }, [queryParams, usuarioListo, esUsuarioCentro, centroFiltro]);
 
   useEffect(() => {
     fetchCompras();
@@ -966,8 +967,7 @@ const ComprasCajaChica = () => {
           id: d.id,
           cantidad_comprada: parseInt(d.cantidad_comprada) || 0,
           precio_unitario: parseFloat(d.precio_unitario) || 0,
-          numero_lote: d.numero_lote,
-          fecha_caducidad: d.fecha_caducidad || null,
+          // Lote y caducidad se capturarán al recibir productos
         }))
       });
       
@@ -1276,7 +1276,20 @@ const ComprasCajaChica = () => {
 
       {/* Tabla de compras */}
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-        <div className="w-full overflow-x-auto">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-primary-600 mb-4"></div>
+            <p className="text-gray-600 font-medium">Cargando compras de caja chica...</p>
+            <p className="text-gray-400 text-sm mt-2">Por favor espere un momento</p>
+          </div>
+        ) : compras.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <FaBoxOpen className="text-6xl text-gray-300 mb-4" />
+            <p className="text-gray-500 text-lg font-medium">No hay compras registradas</p>
+            <p className="text-gray-400 text-sm mt-2">Crea una nueva solicitud para comenzar</p>
+          </div>
+        ) : (
+          <div className="w-full overflow-x-auto">
           <table className="w-full min-w-[900px] divide-y divide-gray-200 text-sm">
             <thead className="bg-theme-gradient sticky top-0 z-10">
               <tr>
@@ -1314,17 +1327,22 @@ const ComprasCajaChica = () => {
             <tbody className="bg-white divide-y divide-gray-100">
               {loading ? (
                 <tr>
-                  <td colSpan={esUsuarioFarmacia ? 9 : 8} className="px-4 py-8 text-center">
-                    <div className="flex items-center justify-center gap-2">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600"></div>
-                      <span className="text-gray-500">Cargando...</span>
+                  <td colSpan={esUsuarioFarmacia ? 9 : 8} className="px-4 py-16 text-center">
+                    <div className="flex flex-col items-center justify-center gap-3">
+                      <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-primary-600"></div>
+                      <span className="text-gray-600 font-medium text-lg">Cargando compras de caja chica...</span>
+                      <span className="text-gray-400 text-sm">Por favor espere un momento</span>
                     </div>
                   </td>
                 </tr>
               ) : compras.length === 0 ? (
                 <tr>
-                  <td colSpan={esUsuarioFarmacia ? 9 : 8} className="px-4 py-8 text-center text-gray-500">
-                    No se encontraron compras de caja chica
+                  <td colSpan={esUsuarioFarmacia ? 9 : 8} className="px-4 py-16 text-center">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <FaBoxOpen className="text-5xl text-gray-300 mb-2" />
+                      <span className="text-gray-500 font-medium text-lg">No se encontraron compras de caja chica</span>
+                      <span className="text-gray-400 text-sm">Ajusta los filtros o crea una nueva solicitud</span>
+                    </div>
                   </td>
                 </tr>
               ) : (
@@ -2281,7 +2299,7 @@ const ComprasCajaChica = () => {
               <div className="border rounded-lg overflow-hidden">
                 <div className="bg-gray-50 px-4 py-2 border-b">
                   <h3 className="font-medium text-gray-800">Productos Comprados</h3>
-                  <p className="text-xs text-gray-500">Registre las cantidades reales compradas, precios y datos del lote</p>
+                  <p className="text-xs text-gray-500">Registre las cantidades reales compradas y precios. El lote y caducidad se capturarán al recibir los productos.</p>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200">
@@ -2291,8 +2309,6 @@ const ComprasCajaChica = () => {
                         <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Solicitado</th>
                         <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Comprado *</th>
                         <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Precio Unit. *</th>
-                        <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Lote</th>
-                        <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Caducidad</th>
                         <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">Importe</th>
                       </tr>
                     </thead>
@@ -2328,31 +2344,6 @@ const ComprasCajaChica = () => {
                               className="w-24 px-2 py-1 border rounded text-center text-sm"
                             />
                           </td>
-                          <td className="px-3 py-2">
-                            <input
-                              type="text"
-                              value={detalle.numero_lote || ''}
-                              onChange={(e) => {
-                                const newDetalles = [...registrarCompraModal.detalles];
-                                newDetalles[index].numero_lote = e.target.value;
-                                setRegistrarCompraModal(prev => ({ ...prev, detalles: newDetalles }));
-                              }}
-                              placeholder="Lote"
-                              className="w-24 px-2 py-1 border rounded text-sm"
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <input
-                              type="date"
-                              value={detalle.fecha_caducidad || ''}
-                              onChange={(e) => {
-                                const newDetalles = [...registrarCompraModal.detalles];
-                                newDetalles[index].fecha_caducidad = e.target.value;
-                                setRegistrarCompraModal(prev => ({ ...prev, detalles: newDetalles }));
-                              }}
-                              className="w-32 px-2 py-1 border rounded text-sm"
-                            />
-                          </td>
                           <td className="px-3 py-2 text-right text-sm font-medium">
                             {formatCurrency((parseFloat(detalle.cantidad_comprada) || 0) * (parseFloat(detalle.precio_unitario) || 0))}
                           </td>
@@ -2361,7 +2352,7 @@ const ComprasCajaChica = () => {
                     </tbody>
                     <tfoot className="bg-gray-50">
                       <tr>
-                        <td colSpan="6" className="px-3 py-2 text-right font-medium">Total:</td>
+                        <td colSpan="4" className="px-3 py-2 text-right font-medium">Total:</td>
                         <td className="px-3 py-2 text-right font-bold text-purple-600">
                           {formatCurrency(registrarCompraModal.detalles.reduce((sum, d) => 
                             sum + ((parseFloat(d.cantidad_comprada) || 0) * (parseFloat(d.precio_unitario) || 0)), 0
