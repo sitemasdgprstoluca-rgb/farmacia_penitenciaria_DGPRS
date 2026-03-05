@@ -1718,7 +1718,7 @@ const ComprasCajaChica = () => {
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div>
                   <span className="text-xs text-gray-500">Centro</span>
-                  <p className="font-medium">{detailModal.compra.centro?.nombre || '-'}</p>
+                  <p className="font-medium">{detailModal.compra.centro_nombre || '-'}</p>
                 </div>
                 <div>
                   <span className="text-xs text-gray-500">Estado</span>
@@ -1808,6 +1808,185 @@ const ComprasCajaChica = () => {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              </div>
+
+              {/* ACCIONES DISPONIBLES según estado y rol */}
+              <div className="border-t pt-4 mt-6">
+                <h3 className="font-medium text-gray-800 mb-3 flex items-center gap-2">
+                  <FaClipboardList className="text-blue-600" />
+                  Acciones Disponibles
+                </h3>
+                <div className="flex flex-wrap gap-3">
+                  {/* Enviar a Farmacia (Médico/Centro en estado pendiente) */}
+                  {esMedico && detailModal.compra.estado === 'pendiente' && detailModal.compra.detalles?.length > 0 && (
+                    <button
+                      onClick={() => {
+                        handleEnviarFarmacia(detailModal.compra);
+                        setDetailModal({ show: false, compra: null });
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                    >
+                      <FaSearch />
+                      Enviar a Farmacia (verificar stock)
+                    </button>
+                  )}
+
+                  {/* Confirmar sin stock (Farmacia) */}
+                  {puedeVerificarStock && detailModal.compra.estado === 'enviada_farmacia' && (
+                    <>
+                      <button
+                        onClick={() => {
+                          handleConfirmarSinStock(detailModal.compra, 'Verificado - No hay stock disponible');
+                          setDetailModal({ show: false, compra: null });
+                        }}
+                        className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                      >
+                        <FaCheckCircle />
+                        Confirmar: No hay stock
+                      </button>
+                      <button
+                        onClick={() => {
+                          setDetailModal({ show: false, compra: null });
+                          setStockRechazoModal({ show: true, compra: detailModal.compra, observaciones: '' });
+                        }}
+                        className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
+                      >
+                        <FaWarehouse />
+                        Rechazar: Hay stock disponible
+                      </button>
+                    </>
+                  )}
+
+                  {/* Enviar a Admin (Médico después de confirmación de Farmacia) */}
+                  {esMedico && detailModal.compra.estado === 'sin_stock_farmacia' && (
+                    <button
+                      onClick={() => {
+                        handleEnviarAdmin(detailModal.compra);
+                        setDetailModal({ show: false, compra: null });
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      <FaCheck />
+                      Enviar a Admin
+                    </button>
+                  )}
+
+                  {/* Autorizar como Admin */}
+                  {esAdmin && detailModal.compra.estado === 'enviada_admin' && (
+                    <button
+                      onClick={() => {
+                        handleAutorizarAdmin(detailModal.compra);
+                        setDetailModal({ show: false, compra: null });
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                    >
+                      <FaUserCheck />
+                      Autorizar como Admin
+                    </button>
+                  )}
+
+                  {/* Enviar a Director (Admin) */}
+                  {esAdmin && detailModal.compra.estado === 'autorizada_admin' && (
+                    <button
+                      onClick={() => {
+                        handleEnviarDirector(detailModal.compra);
+                        setDetailModal({ show: false, compra: null });
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                    >
+                      <FaCheck />
+                      Enviar a Director
+                    </button>
+                  )}
+
+                  {/* Autorizar como Director */}
+                  {esDirector && detailModal.compra.estado === 'enviada_director' && (
+                    <button
+                      onClick={() => {
+                        handleAutorizarDirector(detailModal.compra);
+                        setDetailModal({ show: false, compra: null });
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                    >
+                      <FaUserCheck />
+                      Autorizar (Final)
+                    </button>
+                  )}
+
+                  {/* Registrar compra realizada (Centro cuando está autorizada) */}
+                  {esUsuarioCentro && detailModal.compra.estado === 'autorizada' && (
+                    <button
+                      onClick={() => {
+                        handleOpenRegistrarCompra(detailModal.compra);
+                        setDetailModal({ show: false, compra: null });
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                    >
+                      <FaShoppingCart />
+                      Registrar Compra Realizada
+                    </button>
+                  )}
+
+                  {/* Registrar recepción (Centro cuando está comprada) */}
+                  {esUsuarioCentro && detailModal.compra.estado === 'comprada' && (
+                    <button
+                      onClick={() => {
+                        handleOpenRecibir(detailModal.compra);
+                        setDetailModal({ show: false, compra: null });
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                    >
+                      <FaTruck />
+                      Registrar Recepción de Productos
+                    </button>
+                  )}
+
+                  {/* Editar (solo pendientes o rechazadas) */}
+                  {puedeEditar && ['pendiente', 'rechazada'].includes(detailModal.compra.estado) && (
+                    <button
+                      onClick={() => {
+                        handleEdit(detailModal.compra);
+                        setDetailModal({ show: false, compra: null });
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors"
+                    >
+                      <FaEdit />
+                      Editar
+                    </button>
+                  )}
+
+                  {/* Cancelar (no estados finales) */}
+                  {puedeCancelar && !['comprada', 'recibida', 'cancelada', 'rechazada'].includes(detailModal.compra.estado) && (
+                    <button
+                      onClick={() => {
+                        setDetailModal({ show: false, compra: null });
+                        setCancelModal({ show: true, compra: detailModal.compra, motivo: '' });
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                    >
+                      <FaBan />
+                      Cancelar Solicitud
+                    </button>
+                  )}
+
+                  {/* Si no hay acciones disponibles */}
+                  {!esMedico && !puedeVerificarStock && !esAdmin && !esDirector && !esUsuarioCentro && !puedeEditar && !puedeCancelar && (
+                    <p className="text-gray-500 text-sm italic">No hay acciones disponibles para tu rol en este estado.</p>
+                  )}
+                  
+                  {/* Información si la compra está en estado final */}
+                  {['comprada', 'recibida', 'cancelada', 'rechazada'].includes(detailModal.compra.estado) && (
+                    <div className="w-full p-3 bg-gray-50 rounded-lg">
+                      <p className="text-sm text-gray-600 flex items-center gap-2">
+                        <FaInfoCircle className="text-blue-500" />
+                        {detailModal.compra.estado === 'recibida' && 'Compra completada - Productos agregados al inventario'}
+                        {detailModal.compra.estado === 'comprada' && 'Esperando recepción de productos'}
+                        {detailModal.compra.estado === 'cancelada' && 'Solicitud cancelada'}
+                        {detailModal.compra.estado === 'rechazada' && 'Solicitud rechazada'}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
