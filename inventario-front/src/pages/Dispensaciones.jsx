@@ -1691,46 +1691,93 @@ const Dispensaciones = () => {
                     };
                     const accionTexto = accionesLegibles[item.accion] || item.accion;
                     
-                    // Formatear detalles para mostrar texto legible
+                    // Formatear detalles para mostrar información completa
                     const formatearDetalles = (detalles) => {
                       if (!detalles) return null;
                       if (typeof detalles === 'string') return detalles;
                       
                       const partes = [];
+                      
+                      // Información de productos
                       if (detalles.total_items !== undefined) {
-                        partes.push(`${detalles.total_items} medicamento(s)`);
+                        partes.push(<span key="items" className="font-medium">{detalles.total_items} medicamento(s)</span>);
                       }
+                      
                       if (detalles.total_dispensado !== undefined) {
-                        partes.push(`${detalles.total_dispensado} unidad(es) entregada(s)`);
+                        partes.push(<span key="disp" className="text-green-700 font-medium">{detalles.total_dispensado} unidad(es) dispensada(s)</span>);
                       }
+                      
+                      // Productos específicos
+                      if (detalles.productos && Array.isArray(detalles.productos)) {
+                        const productosList = detalles.productos.map((p, idx) => (
+                          <div key={idx} className="mt-2 pl-4 border-l-2 border-primary-300">
+                            <div className="font-medium text-primary-700">{p.producto}</div>
+                            {p.cantidad && <div className="text-sm">Cantidad: {p.cantidad}</div>}
+                            {p.lote && <div className="text-sm">Lote: {p.lote}</div>}
+                            {p.caducidad && <div className="text-sm">Caducidad: {new Date(p.caducidad).toLocaleDateString('es-MX')}</div>}
+                          </div>
+                        ));
+                        return <div className="space-y-1">{partes.length > 0 && <div className="flex gap-2 flex-wrap mb-2">{partes}</div>}{productosList}</div>;
+                      }
+                      
+                      // Producto agregado
+                      if (detalles.producto_nombre) {
+                        partes.push(<span key="prod" className="font-medium text-primary-700">{detalles.producto_nombre}</span>);
+                      }
+                      
+                      if (detalles.cantidad) {
+                        partes.push(<span key="cant">Cantidad: {detalles.cantidad}</span>);
+                      }
+                      
+                      // Estados
+                      if (detalles.estado_anterior && detalles.estado_nuevo) {
+                        partes.push(
+                          <span key="estado">
+                            <span className="text-orange-600">{detalles.estado_anterior}</span>
+                            {' → '}
+                            <span className="text-green-600">{detalles.estado_nuevo}</span>
+                          </span>
+                        );
+                      }
+                      
+                      // Motivo
                       if (detalles.motivo) {
-                        partes.push(`Motivo: ${detalles.motivo}`);
+                        partes.push(<span key="motivo" className="italic text-gray-600">"{detalles.motivo}"</span>);
                       }
-                      if (detalles.producto_id) {
-                        partes.push(`Producto agregado`);
+                      
+                      // Observaciones
+                      if (detalles.observaciones && detalles.observaciones !== detalles.motivo) {
+                        partes.push(<span key="obs" className="text-gray-600">{detalles.observaciones}</span>);
                       }
-                      return partes.length > 0 ? partes.join(' • ') : null;
+                      
+                      return partes.length > 0 ? <div className="flex gap-2 flex-wrap">{partes}</div> : null;
                     };
                     
+                    const detallesFormateados = formatearDetalles(item.detalles);
+                    
                     return (
-                      <div key={i} className="flex items-start gap-4 p-3 bg-gray-50 rounded-lg">
-                        <div className="flex-shrink-0 w-8 h-8 bg-guinda text-white rounded-full flex items-center justify-center text-sm">
+                      <div key={i} className="flex items-start gap-4 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                        <div className="flex-shrink-0 w-8 h-8 bg-guinda text-white rounded-full flex items-center justify-center text-sm font-semibold">
                           {historialModal.historial.length - i}
                         </div>
-                        <div>
-                          <div className="font-medium text-gray-800">{accionTexto}</div>
-                          <div className="text-sm text-gray-500">
-                            {item.usuario_nombre} • {new Date(item.created_at).toLocaleString('es-MX', {
+                        <div className="flex-1">
+                          <div className="font-semibold text-gray-800 text-base">{accionTexto}</div>
+                          <div className="text-sm text-gray-500 flex items-center gap-2 mt-1">
+                            <FaUser className="text-xs" />
+                            <span className="font-medium">{item.usuario_nombre}</span>
+                            <span>•</span>
+                            <FaClock className="text-xs" />
+                            <span>{new Date(item.created_at).toLocaleString('es-MX', {
                               day: '2-digit',
                               month: 'short',
                               year: 'numeric',
                               hour: '2-digit',
                               minute: '2-digit'
-                            })}
+                            })}</span>
                           </div>
-                          {formatearDetalles(item.detalles) && (
-                            <div className="text-sm text-gray-600 mt-1 bg-white px-2 py-1 rounded border">
-                              {formatearDetalles(item.detalles)}
+                          {detallesFormateados && (
+                            <div className="text-sm text-gray-700 mt-2 bg-white px-3 py-2 rounded border border-gray-200">
+                              {detallesFormateados}
                             </div>
                           )}
                         </div>
