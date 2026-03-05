@@ -481,21 +481,37 @@ const ComprasCajaChica = () => {
   };
 
   // Abrir modal para editar compra
-  const handleEdit = (compra) => {
-    setEditingCompra(compra);
-    setFormData({
-      centro: compra.centro?.id || compra.centro_id || '',
-      motivo_compra: compra.motivo_compra || '',
-      proveedor_nombre: compra.proveedor_nombre || '',
-      proveedor_contacto: compra.proveedor_contacto || '',
-      observaciones: compra.observaciones || '',
-      requisicion_origen: compra.requisicion_origen?.id || '',
-      detalles: (compra.detalles || []).map(d => ({
-        ...d,
-        importe: d.precio_unitario * d.cantidad_solicitada,
-      })),
-    });
-    setShowModal(true);
+  const handleEdit = async (compra) => {
+    // Cargar detalles completos del backend
+    try {
+      const response = await comprasCajaChicaAPI.getById(compra.id);
+      const compraCompleta = response.data;
+      
+      setEditingCompra(compraCompleta);
+      setFormData({
+        centro: compraCompleta.centro || '',  // El serializer devuelve 'centro' como ID, no como objeto
+        motivo_compra: compraCompleta.motivo_compra || '',
+        proveedor_nombre: compraCompleta.proveedor_nombre || '',
+        proveedor_contacto: compraCompleta.proveedor_contacto || '',
+        observaciones: compraCompleta.observaciones || '',
+        requisicion_origen: compraCompleta.requisicion_origen || '',
+        detalles: (compraCompleta.detalles || []).map(d => ({
+          id: d.id || `temp-${Date.now()}-${Math.random()}`,  // Asegurar ID único para eliminar
+          producto: d.producto || null,
+          descripcion_producto: d.descripcion_producto || '',
+          cantidad_solicitada: d.cantidad_solicitada || 0,
+          precio_unitario: d.precio_unitario || 0,
+          importe: (d.precio_unitario || 0) * (d.cantidad_solicitada || 0),
+          presentacion: d.presentacion || '',
+          numero_lote: d.numero_lote || '',
+          fecha_caducidad: d.fecha_caducidad || '',
+        })),
+      });
+      setShowModal(true);
+    } catch (error) {
+      toast.error('Error al cargar los detalles de la compra');
+      console.error(error);
+    }
   };
 
   // Guardar compra
@@ -1817,8 +1833,40 @@ const ComprasCajaChica = () => {
                   <FaClipboardList className="text-blue-600" />
                   Acciones Disponibles
                 </h3>
+
+                {/* ALERTA: Compra sin productos */}
+                {detailModal.compra.estado === 'pendiente' && (!detailModal.compra.detalles || detailModal.compra.detalles.length === 0) && (
+                  <div className="mb-4 p-4 bg-yellow-50 border border-yellow-300 rounded-lg">
+                    <div className="flex items-start gap-3">
+                      <FaExclamationTriangle className="text-yellow-600 text-xl flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="font-medium text-yellow-800 mb-1">
+                          ⚠️ Compra sin productos
+                        </p>
+                        <p className="text-sm text-yellow-700">
+                          Esta solicitud no tiene productos agregados. Debe <strong>editar la compra</strong> y agregar al menos un producto antes de enviarla a Farmacia.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex flex-wrap gap-3">
-                  {/* Enviar a Farmacia (Médico/Centro en estado pendiente) */}
+                  {/* Editar PRIORITARIO si no hay productos */}
+                  {puedeEditar && detailModal.compra.estado === 'pendiente' && (!detailModal.compra.detalles || detailModal.compra.detalles.length === 0) && (
+                    <button
+                      onClick={() => {
+                        handleEdit(detailModal.compra);
+                        setDetailModal({ show: false, compra: null });
+                      }}
+                      className="flex items-center gap-2 px-6 py-3 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors text-lg font-semibold shadow-lg"
+                    >
+                      <FaEdit />
+                      ✏️ Editar y Agregar Productos
+                    </button>
+                  )}
+
+                  {/* Enviar a Farmacia (Médico/Centro en estado pendiente CON productos) */}
                   {esMedico && detailModal.compra.estado === 'pendiente' && detailModal.compra.detalles?.length > 0 && (
                     <button
                       onClick={() => {
