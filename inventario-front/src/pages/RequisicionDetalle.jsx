@@ -261,12 +261,23 @@ const RequisicionDetalle = () => {
   };
 
   const actualizarCantidadAutorizada = (idx, valor) => {
-    // Limitar al máximo entre stock disponible y cantidad solicitada
-    const maxCantidad = Math.min(
-      detallesEditables[idx].stock_disponible || 9999,
-      detallesEditables[idx].cantidad_solicitada
-    );
-    const cantidad = Math.max(0, Math.min(Number(valor) || 0, maxCantidad));
+    const detalle = detallesEditables[idx];
+    const stockDisponible = detalle.lote_stock || detalle.stock_disponible || 0;
+    const cantidadSolicitada = detalle.cantidad_solicitada || 0;
+    
+    // ⚠️ VALIDACIÓN CRÍTICA: No permitir más de lo disponible en stock
+    const maxCantidad = Math.min(stockDisponible, cantidadSolicitada);
+    const cantidadIngresada = Number(valor) || 0;
+    const cantidad = Math.max(0, Math.min(cantidadIngresada, maxCantidad));
+    
+    // Mostrar warning si intenta exceder el stock
+    if (cantidadIngresada > stockDisponible) {
+      mostrarAlerta(
+        `⚠️ No puede autorizar más de lo disponible en stock (${stockDisponible} unidades)`,
+        'warning'
+      );
+    }
+    
     setDetallesEditables(prev => {
       const nuevo = [...prev];
       nuevo[idx] = { ...nuevo[idx], cantidad_autorizada: cantidad };
@@ -294,6 +305,25 @@ const RequisicionDetalle = () => {
     const totalAutorizado = detallesEditables.reduce((sum, d) => sum + (d.cantidad_autorizada || 0), 0);
     if (totalAutorizado === 0) {
       toast.error('Debe autorizar al menos un producto con cantidad mayor a 0');
+      return;
+    }
+    
+    // 🔒 VALIDACIÓN PRE-SUBMIT: Verificar que ninguna cantidad exceda el stock
+    const itemsExcedenStock = detallesEditables.filter(d => {
+      const stockDisponible = d.lote_stock || d.stock_disponible || 0;
+      return (d.cantidad_autorizada || 0) > stockDisponible;
+    });
+    
+    if (itemsExcedenStock.length > 0) {
+      const productos = itemsExcedenStock.map(d => {
+        const stock = d.lote_stock || d.stock_disponible || 0;
+        return `${d.producto_nombre}: autorizado ${d.cantidad_autorizada}, disponible ${stock}`;
+      }).join('\n');
+      
+      toast.error(
+        `❌ No puede autorizar más de lo disponible en stock:\n\n${productos}`,
+        { duration: 6000 }
+      );
       return;
     }
     

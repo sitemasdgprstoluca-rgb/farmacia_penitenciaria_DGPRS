@@ -7505,6 +7505,30 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 cant_int = max(0, cant_int)
                 motivo_ajuste = (item_data.get('motivo_ajuste') or '').strip()
                 
+                # 🔒 VALIDACIÓN CRÍTICA: No permitir autorizar más de lo disponible en farmacia
+                # Calcular stock disponible del producto en farmacia (centro CIA)
+                from django.db.models import Sum
+                try:
+                    centro_farmacia = Centro.objects.filter(es_farmacia=True).first()
+                    if centro_farmacia and item.producto:
+                        stock_farmacia = Lote.objects.filter(
+                            producto=item.producto,
+                            centro=centro_farmacia,
+                            activo=True
+                        ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
+                        
+                        # No permitir autorizar más de lo disponible
+                        if cant_int > stock_farmacia:
+                            return Response({
+                                'error': f'Stock insuficiente para {producto_clave}',
+                                'detalle': f'Solicitó autorizar {cant_int} unidades, pero solo hay {stock_farmacia} disponibles en farmacia',
+                                'stock_disponible': stock_farmacia,
+                                'producto': producto_clave
+                            }, status=status.HTTP_400_BAD_REQUEST)
+                except Exception as e:
+                    logger.warning(f"Error al validar stock para {producto_clave}: {e}")
+                    # Continuar pero registrar el error
+                
                 # Validar motivo si cantidad reducida
                 if cant_int < item.cantidad_solicitada and len(motivo_ajuste) < 3:
                     return Response({
