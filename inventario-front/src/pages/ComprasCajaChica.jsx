@@ -984,6 +984,8 @@ const ComprasCajaChica = () => {
         proveedor_contacto: '',
         detalles: [] 
       });
+      // Cerrar también el modal de detalle
+      setDetailModal({ show: false, compra: null });
       fetchCompras();
       fetchResumen();
     } catch (error) {
@@ -1079,7 +1081,30 @@ const ComprasCajaChica = () => {
   const handleViewDetails = async (compra) => {
     try {
       const response = await comprasCajaChicaAPI.getById(compra.id);
-      setDetailModal({ show: true, compra: response.data });
+      const compraCompleta = response.data;
+      setDetailModal({ show: true, compra: compraCompleta });
+      
+      // Si está autorizada, inicializar formulario de captura
+      if (compraCompleta.estado === 'autorizada' && esSolicitante(compraCompleta)) {
+        const hoy = new Date();
+        const fechaLocal = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+        
+        setRegistrarCompraModal({
+          show: false,  // No abrir modal separado
+          compra: compraCompleta,
+          fecha_compra: fechaLocal,
+          numero_factura: compraCompleta.numero_factura || '',
+          proveedor_nombre: compraCompleta.proveedor_nombre || '',
+          proveedor_contacto: compraCompleta.proveedor_contacto || '',
+          detalles: (compraCompleta.detalles || []).map(d => ({
+            ...d,
+            cantidad_comprada: d.cantidad_comprada || d.cantidad_solicitada,
+            precio_unitario: d.precio_unitario || 0,
+            numero_lote: d.numero_lote || '',
+            fecha_caducidad: d.fecha_caducidad || '',
+          }))
+        });
+      }
     } catch (error) {
       toast.error('Error al cargar detalles');
     }
@@ -1999,18 +2024,166 @@ const ComprasCajaChica = () => {
                     </button>
                   )}
 
-                  {/* Registrar compra realizada (Centro cuando está autorizada - solo solicitante) */}
+                  {/* Formulario de captura cuando está autorizada - DIRECTO EN EL MODAL */}
                   {esUsuarioCentro && detailModal.compra.estado === 'autorizada' && esSolicitante(detailModal.compra) && (
-                    <button
-                      onClick={() => {
-                        handleOpenRegistrarCompra(detailModal.compra);
-                        setDetailModal({ show: false, compra: null });
-                      }}
-                      className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
-                    >
-                      <FaShoppingCart />
-                      Registrar Compra Realizada
-                    </button>
+                    <div className="w-full border-2 border-purple-300 rounded-lg p-4 bg-purple-50">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="font-semibold text-purple-900 flex items-center gap-2">
+                          <FaShoppingCart className="text-purple-600" />
+                          Registrar Compra Realizada
+                        </h4>
+                      </div>
+                      
+                      <div className="p-3 bg-purple-100 border border-purple-300 rounded-lg mb-4">
+                        <div className="flex items-center gap-2 text-purple-800">
+                          <FaInfoCircle />
+                          <span className="font-medium text-sm">Instrucciones</span>
+                        </div>
+                        <p className="text-purple-700 text-sm mt-1">
+                          Capture los datos del producto físico que ya tiene en sus manos: <strong>cantidad comprada, precio unitario, número de lote y fecha de caducidad</strong>. 
+                          Al confirmar, los productos se agregarán automáticamente al inventario de caja chica.
+                        </p>
+                      </div>
+
+                      {/* Datos generales de la compra */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Fecha de Compra *
+                          </label>
+                          <input
+                            type="date"
+                            value={registrarCompraModal.fecha_compra}
+                            onChange={(e) => setRegistrarCompraModal(prev => ({ ...prev, fecha_compra: e.target.value }))}
+                            required
+                            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Número de Factura/Ticket
+                          </label>
+                          <input
+                            type="text"
+                            value={registrarCompraModal.numero_factura}
+                            onChange={(e) => setRegistrarCompraModal(prev => ({ ...prev, numero_factura: e.target.value }))}
+                            placeholder="Ej: FAC-12345"
+                            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 text-sm"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Tabla de productos con captura */}
+                      <div className="border rounded-lg overflow-hidden mb-4">
+                        <div className="bg-gray-100 px-3 py-2 border-b">
+                          <h5 className="font-medium text-gray-800 text-sm">Productos - Captura de datos reales</h5>
+                        </div>
+                        <div className="overflow-x-auto max-h-96">
+                          <table className="min-w-full divide-y divide-gray-200 text-xs">
+                            <thead className="bg-gray-50 sticky top-0">
+                              <tr>
+                                <th className="px-2 py-2 text-left text-xs font-medium text-gray-700">Producto</th>
+                                <th className="px-2 py-2 text-center text-xs font-medium text-gray-700">Solic.</th>
+                                <th className="px-2 py-2 text-center text-xs font-medium text-gray-700">Cantidad *</th>
+                                <th className="px-2 py-2 text-center text-xs font-medium text-gray-700">Precio Unit. *</th>
+                                <th className="px-2 py-2 text-center text-xs font-medium text-gray-700">Lote *</th>
+                                <th className="px-2 py-2 text-center text-xs font-medium text-gray-700">Caducidad *</th>
+                                <th className="px-2 py-2 text-right text-xs font-medium text-gray-700">Importe</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200 bg-white">
+                              {registrarCompraModal.detalles.map((detalle, index) => (
+                                <tr key={detalle.id} className="hover:bg-gray-50">
+                                  <td className="px-2 py-2">
+                                    <div className="text-xs font-medium text-gray-900">{detalle.descripcion_producto}</div>
+                                  </td>
+                                  <td className="px-2 py-2 text-center text-gray-500">{detalle.cantidad_solicitada}</td>
+                                  <td className="px-2 py-2">
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      value={detalle.cantidad_comprada}
+                                      onChange={(e) => {
+                                        const newDetalles = [...registrarCompraModal.detalles];
+                                        newDetalles[index].cantidad_comprada = e.target.value;
+                                        setRegistrarCompraModal(prev => ({ ...prev, detalles: newDetalles }));
+                                      }}
+                                      className="w-16 px-2 py-1 border rounded text-center text-xs focus:ring-2 focus:ring-purple-500"
+                                      placeholder="0"
+                                    />
+                                  </td>
+                                  <td className="px-2 py-2">
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      value={detalle.precio_unitario}
+                                      onChange={(e) => {
+                                        const newDetalles = [...registrarCompraModal.detalles];
+                                        newDetalles[index].precio_unitario = e.target.value;
+                                        setRegistrarCompraModal(prev => ({ ...prev, detalles: newDetalles }));
+                                      }}
+                                      className="w-20 px-2 py-1 border rounded text-center text-xs focus:ring-2 focus:ring-purple-500"
+                                      placeholder="0.00"
+                                    />
+                                  </td>
+                                  <td className="px-2 py-2">
+                                    <input
+                                      type="text"
+                                      value={detalle.numero_lote || ''}
+                                      onChange={(e) => {
+                                        const newDetalles = [...registrarCompraModal.detalles];
+                                        newDetalles[index].numero_lote = e.target.value;
+                                        setRegistrarCompraModal(prev => ({ ...prev, detalles: newDetalles }));
+                                      }}
+                                      placeholder="Lote"
+                                      className="w-24 px-2 py-1 border rounded text-xs focus:ring-2 focus:ring-purple-500"
+                                    />
+                                  </td>
+                                  <td className="px-2 py-2">
+                                    <input
+                                      type="date"
+                                      value={detalle.fecha_caducidad || ''}
+                                      onChange={(e) => {
+                                        const newDetalles = [...registrarCompraModal.detalles];
+                                        newDetalles[index].fecha_caducidad = e.target.value;
+                                        setRegistrarCompraModal(prev => ({ ...prev, detalles: newDetalles }));
+                                      }}
+                                      className="w-32 px-2 py-1 border rounded text-xs focus:ring-2 focus:ring-purple-500"
+                                    />
+                                  </td>
+                                  <td className="px-2 py-2 text-right font-medium text-gray-900">
+                                    {formatCurrency((parseFloat(detalle.cantidad_comprada) || 0) * (parseFloat(detalle.precio_unitario) || 0))}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                            <tfoot className="bg-gray-50">
+                              <tr>
+                                <td colSpan="6" className="px-2 py-2 text-right font-semibold text-gray-900">Total:</td>
+                                <td className="px-2 py-2 text-right font-bold text-purple-700 text-sm">
+                                  {formatCurrency(registrarCompraModal.detalles.reduce((sum, d) => 
+                                    sum + ((parseFloat(d.cantidad_comprada) || 0) * (parseFloat(d.precio_unitario) || 0)), 0
+                                  ))}
+                                </td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      </div>
+
+                      {/* Botón de confirmación */}
+                      <div className="flex justify-end gap-3">
+                        <button
+                          onClick={handleRegistrarCompra}
+                          disabled={!registrarCompraModal.fecha_compra || registrarCompraModal.detalles.some(d => !d.cantidad_comprada || !d.precio_unitario)}
+                          className="px-6 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-medium"
+                        >
+                          <FaCheck />
+                          Confirmar Recepción e Ingresar a Inventario
+                        </button>
+                      </div>
+                    </div>
                   )}
 
                   {/* Registrar recepción (Centro cuando está comprada - solo solicitante) */}
