@@ -8468,6 +8468,30 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
             ip_address=request.META.get('REMOTE_ADDR', '')
         )
         
+        # NOTIFICACIÓN: Avisar al centro solicitante que puede continuar
+        try:
+            if compra.solicitante:
+                Notificacion.objects.create(
+                    usuario=compra.solicitante,
+                    tipo='success',
+                    titulo=f'✅ Sin Stock en Farmacia: {compra.folio}',
+                    mensaje=f'Farmacia ha confirmado que NO tiene stock disponible.\n\n'
+                            f'📋 Folio: {compra.folio}\n'
+                            f'✔️ Verificado por: {request.user.get_full_name() or request.user.username}\n'
+                            f'📝 Respuesta: {respuesta}\n\n'
+                            f'Puede continuar enviando la solicitud al administrador.',
+                    datos={
+                        'tipo_notificacion': 'compra_caja_chica_sin_stock_confirmado',
+                        'compra_id': compra.id,
+                        'folio': compra.folio,
+                        'verificado_por_id': request.user.id
+                    },
+                    url='/caja-chica/compras'
+                )
+                logger.info(f"Notificación sin stock enviada al solicitante {compra.solicitante.username} para compra {compra.folio}")
+        except Exception as e:
+            logger.error(f"Error creando notificación confirmar_sin_stock para compra {compra.folio}: {e}")
+        
         return Response(CompraCajaChicaSerializer(compra, context={'request': request}).data)
     
     @action(detail=True, methods=['post'], url_path='rechazar-tiene-stock')
@@ -8511,6 +8535,30 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
             ip_address=request.META.get('REMOTE_ADDR', '')
         )
         
+        # NOTIFICACIÓN: Avisar al centro que SÍ hay stock en farmacia
+        try:
+            if compra.solicitante:
+                Notificacion.objects.create(
+                    usuario=compra.solicitante,
+                    tipo='warning',
+                    titulo=f'⚠️ Hay Stock Disponible: {compra.folio}',
+                    mensaje=f'Farmacia ha confirmado que SÍ tiene stock disponible.\n\n'
+                            f'📋 Folio: {compra.folio}\n'
+                            f'📦 Stock disponible: {stock_disponible} unidades\n'
+                            f'📝 Respuesta: {respuesta}\n\n'
+                            f'Se recomienda hacer una requisición normal en lugar de compra de caja chica.',
+                    datos={
+                        'tipo_notificacion': 'compra_caja_chica_rechazada_hay_stock',
+                        'compra_id': compra.id,
+                        'folio': compra.folio,
+                        'stock_disponible': stock_disponible
+                    },
+                    url='/caja-chica/compras'
+                )
+                logger.info(f"Notificación rechazo (hay stock) enviada al solicitante {compra.solicitante.username} para compra {compra.folio}")
+        except Exception as e:
+            logger.error(f"Error creando notificación rechazar_tiene_stock para compra {compra.folio}: {e}")
+        
         return Response(CompraCajaChicaSerializer(compra, context={'request': request}).data)
     
     # ========== FLUJO MULTINIVEL: ACCIONES ==========
@@ -8550,6 +8598,48 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
             ip_address=request.META.get('REMOTE_ADDR', '')
         )
         
+        # NOTIFICACIÓN: Avisar a administradores del centro
+        try:
+            usuarios_admin = User.objects.filter(
+                rol__in=['administrador_centro', 'admin', 'admin_sistema'],
+                is_active=True
+            )
+            
+            # Filtrar por centro si aplica
+            if compra.centro:
+                usuarios_admin_centro = usuarios_admin.filter(
+                    Q(centro=compra.centro) | Q(rol__in=['admin', 'admin_sistema'])
+                )
+            else:
+                usuarios_admin_centro = usuarios_admin.filter(rol__in=['admin', 'admin_sistema'])
+            
+            centro_nombre = compra.centro.nombre if compra.centro else 'Centro desconocido'
+            num_productos = compra.detalles.count()
+            
+            for usuario in usuarios_admin_centro:
+                Notificacion.objects.create(
+                    usuario=usuario,
+                    tipo='info',
+                    titulo=f'📋 Autorización Admin: {compra.folio}',
+                    mensaje=f'Nueva solicitud de compra caja chica requiere su autorización.\n\n'
+                            f'📋 Folio: {compra.folio}\n'
+                            f'🏥 Centro: {centro_nombre}\n'
+                            f'📦 Productos: {num_productos}\n'
+                            f'💰 Total: ${compra.total:,.2f}\n'
+                            f'✔️ Verificado sin stock por Farmacia',
+                    datos={
+                        'tipo_notificacion': 'compra_caja_chica_autorizar_admin',
+                        'compra_id': compra.id,
+                        'folio': compra.folio,
+                        'centro_id': compra.centro.id if compra.centro else None
+                    },
+                    url='/caja-chica/compras'
+                )
+            
+            logger.info(f"Notificaciones enviadas a {usuarios_admin_centro.count()} administradores para compra {compra.folio}")
+        except Exception as e:
+            logger.error(f"Error creando notificaciones enviar_admin para compra {compra.folio}: {e}")
+        
         return Response(CompraCajaChicaSerializer(compra, context={'request': request}).data)
     
     @action(detail=True, methods=['post'], url_path='autorizar-admin')
@@ -8585,6 +8675,29 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
             ip_address=request.META.get('REMOTE_ADDR', '')
         )
         
+        # NOTIFICACIÓN: Avisar al solicitante de la autorización admin
+        try:
+            if compra.solicitante:
+                Notificacion.objects.create(
+                    usuario=compra.solicitante,
+                    tipo='success',
+                    titulo=f'✅ Autorizada por Admin: {compra.folio}',
+                    mensaje=f'Su solicitud ha sido autorizada por el administrador.\n\n'
+                            f'📋 Folio: {compra.folio}\n'
+                            f'✔️ Autorizado por: {request.user.get_full_name() or request.user.username}\n'
+                            f'📝 Observaciones: {request.data.get("observaciones", "Autorizada")}\n\n'
+                            f'Siguiente paso: Autorización del Director.',
+                    datos={
+                        'tipo_notificacion': 'compra_caja_chica_autorizada_admin',
+                        'compra_id': compra.id,
+                        'folio': compra.folio,
+                        'autorizado_por_id': request.user.id
+                    },
+                    url='/caja-chica/compras'
+                )
+        except Exception as e:
+            logger.error(f"Error creando notificación autorizar_admin para compra {compra.folio}: {e}")
+        
         return Response(CompraCajaChicaSerializer(compra, context={'request': request}).data)
     
     @action(detail=True, methods=['post'], url_path='enviar-director')
@@ -8611,6 +8724,46 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
             observaciones='Enviada para autorización del director',
             ip_address=request.META.get('REMOTE_ADDR', '')
         )
+        
+        # NOTIFICACIÓN: Avisar a directores del centro
+        try:
+            usuarios_director = User.objects.filter(
+                rol__in=['director_centro', 'director', 'admin', 'admin_sistema'],
+                is_active=True
+            )
+            
+            # Filtrar por centro si aplica
+            if compra.centro:
+                usuarios_director_centro = usuarios_director.filter(
+                    Q(centro=compra.centro) | Q(rol__in=['admin', 'admin_sistema'])
+                )
+            else:
+                usuarios_director_centro = usuarios_director.filter(rol__in=['admin', 'admin_sistema'])
+            
+            centro_nombre = compra.centro.nombre if compra.centro else 'Centro desconocido'
+            
+            for usuario in usuarios_director_centro:
+                Notificacion.objects.create(
+                    usuario=usuario,
+                    tipo='warning',
+                    titulo=f'🔔 Autorización Director: {compra.folio}',
+                    mensaje=f'Solicitud autorizada por Admin requiere su autorización final.\n\n'
+                            f'📋 Folio: {compra.folio}\n'
+                            f'🏥 Centro: {centro_nombre}\n'
+                            f'💰 Total: ${compra.total:,.2f}\n'
+                            f'✔️ Ya autorizada por: {compra.administrador_centro.get_full_name() if compra.administrador_centro else "Admin"}',
+                    datos={
+                        'tipo_notificacion': 'compra_caja_chica_autorizar_director',
+                        'compra_id': compra.id,
+                        'folio': compra.folio,
+                        'centro_id': compra.centro.id if compra.centro else None
+                    },
+                    url='/caja-chica/compras'
+                )
+            
+            logger.info(f"Notificaciones enviadas a {usuarios_director_centro.count()} directores para compra {compra.folio}")
+        except Exception as e:
+            logger.error(f"Error creando notificaciones enviar_director para compra {compra.folio}: {e}")
         
         return Response(CompraCajaChicaSerializer(compra, context={'request': request}).data)
     
@@ -8648,6 +8801,30 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
             ip_address=request.META.get('REMOTE_ADDR', '')
         )
         
+        # NOTIFICACIÓN: Avisar al solicitante que está AUTORIZADA (lista para comprar)
+        try:
+            if compra.solicitante:
+                Notificacion.objects.create(
+                    usuario=compra.solicitante,
+                    tipo='success',
+                    titulo=f'🎉 Autorizada Completamente: {compra.folio}',
+                    mensaje=f'Su solicitud ha sido APROBADA por el Director.\n\n'
+                            f'📋 Folio: {compra.folio}\n'
+                            f'✔️ Director: {request.user.get_full_name() or request.user.username}\n'
+                            f'💰 Total autorizado: ${compra.total:,.2f}\n\n'
+                            f'✅ Ya puede proceder a realizar la compra.',
+                    datos={
+                        'tipo_notificacion': 'compra_caja_chica_autorizada_final',
+                        'compra_id': compra.id,
+                        'folio': compra.folio,
+                        'director_id': request.user.id
+                    },
+                    url='/caja-chica/compras'
+                )
+                logger.info(f"Notificación autorización final enviada al solicitante {compra.solicitante.username} para compra {compra.folio}")
+        except Exception as e:
+            logger.error(f"Error creando notificación autorizar_director para compra {compra.folio}: {e}")
+        
         return Response(CompraCajaChicaSerializer(compra, context={'request': request}).data)
     
     @action(detail=True, methods=['post'])
@@ -8683,6 +8860,30 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
             observaciones=motivo,
             ip_address=request.META.get('REMOTE_ADDR', '')
         )
+        
+        # NOTIFICACIÓN: Avisar al solicitante del rechazo
+        try:
+            if compra.solicitante:
+                Notificacion.objects.create(
+                    usuario=compra.solicitante,
+                    tipo='error',
+                    titulo=f'❌ Solicitud Rechazada: {compra.folio}',
+                    mensaje=f'Su solicitud de compra ha sido RECHAZADA.\n\n'
+                            f'📋 Folio: {compra.folio}\n'
+                            f'❌ Rechazado por: {request.user.get_full_name() or request.user.username}\n'
+                            f'📝 Motivo: {motivo}\n\n'
+                            f'Puede revisar y crear una nueva solicitud si es necesario.',
+                    datos={
+                        'tipo_notificacion': 'compra_caja_chica_rechazada',
+                        'compra_id': compra.id,
+                        'folio': compra.folio,
+                        'rechazado_por_id': request.user.id
+                    },
+                    url='/caja-chica/compras'
+                )
+                logger.info(f"Notificación rechazo enviada al solicitante {compra.solicitante.username} para compra {compra.folio}")
+        except Exception as e:
+            logger.error(f"Error creando notificación rechazar para compra {compra.folio}: {e}")
         
         return Response(CompraCajaChicaSerializer(compra, context={'request': request}).data)
     
@@ -8839,6 +9040,14 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # ISS-FIX: Validar que solo el solicitante pueda registrar su propia compra
+        if compra.solicitante != request.user and not request.user.is_superuser:
+            if not compra.centro or compra.centro.id != request.user.centro_id:
+                return Response(
+                    {'error': 'Solo el solicitante de esta compra puede registrar la compra realizada'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
         # ISS-FIX: Capturar estado anterior antes de cambiarlo
         estado_anterior = compra.estado
         
@@ -8902,6 +9111,43 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
             ip_address=request.META.get('REMOTE_ADDR', '')
         )
         
+        # NOTIFICACIÓN: Avisar que la compra fue realizada
+        try:
+            # Notificar al solicitante y a admins del centro
+            usuarios_notificar = []
+            if compra.solicitante:
+                usuarios_notificar.append(compra.solicitante)
+            
+            # También notificar a admin/director que autorizaron
+            if compra.administrador_centro and compra.administrador_centro != compra.solicitante:
+                usuarios_notificar.append(compra.administrador_centro)
+            if compra.director_centro and compra.director_centro != compra.solicitante:
+                usuarios_notificar.append(compra.director_centro)
+            
+            for usuario in set(usuarios_notificar):  # set() para evitar duplicados
+                Notificacion.objects.create(
+                    usuario=usuario,
+                    tipo='success',
+                    titulo=f'🛒 Compra Realizada: {compra.folio}',
+                    mensaje=f'La compra ha sido registrada como realizada.\n\n'
+                            f'📋 Folio: {compra.folio}\n'
+                            f'🧾 Factura: {numero_factura or "Sin factura"}\n'
+                            f'💰 Total: ${compra.total:,.2f}\n'
+                            f'📅 Fecha: {fecha_compra}\n\n'
+                            f'Siguiente paso: Registrar la recepción de productos.',
+                    datos={
+                        'tipo_notificacion': 'compra_caja_chica_comprada',
+                        'compra_id': compra.id,
+                        'folio': compra.folio,
+                        'numero_factura': numero_factura
+                    },
+                    url='/caja-chica/compras'
+                )
+            
+            logger.info(f"Notificaciones compra realizada enviadas a {len(usuarios_notificar)} usuarios para compra {compra.folio}")
+        except Exception as e:
+            logger.error(f"Error creando notificaciones registrar_compra para compra {compra.folio}: {e}")
+        
         return Response(CompraCajaChicaSerializer(compra).data)
     
     @action(detail=True, methods=['post'])
@@ -8917,6 +9163,14 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
                 {'error': 'Solo se pueden recibir compras en estado "comprada"'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        
+        # ISS-FIX: Validar que solo el solicitante pueda recibir su propia compra
+        if compra.solicitante != request.user and not request.user.is_superuser:
+            if not compra.centro or compra.centro.id != request.user.centro_id:
+                return Response(
+                    {'error': 'Solo el solicitante de esta compra puede registrar la recepción'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
         
         with transaction.atomic():
             # Actualizar compra
@@ -8985,8 +9239,47 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
                 estado_nuevo='recibida',
                 usuario=request.user,
                 accion='recibir',
+                observaciones=f'Recepción registrada. {len(detalles_recibidos)} productos ingresados al inventario.',
                 ip_address=request.META.get('REMOTE_ADDR', '')
             )
+            
+            # NOTIFICACIÓN: Avisar que se recibieron los productos e ingresaron al inventario
+            try:
+                # Notificar al solicitante y a autorizadores
+                usuarios_notificar = []
+                if compra.solicitante:
+                    usuarios_notificar.append(compra.solicitante)
+                
+                if compra.administrador_centro and compra.administrador_centro != compra.solicitante:
+                    usuarios_notificar.append(compra.administrador_centro)
+                if compra.director_centro and compra.director_centro != compra.solicitante:
+                    usuarios_notificar.append(compra.director_centro)
+                
+                productos_count = len([d for d in detalles_recibidos if d.get('cantidad_recibida', 0) > 0])
+                
+                for usuario in set(usuarios_notificar):
+                    Notificacion.objects.create(
+                        usuario=usuario,
+                        tipo='success',
+                        titulo=f'✅ Productos Recibidos: {compra.folio}',
+                        mensaje=f'Los productos han sido recibidos e ingresados al inventario de caja chica.\n\n'
+                                f'📋 Folio: {compra.folio}\n'
+                                f'📦 Productos recibidos: {productos_count}\n'
+                                f'💰 Total: ${compra.total:,.2f}\n'
+                                f'👤 Recibido por: {request.user.get_full_name() or request.user.username}\n\n'
+                                f'✅ Flujo completado. Los productos ya están disponibles en su inventario.',
+                        datos={
+                            'tipo_notificacion': 'compra_caja_chica_recibida',
+                            'compra_id': compra.id,
+                            'folio': compra.folio,
+                            'productos_recibidos': productos_count
+                        },
+                        url='/caja-chica/inventario'
+                    )
+                
+                logger.info(f"Notificaciones recepción enviadas a {len(usuarios_notificar)} usuarios para compra {compra.folio}")
+            except Exception as e:
+                logger.error(f"Error creando notificaciones recibir para compra {compra.folio}: {e}")
         
         return Response(CompraCajaChicaSerializer(compra).data)
     
