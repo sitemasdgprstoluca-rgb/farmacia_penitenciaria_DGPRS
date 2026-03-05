@@ -8376,6 +8376,48 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
             ip_address=request.META.get('REMOTE_ADDR', '')
         )
         
+        # NOTIFICACIÓN: Avisar a usuarios de Farmacia
+        try:
+            # Obtener todos los usuarios de farmacia activos
+            usuarios_farmacia = User.objects.filter(
+                rol__in=['farmacia', 'admin_farmacia', 'admin', 'admin_sistema'],
+                is_active=True
+            )
+            
+            # Contar productos y calcular total
+            num_productos = compra.detalles.count()
+            total_compra = compra.total or 0
+            centro_nombre = compra.centro.nombre if compra.centro else 'Centro desconocido'
+            
+            # Crear notificación para cada usuario de farmacia
+            for usuario in usuarios_farmacia:
+                Notificacion.objects.create(
+                    usuario=usuario,
+                    tipo='info',
+                    titulo=f'🔍 Verificación Stock: {compra.folio}',
+                    mensaje=f'Nueva solicitud de verificación de stock de caja chica.\n\n'
+                            f'📋 Folio: {compra.folio}\n'
+                            f'🏥 Centro: {centro_nombre}\n'
+                            f'📦 Productos: {num_productos}\n'
+                            f'💰 Total estimado: ${total_compra:,.2f}\n\n'
+                            f'Por favor, verifique la disponibilidad de los productos solicitados.',
+                    datos={
+                        'tipo_notificacion': 'compra_caja_chica_verificacion',
+                        'compra_id': compra.id,
+                        'folio': compra.folio,
+                        'centro_id': compra.centro.id if compra.centro else None,
+                        'centro_nombre': centro_nombre,
+                        'num_productos': num_productos,
+                        'total': float(total_compra)
+                    },
+                    url='/caja-chica/compras'
+                )
+            
+            logger.info(f"Notificaciones de verificación de stock enviadas a {usuarios_farmacia.count()} usuarios de farmacia para compra {compra.folio}")
+        except Exception as e:
+            logger.error(f"Error creando notificaciones para compra {compra.folio}: {e}")
+            # No fallar la operación principal si falla la notificación
+        
         return Response(CompraCajaChicaSerializer(compra, context={'request': request}).data)
     
     @action(detail=True, methods=['post'], url_path='confirmar-sin-stock')
