@@ -9031,7 +9031,7 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'])
     def registrar_compra(self, request, pk=None):
-        """Registra que la compra fue realizada"""
+        """Registra que la compra fue realizada Y recibida (todo en un solo paso)"""
         compra = self.get_object()
         
         if compra.estado not in ['pendiente', 'autorizada']:
@@ -9060,58 +9060,108 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        compra.estado = 'comprada'
-        compra.fecha_compra = fecha_compra
-        compra.numero_factura = numero_factura
+        with transaction.atomic():
+            # CAMBIO: Ahora va directo a RECIBIDA (no hay paso intermedio)
+            compra.estado = 'recibida'
+            compra.fecha_compra = fecha_compra
+            compra.fecha_recepcion = fecha_compra  # Misma fecha para recepción
+            compra.recibido_por = request.user
+            compra.numero_factura = numero_factura
+            
+            # Actualizar datos del proveedor si se envían
+            if request.data.get('proveedor_nombre'):
+                compra.proveedor_nombre = request.data.get('proveedor_nombre')
+            if request.data.get('proveedor_contacto'):
+                compra.proveedor_contacto = request.data.get('proveedor_contacto')
+            
+            compra.save()
+            
+            # Recalcular total basado en los detalles actualizados
+            total_compra = 0
+            
+            # Actualizar cantidades compradas Y datos de lote/caducidad en detalles
+            # Y CREAR INVENTARIO
+            detalles = request.data.get('detalles', [])
+            productos_ingresados = 0
+            
+            for detalle_data in detalles:
+                try:
+                    detalle = DetalleCompraCajaChica.objects.get(
+                        id=detalle_data.get('id'),
+                        compra=compra
+                    )
+                    cantidad_comprada = detalle_data.get('cantidad_comprada', detalle.cantidad_solicitada)
+                    detalle.cantidad_comprada = cantidad_comprada
+                    detalle.cantidad_recibida = cantidad_comprada  # Misma cantidad
+                    detalle.precio_unitario = detalle_data.get('precio_unitario', detalle.precio_unitario)
+                    detalle.numero_lote = detalle_data.get('numero_lote', '').strip()
+                    detalle.fecha_caducidad = detalle_data.get('fecha_caducidad')
+                    detalle.importe = detalle.precio_unitario * detalle.cantidad_comprada
+                    detalle.save()
+                    total_compra += detalle.importe
+                    
+                    # CREAR O ACTUALIZAR INVENTARIO DE CAJA CHICA
+                    if cantidad_comprada > 0 and detalle.numero_lote:
+                        inventario, created = InventarioCajaChica.objects.get_or_create(
+                            centro=compra.centro,
+                            producto=detalle.producto,
+                            numero_lote=detalle.numero_lote,
+                            defaults={
+                                'descripcion_producto': detalle.descripcion_producto,
+                                'fecha_caducidad': detalle.fecha_caducidad,
+                                'cantidad_inicial': cantidad_comprada,
+                                'cantidad_actual': cantidad_comprada,
+                                'compra': compra,
+                                'detalle_compra': detalle,
+                                'precio_unitario': detalle.precio_unitario,
+                            }
+                        )
+                        
+                        if not created:
+                            # Actualizar inventario existente
+                            cantidad_anterior = inventario.cantidad_actual
+                            inventario.cantidad_actual += cantidad_comprada
+                            inventario.cantidad_inicial += cantidad_comprada
+                            inventario.save()
+                        else:
+                            cantidad_anterior = 0
+                        
+                        # Registrar movimiento de entrada
+                        MovimientoCajaChica.objects.create(
+                            inventario=inventario,
+                            tipo='entrada',
+                            cantidad=cantidad_comprada,
+                            cantidad_anterior=cantidad_anterior,
+                            cantidad_nueva=inventario.cantidad_actual,
+                            referencia=compra.folio,
+                            motivo=f"Compra registrada {compra.folio}",
+                            usuario=request.user
+                        )
+                        
+                        productos_ingresados += 1
+                        
+                except DetalleCompraCajaChica.DoesNotExist:
+                    pass
+            
+            # Actualizar total de la compra
+            if total_compra > 0:
+                compra.subtotal = total_compra
+                compra.iva = total_compra * 0.16
+                compra.total = compra.subtotal + compra.iva
+                compra.save(update_fields=['subtotal', 'iva', 'total'])
+            
+            # Registrar en historial
+            HistorialCompraCajaChica.objects.create(
+                compra=compra,
+                estado_anterior=estado_anterior,
+                estado_nuevo='recibida',
+                usuario=request.user,
+                accion='registrar_compra_y_recepcion',
+                observaciones=f'Factura: {numero_factura or "Sin factura"} - Total: ${compra.total} - {productos_ingresados} productos ingresados al inventario',
+                ip_address=request.META.get('REMOTE_ADDR', '')
+            )
         
-        # Actualizar datos del proveedor si se envían
-        if request.data.get('proveedor_nombre'):
-            compra.proveedor_nombre = request.data.get('proveedor_nombre')
-        if request.data.get('proveedor_contacto'):
-            compra.proveedor_contacto = request.data.get('proveedor_contacto')
-        
-        compra.save()
-        
-        # Recalcular total basado en los detalles actualizados
-        total_compra = 0
-        
-        # Actualizar cantidades compradas en detalles
-        detalles = request.data.get('detalles', [])
-        for detalle_data in detalles:
-            try:
-                detalle = DetalleCompraCajaChica.objects.get(
-                    id=detalle_data.get('id'),
-                    compra=compra
-                )
-                detalle.cantidad_comprada = detalle_data.get('cantidad_comprada', detalle.cantidad_solicitada)
-                detalle.precio_unitario = detalle_data.get('precio_unitario', detalle.precio_unitario)
-                detalle.numero_lote = detalle_data.get('numero_lote')
-                detalle.fecha_caducidad = detalle_data.get('fecha_caducidad')
-                detalle.importe = detalle.precio_unitario * detalle.cantidad_comprada
-                detalle.save()
-                total_compra += detalle.importe
-            except DetalleCompraCajaChica.DoesNotExist:
-                pass
-        
-        # Actualizar total de la compra
-        if total_compra > 0:
-            compra.subtotal = total_compra
-            compra.iva = total_compra * 0.16
-            compra.total = compra.subtotal + compra.iva
-            compra.save(update_fields=['subtotal', 'iva', 'total'])
-        
-        # Registrar en historial
-        HistorialCompraCajaChica.objects.create(
-            compra=compra,
-            estado_anterior=estado_anterior,
-            estado_nuevo='comprada',
-            usuario=request.user,
-            accion='registrar_compra',
-            observaciones=f'Factura: {numero_factura or "Sin factura"} - Total: ${compra.total}',
-            ip_address=request.META.get('REMOTE_ADDR', '')
-        )
-        
-        # NOTIFICACIÓN: Avisar que la compra fue realizada
+        # NOTIFICACIÓN: Avisar que la compra fue realizada Y recibida
         try:
             # Notificar al solicitante y a admins del centro
             usuarios_notificar = []
@@ -9128,15 +9178,15 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
                 Notificacion.objects.create(
                     usuario=usuario,
                     tipo='success',
-                    titulo=f'🛒 Compra Realizada: {compra.folio}',
-                    mensaje=f'La compra ha sido registrada como realizada.\n\n'
+                    titulo=f'✅ Compra Completada: {compra.folio}',
+                    mensaje=f'La compra ha sido registrada y recibida con éxito.\n\n'
                             f'📋 Folio: {compra.folio}\n'
                             f'🧾 Factura: {numero_factura or "Sin factura"}\n'
                             f'💰 Total: ${compra.total:,.2f}\n'
                             f'📅 Fecha: {fecha_compra}\n\n'
-                            f'Siguiente paso: Registrar la recepción de productos.',
+                            f'Los productos han sido agregados al inventario.',
                     datos={
-                        'tipo_notificacion': 'compra_caja_chica_comprada',
+                        'tipo_notificacion': 'compra_caja_chica_recibida',
                         'compra_id': compra.id,
                         'folio': compra.folio,
                         'numero_factura': numero_factura
@@ -9144,7 +9194,7 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
                     url='/compras-caja-chica'
                 )
             
-            logger.info(f"Notificaciones compra realizada enviadas a {len(usuarios_notificar)} usuarios para compra {compra.folio}")
+            logger.info(f"Notificaciones compra recibida enviadas a {len(usuarios_notificar)} usuarios para compra {compra.folio}")
         except Exception as e:
             logger.error(f"Error creando notificaciones registrar_compra para compra {compra.folio}: {e}")
         
