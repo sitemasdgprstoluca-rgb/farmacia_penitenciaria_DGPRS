@@ -1526,7 +1526,7 @@ const ComprasCajaChica = () => {
                           {/* Eliminar: pendientes para todos, otros estados solo admin farmacia */}
                           {((puedeEditar && compra.estado === 'pendiente') || 
                             ((esUsuarioFarmacia || user?.is_superuser) && 
-                             !['cancelada', 'rechazada', 'rechazada_farmacia'].includes(compra.estado))) && 
+                             !['cancelada', 'rechazada', 'rechazada_farmacia'].includes(compra.estado)) && 
                             <button
                               onClick={() => setDeleteModal({ show: true, compra })}
                               className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"
