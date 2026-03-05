@@ -684,33 +684,55 @@ const InventarioCajaChica = () => {
         </div>
       )}
 
-      {/* Modal de ajuste */}
+      {/* Modal de ajuste - SOLO DISMINUCIONES */}
       {ajusteModal.show && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
-            <div className="px-6 py-4 border-b">
+            <div className="px-6 py-4 border-b bg-purple-50">
               <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
                 <FaExchangeAlt className="text-purple-600" />
-                Ajustar Inventario
+                Ajustar Inventario (Solo Disminuciones)
               </h2>
+              <p className="text-xs text-gray-600 mt-1">
+                ⚠️ Solo para mermas, roturas o faltantes detectados en inventario físico
+              </p>
             </div>
             <div className="p-6 space-y-4">
-              <div className="bg-gray-50 p-3 rounded-lg">
+              <div className="bg-gray-50 p-3 rounded-lg border-l-4 border-purple-500">
                 <div className="text-sm text-gray-500">Producto</div>
                 <div className="font-medium">{ajusteModal.item?.descripcion_producto}</div>
-                <div className="text-sm text-gray-500 mt-2">Stock Actual</div>
-                <div className="font-medium">{ajusteModal.item?.cantidad_actual} unidades</div>
+                <div className="text-sm text-gray-500 mt-2">Stock Actual (Sistema)</div>
+                <div className="font-bold text-blue-600 text-lg">{ajusteModal.item?.cantidad_actual} unidades</div>
+              </div>
+              
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                <div className="flex items-start gap-2">
+                  <span className="text-yellow-600 text-sm">💡</span>
+                  <div className="text-xs text-yellow-800">
+                    <strong>Importante:</strong> Solo se permiten ajustes hacia abajo (disminuciones).
+                    Para aumentar inventario, debe realizarse una compra autorizada.
+                  </div>
+                </div>
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nueva Cantidad *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Nueva Cantidad (debe ser menor) *
+                </label>
                 <input
                   type="number"
                   value={ajusteModal.cantidad}
                   onChange={(e) => setAjusteModal(prev => ({ ...prev, cantidad: e.target.value }))}
                   min="0"
+                  max={ajusteModal.item?.cantidad_actual}
                   className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500"
+                  placeholder={`Máximo: ${ajusteModal.item?.cantidad_actual}`}
                 />
+                {ajusteModal.cantidad && parseInt(ajusteModal.cantidad) >= ajusteModal.item?.cantidad_actual && (
+                  <p className="text-xs text-red-600 mt-1">
+                    ❌ La nueva cantidad debe ser menor al stock actual
+                  </p>
+                )}
               </div>
               
               <div>
@@ -718,8 +740,8 @@ const InventarioCajaChica = () => {
                 <textarea
                   value={ajusteModal.motivo}
                   onChange={(e) => setAjusteModal(prev => ({ ...prev, motivo: e.target.value }))}
-                  rows={2}
-                  placeholder="Ej: Inventario físico, merma, rotura"
+                  rows={3}
+                  placeholder="Ej: Producto con faltante detectado en inventario físico, merma por caducidad vencida, rotura de unidades"
                   className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500"
                 />
               </div>
@@ -733,8 +755,12 @@ const InventarioCajaChica = () => {
               </button>
               <button
                 onClick={handleAjustar}
-                disabled={ajusteModal.cantidad === '' || !ajusteModal.motivo}
-                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+                disabled={
+                  ajusteModal.cantidad === '' || 
+                  !ajusteModal.motivo || 
+                  parseInt(ajusteModal.cantidad) >= ajusteModal.item?.cantidad_actual
+                }
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Realizar Ajuste
               </button>
