@@ -15,12 +15,11 @@
  * 5. Admin autoriza (AUTORIZADA_ADMIN)
  * 6. Admin envía a Director (ENVIADA_DIRECTOR)
  * 7. Director autoriza (AUTORIZADA)
- * 8. Centro registra compra Y recepción con producto físico (RECIBIDA)
- *    - Captura: precio unitario, lote y caducidad
- *    - Se agrega directamente al inventario
+ * 8. Se realiza la compra (COMPRADA)
+ * 9. Se reciben productos (RECIBIDA)
  * 
  * PERMISOS:
- * - Centro (Médico): CRUD completo, enviar a farmacia, enviar a admin, registrar compra/recepción
+ * - Centro (Médico): CRUD completo, enviar a farmacia, enviar a admin
  * - Farmacia: Verificar stock (confirmar sin stock / rechazar con stock)
  * - Admin: Autorizar, enviar a director
  * - Director: Autorizar final
@@ -946,20 +945,14 @@ const ComprasCajaChica = () => {
       return;
     }
     
-    // Validar que todos los campos estén completos
+    // ISS-SEC FIX: Validar que todas las cantidades compradas sean > 0
     const detallesInvalidos = registrarCompraModal.detalles.filter(d => {
       const cantidad = parseInt(d.cantidad_comprada);
-      const precio = parseFloat(d.precio_unitario);
-      const lote = (d.numero_lote || '').trim();
-      const caducidad = (d.fecha_caducidad || '').trim();
-      
-      return isNaN(cantidad) || cantidad <= 0 || 
-             isNaN(precio) || precio <= 0 ||
-             !lote || !caducidad;
+      return isNaN(cantidad) || cantidad <= 0;
     });
     
     if (detallesInvalidos.length > 0) {
-      toast.error(`Todos los productos deben tener: cantidad > 0, precio > 0, lote y fecha de caducidad. Hay ${detallesInvalidos.length} producto(s) con datos incompletos.`);
+      toast.error(`Todas las cantidades compradas deben ser mayores a 0. ${detallesInvalidos.length} producto(s) con cantidad inválida.`);
       return;
     }
     
@@ -973,12 +966,12 @@ const ComprasCajaChica = () => {
           id: d.id,
           cantidad_comprada: parseInt(d.cantidad_comprada) || 0,
           precio_unitario: parseFloat(d.precio_unitario) || 0,
-          numero_lote: (d.numero_lote || '').trim(),
-          fecha_caducidad: d.fecha_caducidad,
+          numero_lote: d.numero_lote,
+          fecha_caducidad: d.fecha_caducidad || null,
         }))
       });
       
-      toast.success('Compra registrada correctamente con lote y caducidad');
+      toast.success('Compra registrada correctamente');
       // ISS-SEC FIX: Usar fecha LOCAL para evitar desfase de zona horaria
       const hoy = new Date();
       const fechaLocal = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
@@ -1283,20 +1276,7 @@ const ComprasCajaChica = () => {
 
       {/* Tabla de compras */}
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-20">
-            <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-primary-600 mb-4"></div>
-            <p className="text-gray-600 font-medium">Cargando compras de caja chica...</p>
-            <p className="text-gray-400 text-sm mt-2">Por favor espere un momento</p>
-          </div>
-        ) : compras.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20">
-            <FaBoxOpen className="text-6xl text-gray-300 mb-4" />
-            <p className="text-gray-500 text-lg font-medium">No hay compras registradas</p>
-            <p className="text-gray-400 text-sm mt-2">Crea una nueva solicitud para comenzar</p>
-          </div>
-        ) : (
-          <div className="w-full overflow-x-auto">
+        <div className="w-full overflow-x-auto">
           <table className="w-full min-w-[900px] divide-y divide-gray-200 text-sm">
             <thead className="bg-theme-gradient sticky top-0 z-10">
               <tr>
@@ -1334,22 +1314,17 @@ const ComprasCajaChica = () => {
             <tbody className="bg-white divide-y divide-gray-100">
               {loading ? (
                 <tr>
-                  <td colSpan={esUsuarioFarmacia ? 9 : 8} className="px-4 py-16 text-center">
-                    <div className="flex flex-col items-center justify-center gap-3">
-                      <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-primary-600"></div>
-                      <span className="text-gray-600 font-medium text-lg">Cargando compras de caja chica...</span>
-                      <span className="text-gray-400 text-sm">Por favor espere un momento</span>
+                  <td colSpan={esUsuarioFarmacia ? 9 : 8} className="px-4 py-8 text-center">
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600"></div>
+                      <span className="text-gray-500">Cargando...</span>
                     </div>
                   </td>
                 </tr>
               ) : compras.length === 0 ? (
                 <tr>
-                  <td colSpan={esUsuarioFarmacia ? 9 : 8} className="px-4 py-16 text-center">
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <FaBoxOpen className="text-5xl text-gray-300 mb-2" />
-                      <span className="text-gray-500 font-medium text-lg">No se encontraron compras de caja chica</span>
-                      <span className="text-gray-400 text-sm">Ajusta los filtros o crea una nueva solicitud</span>
-                    </div>
+                  <td colSpan={esUsuarioFarmacia ? 9 : 8} className="px-4 py-8 text-center text-gray-500">
+                    No se encontraron compras de caja chica
                   </td>
                 </tr>
               ) : (
@@ -1420,18 +1395,28 @@ const ComprasCajaChica = () => {
                             </button>
                           )}
                           
-                          {/* REGISTRAR COMPRA Y RECEPCIÓN - cuando está autorizada (solo solicitante) */}
+                          {/* REGISTRAR COMPRA REALIZADA - cuando está autorizada (solo solicitante) */}
                           {esUsuarioCentro && compra.estado === 'autorizada' && esSolicitante(compra) && (
                             <button
                               onClick={() => handleOpenRegistrarCompra(compra)}
                               className="p-1.5 text-purple-600 hover:bg-purple-50 rounded-lg"
-                              title="Registrar Compra y Recepción"
+                              title="Registrar Compra Realizada"
                             >
                               <FaShoppingCart className="text-xs" />
                             </button>
                           )}
                           
-                          {/* FLUJO FARMACIA: Enviar a Farmacia para verificar stock (Médico/Centro - solo solicitante) */}
+                          {/* REGISTRAR RECEPCIÓN - cuando está comprada (solo solicitante) */}
+                          {esUsuarioCentro && compra.estado === 'comprada' && esSolicitante(compra) && (
+                            <button
+                              onClick={() => handleOpenRecibir(compra)}
+                              className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg"
+                              title="Registrar Recepción de Productos"
+                            >
+                              <FaTruck className="text-xs" />
+                            </button>
+                          )}
+                                                    {/* FLUJO FARMACIA: Enviar a Farmacia para verificar stock (Médico/Centro - solo solicitante) */}
                           {esMedico && compra.estado === 'pendiente' && (compra.total_productos > 0 || compra.detalles?.length > 0) && esSolicitante(compra) && (
                             <button
                               onClick={() => handleEnviarFarmacia(compra)}
@@ -1510,10 +1495,7 @@ const ComprasCajaChica = () => {
                           
                           {/* Cancelar (solo estados anteriores a comprada) */}
                           {/* ISS-SEC FIX: Después de 'comprada' el flujo es irreversible → solo RECIBIDA */}
-                          {/* ISS-SEC: Una vez enviada a director, SOLO el director puede cancelar */}
-                          {puedeCancelar && 
-                           !['comprada', 'recibida', 'cancelada', 'rechazada'].includes(compra.estado) &&
-                           (compra.estado !== 'enviada_director' || esDirector) && 
+                          {puedeCancelar && !['comprada', 'recibida', 'cancelada', 'rechazada'].includes(compra.estado) && (
                             <button
                               onClick={() => setCancelModal({ show: true, compra, motivo: '' })}
                               className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"
@@ -1521,12 +1503,12 @@ const ComprasCajaChica = () => {
                             >
                               <FaBan className="text-xs" />
                             </button>
-                          }
+                          )}
                           
                           {/* Eliminar: pendientes para todos, otros estados solo admin farmacia */}
                           {((puedeEditar && compra.estado === 'pendiente') || 
                             ((esUsuarioFarmacia || user?.is_superuser) && 
-                             !['cancelada', 'rechazada', 'rechazada_farmacia'].includes(compra.estado))) && 
+                             !['cancelada', 'rechazada', 'rechazada_farmacia'].includes(compra.estado))) && (
                             <button
                               onClick={() => setDeleteModal({ show: true, compra })}
                               className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"
@@ -1534,7 +1516,7 @@ const ComprasCajaChica = () => {
                             >
                               <FaTrash className="text-xs" />
                             </button>
-                          }
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -2027,7 +2009,21 @@ const ComprasCajaChica = () => {
                       className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
                     >
                       <FaShoppingCart />
-                      Registrar Compra y Recepción
+                      Registrar Compra Realizada
+                    </button>
+                  )}
+
+                  {/* Registrar recepción (Centro cuando está comprada - solo solicitante) */}
+                  {esUsuarioCentro && detailModal.compra.estado === 'comprada' && esSolicitante(detailModal.compra) && (
+                    <button
+                      onClick={() => {
+                        handleOpenRecibir(detailModal.compra);
+                        setDetailModal({ show: false, compra: null });
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                    >
+                      <FaTruck />
+                      Registrar Recepción de Productos
                     </button>
                   )}
 
@@ -2046,11 +2042,7 @@ const ComprasCajaChica = () => {
                   )}
 
                   {/* Cancelar (no estados finales - solo solicitante) */}
-                  {/* ISS-SEC: Una vez enviada a director, SOLO el director puede cancelar */}
-                  {puedeCancelar && 
-                   !['comprada', 'recibida', 'cancelada', 'rechazada'].includes(detailModal.compra.estado) && 
-                   (detailModal.compra.estado !== 'enviada_director' || esDirector) &&
-                   esSolicitante(detailModal.compra) && 
+                  {puedeCancelar && !['comprada', 'recibida', 'cancelada', 'rechazada'].includes(detailModal.compra.estado) && esSolicitante(detailModal.compra) && (
                     <button
                       onClick={() => {
                         setDetailModal({ show: false, compra: null });
@@ -2061,7 +2053,7 @@ const ComprasCajaChica = () => {
                       <FaBan />
                       Cancelar Solicitud
                     </button>
-                  }
+                  )}
 
                   {/* Si no hay acciones disponibles */}
                   {!esMedico && !puedeVerificarStock && !esAdmin && !esDirector && !esUsuarioCentro && !puedeEditar && !puedeCancelar && (
@@ -2192,14 +2184,14 @@ const ComprasCajaChica = () => {
         </div>
       )}
 
-      {/* Modal de Registrar Compra y Recepción */}
+      {/* Modal de Registrar Compra Realizada */}
       {registrarCompraModal.show && registrarCompraModal.compra && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white px-6 py-4 border-b flex justify-between items-center">
               <h2 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
                 <FaShoppingCart className="text-purple-600" />
-                Registrar Compra y Recepción - {registrarCompraModal.compra.folio}
+                Registrar Compra Realizada - {registrarCompraModal.compra.folio}
               </h2>
               <button
                 onClick={() => setRegistrarCompraModal({ 
@@ -2222,11 +2214,10 @@ const ComprasCajaChica = () => {
               <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
                 <div className="flex items-center gap-2 text-purple-800">
                   <FaInfoCircle />
-                  <span className="font-medium">Registro completo de compra y recepción</span>
+                  <span className="font-medium">Registro de compra externa</span>
                 </div>
                 <p className="text-purple-700 text-sm mt-1">
-                  Registre TODOS los datos del producto físico: precio unitario, lote y caducidad. 
-                  Esta información se guardará y los productos se agregarán automáticamente al inventario.
+                  Registre los datos de la compra realizada. Esta información quedará guardada para trazabilidad y auditoría.
                 </p>
                 <p className="text-purple-600 text-xs mt-2">
                   <strong>Fecha de captura:</strong> {new Date().toLocaleString('es-MX')} | 
@@ -2290,7 +2281,7 @@ const ComprasCajaChica = () => {
               <div className="border rounded-lg overflow-hidden">
                 <div className="bg-gray-50 px-4 py-2 border-b">
                   <h3 className="font-medium text-gray-800">Productos Comprados</h3>
-                  <p className="text-xs text-gray-500">Registre todos los datos reales del producto físico: cantidades, precios, lote y caducidad.</p>
+                  <p className="text-xs text-gray-500">Registre las cantidades reales compradas, precios y datos del lote</p>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200">
@@ -2300,8 +2291,8 @@ const ComprasCajaChica = () => {
                         <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Solicitado</th>
                         <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Comprado *</th>
                         <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Precio Unit. *</th>
-                        <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Lote *</th>
-                        <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Caducidad *</th>
+                        <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Lote</th>
+                        <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Caducidad</th>
                         <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">Importe</th>
                       </tr>
                     </thead>
@@ -2347,7 +2338,7 @@ const ComprasCajaChica = () => {
                                 setRegistrarCompraModal(prev => ({ ...prev, detalles: newDetalles }));
                               }}
                               placeholder="Lote"
-                              className="w-28 px-2 py-1 border rounded text-sm"
+                              className="w-24 px-2 py-1 border rounded text-sm"
                             />
                           </td>
                           <td className="px-3 py-2">
@@ -2359,7 +2350,7 @@ const ComprasCajaChica = () => {
                                 newDetalles[index].fecha_caducidad = e.target.value;
                                 setRegistrarCompraModal(prev => ({ ...prev, detalles: newDetalles }));
                               }}
-                              className="w-36 px-2 py-1 border rounded text-sm"
+                              className="w-32 px-2 py-1 border rounded text-sm"
                             />
                           </td>
                           <td className="px-3 py-2 text-right text-sm font-medium">
@@ -2404,7 +2395,7 @@ const ComprasCajaChica = () => {
                 className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 flex items-center gap-2"
               >
                 <FaCheck />
-                Registrar y Completar
+                Registrar Compra
               </button>
             </div>
           </div>
