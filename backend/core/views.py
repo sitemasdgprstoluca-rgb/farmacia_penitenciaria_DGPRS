@@ -9529,6 +9529,10 @@ class InventarioCajaChicaViewSet(viewsets.ModelViewSet):
                 )
         
         cantidad = request.data.get('cantidad')
+        motivo = request.data.get('motivo')
+        referencia = request.data.get('referencia', '')  # Paciente PPL - OBLIGATORIO
+        
+        # VALIDACIONES
         if not cantidad or cantidad <= 0:
             return Response(
                 {'error': 'Debe proporcionar una cantidad válida'},
@@ -9541,24 +9545,33 @@ class InventarioCajaChicaViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        referencia = request.data.get('referencia', '')  # Expediente del paciente, etc.
-        motivo = request.data.get('motivo', 'Uso/Dispensación')
+        if not motivo or not motivo.strip():
+            return Response(
+                {'error': 'Debe proporcionar el motivo de la salida (diagnóstico/indicación)'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not referencia or not referencia.strip():
+            return Response(
+                {'error': 'Debe proporcionar el nombre/expediente del paciente PPL para trazabilidad'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         with transaction.atomic():
             cantidad_anterior = inventario.cantidad_actual
             inventario.cantidad_actual -= cantidad
             inventario.save()
             
-            # Registrar movimiento
+            # Registrar movimiento con toda la información
             MovimientoCajaChica.objects.create(
                 inventario=inventario,
                 tipo='salida',
                 cantidad=cantidad,
                 cantidad_anterior=cantidad_anterior,
                 cantidad_nueva=inventario.cantidad_actual,
-                referencia=referencia,
-                motivo=motivo,
-                usuario=request.user
+                referencia=referencia.strip(),  # Paciente PPL
+                motivo=motivo.strip(),  # Diagnóstico/Indicación
+                usuario=request.user  # Quien dispensó
             )
         
         return Response(InventarioCajaChicaSerializer(inventario).data)
@@ -9579,23 +9592,39 @@ class InventarioCajaChicaViewSet(viewsets.ModelViewSet):
         nueva_cantidad = request.data.get('cantidad')
         motivo = request.data.get('motivo')
         
-        if nueva_cantidad is None or nueva_cantidad < 0:
+        # VALIDACIONES
+        if nueva_cantidad is None:
             return Response(
-                {'error': 'Debe proporcionar una cantidad válida (mayor o igual a 0)'},
+                {'error': 'Debe proporcionar la nueva cantidad'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        if not motivo:
+        try:
+            nueva_cantidad = int(nueva_cantidad)
+        except (ValueError, TypeError):
             return Response(
-                {'error': 'Debe proporcionar un motivo para el ajuste'},
+                {'error': 'La cantidad debe ser un número entero válido'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # VALIDACIÓN CRÍTICA: Solo permitir ajustes negativos o igual
+        if nueva_cantidad < 0:
+            return Response(
+                {'error': 'La cantidad no puede ser negativa'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not motivo or not motivo.strip():
+            return Response(
+                {'error': 'Debe proporcionar un motivo detallado para el ajuste'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # VALIDACIÓN CRÍTICA: Solo permitir ajustes negativos
         cantidad_anterior = inventario.cantidad_actual
+        
         if nueva_cantidad > cantidad_anterior:
             return Response(
-                {'error': 'No se permiten ajustes positivos. Los aumentos de inventario solo pueden realizarse mediante compras autorizadas.'},
+                {'error': 'No se permiten ajustes positivos. Los aumentos de inventario solo pueden realizarse mediante compras autorizadas y registradas.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -9611,15 +9640,15 @@ class InventarioCajaChicaViewSet(viewsets.ModelViewSet):
             inventario.cantidad_actual = nueva_cantidad
             inventario.save()
             
-            # Registrar movimiento como ajuste negativo
+            # Registrar movimiento como ajuste negativo con información completa
             MovimientoCajaChica.objects.create(
                 inventario=inventario,
                 tipo='ajuste_negativo',
-                cantidad=abs(diferencia),
+                cantidad=abs(diferencia),  # Cantidad ajustada (positiva para claridad)
                 cantidad_anterior=cantidad_anterior,
                 cantidad_nueva=nueva_cantidad,
-                motivo=motivo,
-                usuario=request.user
+                motivo=motivo.strip(),  # Razón del ajuste (merma, rotura, faltante)
+                usuario=request.user  # Quien realizó el ajuste
             )
         
         return Response(InventarioCajaChicaSerializer(inventario).data)
