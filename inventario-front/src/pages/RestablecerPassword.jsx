@@ -169,7 +169,7 @@ function RestablecerPassword() {
             {nombreSistema || 'Sistema de Farmacia Penitenciaria'}
           </p>
           <p className="text-white/80 text-base drop-shadow-md font-medium animate-fade-in-delay">
-            {temaGlobal?.reporte_subtitulo || 'Subsecretaría de Seguridad'}
+            {temaGlobal?.reporte_subtitulo || 'Subsecretaría de Control Penitenciario'}
           </p>
         </div>
 
@@ -519,9 +519,9 @@ function RestablecerPassword() {
         {/* Footer moderno con backdrop blur */}
         <div className="text-center mt-8 bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20 shadow-lg">
           <p className="font-bold text-white text-lg mb-2 drop-shadow">{nombreSistema || 'Sistema de Control de Abasto'}</p>
-          <p className="font-semibold text-white/90 text-base mb-1 drop-shadow-sm">{temaGlobal?.reporte_subtitulo || 'Subsecretaría de Seguridad'}</p>
+          <p className="font-semibold text-white/90 text-base mb-1 drop-shadow-sm">{temaGlobal?.reporte_subtitulo || 'Subsecretaría de Control Penitenciario'}</p>
           <p className="text-white/80 text-sm drop-shadow-sm">
-            {temaGlobal?.reporte_pie_pagina || 'Gobierno del Estado de México'} {temaGlobal?.reporte_ano_visible !== false ? '• 2025' : ''}
+            {temaGlobal?.reporte_pie_pagina || 'Dirección General de Prevención y Readaptación Social'} {temaGlobal?.reporte_ano_visible !== false ? '• 2025' : ''}
           </p>
         </div>
       </div>

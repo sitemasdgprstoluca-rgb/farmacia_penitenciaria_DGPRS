@@ -350,10 +350,10 @@ function RecuperarPassword() {
             {/* Footer institucional */}
             <div className="pt-8 border-t border-white/10">
               <p className="text-white/80 font-medium text-sm">
-                {temaGlobal?.reporte_subtitulo || 'Gobierno del Estado de México'}
+                {temaGlobal?.reporte_subtitulo || 'Subsecretaría de Control Penitenciario'}
               </p>
               <p className="text-white/40 text-xs mt-1">
-                {temaGlobal?.reporte_pie_pagina || 'Subsecretaría de Seguridad'} · {new Date().getFullYear()}
+                {temaGlobal?.reporte_pie_pagina || 'Dirección General de Prevención y Readaptación Social'} · {new Date().getFullYear()}
               </p>
             </div>
           </div>
