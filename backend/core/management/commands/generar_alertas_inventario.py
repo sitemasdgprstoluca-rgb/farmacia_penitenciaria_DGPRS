@@ -42,8 +42,8 @@ class Command(BaseCommand):
         parser.add_argument(
             '--dias-critico',
             type=int,
-            default=7,
-            help='Días antes de caducidad para alerta crítica (default: 7)'
+            default=15,
+            help='Días antes de caducidad para alerta crítica (default: 15)'
         )
         parser.add_argument(
             '--forzar',
@@ -52,7 +52,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        from core.models import Lote, Producto, User, Notificacion
+        from core.models import Lote, Producto, User, Notificacion, InventarioCajaChica, Centro
         
         dry_run = options['dry_run']
         dias_caducidad = options['dias_caducidad']
@@ -296,6 +296,200 @@ class Command(BaseCommand):
                     notificaciones_creadas += 1
                 except Exception as e:
                     logger.error(f"Error creando notificación lotes caducados: {e}")
+        
+        # ====================================================================
+        # 4. ALERTAS DE CADUCIDAD PARA INVENTARIO DE CENTROS (CAJA CHICA)
+        # ====================================================================
+        self.stdout.write(self.style.WARNING("\n🏥 VERIFICANDO CADUCIDAD EN CENTROS..."))
+        
+        # Procesar cada centro activo
+        centros_notificados = 0
+        centros_activos = Centro.objects.filter(activo=True)
+        
+        for centro in centros_activos:
+            # Lotes críticos del centro (vencen en dias_critico o menos)
+            lotes_centro_criticos = InventarioCajaChica.objects.filter(
+                centro=centro,
+                activo=True,
+                cantidad_actual__gt=0,
+                fecha_caducidad__isnull=False,
+                fecha_caducidad__gte=hoy,
+                fecha_caducidad__lte=fecha_critico
+            ).select_related('producto', 'centro').order_by('fecha_caducidad')
+            
+            # Lotes próximos del centro (entre dias_critico y dias_caducidad)
+            lotes_centro_proximos = InventarioCajaChica.objects.filter(
+                centro=centro,
+                activo=True,
+                cantidad_actual__gt=0,
+                fecha_caducidad__isnull=False,
+                fecha_caducidad__gt=fecha_critico,
+                fecha_caducidad__lte=fecha_alerta
+            ).select_related('producto', 'centro').order_by('fecha_caducidad')
+            
+            # Lotes caducados del centro
+            lotes_centro_caducados = InventarioCajaChica.objects.filter(
+                centro=centro,
+                cantidad_actual__gt=0,
+                fecha_caducidad__isnull=False,
+                fecha_caducidad__lt=hoy
+            ).select_related('producto', 'centro')
+            
+            # Si no hay lotes con problemas de caducidad, continuar
+            if not (lotes_centro_criticos.exists() or lotes_centro_proximos.exists() or lotes_centro_caducados.exists()):
+                continue
+            
+            # Usuarios del centro que deben ser notificados
+            usuarios_centro = User.objects.filter(
+                centro=centro,
+                is_active=True
+            ).exclude(rol__in=['farmacia', 'admin_farmacia'])  # Excluir roles de farmacia
+            
+            if not usuarios_centro.exists():
+                self.stdout.write(f"  ⚠️  {centro.nombre}: Sin usuarios activos para notificar")
+                continue
+            
+            # ─────────────────────────────────────────────────────────────────
+            # 4A. Lotes críticos del centro
+            # ─────────────────────────────────────────────────────────────────
+            if lotes_centro_criticos.exists():
+                self.stdout.write(f"  📍 {centro.nombre}: {lotes_centro_criticos.count()} lotes críticos")
+                
+                if not dry_run:
+                    lotes_texto = "\n".join([
+                        f"• {l.numero_lote or 'Sin Lote'} - {l.descripcion_producto}: Vence {l.fecha_caducidad.strftime('%d/%m/%Y')} - Cant: {l.cantidad_actual}"
+                        for l in lotes_centro_criticos[:10]
+                    ])
+                    
+                    if lotes_centro_criticos.count() > 10:
+                        lotes_texto += f"\n... y {lotes_centro_criticos.count() - 10} más"
+                    
+                    for usuario in usuarios_centro:
+                        if not forzar:
+                            existe = Notificacion.objects.filter(
+                                usuario=usuario,
+                                tipo='error',
+                                titulo__icontains='Caducidad Crítica',
+                                datos__centro_id=centro.id,
+                                created_at__gte=timezone.now() - timedelta(hours=24)
+                            ).exists()
+                            if existe:
+                                continue
+                        
+                        try:
+                            Notificacion.objects.create(
+                                usuario=usuario,
+                                tipo='error',
+                                titulo=f'🚨 {centro.nombre}: {lotes_centro_criticos.count()} Lotes CRÍTICOS (≤{dias_critico}d)',
+                                mensaje=f'Lotes del inventario de caja chica que requieren atención URGENTE:\n\n{lotes_texto}',
+                                datos={
+                                    'tipo_alerta': 'caducidad_critica_centro',
+                                    'centro_id': centro.id,
+                                    'centro_nombre': centro.nombre,
+                                    'cantidad_lotes': lotes_centro_criticos.count(),
+                                    'lotes': [l.numero_lote or f'ID-{l.id}' for l in lotes_centro_criticos[:20]]
+                                },
+                                url=f'/centros/{centro.id}/inventario?filtro=por_caducar'
+                            )
+                            notificaciones_creadas += 1
+                            centros_notificados += 1
+                        except Exception as e:
+                            logger.error(f"Error creando notificación caducidad crítica centro {centro.id}: {e}")
+            
+            # ─────────────────────────────────────────────────────────────────
+            # 4B. Lotes próximos del centro
+            # ─────────────────────────────────────────────────────────────────
+            if lotes_centro_proximos.exists():
+                self.stdout.write(f"  📍 {centro.nombre}: {lotes_centro_proximos.count()} lotes próximos")
+                
+                if not dry_run:
+                    lotes_texto = "\n".join([
+                        f"• {l.numero_lote or 'Sin Lote'} - {l.descripcion_producto}: Vence {l.fecha_caducidad.strftime('%d/%m/%Y')} - Cant: {l.cantidad_actual}"
+                        for l in lotes_centro_proximos[:10]
+                    ])
+                    
+                    if lotes_centro_proximos.count() > 10:
+                        lotes_texto += f"\n... y {lotes_centro_proximos.count() - 10} más"
+                    
+                    for usuario in usuarios_centro:
+                        if not forzar:
+                            existe = Notificacion.objects.filter(
+                                usuario=usuario,
+                                tipo='warning',
+                                titulo__icontains='Próximos a Caducar',
+                                datos__centro_id=centro.id,
+                                created_at__gte=timezone.now() - timedelta(hours=24)
+                            ).exists()
+                            if existe:
+                                continue
+                        
+                        try:
+                            Notificacion.objects.create(
+                                usuario=usuario,
+                                tipo='warning',
+                                titulo=f'⚠️ {centro.nombre}: {lotes_centro_proximos.count()} Lotes Próximos a Caducar',
+                                mensaje=f'Lotes del inventario de caja chica que vencen en los próximos {dias_caducidad} días:\n\n{lotes_texto}',
+                                datos={
+                                    'tipo_alerta': 'caducidad_proxima_centro',
+                                    'centro_id': centro.id,
+                                    'centro_nombre': centro.nombre,
+                                    'cantidad_lotes': lotes_centro_proximos.count(),
+                                    'lotes': [l.numero_lote or f'ID-{l.id}' for l in lotes_centro_proximos[:20]]
+                                },
+                                url=f'/centros/{centro.id}/inventario?filtro=por_caducar'
+                            )
+                            notificaciones_creadas += 1
+                        except Exception as e:
+                            logger.error(f"Error creando notificación caducidad próxima centro {centro.id}: {e}")
+            
+            # ─────────────────────────────────────────────────────────────────
+            # 4C. Lotes caducados del centro
+            # ─────────────────────────────────────────────────────────────────
+            if lotes_centro_caducados.exists():
+                self.stdout.write(f"  📍 {centro.nombre}: {lotes_centro_caducados.count()} lotes CADUCADOS")
+                
+                if not dry_run:
+                    lotes_texto = "\n".join([
+                        f"• {l.numero_lote or 'Sin Lote'} - {l.descripcion_producto}: Venció {l.fecha_caducidad.strftime('%d/%m/%Y')} - Cant: {l.cantidad_actual}"
+                        for l in lotes_centro_caducados[:10]
+                    ])
+                    
+                    if lotes_centro_caducados.count() > 10:
+                        lotes_texto += f"\n... y {lotes_centro_caducados.count() - 10} más"
+                    
+                    for usuario in usuarios_centro:
+                        if not forzar:
+                            existe = Notificacion.objects.filter(
+                                usuario=usuario,
+                                tipo='error',
+                                titulo__icontains='Lotes CADUCADOS',
+                                datos__centro_id=centro.id,
+                                created_at__gte=timezone.now() - timedelta(hours=24)
+                            ).exists()
+                            if existe:
+                                continue
+                        
+                        try:
+                            Notificacion.objects.create(
+                                usuario=usuario,
+                                tipo='error',
+                                titulo=f'🚫 {centro.nombre}: {lotes_centro_caducados.count()} Lotes CADUCADOS con Stock',
+                                mensaje=f'Lotes del inventario de caja chica que están CADUCADOS y deben retirarse:\n\n{lotes_texto}',
+                                datos={
+                                    'tipo_alerta': 'caducados_centro',
+                                    'centro_id': centro.id,
+                                    'centro_nombre': centro.nombre,
+                                    'cantidad_lotes': lotes_centro_caducados.count(),
+                                    'lotes': [l.numero_lote or f'ID-{l.id}' for l in lotes_centro_caducados[:20]]
+                                },
+                                url=f'/centros/{centro.id}/inventario?filtro=caducados'
+                            )
+                            notificaciones_creadas += 1
+                        except Exception as e:
+                            logger.error(f"Error creando notificación lotes caducados centro {centro.id}: {e}")
+        
+        if centros_notificados > 0:
+            self.stdout.write(f"\n  ✅ Centros notificados: {centros_notificados}")
         
         # ====================================================================
         # RESUMEN

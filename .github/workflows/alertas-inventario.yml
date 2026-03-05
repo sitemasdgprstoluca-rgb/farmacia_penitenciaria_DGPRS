@@ -1,0 +1,32 @@
+# GitHub Actions - Ejecutar Alertas de Inventario Diariamente
+# Este workflow reemplaza el cron job de Render (que requiere plan pago)
+# Ejecuta el comando cada día a las 7:00 AM UTC
+
+name: Alertas de Inventario Diarias
+
+on:
+  schedule:
+    # Ejecutar diariamente a las 7:00 AM UTC (1:00 AM México)
+    - cron: '0 7 * * *'
+  workflow_dispatch:  # Permite ejecución manual desde GitHub
+
+jobs:
+  generar-alertas:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Ejecutar comando en Render
+        run: |
+          curl -X POST https://api.render.com/v1/services/${{ secrets.RENDER_SERVICE_ID }}/jobs \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "command": "python manage.py generar_alertas_inventario",
+              "timeout": 600
+            }'
+        
+      - name: Notificar resultado
+        if: always()
+        run: |
+          echo "✅ Comando de alertas ejecutado en Render"
+          echo "Fecha: $(date)"

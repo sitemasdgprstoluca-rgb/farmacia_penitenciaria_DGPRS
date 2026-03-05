@@ -132,23 +132,33 @@ services:
 # ═══════════════════════════════════════════════════════════════════════════
 # CRON JOB - Alertas de Inventario (notificaciones automáticas)
 # ═══════════════════════════════════════════════════════════════════════════
-# NOTA: Los cron jobs requieren plan "Starter" ($7/mes) o superior en Render.
+# ⚠️ IMPORTANTE: Los cron jobs requieren plan "Starter" ($7/mes) o superior.
+# 
 # Si usas plan gratuito, ejecuta manualmente:
 #   python manage.py generar_alertas_inventario
+#   python manage.py generar_alertas_inventario --dry-run  # Simulación
+#   python manage.py generar_alertas_inventario --dias-critico=15 --dias-caducidad=30
 #
-# Cuando actualices a plan pago, descomenta la siguiente sección:
+# El cron job está configurado para ejecutarse diariamente a las 7:00 AM UTC
+# (1:00 AM México, 2:00 AM horario verano).
 #
-#  - type: cron
-#    name: farmacia-alertas
-#    runtime: python
-#    region: oregon
-#    plan: starter
-#    rootDir: backend
-#    schedule: "0 7 * * *"  # Diariamente a las 7:00 AM UTC
-#    buildCommand: pip install -r requirements.txt
-#    startCommand: python manage.py generar_alertas_inventario
-#    envVars:
-#      - key: DATABASE_URL
-#        sync: false
-#      - key: DEBUG
-#        value: "False"
+# Alcance de notificaciones:
+# - Farmacia: Usuarios con rol farmacia/admin reciben alertas de Lote
+# - Centros: Usuarios de cada centro reciben alertas de InventarioCajaChica
+#
+# Cuando actualices a plan pago, descomenta:
+
+  - type: cron
+    name: farmacia-alertas
+    runtime: python
+    region: oregon
+    plan: starter
+    rootDir: backend
+    schedule: "0 7 * * *"  # Diariamente a las 7:00 AM UTC
+    buildCommand: pip install -r requirements.txt
+    startCommand: python manage.py generar_alertas_inventario
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: DEBUG
+        value: "False"
