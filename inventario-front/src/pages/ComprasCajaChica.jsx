@@ -1082,6 +1082,18 @@ const ComprasCajaChica = () => {
     try {
       const response = await comprasCajaChicaAPI.getById(compra.id);
       const compraCompleta = response.data;
+      
+      // DEBUG: Log para verificar condiciones
+      console.log('=== DEBUG COMPRA AUTORIZADA ===');
+      console.log('Usuario actual:', user);
+      console.log('esUsuarioCentro:', esUsuarioCentro);
+      console.log('Compra completa:', compraCompleta);
+      console.log('Estado compra:', compraCompleta.estado);
+      console.log('Solicitante compra:', compraCompleta.solicitante);
+      console.log('esSolicitante result:', esSolicitante(compraCompleta));
+      console.log('Tiene detalles:', compraCompleta.detalles?.length);
+      console.log('================================');
+      
       setDetailModal({ show: true, compra: compraCompleta });
       
       // Si está autorizada, inicializar formulario de captura
@@ -2025,7 +2037,22 @@ const ComprasCajaChica = () => {
                   )}
 
                   {/* Formulario de captura cuando está autorizada - DIRECTO EN EL MODAL */}
-                  {esUsuarioCentro && detailModal.compra.estado === 'autorizada' && esSolicitante(detailModal.compra) && detailModal.compra.detalles && detailModal.compra.detalles.length > 0 && (
+                  {(() => {
+                    const condicion1 = esUsuarioCentro;
+                    const condicion2 = detailModal.compra.estado === 'autorizada';
+                    const condicion3 = esSolicitante(detailModal.compra);
+                    const condicion4 = detailModal.compra.detalles && detailModal.compra.detalles.length > 0;
+                    
+                    console.log('=== EVALUACIÓN FORMULARIO ===');
+                    console.log('esUsuarioCentro:', condicion1);
+                    console.log('estado === autorizada:', condicion2, '- Estado real:', detailModal.compra.estado);
+                    console.log('esSolicitante:', condicion3);
+                    console.log('tiene detalles:', condicion4, '- Detalles:', detailModal.compra.detalles?.length);
+                    console.log('TODAS las condiciones:', condicion1 && condicion2 && condicion3 && condicion4);
+                    console.log('============================');
+                    
+                    return condicion1 && condicion2 && condicion3 && condicion4;
+                  })() && (
                     <div className="w-full border-2 border-purple-300 rounded-lg p-4 bg-purple-50">
                       <div className="flex items-center justify-between mb-4">
                         <h4 className="font-semibold text-purple-900 flex items-center gap-2">
@@ -2040,7 +2067,7 @@ const ComprasCajaChica = () => {
                           <span className="font-medium text-sm">Instrucciones</span>
                         </div>
                         <p className="text-purple-700 text-sm mt-1">
-                          Capture los datos del producto físico que ya tiene en sus manos: <strong>cantidad comprada, precio unitario, número de lote y fecha de caducidad</strong>. 
+                          Capture los datos del producto físico que ya tiene en sus manos: <strong>cantidad comprada, precio unitario, número de lote y fecha de caducidad</strong>.
                           Al confirmar, los productos se agregarán automáticamente al inventario de caja chica.
                         </p>
                       </div>
