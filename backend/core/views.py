@@ -9189,6 +9189,16 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
                     )
                     cantidad_recibida = detalle_data.get('cantidad_recibida', detalle.cantidad_comprada)
                     detalle.cantidad_recibida = cantidad_recibida
+                    
+                    # FEAT: Actualizar lote y fecha de caducidad capturados en la recepción
+                    numero_lote = detalle_data.get('numero_lote')
+                    if numero_lote:
+                        detalle.numero_lote = numero_lote.strip()
+                    
+                    fecha_caducidad = detalle_data.get('fecha_caducidad')
+                    if fecha_caducidad:
+                        detalle.fecha_caducidad = fecha_caducidad
+                    
                     detalle.save()
                     
                     # Crear o actualizar inventario de caja chica

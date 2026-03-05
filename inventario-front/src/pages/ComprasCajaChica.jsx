@@ -1014,14 +1014,24 @@ const ComprasCajaChica = () => {
   const iniciarRecibir = () => {
     if (!recibirModal.compra) return;
     
-    // Validar que todas las cantidades recibidas sean > 0
+    // Validar que todas las cantidades recibidas, lotes y fechas sean válidos
     const detallesInvalidos = recibirModal.detalles.filter(d => {
       const cantidad = parseInt(d.cantidad_recibida);
-      return isNaN(cantidad) || cantidad <= 0;
+      const lote = (d.numero_lote || '').trim();
+      const caducidad = d.fecha_caducidad;
+      return isNaN(cantidad) || cantidad <= 0 || !lote || !caducidad;
     });
     
     if (detallesInvalidos.length > 0) {
-      toast.error(`Todas las cantidades recibidas deben ser mayores a 0. ${detallesInvalidos.length} producto(s) con cantidad inválida.`);
+      toast.error(`Todos los productos deben tener cantidad, lote y fecha de caducidad válidos. ${detallesInvalidos.length} producto(s) incompleto(s).`);
+      return;
+    }
+    
+    // Validar fechas de caducidad no sean del pasado
+    const hoy = new Date().toISOString().split('T')[0];
+    const caducidadesInvalidas = recibirModal.detalles.filter(d => d.fecha_caducidad < hoy);
+    if (caducidadesInvalidas.length > 0) {
+      toast.error(`Las fechas de caducidad no pueden ser anteriores a hoy.`);
       return;
     }
     
@@ -1032,14 +1042,16 @@ const ComprasCajaChica = () => {
   const handleRecibir = async () => {
     if (!recibirModal.compra) return;
     
-    // ISS-SEC FIX: Validar que todas las cantidades recibidas sean > 0
+    // ISS-SEC FIX: Validar que todas las cantidades recibidas, lotes y fechas sean válidos
     const detallesInvalidos = recibirModal.detalles.filter(d => {
       const cantidad = parseInt(d.cantidad_recibida);
-      return isNaN(cantidad) || cantidad <= 0;
+      const lote = (d.numero_lote || '').trim();
+      const caducidad = d.fecha_caducidad;
+      return isNaN(cantidad) || cantidad <= 0 || !lote || !caducidad;
     });
     
     if (detallesInvalidos.length > 0) {
-      toast.error(`Todas las cantidades recibidas deben ser mayores a 0. ${detallesInvalidos.length} producto(s) con cantidad inválida.`);
+      toast.error(`Todos los productos deben tener cantidad, lote y fecha de caducidad válidos. ${detallesInvalidos.length} producto(s) incompleto(s).`);
       return;
     }
     
@@ -1050,6 +1062,8 @@ const ComprasCajaChica = () => {
       await comprasCajaChicaAPI.recibir(recibirModal.compra.id, recibirModal.detalles.map(d => ({
         id: d.id,
         cantidad_recibida: parseInt(d.cantidad_recibida) || 0,
+        numero_lote: (d.numero_lote || '').trim(),
+        fecha_caducidad: d.fecha_caducidad,
       })));
       
       toast.success('Productos recibidos correctamente - Agregados al inventario de caja chica');
@@ -2450,21 +2464,22 @@ const ComprasCajaChica = () => {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Producto</th>
-                      <th className="px-4 py-2 text-center text-xs font-medium text-gray-500">Lote</th>
                       <th className="px-4 py-2 text-center text-xs font-medium text-gray-500">Comprado</th>
                       <th className="px-4 py-2 text-center text-xs font-medium text-gray-500">Recibido *</th>
+                      <th className="px-4 py-2 text-center text-xs font-medium text-gray-500">Lote *</th>
+                      <th className="px-4 py-2 text-center text-xs font-medium text-gray-500">Caducidad *</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {recibirModal.detalles.map((detalle, index) => (
                       <tr key={detalle.id}>
                         <td className="px-4 py-2 text-sm">{detalle.descripcion_producto}</td>
-                        <td className="px-4 py-2 text-center text-sm text-gray-500">{detalle.numero_lote || '-'}</td>
                         <td className="px-4 py-2 text-center text-sm">{detalle.cantidad_comprada}</td>
                         <td className="px-4 py-2 text-center">
                           <input
                             type="number"
                             min="0"
+                            max={detalle.cantidad_comprada}
                             value={detalle.cantidad_recibida}
                             onChange={(e) => {
                               const newDetalles = [...recibirModal.detalles];
@@ -2472,6 +2487,35 @@ const ComprasCajaChica = () => {
                               setRecibirModal(prev => ({ ...prev, detalles: newDetalles }));
                             }}
                             className="w-20 px-2 py-1 border rounded text-center"
+                            required
+                          />
+                        </td>
+                        <td className="px-4 py-2 text-center">
+                          <input
+                            type="text"
+                            value={detalle.numero_lote || ''}
+                            onChange={(e) => {
+                              const newDetalles = [...recibirModal.detalles];
+                              newDetalles[index].numero_lote = e.target.value;
+                              setRecibirModal(prev => ({ ...prev, detalles: newDetalles }));
+                            }}
+                            placeholder="LOT-2026-123"
+                            className="w-32 px-2 py-1 border rounded text-center text-sm"
+                            required
+                          />
+                        </td>
+                        <td className="px-4 py-2 text-center">
+                          <input
+                            type="date"
+                            value={detalle.fecha_caducidad || ''}
+                            onChange={(e) => {
+                              const newDetalles = [...recibirModal.detalles];
+                              newDetalles[index].fecha_caducidad = e.target.value;
+                              setRecibirModal(prev => ({ ...prev, detalles: newDetalles }));
+                            }}
+                            min={new Date().toISOString().split('T')[0]}
+                            className="w-36 px-2 py-1 border rounded text-sm"
+                            required
                           />
                         </td>
                       </tr>
