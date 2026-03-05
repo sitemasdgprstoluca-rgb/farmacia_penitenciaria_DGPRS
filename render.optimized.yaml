@@ -1,0 +1,313 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# RENDER BLUEPRINT - CONFIGURACIÓN OPTIMIZADA PARA PRODUCCIÓN
+# ══════════════════════════════════════════════════════════════════════════════
+# 🎯 Optimizado para: Uso masivo, autoscaling, alta disponibilidad
+# 📊 Soporta: 50-200 usuarios simultáneos con autoscaling
+# 💰 Costo: $32-100/mes dependiendo del plan
+# 
+# INSTRUCCIONES DE DESPLIEGUE:
+# 1. Ve a https://dashboard.render.com/
+# 2. Clic en "New" > "Blueprint"
+# 3. Conecta tu repositorio de GitHub
+# 4. Render detectará este archivo automáticamente
+# 5. Configura las variables de entorno en el dashboard
+# 6. IMPORTANTE: Cambia el plan de 'free' a 'standard' o 'pro'
+# ══════════════════════════════════════════════════════════════════════════════
+
+services:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # REDIS - Cache distribuido (CRÍTICO para múltiples instancias)
+  # ═══════════════════════════════════════════════════════════════════════════
+  # ⚠️ IMPORTANTE: Redis debe crearse PRIMERO para que backend lo detecte
+  - type: redis
+    name: farmacia-redis
+    # OPCIONES DE PLAN:
+    # - starter:  $7/mes  - 256MB  (desarrollo/testing)
+    # - standard: $15/mes - 1GB    (producción 50-100 usuarios) ✅ RECOMENDADO
+    # - pro:      $50/mes - 4GB    (producción 200+ usuarios)
+    plan: starter  # ⚠️ CAMBIAR a 'standard' para producción
+    
+    # Política de memoria: eliminar claves menos usadas cuando se llena
+    maxmemoryPolicy: allkeys-lru
+    
+    # Versión de Redis
+    ipAllowList: []  # Vacío = todas las IPs (seguro porque está en red privada de Render)
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # BACKEND - Django API (CONFIGURACIÓN OPTIMIZADA)
+  # ═══════════════════════════════════════════════════════════════════════════
+  - type: web
+    name: farmacia-api
+    runtime: python
+    region: oregon  # Opciones: oregon (US West), ohio (US East), frankfurt (EU)
+    
+    # ────────────────────────────────────────────────────────────────────────
+    # PLAN Y AUTOSCALING
+    # ────────────────────────────────────────────────────────────────────────
+    # OPCIONES DE PLAN:
+    # - free:      $0/mes     - Duerme en inactividad ❌ NO PARA PRODUCCIÓN
+    # - starter:   $7/mes     - Siempre activo, 512MB RAM (máx 10 usuarios)
+    # - standard:  $25/mes    - 2GB RAM, autoscaling ✅ MÍNIMO RECOMENDADO
+    # - pro:       $85/mes    - 8GB RAM, autoscaling avanzado (50+ usuarios)
+    plan: free  # ⚠️ CAMBIAR a 'standard' o 'pro' para producción
+    
+    # ────────────────────────────────────────────────────────────────────────
+    # 🚀 AUTOSCALING - Escalado automático (solo en plan Standard y superior)
+    # ────────────────────────────────────────────────────────────────────────
+    # ⚠️ Descomenta estas líneas después de cambiar a plan 'standard' o 'pro'
+    # scaling:
+    #   minInstances: 2              # Mínimo 2 instancias (redundancia)
+    #   maxInstances: 5              # Hasta 5 instancias en picos de tráfico
+    #   targetMemoryPercent: 80      # Escalar si memoria > 80%
+    #   targetCPUPercent: 70         # Escalar si CPU > 70%
+    
+    # ────────────────────────────────────────────────────────────────────────
+    # BUILD Y DEPLOY
+    # ────────────────────────────────────────────────────────────────────────
+    rootDir: backend
+    buildCommand: chmod +x build.sh && ./build.sh
+    
+    # ────────────────────────────────────────────────────────────────────────
+    # 🔥 GUNICORN - Servidor WSGI optimizado para producción
+    # ────────────────────────────────────────────────────────────────────────
+    # Configuración actual (conservadora):
+    # startCommand: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 300
+    
+    # ✅ CONFIGURACIÓN OPTIMIZADA PARA PRODUCCIÓN:
+    startCommand: >
+      gunicorn config.wsgi:application 
+      --bind 0.0.0.0:$PORT 
+      --workers 4
+      --threads 2
+      --worker-class sync
+      --timeout 300
+      --max-requests 1000
+      --max-requests-jitter 50
+      --access-logfile -
+      --error-logfile -
+      --log-level info
+      --worker-tmp-dir /dev/shm
+      --graceful-timeout 30
+      --keep-alive 5
+    
+    # Explicación de parámetros:
+    # --workers 4:               4 procesos (fórmula: 2-4 x CPU cores)
+    # --threads 2:               2 hilos por worker = 8 conexiones simultáneas/instancia
+    # --worker-class sync:       Sincrónico (mejor para Django + PostgreSQL)
+    # --timeout 300:             5 minutos para requests lentos (reportes)
+    # --max-requests 1000:       Reinicia worker cada 1000 requests (previene memory leaks)
+    # --max-requests-jitter 50:  Randomiza restart para evitar todos a la vez
+    # --worker-tmp-dir /dev/shm: Usa memoria compartida (más rápido)
+    # --graceful-timeout 30:     30s para terminar requests antes de matar worker
+    # --keep-alive 5:            Keep-alive connections por 5s
+    
+    # ────────────────────────────────────────────────────────────────────────
+    # 🏥 HEALTH CHECK - Monitoreo de salud
+    # ────────────────────────────────────────────────────────────────────────
+    healthCheckPath: /api/health/
+    
+    # Configuración de health checks (plan Pro)
+    # healthCheck:
+    #   path: /api/health/
+    #   interval: 30s         # Cada 30 segundos
+    #   timeout: 10s          # Timeout de health check
+    #   unhealthyThreshold: 3 # Marcar unhealthy después de 3 fallos
+    
+    # ────────────────────────────────────────────────────────────────────────
+    # 🔗 CONEXIÓN A REDIS (automática)
+    # ────────────────────────────────────────────────────────────────────────
+    # Render conecta automáticamente el backend a Redis via REDIS_URL
+    # No necesitas configurar nada, Django lo detecta automáticamente
+    
+    # ────────────────────────────────────────────────────────────────────────
+    # VARIABLES DE ENTORNO
+    # ────────────────────────────────────────────────────────────────────────
+    envVars:
+      # ══════════════════════════════════════════════════════════════════════
+      # 🔐 SEGURIDAD - CONFIGURAR MANUALMENTE EN DASHBOARD
+      # ══════════════════════════════════════════════════════════════════════
+      - key: SECRET_KEY
+        generateValue: true  # Render genera una clave segura automáticamente
+      
+      # ══════════════════════════════════════════════════════════════════════
+      # 🗄️ BASE DE DATOS - Supabase PostgreSQL
+      # ══════════════════════════════════════════════════════════════════════
+      - key: DATABASE_URL
+        sync: false  # ⚠️ CONFIGURAR MANUALMENTE
+        # Formato: postgresql://postgres.[PROJECT-REF]:[PASSWORD]@[region].pooler.supabase.com:6543/postgres
+        # IMPORTANTE: Usar Connection Pooler (puerto 6543) para mejor rendimiento
+      
+      # Optimizaciones de conexión a BD
+      - key: DB_CONN_MAX_AGE
+        value: "600"  # Pool de conexiones: 10 minutos
+      
+      - key: DB_POOL_SIZE_MIN
+        value: "5"  # Mínimo 5 conexiones por instancia
+      
+      - key: DB_POOL_SIZE_MAX
+        value: "20"  # Máximo 20 conexiones por instancia
+      
+      - key: DB_CONNECT_TIMEOUT
+        value: "10"  # Timeout de conexión: 10 segundos
+      
+      - key: DB_STATEMENT_TIMEOUT
+        value: "30000"  # Timeout de query: 30 segundos
+      
+      # ══════════════════════════════════════════════════════════════════════
+      # 🌐 CORS Y HOSTS
+      # ══════════════════════════════════════════════════════════════════════
+      - key: ALLOWED_HOSTS
+        sync: false  # ⚠️ CONFIGURAR: farmacia-api.onrender.com,farmacia-api-xyz.onrender.com
+      
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false  # ⚠️ CONFIGURAR: https://farmacia-front.onrender.com
+      
+      - key: CSRF_TRUSTED_ORIGINS
+        sync: false  # ⚠️ CONFIGURAR: https://farmacia-front.onrender.com,https://farmacia-api.onrender.com
+      
+      # ══════════════════════════════════════════════════════════════════════
+      # ⚙️ CONFIGURACIÓN DJANGO
+      # ══════════════════════════════════════════════════════════════════════
+      - key: DEBUG
+        value: "False"  # SIEMPRE False en producción
+      
+      - key: ENFORCE_HTTPS
+        value: "True"
+      
+      - key: SECURE_SSL_REDIRECT
+        value: "True"
+      
+      - key: SESSION_COOKIE_SECURE
+        value: "True"
+      
+      - key: CSRF_COOKIE_SECURE
+        value: "True"
+      
+      - key: PYTHON_VERSION
+        value: "3.12.0"
+      
+      # ══════════════════════════════════════════════════════════════════════
+      # 📊 LOGGING Y MONITOREO
+      # ══════════════════════════════════════════════════════════════════════
+      - key: LOG_LEVEL
+        value: "INFO"  # Opciones: DEBUG, INFO, WARNING, ERROR
+      
+      - key: LOG_TO_STDOUT
+        value: "True"  # IMPORTANTE: Render tiene disco efímero
+      
+      - key: RENDER
+        value: "True"  # Indica que estamos en Render
+      
+      # ══════════════════════════════════════════════════════════════════════
+      # 🎯 CACHÉ - Tiempos de expiración
+      # ══════════════════════════════════════════════════════════════════════
+      # Redis se conecta automáticamente via REDIS_URL
+      
+      - key: CACHE_TTL_DASHBOARD
+        value: "60"  # Dashboard: 1 minuto
+      
+      - key: CACHE_TTL_ESTADISTICAS
+        value: "300"  # Estadísticas: 5 minutos
+      
+      - key: CACHE_TTL_REPORTES
+        value: "600"  # Reportes: 10 minutos
+      
+      # ══════════════════════════════════════════════════════════════════════
+      # 🔗 FRONTEND URL
+      # ══════════════════════════════════════════════════════════════════════
+      - key: FRONTEND_URL
+        sync: false  # ⚠️ CONFIGURAR: https://farmacia-front.onrender.com
+      
+      # ══════════════════════════════════════════════════════════════════════
+      # 📧 EMAIL (Opcional - para recuperación de contraseñas)
+      # ══════════════════════════════════════════════════════════════════════
+      # - key: EMAIL_HOST
+      #   sync: false
+      # - key: EMAIL_PORT
+      #   value: "587"
+      # - key: EMAIL_USE_TLS
+      #   value: "True"
+      # - key: EMAIL_HOST_USER
+      #   sync: false
+      # - key: EMAIL_HOST_PASSWORD
+      #   sync: false
+      # - key: DEFAULT_FROM_EMAIL
+      #   sync: false
+      
+      # ══════════════════════════════════════════════════════════════════════
+      # 📈 METRICS Y MONITORING (Opcional)
+      # ══════════════════════════════════════════════════════════════════════
+      # - key: SENTRY_DSN
+      #   sync: false  # Para error tracking con Sentry
+      # - key: ENABLE_METRICS
+      #   value: "True"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # FRONTEND - Vite/React (Sitio estático)
+  # ═══════════════════════════════════════════════════════════════════════════
+  - type: web
+    name: farmacia-front
+    runtime: static
+    
+    # PLAN PARA FRONTEND:
+    # - free: $0/mes (suficiente para sitios estáticos pequeños)
+    # - starter: $7/mes (mejor rendimiento, CDN global)
+    plan: free
+    
+    rootDir: inventario-front
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    
+    # Headers de seguridad para sitio estático
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: Permissions-Policy
+        value: geolocation=(), microphone=(), camera=()
+    
+    # Redirects para SPA (Single Page Application)
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 📊 RESUMEN DE CONFIGURACIÓN
+# ══════════════════════════════════════════════════════════════════════════════
+# 
+# CONFIGURACIÓN ACTUAL (FREE):
+# - Backend: Plan free, 2 workers
+# - Redis: No configurado
+# - Autoscaling: No
+# - Capacidad: 3-5 usuarios simultáneos ❌
+# - Costo: $0/mes
+# 
+# ────────────────────────────────────────────────────────────────────────────
+# 
+# CONFIGURACIÓN RECOMENDADA PARA PRODUCCIÓN:
+# 1. Cambiar backend a plan 'standard' o 'pro'
+# 2. Cambiar Redis a plan 'standard'
+# 3. Descomentar sección 'scaling' del backend
+# 4. Configurar todas las variables marcadas con ⚠️
+# 
+# CON STANDARD + REDIS STARTER ($32/mes):
+# - Backend: Plan standard, 4 workers, 2-5 instancias
+# - Redis: Starter (256MB)
+# - Autoscaling: Sí
+# - Capacidad: 50-100 usuarios simultáneos ✅
+# 
+# CON PRO + REDIS STANDARD ($100/mes):
+# - Backend: Plan pro, 4 workers, 2-5 instancias
+# - Redis: Standard (1GB)
+# - Autoscaling: Sí (más agresivo)
+# - Capacidad: 100-200 usuarios simultáneos ✅✅
+# 
+# ══════════════════════════════════════════════════════════════════════════════

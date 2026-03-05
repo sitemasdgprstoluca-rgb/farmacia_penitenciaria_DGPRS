@@ -217,7 +217,7 @@ def send_password_reset_email(user, uid, token):
                     <div class="header">
                         <div class="icon-badge">🔐</div>
                         <h1>Sistema de Farmacia Penitenciaria</h1>
-                        <p>Subsecretaría de Seguridad • Estado de México</p>
+                        <p>Subsecretaría de Control Penitenciario • Estado de México</p>
                     </div>
                     
                     <div class="content">
@@ -259,8 +259,8 @@ def send_password_reset_email(user, uid, token):
                     
                     <div class="footer">
                         <p><strong>Sistema de Farmacia Penitenciaria</strong></p>
-                        <p>Subsecretaría de Seguridad</p>
-                        <p>Gobierno del Estado de México • {current_year}</p>
+                        <p>Subsecretaría de Control Penitenciario</p>
+                        <p>Dirección General de Prevención y Readaptación Social • {current_year}</p>
                         <p style="margin-top: 15px; font-size: 11px; color: #999;">
                             Este es un mensaje automático. Por favor no respondas a este correo.
                         </p>
