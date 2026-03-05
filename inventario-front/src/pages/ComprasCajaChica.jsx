@@ -134,6 +134,12 @@ const ComprasCajaChica = () => {
   // Farmacia puede verificar stock (no solo auditar)
   const puedeVerificarStock = esUsuarioFarmacia || rolUsuario === 'admin_farmacia' || user?.is_superuser;
   const puedeCancelar = esUsuarioCentro && !esUsuarioFarmacia;
+  
+  // Verificar si el usuario actual es el solicitante de la compra
+  const esSolicitante = (compra) => {
+    if (!compra || !user) return false;
+    return compra.solicitante === user.id || compra.solicitante?.id === user.id;
+  };
 
   // Estados principales
   const [compras, setCompras] = useState([]);
@@ -725,7 +731,8 @@ const ComprasCajaChica = () => {
   
   // Validar que la compra tenga todos los datos necesarios
   const validarCompraCompleta = (compra, accion = 'procesar') => {
-    const productosCount = compra.detalles_count || compra.detalles?.length || 0;
+    // ISS-FIX: Backend devuelve 'total_productos', no 'detalles_count'
+    const productosCount = compra.total_productos || compra.detalles?.length || 0;
     const total = parseFloat(compra.total) || 0;
     
     if (productosCount === 0) {
@@ -745,12 +752,21 @@ const ComprasCajaChica = () => {
   
   // Enviar a Farmacia para verificación de stock (Médico/Centro)
   const handleEnviarFarmacia = async (compra) => {
+    // ISS-FIX: Solo el solicitante puede enviar su propia compra
+    if (!esSolicitante(compra)) {
+      toast.error('Solo el solicitante puede enviar esta compra a farmacia');
+      return;
+    }
     if (!validarCompraCompleta(compra, 'enviar a farmacia')) return;
     try {
       await comprasCajaChicaAPI.enviarFarmacia(compra.id);
       toast.success('Solicitud enviada a Farmacia para verificación de stock');
       fetchCompras();
       fetchResumen();
+      // Cerrar modal de detalle si está abierto
+      if (detailModal.show) {
+        setDetailModal({ show: false, compra: null });
+      }
     } catch (error) {
       toast.error(error.response?.data?.error || 'Error al enviar a farmacia');
     }
@@ -786,12 +802,21 @@ const ComprasCajaChica = () => {
 
   // Enviar a Admin (Médico)
   const handleEnviarAdmin = async (compra) => {
+    // ISS-FIX: Solo el solicitante puede enviar su propia compra
+    if (!esSolicitante(compra)) {
+      toast.error('Solo el solicitante puede enviar esta compra al administrador');
+      return;
+    }
     if (!validarCompraCompleta(compra, 'enviar a administrador')) return;
     try {
       await comprasCajaChicaAPI.enviarAdmin(compra.id);
       toast.success('Solicitud enviada al administrador');
       fetchCompras();
       fetchResumen();
+      // Cerrar modal de detalle si está abierto
+      if (detailModal.show) {
+        setDetailModal({ show: false, compra: null });
+      }
     } catch (error) {
       toast.error(error.response?.data?.error || 'Error al enviar solicitud');
     }
@@ -1323,7 +1348,7 @@ const ComprasCajaChica = () => {
                         {compra.proveedor_nombre || '-'}
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs text-gray-600 text-center">
-                        {compra.detalles_count || compra.detalles?.length || 0}
+                        {compra.total_productos || compra.detalles?.length || 0}
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs font-semibold text-gray-900 text-right">
                         {formatCurrency(compra.total)}
@@ -1345,8 +1370,8 @@ const ComprasCajaChica = () => {
                             <FaEye className="text-xs" />
                           </button>
                           
-                          {/* Editar (solo pendientes o rechazadas) */}
-                          {puedeEditar && ['pendiente', 'rechazada'].includes(compra.estado) && (
+                          {/* Editar (solo pendientes o rechazadas y solo el solicitante) */}
+                          {puedeEditar && ['pendiente', 'rechazada'].includes(compra.estado) && esSolicitante(compra) && (
                             <button
                               onClick={() => handleEdit(compra)}
                               className="p-1.5 text-yellow-600 hover:bg-yellow-50 rounded-lg"
@@ -1356,8 +1381,8 @@ const ComprasCajaChica = () => {
                             </button>
                           )}
                           
-                          {/* REGISTRAR COMPRA REALIZADA - cuando está autorizada */}
-                          {esUsuarioCentro && compra.estado === 'autorizada' && (
+                          {/* REGISTRAR COMPRA REALIZADA - cuando está autorizada (solo solicitante) */}
+                          {esUsuarioCentro && compra.estado === 'autorizada' && esSolicitante(compra) && (
                             <button
                               onClick={() => handleOpenRegistrarCompra(compra)}
                               className="p-1.5 text-purple-600 hover:bg-purple-50 rounded-lg"
@@ -1367,8 +1392,8 @@ const ComprasCajaChica = () => {
                             </button>
                           )}
                           
-                          {/* REGISTRAR RECEPCIÓN - cuando está comprada */}
-                          {esUsuarioCentro && compra.estado === 'comprada' && (
+                          {/* REGISTRAR RECEPCIÓN - cuando está comprada (solo solicitante) */}
+                          {esUsuarioCentro && compra.estado === 'comprada' && esSolicitante(compra) && (
                             <button
                               onClick={() => handleOpenRecibir(compra)}
                               className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg"
@@ -1377,8 +1402,8 @@ const ComprasCajaChica = () => {
                               <FaTruck className="text-xs" />
                             </button>
                           )}
-                                                    {/* FLUJO FARMACIA: Enviar a Farmacia para verificar stock (Médico/Centro) */}
-                          {esMedico && compra.estado === 'pendiente' && compra.detalles?.length > 0 && (
+                                                    {/* FLUJO FARMACIA: Enviar a Farmacia para verificar stock (Médico/Centro - solo solicitante) */}
+                          {esMedico && compra.estado === 'pendiente' && (compra.total_productos > 0 || compra.detalles?.length > 0) && esSolicitante(compra) && (
                             <button
                               onClick={() => handleEnviarFarmacia(compra)}
                               className="p-1.5 text-purple-600 hover:bg-purple-50 rounded-lg"
@@ -1410,8 +1435,8 @@ const ComprasCajaChica = () => {
                             </button>
                           )}
                           
-                          {/* FLUJO MULTINIVEL: Enviar a Admin (tras confirmación de Farmacia) */}
-                          {esMedico && compra.estado === 'sin_stock_farmacia' && (
+                          {/* FLUJO MULTINIVEL: Enviar a Admin (tras confirmación de Farmacia - solo solicitante) */}
+                          {esMedico && compra.estado === 'sin_stock_farmacia' && esSolicitante(compra) && (
                             <button
                               onClick={() => handleEnviarAdmin(compra)}
                               className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"
@@ -1853,7 +1878,7 @@ const ComprasCajaChica = () => {
 
                 <div className="flex flex-wrap gap-3">
                   {/* Editar PRIORITARIO si no hay productos */}
-                  {puedeEditar && detailModal.compra.estado === 'pendiente' && (!detailModal.compra.detalles || detailModal.compra.detalles.length === 0) && (
+                  {puedeEditar && detailModal.compra.estado === 'pendiente' && (!detailModal.compra.detalles || detailModal.compra.detalles.length === 0) && esSolicitante(detailModal.compra) && (
                     <button
                       onClick={() => {
                         handleEdit(detailModal.compra);
@@ -1866,12 +1891,11 @@ const ComprasCajaChica = () => {
                     </button>
                   )}
 
-                  {/* Enviar a Farmacia (Médico/Centro en estado pendiente CON productos) */}
-                  {esMedico && detailModal.compra.estado === 'pendiente' && detailModal.compra.detalles?.length > 0 && (
+                  {/* Enviar a Farmacia (Médico/Centro en estado pendiente CON productos - solo solicitante) */}
+                  {esMedico && detailModal.compra.estado === 'pendiente' && (detailModal.compra.total_productos > 0 || detailModal.compra.detalles?.length > 0) && esSolicitante(detailModal.compra) && (
                     <button
                       onClick={() => {
                         handleEnviarFarmacia(detailModal.compra);
-                        setDetailModal({ show: false, compra: null });
                       }}
                       className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
                     >
@@ -1906,12 +1930,11 @@ const ComprasCajaChica = () => {
                     </>
                   )}
 
-                  {/* Enviar a Admin (Médico después de confirmación de Farmacia) */}
-                  {esMedico && detailModal.compra.estado === 'sin_stock_farmacia' && (
+                  {/* Enviar a Admin (Médico después de confirmación de Farmacia - solo solicitante) */}
+                  {esMedico && detailModal.compra.estado === 'sin_stock_farmacia' && esSolicitante(detailModal.compra) && (
                     <button
                       onClick={() => {
                         handleEnviarAdmin(detailModal.compra);
-                        setDetailModal({ show: false, compra: null });
                       }}
                       className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                     >
@@ -1962,8 +1985,8 @@ const ComprasCajaChica = () => {
                     </button>
                   )}
 
-                  {/* Registrar compra realizada (Centro cuando está autorizada) */}
-                  {esUsuarioCentro && detailModal.compra.estado === 'autorizada' && (
+                  {/* Registrar compra realizada (Centro cuando está autorizada - solo solicitante) */}
+                  {esUsuarioCentro && detailModal.compra.estado === 'autorizada' && esSolicitante(detailModal.compra) && (
                     <button
                       onClick={() => {
                         handleOpenRegistrarCompra(detailModal.compra);
@@ -1976,8 +1999,8 @@ const ComprasCajaChica = () => {
                     </button>
                   )}
 
-                  {/* Registrar recepción (Centro cuando está comprada) */}
-                  {esUsuarioCentro && detailModal.compra.estado === 'comprada' && (
+                  {/* Registrar recepción (Centro cuando está comprada - solo solicitante) */}
+                  {esUsuarioCentro && detailModal.compra.estado === 'comprada' && esSolicitante(detailModal.compra) && (
                     <button
                       onClick={() => {
                         handleOpenRecibir(detailModal.compra);
@@ -1990,8 +2013,8 @@ const ComprasCajaChica = () => {
                     </button>
                   )}
 
-                  {/* Editar (solo pendientes o rechazadas) */}
-                  {puedeEditar && ['pendiente', 'rechazada'].includes(detailModal.compra.estado) && (
+                  {/* Editar (solo pendientes o rechazadas - solo solicitante) */}
+                  {puedeEditar && ['pendiente', 'rechazada'].includes(detailModal.compra.estado) && esSolicitante(detailModal.compra) && (
                     <button
                       onClick={() => {
                         handleEdit(detailModal.compra);
@@ -2004,8 +2027,8 @@ const ComprasCajaChica = () => {
                     </button>
                   )}
 
-                  {/* Cancelar (no estados finales) */}
-                  {puedeCancelar && !['comprada', 'recibida', 'cancelada', 'rechazada'].includes(detailModal.compra.estado) && (
+                  {/* Cancelar (no estados finales - solo solicitante) */}
+                  {puedeCancelar && !['comprada', 'recibida', 'cancelada', 'rechazada'].includes(detailModal.compra.estado) && esSolicitante(detailModal.compra) && (
                     <button
                       onClick={() => {
                         setDetailModal({ show: false, compra: null });

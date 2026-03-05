@@ -8354,6 +8354,15 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # ISS-FIX: Validar que solo el solicitante pueda enviar su propia compra
+        if compra.solicitante != request.user and not request.user.is_superuser:
+            # Verificar si al menos pertenecen al mismo centro
+            if not compra.centro or compra.centro.id != request.user.centro_id:
+                return Response(
+                    {'error': 'Solo el solicitante de esta compra puede enviarla a farmacia'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
         # Validar que tenga al menos un producto
         if compra.detalles.count() == 0:
             return Response(
@@ -8516,6 +8525,15 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
                 {'error': 'La compra debe ser confirmada por farmacia (sin stock) antes de enviar a admin'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        
+        # ISS-FIX: Validar que solo el solicitante pueda enviar su propia compra
+        if compra.solicitante != request.user and not request.user.is_superuser:
+            # Verificar si al menos pertenecen al mismo centro
+            if not compra.centro or compra.centro.id != request.user.centro_id:
+                return Response(
+                    {'error': 'Solo el solicitante de esta compra puede enviarla al administrador'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
         
         compra.estado = 'enviada_admin'
         compra.fecha_envio_admin = timezone.now()
