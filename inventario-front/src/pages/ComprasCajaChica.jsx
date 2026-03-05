@@ -2025,7 +2025,7 @@ const ComprasCajaChica = () => {
                   )}
 
                   {/* Formulario de captura cuando está autorizada - DIRECTO EN EL MODAL */}
-                  {esUsuarioCentro && detailModal.compra.estado === 'autorizada' && esSolicitante(detailModal.compra) && (
+                  {esUsuarioCentro && detailModal.compra.estado === 'autorizada' && esSolicitante(detailModal.compra) && detailModal.compra.detalles && detailModal.compra.detalles.length > 0 && (
                     <div className="w-full border-2 border-purple-300 rounded-lg p-4 bg-purple-50">
                       <div className="flex items-center justify-between mb-4">
                         <h4 className="font-semibold text-purple-900 flex items-center gap-2">
@@ -2073,7 +2073,7 @@ const ComprasCajaChica = () => {
                         </div>
                       </div>
 
-                      {/* Tabla de productos con captura */}
+                      {/* Tabla de productos con captura - USAMOS detailModal.compra.detalles directamente */}
                       <div className="border rounded-lg overflow-hidden mb-4">
                         <div className="bg-gray-100 px-3 py-2 border-b">
                           <h5 className="font-medium text-gray-800 text-sm">Productos - Captura de datos reales</h5>
@@ -2092,7 +2092,17 @@ const ComprasCajaChica = () => {
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-200 bg-white">
-                              {registrarCompraModal.detalles.map((detalle, index) => (
+                              {detailModal.compra.detalles.map((detalle, index) => {
+                                // Buscar en registrarCompraModal si existe, sino crear valor por defecto
+                                const detalleModal = registrarCompraModal.detalles.find(d => d.id === detalle.id) || {
+                                  ...detalle,
+                                  cantidad_comprada: detalle.cantidad_solicitada,
+                                  precio_unitario: detalle.precio_unitario || 0,
+                                  numero_lote: '',
+                                  fecha_caducidad: ''
+                                };
+                                
+                                return (
                                 <tr key={detalle.id} className="hover:bg-gray-50">
                                   <td className="px-2 py-2">
                                     <div className="text-xs font-medium text-gray-900">{detalle.descripcion_producto}</div>
@@ -2102,10 +2112,16 @@ const ComprasCajaChica = () => {
                                     <input
                                       type="number"
                                       min="0"
-                                      value={detalle.cantidad_comprada}
+                                      defaultValue={detalleModal.cantidad_comprada}
                                       onChange={(e) => {
+                                        // Actualizar o agregar detalle
                                         const newDetalles = [...registrarCompraModal.detalles];
-                                        newDetalles[index].cantidad_comprada = e.target.value;
+                                        const idx = newDetalles.findIndex(d => d.id === detalle.id);
+                                        if (idx >= 0) {
+                                          newDetalles[idx].cantidad_comprada = e.target.value;
+                                        } else {
+                                          newDetalles.push({ ...detalle, cantidad_comprada: e.target.value, precio_unitario: 0, numero_lote: '', fecha_caducidad: '' });
+                                        }
                                         setRegistrarCompraModal(prev => ({ ...prev, detalles: newDetalles }));
                                       }}
                                       className="w-16 px-2 py-1 border rounded text-center text-xs focus:ring-2 focus:ring-purple-500"
@@ -2117,10 +2133,15 @@ const ComprasCajaChica = () => {
                                       type="number"
                                       min="0"
                                       step="0.01"
-                                      value={detalle.precio_unitario}
+                                      defaultValue={detalleModal.precio_unitario}
                                       onChange={(e) => {
                                         const newDetalles = [...registrarCompraModal.detalles];
-                                        newDetalles[index].precio_unitario = e.target.value;
+                                        const idx = newDetalles.findIndex(d => d.id === detalle.id);
+                                        if (idx >= 0) {
+                                          newDetalles[idx].precio_unitario = e.target.value;
+                                        } else {
+                                          newDetalles.push({ ...detalle, cantidad_comprada: detalle.cantidad_solicitada, precio_unitario: e.target.value, numero_lote: '', fecha_caducidad: '' });
+                                        }
                                         setRegistrarCompraModal(prev => ({ ...prev, detalles: newDetalles }));
                                       }}
                                       className="w-20 px-2 py-1 border rounded text-center text-xs focus:ring-2 focus:ring-purple-500"
@@ -2130,10 +2151,15 @@ const ComprasCajaChica = () => {
                                   <td className="px-2 py-2">
                                     <input
                                       type="text"
-                                      value={detalle.numero_lote || ''}
+                                      defaultValue={detalleModal.numero_lote || ''}
                                       onChange={(e) => {
                                         const newDetalles = [...registrarCompraModal.detalles];
-                                        newDetalles[index].numero_lote = e.target.value;
+                                        const idx = newDetalles.findIndex(d => d.id === detalle.id);
+                                        if (idx >= 0) {
+                                          newDetalles[idx].numero_lote = e.target.value;
+                                        } else {
+                                          newDetalles.push({ ...detalle, cantidad_comprada: detalle.cantidad_solicitada, precio_unitario: 0, numero_lote: e.target.value, fecha_caducidad: '' });
+                                        }
                                         setRegistrarCompraModal(prev => ({ ...prev, detalles: newDetalles }));
                                       }}
                                       placeholder="Lote"
@@ -2143,28 +2169,37 @@ const ComprasCajaChica = () => {
                                   <td className="px-2 py-2">
                                     <input
                                       type="date"
-                                      value={detalle.fecha_caducidad || ''}
+                                      defaultValue={detalleModal.fecha_caducidad || ''}
                                       onChange={(e) => {
                                         const newDetalles = [...registrarCompraModal.detalles];
-                                        newDetalles[index].fecha_caducidad = e.target.value;
+                                        const idx = newDetalles.findIndex(d => d.id === detalle.id);
+                                        if (idx >= 0) {
+                                          newDetalles[idx].fecha_caducidad = e.target.value;
+                                        } else {
+                                          newDetalles.push({ ...detalle, cantidad_comprada: detalle.cantidad_solicitada, precio_unitario: 0, numero_lote: '', fecha_caducidad: e.target.value });
+                                        }
                                         setRegistrarCompraModal(prev => ({ ...prev, detalles: newDetalles }));
                                       }}
                                       className="w-32 px-2 py-1 border rounded text-xs focus:ring-2 focus:ring-purple-500"
                                     />
                                   </td>
                                   <td className="px-2 py-2 text-right font-medium text-gray-900">
-                                    {formatCurrency((parseFloat(detalle.cantidad_comprada) || 0) * (parseFloat(detalle.precio_unitario) || 0))}
+                                    {formatCurrency((parseFloat(detalleModal.cantidad_comprada) || 0) * (parseFloat(detalleModal.precio_unitario) || 0))}
                                   </td>
                                 </tr>
-                              ))}
+                              )})}
                             </tbody>
                             <tfoot className="bg-gray-50">
                               <tr>
                                 <td colSpan="6" className="px-2 py-2 text-right font-semibold text-gray-900">Total:</td>
                                 <td className="px-2 py-2 text-right font-bold text-purple-700 text-sm">
-                                  {formatCurrency(registrarCompraModal.detalles.reduce((sum, d) => 
-                                    sum + ((parseFloat(d.cantidad_comprada) || 0) * (parseFloat(d.precio_unitario) || 0)), 0
-                                  ))}
+                                  {formatCurrency(detailModal.compra.detalles.reduce((sum, detalle) => {
+                                    const detalleModal = registrarCompraModal.detalles.find(d => d.id === detalle.id) || {
+                                      cantidad_comprada: detalle.cantidad_solicitada,
+                                      precio_unitario: 0
+                                    };
+                                    return sum + ((parseFloat(detalleModal.cantidad_comprada) || 0) * (parseFloat(detalleModal.precio_unitario) || 0));
+                                  }, 0))}
                                 </td>
                               </tr>
                             </tfoot>
@@ -2175,8 +2210,25 @@ const ComprasCajaChica = () => {
                       {/* Botón de confirmación */}
                       <div className="flex justify-end gap-3">
                         <button
-                          onClick={handleRegistrarCompra}
-                          disabled={!registrarCompraModal.fecha_compra || registrarCompraModal.detalles.some(d => !d.cantidad_comprada || !d.precio_unitario)}
+                          onClick={() => {
+                            // Completar detalles faltantes antes de enviar
+                            const detallesCompletos = detailModal.compra.detalles.map(detalle => {
+                              const detalleModal = registrarCompraModal.detalles.find(d => d.id === detalle.id);
+                              if (detalleModal) {
+                                return detalleModal;
+                              }
+                              return {
+                                ...detalle,
+                                cantidad_comprada: detalle.cantidad_solicitada,
+                                precio_unitario: 0,
+                                numero_lote: '',
+                                fecha_caducidad: ''
+                              };
+                            });
+                            setRegistrarCompraModal(prev => ({ ...prev, detalles: detallesCompletos }));
+                            setTimeout(() => handleRegistrarCompra(), 100);
+                          }}
+                          disabled={!registrarCompraModal.fecha_compra}
                           className="px-6 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-medium"
                         >
                           <FaCheck />
