@@ -180,8 +180,8 @@ const InventarioCajaChica = () => {
 
   // Registrar salida
   const handleRegistrarSalida = async () => {
-    if (!salidaModal.item || !salidaModal.cantidad || !salidaModal.motivo) {
-      toast.error('Debe completar todos los campos requeridos');
+    if (!salidaModal.item || !salidaModal.cantidad || !salidaModal.motivo || !salidaModal.referencia) {
+      toast.error('Debe completar todos los campos requeridos (cantidad, paciente PPL y motivo)');
       return;
     }
     
@@ -616,68 +616,105 @@ const InventarioCajaChica = () => {
       {/* Modal de salida */}
       {salidaModal.show && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
-            <div className="px-6 py-4 border-b">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg">
+            <div className="px-6 py-4 border-b bg-orange-50">
               <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
                 <FaMinusCircle className="text-orange-600" />
-                Registrar Salida
+                Registrar Salida / Dispensación
               </h2>
+              <p className="text-xs text-gray-600 mt-1">
+                📋 Registro de entrega de medicamento a paciente PPL
+              </p>
             </div>
             <div className="p-6 space-y-4">
-              <div className="bg-gray-50 p-3 rounded-lg">
-                <div className="text-sm text-gray-500">Producto</div>
-                <div className="font-medium">{salidaModal.item?.descripcion_producto}</div>
-                <div className="text-sm text-gray-500 mt-2">Stock Disponible</div>
-                <div className="font-medium text-green-600">{salidaModal.item?.cantidad_actual} unidades</div>
+              {/* Info del producto */}
+              <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-4 rounded-lg border-l-4 border-blue-500">
+                <div className="text-sm text-gray-600 font-medium">Producto a Dispensar</div>
+                <div className="font-bold text-gray-900 text-lg mt-1">{salidaModal.item?.descripcion_producto}</div>
+                <div className="flex items-center gap-4 mt-3">
+                  <div>
+                    <div className="text-xs text-gray-500">Stock Disponible</div>
+                    <div className="font-bold text-green-600 text-xl">{salidaModal.item?.cantidad_actual} <span className="text-sm">unidades</span></div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-500">Lote</div>
+                    <div className="font-medium text-gray-700">{salidaModal.item?.numero_lote || 'N/A'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-500">Caducidad</div>
+                    <div className="font-medium text-gray-700">{salidaModal.item?.fecha_caducidad || 'N/A'}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Quien dispensa */}
+              <div className="bg-purple-50 p-3 rounded-lg border border-purple-200">
+                <div className="flex items-center gap-2">
+                  <span className="text-purple-600 font-medium text-sm">👤 Dispensado por:</span>
+                  <span className="text-gray-900 font-semibold">{user?.nombre_completo || user?.username || 'Usuario actual'}</span>
+                  <span className="text-xs text-gray-500">({user?.rol || 'N/A'})</span>
+                </div>
               </div>
               
+              {/* Cantidad */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad a salir *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <span className="text-red-600">*</span> Cantidad a Dispensar
+                </label>
                 <input
                   type="number"
                   value={salidaModal.cantidad}
                   onChange={(e) => setSalidaModal(prev => ({ ...prev, cantidad: e.target.value }))}
                   min="1"
                   max={salidaModal.item?.cantidad_actual}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                  placeholder="Número de unidades"
                 />
               </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Motivo *</label>
-                <textarea
-                  value={salidaModal.motivo}
-                  onChange={(e) => setSalidaModal(prev => ({ ...prev, motivo: e.target.value }))}
-                  rows={2}
-                  placeholder="Ej: Uso en paciente, dispensación"
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Referencia (opcional)</label>
+
+              {/* Paciente PPL - OBLIGATORIO */}
+              <div className="bg-yellow-50 border-2 border-yellow-300 rounded-lg p-4">
+                <label className="block text-sm font-bold text-gray-900 mb-1">
+                  <span className="text-red-600">*</span> Paciente PPL (Nombre y/o Expediente)
+                </label>
                 <input
                   type="text"
                   value={salidaModal.referencia}
                   onChange={(e) => setSalidaModal(prev => ({ ...prev, referencia: e.target.value }))}
-                  placeholder="Ej: Expediente del paciente"
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500"
+                  placeholder="Ej: Juan Pérez García - Expediente 12345/2026"
+                  className="w-full px-3 py-2 border-2 border-yellow-400 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 bg-white"
+                />
+                <p className="text-xs text-gray-600 mt-1">⚠️ Campo obligatorio para trazabilidad</p>
+              </div>
+              
+              {/* Motivo/Diagnóstico */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <span className="text-red-600">*</span> Motivo / Diagnóstico / Indicación
+                </label>
+                <textarea
+                  value={salidaModal.motivo}
+                  onChange={(e) => setSalidaModal(prev => ({ ...prev, motivo: e.target.value }))}
+                  rows={3}
+                  placeholder="Ej: Dolor de cabeza - Cefalea tensional, según indicación médica del Dr. López"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                 />
               </div>
             </div>
-            <div className="px-6 py-4 border-t flex justify-end gap-3">
+            <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-3">
               <button
                 onClick={() => setSalidaModal({ show: false, item: null, cantidad: '', motivo: '', referencia: '' })}
-                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100"
               >
                 Cancelar
               </button>
               <button
                 onClick={handleRegistrarSalida}
-                disabled={!salidaModal.cantidad || !salidaModal.motivo}
-                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50"
+                disabled={!salidaModal.cantidad || !salidaModal.motivo || !salidaModal.referencia}
+                className="px-5 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center gap-2"
               >
-                Registrar Salida
+                <FaMinusCircle />
+                Confirmar Salida
               </button>
             </div>
           </div>
