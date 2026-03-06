@@ -1663,13 +1663,107 @@ const Productos = () => {
 
     }
 
-
+    // Vista de tarjetas para móvil
+    const renderMobileCards = () => (
+      <div className="space-y-3 lg:hidden">
+        {productos.map((producto, idx) => {
+          const consecutivo = (currentPage - 1) * PAGE_SIZE + idx + 1;
+          const estadoInventario = determinarEstadoProducto(producto);
+          const nivelStock = resolveNivelStock(producto);
+          const numLotes = producto.lotes_activos ?? producto.lotes_count ?? producto.num_lotes ?? '-';
+          
+          return (
+            <div key={producto.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+              {/* Header con clave y estado */}
+              <div className="flex items-start justify-between gap-2 mb-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs text-gray-500">#{consecutivo}</span>
+                    <span className="font-bold text-theme-primary">{producto.clave || '-'}</span>
+                    {renderEstadoBadge(estadoInventario.label, estadoInventario.activo)}
+                  </div>
+                  <h3 className="font-semibold text-gray-800 mt-1 line-clamp-2">{producto.nombre}</h3>
+                  <p className="text-sm text-gray-500">{producto.presentacion || producto.unidad_medida || '-'}</p>
+                </div>
+                {renderStockBadge(nivelStock)}
+              </div>
+              
+              {/* Info grid */}
+              <div className="grid grid-cols-3 gap-3 text-center py-3 border-y border-gray-100">
+                <div>
+                  <div className={`text-lg font-bold ${
+                    nivelStock === 'sin_stock' || nivelStock === 'critico' ? 'text-red-600' :
+                    nivelStock === 'bajo' ? 'text-amber-600' : 'text-slate-700'
+                  }`}>
+                    {formatInventario(producto)}
+                  </div>
+                  <div className="text-xs text-gray-500">Inventario</div>
+                </div>
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => verLotesProducto(producto)}
+                    className="text-lg font-bold text-blue-600 hover:text-blue-800"
+                  >
+                    {numLotes}
+                  </button>
+                  <div className="text-xs text-gray-500">Lotes</div>
+                </div>
+                <div>
+                  <div className="text-lg font-bold text-slate-700">{producto.stock_minimo || '-'}</div>
+                  <div className="text-xs text-gray-500">Mín.</div>
+                </div>
+              </div>
+              
+              {/* Acciones */}
+              {puede.tieneAcciones && (
+                <div className="flex items-center justify-end gap-4 mt-3 pt-2">
+                  {puede.editar && (
+                    <button type="button" onClick={() => openModal(producto)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg">
+                      <FaEdit size={18} />
+                    </button>
+                  )}
+                  {puede.cambiarEstado && (
+                    <button
+                      type="button"
+                      onClick={() => handleToggleActivo(producto)}
+                      disabled={actionLoading === producto.id}
+                      className={`p-2 rounded-lg ${producto.activo ? 'text-green-600 hover:bg-green-50' : 'text-gray-500 hover:bg-gray-100'}`}
+                    >
+                      {producto.activo ? <FaToggleOn size={20} /> : <FaToggleOff size={20} />}
+                    </button>
+                  )}
+                  {puede.eliminar && (
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(producto)}
+                      disabled={actionLoading === producto.id}
+                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                    >
+                      <FaTrash size={18} />
+                    </button>
+                  )}
+                  {puede.auditoria && (
+                    <button type="button" onClick={() => verAuditoriaProducto(producto)} className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg">
+                      <FaHistory size={18} />
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
 
     return (
-
-      <div className="w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
-
-        <table className="w-full min-w-[800px] lg:min-w-[1000px] divide-y divide-gray-200">
+      <>
+        {/* Vista móvil: tarjetas */}
+        {renderMobileCards()}
+        
+        {/* Vista desktop: tabla */}
+        <div className="hidden lg:block w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
+        <table className="w-full min-w-[800px] divide-y divide-gray-200">
 
           <thead className="bg-theme-gradient sticky top-0 z-10">
 
@@ -1914,7 +2008,7 @@ const Productos = () => {
         </table>
 
       </div>
-
+      </> 
     );
 
   };

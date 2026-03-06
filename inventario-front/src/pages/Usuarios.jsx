@@ -1017,7 +1017,95 @@ function Usuarios() {
         <UsuariosSkeleton />
       ) : (
         <>
-        <div className="w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
+        {/* Vista móvil: tarjetas */}
+        <div className="lg:hidden space-y-3">
+          {filteredUsuarios.length === 0 ? (
+            <div className="bg-white rounded-lg border border-gray-200 shadow-md p-6 text-center text-gray-500">
+              {totalUsuarios === 0 && !searchTerm && !filterRol && !filterEstado && !filterCentro
+                ? 'No hay usuarios registrados' 
+                : 'No se encontraron usuarios con los filtros aplicados'}
+            </div>
+          ) : filteredUsuarios.map((usuario, idx) => (
+            <div key={usuario.id} className="bg-white rounded-lg border border-gray-200 shadow-md p-4">
+              {/* Header con usuario y estado */}
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <div>
+                  <div className="font-medium text-gray-900">{usuario.username}</div>
+                  <div className="text-sm text-gray-600">{usuario.first_name} {usuario.last_name}</div>
+                </div>
+                <span className={`px-2 py-1 text-xs font-semibold rounded-full shrink-0 ${
+                  usuario.is_active !== false ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                }`}>
+                  {usuario.is_active !== false ? 'Activo' : 'Inactivo'}
+                </span>
+              </div>
+              
+              {/* Info */}
+              <div className="space-y-1 text-sm mb-3">
+                {usuario.email && (
+                  <div className="text-gray-600 truncate">{usuario.email}</div>
+                )}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                    usuario.rol === 'admin' || usuario.rol === 'admin_sistema' ? 'bg-purple-100 text-purple-800' :
+                    usuario.rol === 'farmacia' ? 'bg-blue-100 text-blue-800' :
+                    usuario.rol === 'director_centro' ? 'bg-amber-100 text-amber-800' :
+                    usuario.rol === 'administrador_centro' ? 'bg-orange-100 text-orange-800' :
+                    usuario.rol === 'medico' ? 'bg-teal-100 text-teal-800' :
+                    usuario.rol === 'centro' ? 'bg-green-100 text-green-800' :
+                    usuario.rol === 'vista' ? 'bg-gray-100 text-gray-700' :
+                    'bg-gray-100 text-gray-800'
+                  }`}>
+                    {ROLES.find(r => r.value === usuario.rol)?.label || usuario.rol || 'Sin rol'}
+                  </span>
+                  {usuario.centro?.nombre && (
+                    <span className="text-gray-500">{usuario.centro.nombre}</span>
+                  )}
+                </div>
+              </div>
+              
+              {/* Acciones */}
+              {puedeModificarUsuario(usuario) && (
+                <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+                  {puede.editar && (
+                    <button 
+                      onClick={() => handleOpenModal(usuario)}
+                      disabled={actionLoading === usuario.id}
+                      className="flex-1 px-3 py-2 text-sm text-blue-600 bg-blue-50 rounded-lg flex items-center justify-center gap-1 disabled:opacity-50"
+                    >
+                      <FaEdit /> Editar
+                    </button>
+                  )}
+                  {puede.cambiarPassword && (
+                    <button 
+                      onClick={() => handleOpenPasswordModal(usuario)}
+                      disabled={actionLoading === usuario.id}
+                      className="flex-1 px-3 py-2 text-sm text-green-600 bg-green-50 rounded-lg flex items-center justify-center gap-1 disabled:opacity-50"
+                    >
+                      <FaKey /> Password
+                    </button>
+                  )}
+                  {puede.editar && usuario.id !== currentUserId && (
+                    <button 
+                      onClick={() => handleToggleActivo(usuario)}
+                      disabled={actionLoading === usuario.id}
+                      className={`px-3 py-2 text-sm rounded-lg disabled:opacity-50 ${
+                        usuario.is_active !== false 
+                          ? 'text-red-600 bg-red-50' 
+                          : 'text-green-600 bg-green-50'
+                      }`}
+                    >
+                      {usuario.is_active !== false ? <FaBan /> : <FaCheck />}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        
+        {/* Vista desktop: tabla */}
+        <div className="hidden lg:block w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
           <table className="w-full min-w-[1000px] divide-y divide-gray-200">
             <thead className="bg-theme-gradient sticky top-0 z-10">
               <tr>

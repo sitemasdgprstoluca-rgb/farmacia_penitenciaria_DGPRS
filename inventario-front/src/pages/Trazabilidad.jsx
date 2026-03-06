@@ -1337,7 +1337,40 @@ const Trazabilidad = () => {
                   (mostrando {Math.min(resultadosGlobal.movimientos.length, 500)} de {resultadosGlobal.total_movimientos})
                 </span>
               </h3>
-              <div className="w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
+              
+              {/* Vista móvil: tarjetas */}
+              <div className="lg:hidden space-y-3">
+                {resultadosGlobal.movimientos.slice(0, 50).map((mov, idx) => (
+                  <div key={mov.id || idx} className="p-3 border border-gray-200 rounded-lg">
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                        mov.tipo === 'entrada' ? 'bg-green-100 text-green-700' :
+                        mov.tipo === 'salida' ? 'bg-red-100 text-red-700' :
+                        mov.tipo === 'ajuste' ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-gray-100 text-gray-700'
+                      }`}>
+                        {mov.tipo}
+                      </span>
+                      <span className="text-xs text-gray-500">{mov.fecha_str || '-'}</span>
+                    </div>
+                    <div className="text-sm font-medium text-gray-900 truncate">{mov.producto_nombre || mov.producto || '-'}</div>
+                    <div className="grid grid-cols-2 gap-1 text-xs text-gray-600 mt-1">
+                      <div>Lote: {mov.numero_lote || '-'}</div>
+                      <div className="font-semibold">Cant: {mov.cantidad || 0}</div>
+                      <div>Centro: {mov.centro_nombre || '-'}</div>
+                      <div>Usuario: {mov.usuario_nombre || '-'}</div>
+                    </div>
+                  </div>
+                ))}
+                {resultadosGlobal.movimientos.length > 50 && (
+                  <p className="text-xs text-gray-500 text-center py-2">
+                    Mostrando 50 de {resultadosGlobal.movimientos.length}. Usa escritorio para ver más.
+                  </p>
+                )}
+              </div>
+              
+              {/* Vista desktop: tabla */}
+              <div className="hidden lg:block w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
                 <table className="w-full min-w-[1100px] divide-y divide-gray-200 text-sm">
                   <thead className="bg-theme-gradient sticky top-0 z-10">
                     <tr>
@@ -1504,7 +1537,38 @@ const Trazabilidad = () => {
               <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
                 <FaWarehouse /> Lotes asociados ({lotesParaMostrar.length})
               </h3>
-              <div className="w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
+              
+              {/* Vista móvil: tarjetas */}
+              <div className="lg:hidden space-y-3">
+                {lotesParaMostrar.map((lote) => (
+                  <div key={lote.numero_lote} className="p-3 border border-gray-200 rounded-lg">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span className="font-semibold text-gray-900">{lote.numero_lote}</span>
+                      <span className={`px-2 py-0.5 text-xs rounded-full ${estadoClass(lote.estado)}`}>
+                        {lote.estado || '-'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <span className="text-gray-500">Caducidad:</span>
+                        <span className="ml-1">{lote.fecha_caducidad ? new Date(lote.fecha_caducidad).toLocaleDateString() : '-'}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Inv:</span>
+                        <span className="ml-1 font-medium">{lote.cantidad_actual}</span>
+                      </div>
+                      {puedeVerContrato && lote.numero_contrato && (
+                        <div className="col-span-2 text-xs text-gray-600">
+                          Contrato: {lote.numero_contrato} {lote.marca && `| ${lote.marca}`}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              {/* Vista desktop: tabla */}
+              <div className="hidden lg:block w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
                 <table className="w-full min-w-[800px] divide-y divide-gray-200 text-sm">
                   <thead className="bg-theme-gradient sticky top-0 z-10">
                     <tr>
@@ -1550,7 +1614,40 @@ const Trazabilidad = () => {
                   </span>
                 )}
               </h3>
-              <div className="w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
+              
+              {/* Vista móvil: tarjetas */}
+              <div className="lg:hidden space-y-3">
+                {movimientosParaMostrar.slice(0, 50).map((mov, idx) => (
+                  <div key={mov.id || idx} className="p-3 border border-gray-200 rounded-lg">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span className={`px-2 py-0.5 text-xs rounded-full ${
+                        mov.tipo === 'ENTRADA' ? 'bg-blue-100 text-blue-700' :
+                        mov.tipo === 'SALIDA' ? 'bg-red-100 text-red-700' :
+                        mov.tipo === 'AJUSTE' ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-gray-100 text-gray-700'
+                      }`}>
+                        {mov.tipo}
+                      </span>
+                      <span className="text-xs text-gray-500">{mov.fecha ? new Date(mov.fecha).toLocaleString() : '-'}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div className="font-semibold">Cantidad: {mov.cantidad}</div>
+                      {mostrarSaldo && <div>Saldo: {mov.saldo_lote ?? '-'}</div>}
+                      <div className="text-gray-600">Centro: {mov.centro_nombre || '-'}</div>
+                      <div className="text-gray-600">Usuario: {mov.usuario_nombre || '-'}</div>
+                      <div className="col-span-2 text-xs font-mono text-gray-500">Lote: {mov.numero_lote || '-'}</div>
+                    </div>
+                  </div>
+                ))}
+                {movimientosParaMostrar.length > 50 && (
+                  <p className="text-xs text-gray-500 text-center py-2">
+                    Mostrando 50 de {movimientosParaMostrar.length}. Usa escritorio para ver más.
+                  </p>
+                )}
+              </div>
+              
+              {/* Vista desktop: tabla */}
+              <div className="hidden lg:block w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
                 <table className="w-full min-w-[900px] divide-y divide-gray-200 text-sm">
                   <thead className="bg-theme-gradient sticky top-0 z-10">
                     <tr>

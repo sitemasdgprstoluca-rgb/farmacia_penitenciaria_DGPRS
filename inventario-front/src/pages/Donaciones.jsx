@@ -1936,8 +1936,97 @@ const Donaciones = () => {
             <p>No se encontraron donaciones</p>
           </div>
         ) : (
-          <div className="w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
-            <table className="w-full min-w-[1000px]">
+          <>
+          {/* Vista móvil: tarjetas */}
+        <div className="lg:hidden space-y-3 p-4">
+          {donaciones.map((donacion) => {
+            const estado = ESTADOS_DONACION[donacion.estado] || ESTADOS_DONACION.pendiente;
+            return (
+              <div key={donacion.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+                {/* Header con número y estado */}
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-theme-primary">{donacion.numero || `DON-${donacion.id}`}</span>
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${estado.color}`}>
+                        {estado.icon} {estado.label}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600 mt-1 flex items-center gap-1">
+                      <FaUser className="text-gray-400" />
+                      {donacion.donante_nombre}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {TIPOS_DONANTE.find((t) => t.value === donacion.donante_tipo)?.label || donacion.donante_tipo}
+                    </p>
+                  </div>
+                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
+                    <FaBox /> {donacion.detalles?.length || 0}
+                  </span>
+                </div>
+                
+                {/* Info grid */}
+                <div className="grid grid-cols-2 gap-3 py-3 border-y border-gray-100 text-sm">
+                  <div>
+                    <div className="text-gray-500 text-xs">Centro destino</div>
+                    <div className="font-medium text-gray-800">{donacion.centro_destino_nombre || '-'}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500 text-xs">Fecha</div>
+                    <div className="font-medium text-gray-800">{formatFecha(donacion.fecha_donacion)}</div>
+                  </div>
+                </div>
+                
+                {/* Acciones */}
+                <div className="flex items-center justify-end gap-3 mt-3 pt-2">
+                  <button
+                    onClick={() => handleVerDetalle(donacion)}
+                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                    title="Ver detalle"
+                  >
+                    <FaEye size={18} />
+                  </button>
+                  {donacion.estado === 'procesada' && (
+                    <button
+                      onClick={() => handleVerHistorialSalidas(donacion)}
+                      className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg"
+                      title="Ver historial"
+                    >
+                      <FaHistory size={18} />
+                    </button>
+                  )}
+                  {puede.editar && donacion.estado === 'pendiente' && (
+                    <button onClick={() => handleEditar(donacion)} className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg">
+                      <FaEdit size={18} />
+                    </button>
+                  )}
+                  {puede.procesar && donacion.estado === 'pendiente' && (
+                    <button
+                      onClick={() => setConfirmRecibir(donacion)}
+                      disabled={actionLoading === donacion.id}
+                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg disabled:opacity-50"
+                    >
+                      <FaBox size={18} />
+                    </button>
+                  )}
+                  {puede.procesar && ['pendiente', 'recibida'].includes(donacion.estado) && (
+                    <button
+                      onClick={() => setConfirmProcesar(donacion)}
+                      disabled={actionLoading === donacion.id}
+                      className="p-2 text-green-600 hover:bg-green-50 rounded-lg disabled:opacity-50"
+                    >
+                      <FaCheck size={18} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        
+        {/* Vista desktop: tabla */}
+        <div className="hidden lg:block w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
+          <table className="w-full min-w-[1000px]">
               <thead className="bg-theme-gradient sticky top-0 z-10">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Número</th>
@@ -2099,8 +2188,10 @@ const Donaciones = () => {
             />
           </div>
         )}
-      </div>
         </>
+        )}
+      </div>
+      </>
       )}
 
       {/* ========== TAB: CATÁLOGO DE PRODUCTOS DONACIONES ========== */}

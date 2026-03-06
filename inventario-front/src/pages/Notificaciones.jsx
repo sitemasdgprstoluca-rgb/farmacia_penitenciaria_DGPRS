@@ -346,7 +346,67 @@ function Notificaciones() {
 
       {/* Contenedor Tabla + Paginación */}
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <div className="w-full overflow-x-auto">
+        {/* Vista móvil: tarjetas */}
+        <div className="lg:hidden divide-y divide-gray-100">
+          {loading && (
+            <div className="px-4 py-6 text-center text-sm text-gray-500">
+              Cargando notificaciones...
+            </div>
+          )}
+          {!loading && !filtered.length && (
+            <div className="px-4 py-6 text-center text-sm text-gray-500">
+              No hay notificaciones con los filtros seleccionados.
+            </div>
+          )}
+          {!loading && filtered.map((notif) => {
+            const badge = badgeByTipo[notif.tipo] || { bg: "bg-gray-100 text-gray-700", Icon: FaInfoCircle };
+            const IconComponent = badge.Icon;
+            return (
+              <div key={notif.id} className={`p-4 ${!notif.leida ? "bg-blue-50/60" : ""}`}>
+                {/* Header con título y estado */}
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <h3 className="font-semibold text-gray-900 flex-1">{notif.titulo}</h3>
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold shrink-0 ${
+                    notif.leida ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-800"
+                  }`}>
+                    <span className={`w-2 h-2 rounded-full ${notif.leida ? "bg-green-500" : "bg-yellow-500"}`} />
+                    {notif.leida ? "Leída" : "Pendiente"}
+                  </span>
+                </div>
+                
+                {/* Mensaje */}
+                <p className="text-sm text-gray-700 mb-2 line-clamp-2">{notif.mensaje}</p>
+                
+                {/* Info row */}
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${badge.bg}`}>
+                    <IconComponent className="w-3 h-3" />
+                    {notif.tipo || "info"}
+                  </span>
+                  <span className="text-xs text-gray-500">
+                    {notif.fecha_creacion ? new Date(notif.fecha_creacion).toLocaleString() : "-"}
+                  </span>
+                </div>
+                
+                {/* Acciones */}
+                {!notif.leida && (
+                  <ProtectedButton
+                    permission="verNotificaciones"
+                    onClick={() => marcarLeida(notif.id)}
+                    disabled={marcandoId === notif.id}
+                    className="w-full px-3 py-2 rounded-lg border border-primary-100 text-primary-600 hover:bg-primary-50 text-sm disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1"
+                  >
+                    {marcandoId === notif.id ? <FaSpinner className="animate-spin" /> : <FaCheck />}
+                    {marcandoId === notif.id ? 'Marcando...' : 'Marcar leída'}
+                  </ProtectedButton>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        
+        {/* Vista desktop: tabla */}
+        <div className="hidden lg:block w-full overflow-x-auto">
           <table className="w-full min-w-[800px] divide-y divide-gray-200">
             <thead className="bg-theme-gradient sticky top-0 z-10">
             <tr>

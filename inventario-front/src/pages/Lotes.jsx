@@ -1871,7 +1871,103 @@ const handleImportar = async (e) => {
       {/* Contenedor Tabla + Paginación */}
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
         {/* Tabla */}
-        <div className="w-full overflow-x-auto">
+        {/* Vista móvil: tarjetas */}
+        <div className="lg:hidden space-y-3">
+          {loading ? (
+            <LotesSkeleton />
+          ) : lotes.length === 0 ? (
+            <div className="py-12 text-center text-gray-500">
+              {searchTerm ? `No se encontraron resultados para "${searchTerm}"` : 'No hay lotes registrados'}
+            </div>
+          ) : (
+            lotes.map((lote, index) => (
+              <div key={lote.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+                {/* Header con producto y alerta */}
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs text-gray-500">#{(currentPage - 1) * pageSize + index + 1}</span>
+                      <span className="font-bold text-theme-primary">{lote.producto_clave}</span>
+                    </div>
+                    <h3 className="font-semibold text-gray-800 mt-1 text-sm line-clamp-2">{lote.producto_nombre}</h3>
+                    <p className="text-sm text-gray-500 font-mono">{lote.numero_lote}</p>
+                  </div>
+                  <span className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-full ${getAlertaClass(lote.alerta_caducidad)}`}>
+                    {getAlertaIcon(lote.alerta_caducidad)}
+                    <span>
+                      {lote.alerta_caducidad === 'vencido' ? 'Vencido' :
+                       lote.alerta_caducidad === 'critico' ? '<90d' :
+                       lote.alerta_caducidad === 'proximo' ? '<180d' : 'OK'}
+                    </span>
+                  </span>
+                </div>
+                
+                {/* Info grid */}
+                <div className="grid grid-cols-3 gap-3 text-center py-3 border-y border-gray-100">
+                  <div>
+                    <div className="text-sm font-semibold text-gray-700">{formatFecha(lote.fecha_caducidad)}</div>
+                    <div className="text-xs text-gray-500">Caducidad</div>
+                  </div>
+                  <div>
+                    <div className={`text-lg font-bold ${
+                      lote.cantidad_actual === 0 ? 'text-red-500' :
+                      lote.cantidad_actual < (lote.cantidad_inicial * 0.2) ? 'text-amber-500' : 'text-slate-700'
+                    }`}>
+                      {lote.cantidad_actual?.toLocaleString()}
+                    </div>
+                    <div className="text-xs text-gray-500">Inventario</div>
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold text-gray-700">{lote.dias_para_caducar}d</div>
+                    <div className="text-xs text-gray-500">Días rest.</div>
+                  </div>
+                </div>
+                
+                {/* Marca */}
+                {lote.marca && (
+                  <div className="mt-2 text-xs text-gray-600">
+                    <span className="font-medium">Marca:</span> {lote.marca}
+                  </div>
+                )}
+                
+                {/* Acciones */}
+                <div className="flex items-center justify-end gap-4 mt-3 pt-2">
+                  <button
+                    onClick={() => handleDocumentoModal(lote)}
+                    disabled={actionLoading === lote.id}
+                    className={`p-2 rounded-lg ${lote.tiene_documentos ? 'text-green-600 hover:bg-green-50' : 'text-gray-400 hover:bg-gray-100'}`}
+                  >
+                    <FaFilePdf size={18} />
+                  </button>
+                  <button
+                    onClick={() => handleParcialidadesModal(lote)}
+                    disabled={loadingParcialidades}
+                    className={`p-2 rounded-lg ${lote.num_entregas > 0 ? 'text-purple-600 hover:bg-purple-50' : 'text-gray-400 hover:bg-gray-100'}`}
+                  >
+                    <FaHistory size={18} />
+                  </button>
+                  {puede.editar && (
+                    <button onClick={() => handleEdit(lote)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg">
+                      <FaEdit size={18} />
+                    </button>
+                  )}
+                  {puede.eliminar && (
+                    <button
+                      onClick={() => handleDelete(lote.id, lote)}
+                      disabled={actionLoading === lote.id}
+                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                    >
+                      <FaTrash size={18} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+        
+        {/* Vista desktop: tabla */}
+        <div className="hidden lg:block w-full overflow-x-auto">
           <table className="w-full min-w-[900px] divide-y divide-gray-200 table-fixed">
             <colgroup>
               <col className="w-10" /> {/* # */}

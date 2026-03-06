@@ -1313,7 +1313,102 @@ const ComprasCajaChica = () => {
 
       {/* Tabla de compras */}
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-        <div className="w-full overflow-x-auto">
+        {/* Vista móvil: tarjetas */}
+        <div className="lg:hidden space-y-3 p-4">
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600"></div>
+              <span className="text-gray-500 ml-2">Cargando...</span>
+            </div>
+          ) : compras.length === 0 ? (
+            <div className="py-8 text-center text-gray-500">
+              No se encontraron compras de caja chica
+            </div>
+          ) : (
+            compras.map((compra) => {
+              const EstadoIcon = ESTADO_ICONS[compra.estado] || FaClipboardList;
+              return (
+                <div key={compra.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+                  {/* Header con folio y estado */}
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-sm font-bold text-gray-900">{compra.folio || '-'}</span>
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${ESTADO_COLORS[compra.estado] || 'bg-gray-100 text-gray-800'}`}>
+                          <EstadoIcon className="text-xs" />
+                          {compra.estado?.replace(/_/g, ' ')}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-600 mt-1">{compra.proveedor_nombre || 'Sin proveedor'}</p>
+                      {esUsuarioFarmacia && (
+                        <p className="text-xs text-gray-500">{compra.centro?.nombre || compra.centro_nombre || '-'}</p>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg font-bold text-green-700">{formatCurrency(compra.total)}</div>
+                      <div className="text-xs text-gray-500">{compra.total_productos || compra.detalles?.length || 0} productos</div>
+                    </div>
+                  </div>
+                  
+                  {/* Info grid */}
+                  <div className="grid grid-cols-2 gap-3 py-3 border-y border-gray-100 text-sm">
+                    <div>
+                      <div className="text-gray-500 text-xs">Fecha solicitud</div>
+                      <div className="font-medium text-gray-800">{formatDate(compra.fecha_solicitud)}</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-500 text-xs">Captura</div>
+                      <div className="font-medium text-gray-800">
+                        {compra.created_at ? new Date(compra.created_at).toLocaleDateString('es-MX') : '-'}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Acciones */}
+                  <div className="flex items-center justify-end gap-3 mt-3 pt-2">
+                    <button
+                      onClick={() => handleViewDetails(compra)}
+                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                      title="Ver detalles"
+                    >
+                      <FaEye size={18} />
+                    </button>
+                    {puedeEditar(compra) && (
+                      <button
+                        onClick={() => handleEdit(compra)}
+                        className="p-2 text-yellow-600 hover:bg-yellow-50 rounded-lg"
+                        title="Editar"
+                      >
+                        <FaEdit size={18} />
+                      </button>
+                    )}
+                    {puedeEliminar(compra) && (
+                      <button
+                        onClick={() => handleDelete(compra)}
+                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                        title="Eliminar"
+                      >
+                        <FaTrash size={18} />
+                      </button>
+                    )}
+                    {puedeCambiarEstado && (
+                      <button
+                        onClick={() => setStatusModal({ show: true, compra })}
+                        className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg"
+                        title="Cambiar estado"
+                      >
+                        <FaHistory size={18} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+        
+        {/* Vista desktop: tabla */}
+        <div className="hidden lg:block w-full overflow-x-auto">
           <table className="w-full min-w-[900px] divide-y divide-gray-200 text-sm">
             <thead className="bg-theme-gradient sticky top-0 z-10">
               <tr>

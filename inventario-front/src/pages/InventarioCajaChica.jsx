@@ -519,7 +519,106 @@ const InventarioCajaChica = () => {
 
       {/* Tabla de inventario */}
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <div className="w-full overflow-x-auto">
+        {/* Vista móvil: tarjetas */}
+        <div className="lg:hidden">
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 py-8">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600"></div>
+              <span className="text-gray-500">Cargando...</span>
+            </div>
+          ) : inventario.length === 0 ? (
+            <div className="px-4 py-8 text-center text-gray-500">
+              No se encontró inventario de caja chica
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {inventario.map((item) => {
+                const caducidadStatus = getCaducidadStatus(item.fecha_caducidad);
+                const sinStock = item.cantidad_actual <= 0;
+                return (
+                  <div key={item.id} className={`p-4 ${sinStock ? 'bg-gray-50 opacity-60' : ''}`}>
+                    {/* Header: Producto */}
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-gray-900 truncate">{item.descripcion_producto}</div>
+                        {item.producto?.clave && (
+                          <div className="text-xs text-gray-500">{item.producto.clave}</div>
+                        )}
+                      </div>
+                      <span className={`font-bold text-lg ${
+                        sinStock ? 'text-red-600' : 
+                        item.cantidad_actual < item.cantidad_inicial * 0.2 ? 'text-yellow-600' : 
+                        'text-green-600'
+                      }`}>
+                        {item.cantidad_actual}
+                      </span>
+                    </div>
+                    
+                    {/* Info grid */}
+                    <div className="grid grid-cols-2 gap-2 text-sm mb-3">
+                      {esUsuarioFarmacia && (
+                        <div>
+                          <span className="text-gray-500">Centro:</span>
+                          <span className="ml-1 text-gray-700">{item.centro?.nombre || '-'}</span>
+                        </div>
+                      )}
+                      <div>
+                        <span className="text-gray-500">Lote:</span>
+                        <span className="ml-1 font-mono text-gray-600">{item.numero_lote || '-'}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-gray-500">Cad:</span>
+                        <span className="text-gray-600">{formatDate(item.fecha_caducidad)}</span>
+                        {caducidadStatus && (
+                          <span className={`px-1.5 py-0.5 rounded text-xs ${caducidadStatus.color}`}>
+                            {caducidadStatus.label}
+                          </span>
+                        )}
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Precio:</span>
+                        <span className="ml-1 text-gray-600">{formatCurrency(item.precio_unitario)}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Stock inicial:</span>
+                        <span className="ml-1 text-gray-600">{item.cantidad_inicial}</span>
+                      </div>
+                    </div>
+                    
+                    {/* Acciones */}
+                    <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+                      <button
+                        onClick={() => handleVerMovimientos(item)}
+                        className="flex-1 px-3 py-2 text-sm text-blue-600 bg-blue-50 rounded-lg flex items-center justify-center gap-1"
+                      >
+                        <FaHistory /> Movimientos
+                      </button>
+                      {puedeRegistrarSalida && !sinStock && (
+                        <button
+                          onClick={() => setSalidaModal({ show: true, item, cantidad: '', motivo: '', referencia: '', pacienteId: null })}
+                          className="flex-1 px-3 py-2 text-sm text-orange-600 bg-orange-50 rounded-lg flex items-center justify-center gap-1"
+                        >
+                          <FaMinusCircle /> Salida
+                        </button>
+                      )}
+                      {puedeAjustar && (
+                        <button
+                          onClick={() => setAjusteModal({ show: true, item, cantidad: item.cantidad_actual.toString(), motivo: '' })}
+                          className="px-3 py-2 text-sm text-purple-600 bg-purple-50 rounded-lg"
+                        >
+                          <FaExchangeAlt />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        
+        {/* Vista desktop: tabla */}
+        <div className="hidden lg:block w-full overflow-x-auto">
           <table className="w-full min-w-[900px] divide-y divide-gray-200">
             <thead className="bg-theme-gradient sticky top-0 z-10">
               <tr>

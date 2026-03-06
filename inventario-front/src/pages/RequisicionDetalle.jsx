@@ -1290,8 +1290,67 @@ const RequisicionDetalle = () => {
         {/* MODO EDICIÓN DE PRODUCTOS */}
         {modoEdicionProductos ? (
           <>
-            {/* Tabla editable - ISS-FIX: Mejorar responsive */}
-            <div className="w-full overflow-x-auto rounded-lg border border-amber-200 shadow-md -mx-2 sm:mx-0">
+            {/* Vista móvil: tarjetas editables */}
+            <div className="lg:hidden space-y-3">
+              {productosEditables.map((prod, idx) => (
+                <div key={prod.id || `nuevo-${idx}`} className={`p-4 rounded-lg border shadow-sm ${prod.esNuevo ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200'}`}>
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-gray-900 truncate">{prod.producto_nombre || '-'}</div>
+                      <div className="text-xs text-gray-500">
+                        Clave: {prod.producto_clave || '-'} {prod.esNuevo && <span className="text-green-600">(Nuevo)</span>}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => eliminarProducto(idx)}
+                      className="p-2 text-red-500 hover:bg-red-100 rounded-lg"
+                    >
+                      <FaTrash size={14} />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-sm mb-3">
+                    <div>
+                      <span className="text-gray-500">Lote:</span>
+                      <span className="ml-1 font-mono">{prod.numero_lote || '-'}</span>
+                    </div>
+                    {esAdminOFarmacia && (
+                      <div>
+                        <span className="text-gray-500">Stock:</span>
+                        <span className={`ml-1 font-semibold ${prod.stock_disponible < prod.cantidad_solicitada ? 'text-red-600' : 'text-green-600'}`}>
+                          {prod.stock_disponible || 0}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-center gap-2 pt-2 border-t border-gray-100">
+                    <span className="text-sm text-gray-600">Cantidad:</span>
+                    <button
+                      onClick={() => actualizarCantidadProducto(idx, prod.cantidad_solicitada - 1)}
+                      className="p-2 text-gray-500 hover:text-red-500 bg-gray-100 rounded-lg"
+                      disabled={prod.cantidad_solicitada <= 1}
+                    >
+                      <FaMinus size={12} />
+                    </button>
+                    <input
+                      type="number"
+                      min="1"
+                      value={prod.cantidad_solicitada}
+                      onChange={(e) => actualizarCantidadProducto(idx, e.target.value)}
+                      className="w-16 px-2 py-2 border border-gray-300 rounded-lg text-center font-semibold"
+                    />
+                    <button
+                      onClick={() => actualizarCantidadProducto(idx, prod.cantidad_solicitada + 1)}
+                      className="p-2 text-gray-500 hover:text-green-500 bg-gray-100 rounded-lg"
+                    >
+                      <FaPlus size={12} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            {/* Vista desktop: tabla editable */}
+            <div className="hidden lg:block w-full overflow-x-auto rounded-lg border border-amber-200 shadow-md -mx-2 sm:mx-0">
               <table className="w-full min-w-[700px] border-collapse table-fixed">
                 <thead className="bg-amber-500">
                   <tr>

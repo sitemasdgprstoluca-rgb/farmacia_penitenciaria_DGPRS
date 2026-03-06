@@ -261,22 +261,22 @@ const KPICard = ({
       />
       
       {/* Contenido principal */}
-      <div className="p-5">
+      <div className="p-3 sm:p-5">
         {/* Header: Título + Icono */}
-        <div className="flex items-start justify-between gap-3 mb-4">
+        <div className="flex items-start justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
           <div className="flex-1 min-w-0">
             <p 
-              className="text-[11px] font-bold uppercase tracking-widest mb-0.5"
+              className="text-[10px] sm:text-[11px] font-bold uppercase tracking-widest mb-0.5"
               style={{ color: colors.text }}
             >
               {title}
             </p>
-            <p className="text-xs text-gray-400 truncate">{subtext}</p>
+            <p className="text-[10px] sm:text-xs text-gray-400 truncate">{subtext}</p>
           </div>
           
           {/* Icono con fondo */}
           <div 
-            className="flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center transition-all duration-300"
+            className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center transition-all duration-300"
             style={{ 
               background: colors.gradient,
               boxShadow: isHovered 
@@ -290,13 +290,13 @@ const KPICard = ({
         </div>
         
         {/* Valor principal */}
-        <div className="mb-3">
+        <div className="mb-2 sm:mb-3">
           {loading ? (
-            <div className="h-12 w-28 bg-gray-100 rounded-lg animate-pulse" />
+            <div className="h-10 sm:h-12 w-24 sm:w-28 bg-gray-100 rounded-lg animate-pulse" />
           ) : (
             <div className="flex items-baseline gap-1">
               <span 
-                className="text-4xl font-black tracking-tight tabular-nums"
+                className="text-3xl sm:text-4xl font-black tracking-tight tabular-nums"
                 style={{ 
                   color: '#1F2937',
                   textShadow: '0 1px 2px rgba(0,0,0,0.05)'
@@ -1150,10 +1150,10 @@ const Dashboard = () => {
             </div>
           
           {/* Controles */}
-          <div className="flex items-center gap-3 flex-shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0 w-full md:w-auto">
             {/* Selector de centro */}
             {puedeFiltrarPorCentro && (
-              <div className="min-w-[200px] max-w-[300px]">
+              <div className="flex-1 md:flex-none md:min-w-[200px] md:max-w-[300px]">
                 <CentroSelector onCentroChange={handleCentroChange} selectedValue={selectedCentro} />
               </div>
             )}

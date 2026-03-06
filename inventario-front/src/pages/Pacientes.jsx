@@ -651,7 +651,79 @@ const Pacientes = () => {
             <p className="mt-4 text-gray-500">No se encontraron pacientes</p>
           </div>
         ) : (
-          <div className="w-full overflow-x-auto">
+          <>
+          {/* Vista móvil: tarjetas */}
+          <div className="lg:hidden divide-y divide-gray-100">
+            {pacientes.map((paciente) => (
+              <div key={paciente.id} className="p-4">
+                {/* Header con expediente y estado */}
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div className="flex items-center gap-2">
+                    <FaIdCard className="text-guinda" />
+                    <span className="font-medium text-gray-900">{paciente.numero_expediente}</span>
+                  </div>
+                  <span className={`px-2 py-1 text-xs rounded-full shrink-0 ${
+                    paciente.activo ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                  }`}>
+                    {paciente.activo ? 'Activo' : 'Inactivo'}
+                  </span>
+                </div>
+                
+                {/* Nombre y edad */}
+                <div className="mb-2">
+                  <div className="font-medium text-gray-900">{paciente.nombre_completo}</div>
+                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                    {paciente.edad && <span>{paciente.edad} años</span>}
+                    {paciente.sexo === 'M' ? (
+                      <FaMale className="text-blue-500" title="Masculino" />
+                    ) : paciente.sexo === 'F' ? (
+                      <FaFemale className="text-pink-500" title="Femenino" />
+                    ) : null}
+                  </div>
+                </div>
+                
+                {/* Info grid */}
+                <div className="grid grid-cols-1 gap-1 text-sm mb-3">
+                  {paciente.curp && (
+                    <div className="text-gray-500 truncate">
+                      <span className="font-medium">CURP:</span> {paciente.curp}
+                    </div>
+                  )}
+                  {paciente.centro_nombre && (
+                    <div className="text-gray-500">
+                      <span className="font-medium">Centro:</span> {paciente.centro_nombre}
+                    </div>
+                  )}
+                  {paciente.ubicacion_completa && (
+                    <div className="text-gray-500">
+                      <span className="font-medium">Ubicación:</span> {paciente.ubicacion_completa}
+                    </div>
+                  )}
+                </div>
+                
+                {/* Acciones */}
+                <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+                  <button
+                    onClick={() => setDetailModal({ show: true, paciente })}
+                    className="flex-1 px-3 py-2 text-sm text-gray-600 bg-gray-100 rounded-lg flex items-center justify-center gap-1"
+                  >
+                    <FaEye /> Ver
+                  </button>
+                  {puedeEditar && (
+                    <button
+                      onClick={() => handleOpenModal(paciente)}
+                      className="flex-1 px-3 py-2 text-sm text-guinda bg-guinda/10 rounded-lg flex items-center justify-center gap-1"
+                    >
+                      <FaEdit /> Editar
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          {/* Vista desktop: tabla */}
+          <div className="hidden lg:block w-full overflow-x-auto">
             <table className="w-full min-w-[1000px] divide-y divide-gray-200">
               <thead className="bg-theme-gradient sticky top-0 z-10">
                 <tr>
@@ -755,6 +827,7 @@ const Pacientes = () => {
               </tbody>
             </table>
           </div>
+          </>
         )}
 
         {/* Paginación */}

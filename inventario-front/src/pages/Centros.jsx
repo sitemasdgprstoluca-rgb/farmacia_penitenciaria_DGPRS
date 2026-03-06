@@ -584,7 +584,51 @@ const Centros = () => {
       {/* Contenedor Tabla + Paginación */}
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
         {/* Tabla */}
-        <div className="w-full overflow-x-auto">
+        {/* Vista móvil: tarjetas */}
+        <div className="lg:hidden space-y-3 p-4">
+          {loading ? (
+            <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-8 w-8 border-4 border-t-transparent spinner-institucional"></div></div>
+          ) : centros.length === 0 ? (
+            <div className="py-8 text-center text-gray-500">No hay centros registrados</div>
+          ) : (
+            centros.map((centro, index) => (
+              <div key={centro.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs text-gray-500">#{(currentPage - 1) * PAGE_SIZE + index + 1}</span>
+                      <span className="font-bold text-gray-800">{centro.nombre}</span>
+                      <span className={`px-2 py-0.5 text-xs rounded-full ${centro.activo ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                        {centro.activo ? 'Activo' : 'Inactivo'}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600 mt-1">{centro.direccion || 'Sin dirección'}</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3 py-3 border-y border-gray-100 text-sm">
+                  <div><div className="text-xs text-gray-500">Teléfono</div><div className="font-medium">{centro.telefono || '-'}</div></div>
+                  <div><div className="text-xs text-gray-500">Email</div><div className="font-medium truncate">{centro.email || '-'}</div></div>
+                  <div><div className="text-xs text-gray-500">Requisiciones</div><div className="font-medium text-blue-600">{centro.total_requisiciones || 0}</div></div>
+                  <div><div className="text-xs text-gray-500">Usuarios</div><div className="font-medium text-green-600">{centro.total_usuarios || 0}</div></div>
+                </div>
+                <div className="flex items-center justify-end gap-3 mt-3">
+                  {puedeEditar && (
+                    <button onClick={() => handleEdit(centro)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"><FaEdit size={18} /></button>
+                  )}
+                  {puedeToggle && (
+                    <button onClick={() => handleToggleActivo(centro)} className={`p-2 rounded-lg ${centro.activo ? 'text-green-600 hover:bg-green-50' : 'text-gray-500 hover:bg-gray-100'}`}>
+                      {centro.activo ? <FaToggleOn size={20} /> : <FaToggleOff size={20} />}
+                    </button>
+                  )}
+                  {puedeEliminar && (
+                    <button onClick={() => handleDelete(centro)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg"><FaTrash size={18} /></button>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+        <div className="hidden lg:block w-full overflow-x-auto">
           <table className="w-full min-w-[1200px] divide-y divide-gray-200">
             <thead className="bg-theme-gradient sticky top-0 z-10">
             <tr>

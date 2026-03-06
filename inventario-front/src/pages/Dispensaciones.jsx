@@ -1002,8 +1002,94 @@ const Dispensaciones = () => {
             <p className="mt-4 text-gray-500">No se encontraron dispensaciones</p>
           </div>
         ) : (
-          <div className="w-full overflow-x-auto">
-            <table className="w-full min-w-[1000px] divide-y divide-gray-200">
+          <>
+          {/* Vista móvil: tarjetas */}
+        <div className="lg:hidden space-y-3 p-4">
+          {dispensaciones.map((disp) => (
+            <div key={disp.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+              {/* Header con folio y estado */}
+              <div className="flex items-start justify-between gap-2 mb-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono font-bold text-guinda">{disp.folio}</span>
+                    <span className={`px-2 py-0.5 text-xs rounded-full ${ESTADO_COLORS[disp.estado]}`}>
+                      {disp.estado_display || disp.estado}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-600 mt-1">{disp.paciente_nombre}</p>
+                  <p className="text-xs text-gray-500">Exp: {disp.paciente_expediente}</p>
+                </div>
+                <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">
+                  {disp.tipo_dispensacion_display || disp.tipo_dispensacion}
+                </span>
+              </div>
+              
+              {/* Info grid */}
+              <div className="grid grid-cols-2 gap-3 py-3 border-y border-gray-100 text-sm">
+                <div>
+                  <div className="text-gray-500 text-xs">Centro</div>
+                  <div className="font-medium text-gray-800">{disp.centro_nombre}</div>
+                </div>
+                <div>
+                  <div className="text-gray-500 text-xs">Fecha</div>
+                  <div className="font-medium text-gray-800">
+                    {new Date(disp.fecha_dispensacion || disp.created_at).toLocaleDateString()}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-gray-500 text-xs">Creado por</div>
+                  <div className="font-medium text-gray-800">{disp.created_by_nombre || disp.medico_prescriptor || '-'}</div>
+                </div>
+                <div>
+                  <div className="text-gray-500 text-xs">Items</div>
+                  <div className="font-medium text-gray-800">{disp.total_items || disp.detalles?.length || 0}</div>
+                </div>
+              </div>
+              
+              {/* Acciones */}
+              <div className="flex items-center justify-end gap-3 mt-3 pt-2">
+                <button
+                  onClick={() => handleOpenDetail(disp)}
+                  className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+                  title="Ver detalle"
+                >
+                  <FaEye size={18} />
+                </button>
+                {disp.estado === 'pendiente' && puedeDispensar && (
+                  <button
+                    onClick={() => setDispensarModal({ show: true, dispensacion: disp, loading: false })}
+                    className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
+                    title="Dispensar"
+                  >
+                    <FaCheck size={18} />
+                  </button>
+                )}
+                {disp.estado === 'pendiente' && puedeEditar && (disp.created_by === user?.id || esFarmaciaAdmin(user) || user?.is_superuser) && (
+                  <button
+                    onClick={() => handleOpenModal(disp)}
+                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                    title="Editar"
+                  >
+                    <FaEdit size={18} />
+                  </button>
+                )}
+                {disp.estado === 'pendiente' && puedeCancelar && (
+                  <button
+                    onClick={() => setCancelModal({ show: true, dispensacion: disp, motivo: '' })}
+                    className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg"
+                    title="Cancelar"
+                  >
+                    <FaBan size={18} />
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+        
+        {/* Vista desktop: tabla */}
+        <div className="hidden lg:block w-full overflow-x-auto">
+          <table className="w-full min-w-[1000px] divide-y divide-gray-200">
               <thead className="bg-theme-gradient sticky top-0 z-10">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Folio</th>
@@ -1147,6 +1233,8 @@ const Dispensaciones = () => {
               onPageChange={setCurrentPage}
             />
           </div>
+        )}
+        </>
         )}
       </div>
 

@@ -721,6 +721,84 @@ code {
   min-width: 44px;
 }
 
+/* ===== MEJORAS GLOBALES PARA MÓVIL ===== */
+@media (max-width: 767px) {
+  /* Reducir padding general en móvil */
+  .p-6 { padding: 1rem !important; }
+  .p-8 { padding: 1.25rem !important; }
+  .px-6 { padding-left: 1rem !important; padding-right: 1rem !important; }
+  .px-8 { padding-left: 1.25rem !important; padding-right: 1.25rem !important; }
+  .py-6 { padding-top: 1rem !important; padding-bottom: 1rem !important; }
+  
+  /* Tablas más compactas */
+  table th,
+  table td {
+    padding: 0.5rem 0.375rem !important;
+    font-size: 0.75rem !important;
+  }
+  
+  /* Reducir min-width de tablas */
+  table {
+    min-width: unset !important;
+  }
+  
+  /* Contenedores de scroll mejorados */
+  .overflow-x-auto {
+    position: relative;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Indicador de scroll horizontal */
+  .overflow-x-auto::before {
+    content: '← Desliza →';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(147, 32, 67, 0.9);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    z-index: 5;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  
+  .overflow-x-auto:not(:focus):not(:hover)::before {
+    animation: swipeHint 3s ease-in-out 1s 1;
+  }
+  
+  @keyframes swipeHint {
+    0%, 100% { opacity: 0; }
+    20%, 80% { opacity: 1; }
+  }
+  
+  /* Textos más pequeños */
+  h1 { font-size: 1.375rem !important; }
+  h2 { font-size: 1.125rem !important; }
+  h3 { font-size: 1rem !important; }
+  
+  /* Cards más compactas */
+  .card, .bg-white.rounded-lg, .bg-white.rounded-xl, .bg-white.rounded-2xl {
+    padding: 0.875rem !important;
+  }
+  
+  /* Botones táctiles */
+  button, .btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* Inputs táctiles */
+  input, select, textarea {
+    min-height: 44px;
+    font-size: 16px !important; /* Previene zoom en iOS */
+  }
+}
+
 @media (max-width: 1023px) {
   /* Todos los botones e inputs deben tener altura mínima táctil */
   button, 

@@ -801,47 +801,48 @@ function Layout() {
 
       {/* ========== BOTTOM NAVIGATION MÓVIL ========== */}
       <nav 
-        className="fixed bottom-0 left-0 right-0 z-40 lg:hidden flex items-center justify-around safe-area-inset-bottom"
+        className="fixed bottom-0 left-0 right-0 z-[100] lg:hidden flex items-center justify-around"
         style={{
-          background: 'white',
-          borderTop: '1px solid var(--color-border, #E5E7EB)',
-          boxShadow: '0 -4px 12px rgba(0, 0, 0, 0.08)',
+          background: 'linear-gradient(135deg, var(--color-primary, #932043) 0%, var(--color-primary-hover, #632842) 100%)',
+          borderTop: '3px solid rgba(255,255,255,0.2)',
+          boxShadow: '0 -4px 20px rgba(0, 0, 0, 0.25)',
+          paddingTop: '0.5rem',
           paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))',
         }}
       >
         {/* Dashboard */}
         <Link
           to="/dashboard"
-          className="flex flex-col items-center justify-center py-2 px-3 min-h-[56px] rounded-xl transition-all"
+          className="flex flex-col items-center justify-center py-1.5 px-4 min-h-[52px] rounded-xl transition-all"
           style={{
             color: location.pathname === '/dashboard' 
-              ? 'var(--color-primary, #932043)' 
-              : 'var(--color-text-secondary, #757575)',
+              ? 'white' 
+              : 'rgba(255,255,255,0.7)',
             background: location.pathname === '/dashboard' 
-              ? 'rgba(147, 32, 67, 0.1)' 
+              ? 'rgba(255,255,255,0.2)' 
               : 'transparent',
           }}
         >
-          <FaHome size={20} />
-          <span className="text-[10px] font-medium mt-0.5">Inicio</span>
+          <FaHome size={22} />
+          <span className="text-[10px] font-semibold mt-0.5">Inicio</span>
         </Link>
         
         {/* Requisiciones (si tiene permiso) */}
         {permisos?.verRequisiciones && (
           <Link
             to="/requisiciones"
-            className="flex flex-col items-center justify-center py-2 px-3 min-h-[56px] rounded-xl transition-all"
+            className="flex flex-col items-center justify-center py-1.5 px-4 min-h-[52px] rounded-xl transition-all"
             style={{
               color: location.pathname === '/requisiciones' 
-                ? 'var(--color-primary, #932043)' 
-                : 'var(--color-text-secondary, #757575)',
+                ? 'white' 
+                : 'rgba(255,255,255,0.7)',
               background: location.pathname === '/requisiciones' 
-                ? 'rgba(147, 32, 67, 0.1)' 
+                ? 'rgba(255,255,255,0.2)' 
                 : 'transparent',
             }}
           >
-            <FaClipboardList size={20} />
-            <span className="text-[10px] font-medium mt-0.5">Requisiciones</span>
+            <FaClipboardList size={22} />
+            <span className="text-[10px] font-semibold mt-0.5">Requisiciones</span>
           </Link>
         )}
         
@@ -849,51 +850,52 @@ function Layout() {
         {tienePermisoNotificaciones && (
           <Link
             to="/notificaciones"
-            className="relative flex flex-col items-center justify-center py-2 px-3 min-h-[56px] rounded-xl transition-all"
+            className="relative flex flex-col items-center justify-center py-1.5 px-4 min-h-[52px] rounded-xl transition-all"
             style={{
               color: location.pathname === '/notificaciones' 
-                ? 'var(--color-primary, #932043)' 
-                : 'var(--color-text-secondary, #757575)',
+                ? 'white' 
+                : 'rgba(255,255,255,0.7)',
               background: location.pathname === '/notificaciones' 
-                ? 'rgba(147, 32, 67, 0.1)' 
+                ? 'rgba(255,255,255,0.2)' 
                 : 'transparent',
             }}
           >
             <div className="relative">
-              <FaBell size={20} />
+              <FaBell size={22} />
               {unreadCount > 0 && (
                 <span 
-                  className="absolute -top-1.5 -right-1.5 flex items-center justify-center min-w-[16px] h-[16px] px-1 text-[9px] font-bold rounded-full"
+                  className="absolute -top-1.5 -right-2 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold rounded-full animate-pulse"
                   style={{ 
-                    backgroundColor: '#EF4444',
-                    color: 'white',
+                    backgroundColor: '#FCD34D',
+                    color: '#92400E',
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
                   }}
                 >
                   {unreadCount > 99 ? '99+' : unreadCount}
                 </span>
               )}
             </div>
-            <span className="text-[10px] font-medium mt-0.5">Alertas</span>
+            <span className="text-[10px] font-semibold mt-0.5">Alertas</span>
           </Link>
         )}
         
         {/* Menú (toggle sidebar) */}
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="flex flex-col items-center justify-center py-2 px-3 min-h-[56px] rounded-xl transition-all"
+          className="flex flex-col items-center justify-center py-1.5 px-4 min-h-[52px] rounded-xl transition-all"
           style={{
             color: sidebarOpen 
-              ? 'var(--color-primary, #932043)' 
-              : 'var(--color-text-secondary, #757575)',
+              ? 'white' 
+              : 'rgba(255,255,255,0.7)',
             background: sidebarOpen 
-              ? 'rgba(147, 32, 67, 0.1)' 
+              ? 'rgba(255,255,255,0.2)' 
               : 'transparent',
           }}
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
           </svg>
-          <span className="text-[10px] font-medium mt-0.5">Menú</span>
+          <span className="text-[10px] font-semibold mt-0.5">Menú</span>
         </button>
       </nav>
 
