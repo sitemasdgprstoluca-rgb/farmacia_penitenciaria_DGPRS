@@ -14,7 +14,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { 
   inventarioCajaChicaAPI, 
   movimientosCajaChicaAPI,
-  centrosAPI 
+  centrosAPI,
+  pacientesAPI
 } from '../services/api';
 import { toast } from 'react-hot-toast';
 import {
@@ -72,10 +73,13 @@ const InventarioCajaChica = () => {
   
   // Listas auxiliares
   const [centros, setCentros] = useState([]);
+  const [pacientes, setPacientes] = useState([]);
+  const [pacientesLoading, setPacientesLoading] = useState(false);
+  const [searchPaciente, setSearchPaciente] = useState('');
   
   // Modales
   const [detailModal, setDetailModal] = useState({ show: false, item: null });
-  const [salidaModal, setSalidaModal] = useState({ show: false, item: null, cantidad: '', motivo: '', referencia: '' });
+  const [salidaModal, setSalidaModal] = useState({ show: false, item: null, cantidad: '', motivo: '', referencia: '', pacienteId: null });
   const [ajusteModal, setAjusteModal] = useState({ show: false, item: null, cantidad: '', motivo: '' });
   const [movimientosModal, setMovimientosModal] = useState({ show: false, item: null, movimientos: [] });
 
@@ -89,7 +93,11 @@ const InventarioCajaChica = () => {
 
   useEscapeToClose({
     isOpen: salidaModal.show,
-    onClose: () => setSalidaModal({ show: false, item: null, cantidad: '', motivo: '', referencia: '' }),
+    onClose: () => {
+      setSalidaModal({ show: false, item: null, cantidad: '', motivo: '', referencia: '', pacienteId: null });
+      setSearchPaciente('');
+      setPacientes([]);
+    },
     modalId: 'inventario-caja-chica-salida-modal',
     disabled: false
   });
@@ -178,21 +186,70 @@ const InventarioCajaChica = () => {
     fetchResumen();
   }, [fetchResumen]);
 
+  // Cargar pacientes con búsqueda
+  const fetchPacientes = useCallback(async (query = '') => {
+    if (!centroFiltro && !centroUsuario) return;
+    
+    setPacientesLoading(true);
+    try {
+      const centro = centroFiltro || centroUsuario;
+      const response = await pacientesAPI.getAll({
+        centro,
+        activo: true,
+        search: query,
+        page_size: 50
+      });
+      const data = response.data?.results || response.data || [];
+      setPacientes(data);
+    } catch (error) {
+      console.error('Error al cargar pacientes:', error);
+    } finally {
+      setPacientesLoading(false);
+    }
+  }, [centroFiltro, centroUsuario]);
+
+  // Cargar pacientes al abrir modal salida
+  useEffect(() => {
+    if (salidaModal.show) {
+      fetchPacientes();
+    }
+  }, [salidaModal.show, fetchPacientes]);
+
+  // Buscar pacientes al escribir
+  useEffect(() => {
+    if (salidaModal.show && searchPaciente) {
+      const timer = setTimeout(() => {
+        fetchPacientes(searchPaciente);
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [searchPaciente, salidaModal.show, fetchPacientes]);
+
   // Registrar salida
   const handleRegistrarSalida = async () => {
-    if (!salidaModal.item || !salidaModal.cantidad || !salidaModal.motivo || !salidaModal.referencia) {
+    // Validaciones
+    const cantidad = parseInt(salidaModal.cantidad);
+    
+    if (!salidaModal.item || !cantidad || !salidaModal.motivo || !salidaModal.referencia) {
       toast.error('Debe completar todos los campos requeridos (cantidad, paciente PPL y motivo)');
+      return;
+    }
+
+    if (cantidad > salidaModal.item.cantidad_actual) {
+      toast.error(`Stock insuficiente. Disponible: ${salidaModal.item.cantidad_actual} unidades`);
       return;
     }
     
     try {
       await inventarioCajaChicaAPI.registrarSalida(salidaModal.item.id, {
-        cantidad: parseInt(salidaModal.cantidad),
+        cantidad: cantidad,
         motivo: salidaModal.motivo,
         referencia: salidaModal.referencia,
       });
       toast.success('Salida registrada correctamente');
-      setSalidaModal({ show: false, item: null, cantidad: '', motivo: '', referencia: '' });
+      setSalidaModal({ show: false, item: null, cantidad: '', motivo: '', referencia: '', pacienteId: null });
+      setSearchPaciente('');
+      setPacientes([]);
       fetchInventario();
       fetchResumen();
     } catch (error) {
@@ -572,7 +629,7 @@ const InventarioCajaChica = () => {
                           {/* Registrar salida */}
                           {puedeRegistrarSalida && !sinStock && (
                             <button
-                              onClick={() => setSalidaModal({ show: true, item, cantidad: '', motivo: '', referencia: '' })}
+                              onClick={() => setSalidaModal({ show: true, item, cantidad: '', motivo: '', referencia: '', pacienteId: null })}
                               className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg"
                               title="Registrar salida"
                             >
@@ -670,21 +727,104 @@ const InventarioCajaChica = () => {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                   placeholder="Número de unidades"
                 />
+                {/* Validación visual de stock */}
+                {salidaModal.cantidad && parseInt(salidaModal.cantidad) > 0 && (
+                  <div className={`text-sm mt-2 p-2 rounded flex items-center gap-2 ${
+                    parseInt(salidaModal.cantidad) > salidaModal.item?.cantidad_actual 
+                      ? 'bg-red-50 text-red-700 border border-red-200' 
+                      : 'bg-green-50 text-green-700'
+                  }`}>
+                    {parseInt(salidaModal.cantidad) > salidaModal.item?.cantidad_actual ? (
+                      <>
+                        <FaExclamationTriangle />
+                        <span><strong>❌ Stock insuficiente.</strong> Solo hay {salidaModal.item?.cantidad_actual} unidades disponibles</span>
+                      </>
+                    ) : (
+                      <span>✅ Cantidad válida. Quedarán {salidaModal.item?.cantidad_actual - parseInt(salidaModal.cantidad)} unidades</span>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {/* Paciente PPL - OBLIGATORIO */}
+              {/* Paciente PPL - AUTOCOMPLETADO */}
               <div className="bg-yellow-50 border-2 border-yellow-300 rounded-lg p-4">
                 <label className="block text-sm font-bold text-gray-900 mb-1">
-                  <span className="text-red-600">*</span> Paciente PPL (Nombre y/o Expediente)
+                  <span className="text-red-600">*</span> Paciente PPL (Seleccionar de lista)
                 </label>
-                <input
-                  type="text"
-                  value={salidaModal.referencia}
-                  onChange={(e) => setSalidaModal(prev => ({ ...prev, referencia: e.target.value }))}
-                  placeholder="Ej: Juan Pérez García - Expediente 12345/2026"
-                  className="w-full px-3 py-2 border-2 border-yellow-400 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 bg-white"
-                />
-                <p className="text-xs text-gray-600 mt-1">⚠️ Campo obligatorio para trazabilidad</p>
+                
+                {/* Input de búsqueda */}
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={searchPaciente}
+                    onChange={(e) => {
+                      setSearchPaciente(e.target.value);
+                      setSalidaModal(prev => ({ ...prev, referencia: '', pacienteId: null }));
+                    }}
+                    placeholder="Buscar por nombre, apellido o expediente..."
+                    className="w-full px-3 py-2 pr-10 border-2 border-yellow-400 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 bg-white"
+                  />
+                  {pacientesLoading && (
+                    <div className="absolute right-3 top-3">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-orange-600"></div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Lista de resultados */}
+                {searchPaciente && pacientes.length > 0 && (
+                  <div className="mt-2 max-h-40 overflow-y-auto border border-gray-300 rounded-lg bg-white shadow-lg">
+                    {pacientes.map(paciente => (
+                      <button
+                        key={paciente.id}
+                        type="button"
+                        onClick={() => {
+                          setSalidaModal(prev => ({ 
+                            ...prev, 
+                            referencia: `${paciente.nombre_completo} - Exp: ${paciente.numero_expediente}`,
+                            pacienteId: paciente.id
+                          }));
+                          setSearchPaciente('');
+                        }}
+                        className="w-full text-left px-3 py-2 hover:bg-orange-50 border-b last:border-b-0 flex items-center justify-between"
+                      >
+                        <div>
+                          <div className="font-medium text-gray-900">{paciente.nombre_completo}</div>
+                          <div className="text-xs text-gray-500">Expediente: {paciente.numero_expediente}</div>
+                        </div>
+                        <span className="text-xs text-gray-400">{paciente.dormitorio || ''}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {searchPaciente && pacientes.length === 0 && !pacientesLoading && (
+                  <div className="mt-2 p-3 bg-gray-50 border border-gray-200 rounded text-sm text-gray-600 text-center">
+                    No se encontraron pacientes con "{searchPaciente}"
+                  </div>
+                )}
+
+                {/* Paciente seleccionado */}
+                {salidaModal.referencia && (
+                  <div className="mt-2 p-3 bg-green-50 border border-green-300 rounded-lg flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-medium text-green-900">✓ Paciente seleccionado:</div>
+                      <div className="text-sm text-green-700">{salidaModal.referencia}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSalidaModal(prev => ({ ...prev, referencia: '', pacienteId: null }));
+                        setSearchPaciente('');
+                      }}
+                      className="text-red-600 hover:text-red-800"
+                    >
+                      <FaTimes />
+                    </button>
+                  </div>
+                )}
+
+                <p className="text-xs text-gray-600 mt-2">⚠️ Busque y seleccione al paciente de la lista para evitar duplicados</p>
               </div>
               
               {/* Motivo/Diagnóstico */}
@@ -703,7 +843,11 @@ const InventarioCajaChica = () => {
             </div>
             <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-3">
               <button
-                onClick={() => setSalidaModal({ show: false, item: null, cantidad: '', motivo: '', referencia: '' })}
+                onClick={() => {
+                  setSalidaModal({ show: false, item: null, cantidad: '', motivo: '', referencia: '', pacienteId: null });
+                  setSearchPaciente('');
+                  setPacientes([]);
+                }}
                 className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100"
               >
                 Cancelar
