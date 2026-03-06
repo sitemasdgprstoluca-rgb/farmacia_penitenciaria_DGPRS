@@ -40,11 +40,18 @@ import {
   FaCompress,
   FaGift,
   FaShieldAlt,
+  FaMoneyBillWave,
+  FaChartBar,
+  FaTrophy,
+  FaHospital,
+  FaUserTie,
+  FaHandHoldingHeart,
+  FaExclamationCircle,
 } from 'react-icons/fa';
 import { 
   AreaChart, Area, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  Legend
+  Legend, BarChart, Bar
 } from 'recharts';
 import { usePermissions } from '../hooks/usePermissions';
 import CentroSelector from '../components/CentroSelector';
@@ -650,6 +657,9 @@ const Dashboard = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [movimientosExpanded, setMovimientosExpanded] = useState(true);
+  // Analytics avanzados
+  const [analytics, setAnalytics] = useState(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
   // ISS-FIX: Default a 'central' (Farmacia Central) para usuarios con acceso global
   const [selectedCentro, setSelectedCentro] = useState(esCentroRestringido ? centroUsuario : 'central');
   const [centroNombre, setCentroNombre] = useState(esCentroRestringido ? '' : 'Farmacia Central');
@@ -747,6 +757,31 @@ const Dashboard = () => {
     }
   }, [esVista, esCentroRestringido, centroUsuario]);
 
+  // Cargar analytics avanzados (solo para Farmacia y Admin)
+  const loadAnalytics = useCallback(async (centroId = null) => {
+    if (!puedeVerGraficasCompletas) return;
+    
+    try {
+      setAnalyticsLoading(true);
+      const centroEfectivo = esCentroRestringido ? centroUsuario : centroId;
+      const params = centroEfectivo && centroEfectivo !== 'todos' ? { centro: centroEfectivo } : {};
+      
+      const response = await dashboardAPI.getAnalytics(params);
+      if (isMountedRef.current) {
+        setAnalytics(response.data);
+      }
+    } catch (err) {
+      console.warn('Error al cargar analytics:', err);
+      if (isMountedRef.current) {
+        setAnalytics(null);
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setAnalyticsLoading(false);
+      }
+    }
+  }, [puedeVerGraficasCompletas, esCentroRestringido, centroUsuario]);
+
   // Sincronizar centro
   useEffect(() => {
     // ISS-FIX: También esperar a que terminen de validarse los permisos
@@ -781,6 +816,15 @@ const Dashboard = () => {
     }
     loadDashboard(selectedCentro);
   }, [loadDashboard, selectedCentro, permisos?.verDashboard, permisos?._isValidating, cargandoPermisos]);
+
+  // Cargar analytics avanzados
+  useEffect(() => {
+    if (cargandoPermisos || permisos?._isValidating) return;
+    if (!permisos?.verDashboard || !puedeVerGraficasCompletas) return;
+    if (!hasAccessToken()) return;
+    
+    loadAnalytics(selectedCentro);
+  }, [loadAnalytics, selectedCentro, permisos?.verDashboard, permisos?._isValidating, cargandoPermisos, puedeVerGraficasCompletas]);
 
   // Cuando cambia el centro seleccionado por el usuario, forzar refresh
   // para obtener datos frescos del backend (sin caché)
@@ -1532,6 +1576,260 @@ const Dashboard = () => {
             </div>
           </ChartCard>
         </section>
+      )}
+
+      {/* ========== ANALYTICS AVANZADOS (Solo Farmacia/Admin) ========== */}
+      {puedeVerGraficasCompletas && analytics && (
+        <>
+          {/* Alertas de Caducidad */}
+          {analytics.caducidades && (analytics.caducidades.vencidos > 0 || analytics.caducidades.vencen_15_dias > 0 || analytics.caducidades.vencen_30_dias > 0) && (
+            <section>
+              <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4 flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: 'var(--color-error, #EF4444)' }}></span>
+                Alertas de Caducidad
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {analytics.caducidades.vencidos > 0 && (
+                  <div className="bg-red-50 border-l-4 border-red-500 rounded-xl p-4 flex items-center gap-4">
+                    <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                      <FaTimesCircle className="text-red-500 text-xl" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-black text-red-700">{analytics.caducidades.vencidos}</p>
+                      <p className="text-sm text-red-600 font-medium">Lotes Vencidos</p>
+                    </div>
+                  </div>
+                )}
+                {analytics.caducidades.vencen_15_dias > 0 && (
+                  <div className="bg-orange-50 border-l-4 border-orange-500 rounded-xl p-4 flex items-center gap-4">
+                    <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
+                      <FaExclamationCircle className="text-orange-500 text-xl" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-black text-orange-700">{analytics.caducidades.vencen_15_dias}</p>
+                      <p className="text-sm text-orange-600 font-medium">Vencen en 15 días</p>
+                    </div>
+                  </div>
+                )}
+                {analytics.caducidades.vencen_30_dias > 0 && (
+                  <div className="bg-yellow-50 border-l-4 border-yellow-500 rounded-xl p-4 flex items-center gap-4">
+                    <div className="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center">
+                      <FaExclamationTriangle className="text-yellow-500 text-xl" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-black text-yellow-700">{analytics.caducidades.vencen_30_dias}</p>
+                      <p className="text-sm text-yellow-600 font-medium">Vencen en 30 días</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* Top Productos y Top Centros */}
+          <section className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            {/* Top 10 Productos más Surtidos */}
+            {analytics.top_productos && analytics.top_productos.length > 0 && (
+              <ChartCard title="Top 10 Productos más Surtidos" icon={FaTrophy}>
+                <ResponsiveContainer width="100%" height={350}>
+                  <BarChart
+                    data={analytics.top_productos}
+                    layout="vertical"
+                    margin={{ left: 100, right: 20 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                    <XAxis type="number" tick={{ fill: '#6B7280', fontSize: 11 }} />
+                    <YAxis 
+                      type="category" 
+                      dataKey="clave" 
+                      tick={{ fill: '#6B7280', fontSize: 11 }}
+                      width={95}
+                    />
+                    <Tooltip 
+                      content={({ active, payload }) => {
+                        if (!active || !payload?.length) return null;
+                        const data = payload[0].payload;
+                        return (
+                          <div className="bg-white rounded-xl shadow-xl border border-gray-200 p-4">
+                            <p className="font-bold text-gray-800 text-sm mb-1">{data.clave}</p>
+                            <p className="text-xs text-gray-500 mb-2 max-w-[200px] truncate">{data.nombre}</p>
+                            <p className="text-xl font-black" style={{ color: 'var(--color-primary, #9F2241)' }}>
+                              {data.total_surtido?.toLocaleString('es-MX')} <span className="text-sm font-normal text-gray-500">uds</span>
+                            </p>
+                          </div>
+                        );
+                      }}
+                    />
+                    <Bar 
+                      dataKey="total_surtido" 
+                      fill="var(--color-primary, #9F2241)" 
+                      radius={[0, 4, 4, 0]}
+                      name="Unidades surtidas"
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartCard>
+            )}
+
+            {/* Top Centros Solicitantes */}
+            {analytics.top_centros && analytics.top_centros.length > 0 && (
+              <ChartCard title="Centros que más Solicitan" icon={FaHospital}>
+                <ResponsiveContainer width="100%" height={350}>
+                  <BarChart
+                    data={analytics.top_centros}
+                    layout="vertical"
+                    margin={{ left: 120, right: 20 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                    <XAxis type="number" tick={{ fill: '#6B7280', fontSize: 11 }} />
+                    <YAxis 
+                      type="category" 
+                      dataKey="centro" 
+                      tick={{ fill: '#6B7280', fontSize: 10 }}
+                      width={115}
+                    />
+                    <Tooltip 
+                      content={({ active, payload }) => {
+                        if (!active || !payload?.length) return null;
+                        const data = payload[0].payload;
+                        return (
+                          <div className="bg-white rounded-xl shadow-xl border border-gray-200 p-4">
+                            <p className="font-bold text-gray-800 text-sm mb-2">{data.centro}</p>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <p className="text-xs text-gray-500">Requisiciones</p>
+                                <p className="text-lg font-bold text-blue-600">{data.total_requisiciones}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-gray-500">Unidades</p>
+                                <p className="text-lg font-bold text-green-600">{data.total_unidades?.toLocaleString('es-MX')}</p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }}
+                    />
+                    <Bar 
+                      dataKey="total_unidades" 
+                      fill="#0EA5E9"
+                      radius={[0, 4, 4, 0]}
+                      name="Unidades solicitadas"
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartCard>
+            )}
+          </section>
+
+          {/* Donaciones y Caja Chica */}
+          <section className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            {/* Resumen Donaciones */}
+            {analytics.donaciones && (
+              <ChartCard title="Resumen de Donaciones" icon={FaHandHoldingHeart}>
+                <div className="grid grid-cols-2 gap-4 mb-6">
+                  <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4 text-center">
+                    <p className="text-3xl font-black text-purple-700">{analytics.donaciones.total_donaciones || 0}</p>
+                    <p className="text-sm text-purple-600 font-medium">Donaciones</p>
+                  </div>
+                  <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-xl p-4 text-center">
+                    <p className="text-3xl font-black text-indigo-700">{(analytics.donaciones.total_unidades || 0).toLocaleString('es-MX')}</p>
+                    <p className="text-sm text-indigo-600 font-medium">Unidades Donadas</p>
+                  </div>
+                </div>
+                
+                {/* Top Centros Beneficiados */}
+                {analytics.donaciones.top_centros_beneficiados?.length > 0 && (
+                  <div>
+                    <p className="text-sm font-semibold text-gray-600 mb-3 flex items-center gap-2">
+                      <FaBuilding className="text-purple-500" />
+                      Centros más Beneficiados
+                    </p>
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {analytics.donaciones.top_centros_beneficiados.map((item, idx) => (
+                        <div key={idx} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
+                          <span className="text-sm font-medium text-gray-700 truncate max-w-[60%]">{item.centro}</span>
+                          <span className="text-sm font-bold text-purple-600">{item.total_unidades?.toLocaleString('es-MX')} uds</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Top Productos Donados */}
+                {analytics.donaciones.top_productos_donados?.length > 0 && (
+                  <div className="mt-4">
+                    <p className="text-sm font-semibold text-gray-600 mb-3 flex items-center gap-2">
+                      <FaCubes className="text-indigo-500" />
+                      Productos más Donados
+                    </p>
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {analytics.donaciones.top_productos_donados.map((item, idx) => (
+                        <div key={idx} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
+                          <span className="text-sm font-medium text-gray-700 truncate max-w-[60%]">{item.producto}</span>
+                          <span className="text-sm font-bold text-indigo-600">{item.total?.toLocaleString('es-MX')} uds</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </ChartCard>
+            )}
+
+            {/* Resumen Caja Chica */}
+            {analytics.caja_chica && (
+              <ChartCard title="Resumen Caja Chica" icon={FaMoneyBillWave}>
+                <div className="grid grid-cols-2 gap-4 mb-6">
+                  <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-4 text-center">
+                    <p className="text-3xl font-black text-emerald-700">
+                      ${(analytics.caja_chica.monto_total || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-sm text-emerald-600 font-medium">Monto Total</p>
+                  </div>
+                  <div className="bg-gradient-to-br from-teal-50 to-teal-100 rounded-xl p-4 text-center">
+                    <p className="text-3xl font-black text-teal-700">
+                      ${(analytics.caja_chica.promedio_compra || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-sm text-teal-600 font-medium">Promedio por Compra</p>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4 mb-6">
+                  <div className="bg-gray-50 rounded-xl p-4 text-center">
+                    <p className="text-2xl font-bold text-gray-700">{analytics.caja_chica.total_compras || 0}</p>
+                    <p className="text-xs text-gray-500">Total Compras</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-4 text-center">
+                    <p className="text-2xl font-bold text-gray-700">{(analytics.caja_chica.total_productos || 0).toLocaleString('es-MX')}</p>
+                    <p className="text-xs text-gray-500">Productos Comprados</p>
+                  </div>
+                </div>
+                
+                {/* Top Compradores */}
+                {analytics.caja_chica.top_compradores?.length > 0 && (
+                  <div>
+                    <p className="text-sm font-semibold text-gray-600 mb-3 flex items-center gap-2">
+                      <FaUserTie className="text-emerald-500" />
+                      Principales Compradores
+                    </p>
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {analytics.caja_chica.top_compradores.map((item, idx) => (
+                        <div key={idx} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
+                          <span className="text-sm font-medium text-gray-700 truncate max-w-[50%]">{item.usuario}</span>
+                          <div className="text-right">
+                            <span className="text-sm font-bold text-emerald-600 block">
+                              ${(item.monto_total || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                            </span>
+                            <span className="text-xs text-gray-400">{item.total_compras} compras</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </ChartCard>
+            )}
+          </section>
+        </>
       )}
 
       {/* ========== SECCIÓN INFERIOR: MOVIMIENTOS + ACCESOS RÁPIDOS ========== */}

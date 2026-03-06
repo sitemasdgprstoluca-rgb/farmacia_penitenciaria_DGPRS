@@ -1705,6 +1705,7 @@ export const trazabilidadAPI = {
 export const dashboardAPI = {
   getResumen: (params) => apiClient.get('/dashboard/', { params }),
   getGraficas: (params) => apiClient.get('/dashboard/graficas/', { params }),
+  getAnalytics: (params) => apiClient.get('/dashboard/analytics/', { params }),
 };
 
 // Reportes -  COMPLETO

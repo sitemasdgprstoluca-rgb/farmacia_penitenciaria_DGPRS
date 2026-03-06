@@ -31,6 +31,7 @@ from inventario.views.hojas_recoleccion import HojaRecoleccionViewSet
 from inventario.views.dashboard import (
     dashboard_resumen,
     dashboard_graficas,
+    dashboard_analytics,
 )
 
 # Trazabilidad desde módulo dedicado
@@ -88,6 +89,7 @@ __all__ = [
     # Dashboard
     'dashboard_resumen',
     'dashboard_graficas',
+    'dashboard_analytics',
     # Trazabilidad
     'trazabilidad_producto',
     'trazabilidad_lote',

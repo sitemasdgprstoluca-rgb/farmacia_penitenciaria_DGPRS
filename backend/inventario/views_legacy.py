@@ -8690,6 +8690,422 @@ def dashboard_graficas(request):
 
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dashboard_analytics(request):
+    """
+    ISS-DASH: Analítica avanzada del Dashboard.
+    
+    Retorna KPIs y métricas operativas:
+    - Top 10 productos más solicitados/surtidos
+    - Top 10 centros que más solicitan
+    - Analytics de donaciones (totales, top receptores, top productos)
+    - Analytics de caja chica (montos, top compradores)
+    - Lotes por caducar (alertas ≤30 días, ≤15 días, vencidos)
+    
+    PARÁMETROS:
+    - centro: ID del centro para filtrar (opcional, solo admin/farmacia)
+    - fecha_inicio: Fecha inicio para rangos (YYYY-MM-DD)
+    - fecha_fin: Fecha fin para rangos (YYYY-MM-DD)
+    - refresh: Si es 'true', fuerza recarga sin caché
+    
+    SEGURIDAD: 
+    - Solo admin/farmacia ven datos globales
+    - Centros ven sus propios datos
+    """
+    from core.models import (
+        Requisicion, DetalleRequisicion, Donacion, CompraCajaChica,
+        Centro, Lote, Producto
+    )
+    from django.db.models import Sum, Count, Avg, Q, F, DecimalField
+    from django.db.models.functions import Coalesce, TruncMonth
+    from decimal import Decimal
+    
+    try:
+        user = request.user
+        es_admin_farmacia = is_farmacia_or_admin(user)
+        filtrar_por_centro = not es_admin_farmacia
+        user_centro = get_user_centro(user) if filtrar_por_centro else None
+        
+        # SEGURIDAD: Guardar rol para cache key y validaciones
+        rol_usuario = 'admin' if es_admin_farmacia else 'centro'
+        
+        # Admin/farmacia puede filtrar por centro específico
+        centro_param = request.query_params.get('centro')
+        if centro_param and centro_param not in ['', 'null', 'undefined', 'todos']:
+            if es_admin_farmacia:
+                try:
+                    user_centro = Centro.objects.get(pk=int(centro_param))
+                    filtrar_por_centro = True
+                except (Centro.DoesNotExist, ValueError, TypeError):
+                    pass
+            # SEGURIDAD: Usuarios Centro NO pueden cambiar su filtro de centro
+            # Se ignora el parámetro y se usa su centro asignado
+        
+        # Parámetros de fecha
+        fecha_inicio = request.query_params.get('fecha_inicio')
+        fecha_fin = request.query_params.get('fecha_fin')
+        
+        # SEGURIDAD: Cache key incluye ROL + CENTRO para evitar fuga de datos
+        centro_id = user_centro.id if user_centro else 'global'
+        cache_key = f'dashboard_analytics_{rol_usuario}_{centro_id}_{fecha_inicio}_{fecha_fin}'
+        
+        force_refresh = request.query_params.get('refresh', '').lower() == 'true'
+        cached_data = None if force_refresh else cache.get(cache_key)
+        if cached_data is not None:
+            return Response(cached_data)
+        
+        hoy = timezone.now().date()
+        
+        # =========================================
+        # 1. TOP 10 PRODUCTOS MÁS SOLICITADOS/SURTIDOS
+        # =========================================
+        detalles_qs = DetalleRequisicion.objects.select_related('producto', 'requisicion')
+        
+        if filtrar_por_centro and user_centro:
+            detalles_qs = detalles_qs.filter(requisicion__centro_destino=user_centro)
+        
+        # Filtrar por rango de fechas si se proporcionan
+        if fecha_inicio:
+            detalles_qs = detalles_qs.filter(requisicion__fecha_solicitud__date__gte=fecha_inicio)
+        if fecha_fin:
+            detalles_qs = detalles_qs.filter(requisicion__fecha_solicitud__date__lte=fecha_fin)
+        
+        # Solo requisiciones surtidas o entregadas (estados finales)
+        detalles_qs = detalles_qs.filter(
+            requisicion__estado__in=['surtida', 'entregada', 'parcial']
+        )
+        
+        top_productos_solicitados = list(
+            detalles_qs.values(
+                'producto__id', 'producto__clave', 'producto__nombre'
+            ).annotate(
+                total_solicitado=Coalesce(Sum('cantidad_solicitada'), 0),
+                total_surtido=Coalesce(Sum('cantidad_surtida'), 0),
+                veces_solicitado=Count('id')
+            ).order_by('-total_surtido')[:10]
+        )
+        
+        # Formatear para frontend
+        top_productos = [
+            {
+                'producto_id': item['producto__id'],
+                'clave': item['producto__clave'] or 'N/A',
+                'nombre': item['producto__nombre'] or 'Sin nombre',
+                'total_solicitado': item['total_solicitado'],
+                'total_surtido': item['total_surtido'],
+                'veces_solicitado': item['veces_solicitado'],
+                'porcentaje_cumplimiento': round(
+                    (item['total_surtido'] / item['total_solicitado'] * 100) 
+                    if item['total_solicitado'] > 0 else 0, 1
+                )
+            }
+            for item in top_productos_solicitados
+        ]
+        
+        # =========================================
+        # 2. TOP 10 CENTROS QUE MÁS SOLICITAN
+        # =========================================
+        requisiciones_qs = Requisicion.objects.select_related('centro_destino')
+        
+        if filtrar_por_centro and user_centro:
+            # Si es centro, mostrar solo sus propias estadísticas
+            requisiciones_qs = requisiciones_qs.filter(centro_destino=user_centro)
+        
+        if fecha_inicio:
+            requisiciones_qs = requisiciones_qs.filter(fecha_solicitud__date__gte=fecha_inicio)
+        if fecha_fin:
+            requisiciones_qs = requisiciones_qs.filter(fecha_solicitud__date__lte=fecha_fin)
+        
+        top_centros_solicitantes = list(
+            requisiciones_qs.filter(
+                centro_destino__isnull=False
+            ).values(
+                'centro_destino__id', 'centro_destino__nombre'
+            ).annotate(
+                total_requisiciones=Count('id'),
+                requisiciones_surtidas=Count('id', filter=Q(estado__in=['surtida', 'entregada'])),
+                requisiciones_pendientes=Count('id', filter=Q(estado__in=['enviada', 'autorizada', 'parcial']))
+            ).order_by('-total_requisiciones')[:10]
+        )
+        
+        top_centros = [
+            {
+                'centro_id': item['centro_destino__id'],
+                'nombre': item['centro_destino__nombre'] or 'Sin nombre',
+                'total_requisiciones': item['total_requisiciones'],
+                'surtidas': item['requisiciones_surtidas'],
+                'pendientes': item['requisiciones_pendientes'],
+                'tasa_cumplimiento': round(
+                    (item['requisiciones_surtidas'] / item['total_requisiciones'] * 100)
+                    if item['total_requisiciones'] > 0 else 0, 1
+                )
+            }
+            for item in top_centros_solicitantes
+        ]
+        
+        # =========================================
+        # 3. ANALYTICS DE DONACIONES
+        # =========================================
+        donaciones_data = {
+            'total_donaciones': 0,
+            'donaciones_mes': 0,
+            'total_unidades': 0,
+            'top_receptores': [],
+            'por_estado': []
+        }
+        
+        try:
+            donaciones_qs = Donacion.objects.all()
+            
+            if filtrar_por_centro and user_centro:
+                donaciones_qs = donaciones_qs.filter(centro_destino=user_centro)
+            
+            if fecha_inicio:
+                donaciones_qs = donaciones_qs.filter(fecha_donacion__gte=fecha_inicio)
+            if fecha_fin:
+                donaciones_qs = donaciones_qs.filter(fecha_donacion__lte=fecha_fin)
+            
+            # Totales
+            donaciones_data['total_donaciones'] = donaciones_qs.count()
+            
+            # Donaciones del mes actual
+            primer_dia_mes = hoy.replace(day=1)
+            donaciones_data['donaciones_mes'] = donaciones_qs.filter(
+                fecha_donacion__gte=primer_dia_mes
+            ).count()
+            
+            # Top centros receptores de donaciones
+            top_receptores = list(
+                donaciones_qs.filter(
+                    centro_destino__isnull=False
+                ).values(
+                    'centro_destino__id', 'centro_destino__nombre'
+                ).annotate(
+                    total=Count('id')
+                ).order_by('-total')[:5]
+            )
+            
+            donaciones_data['top_receptores'] = [
+                {
+                    'centro_id': item['centro_destino__id'],
+                    'nombre': item['centro_destino__nombre'] or 'Sin nombre',
+                    'total': item['total']
+                }
+                for item in top_receptores
+            ]
+            
+            # Por estado
+            por_estado = list(
+                donaciones_qs.values('estado').annotate(
+                    cantidad=Count('id')
+                ).order_by('-cantidad')
+            )
+            donaciones_data['por_estado'] = [
+                {'estado': item['estado'], 'cantidad': item['cantidad']}
+                for item in por_estado if item['cantidad'] > 0
+            ]
+            
+        except Exception as e:
+            logger.warning(f'Error obteniendo analytics de donaciones: {str(e)}')
+        
+        # =========================================
+        # 4. ANALYTICS DE CAJA CHICA
+        # =========================================
+        caja_chica_data = {
+            'total_compras': 0,
+            'compras_mes': 0,
+            'monto_total': 0,
+            'monto_mes': 0,
+            'promedio_compra': 0,
+            'top_compradores': [],
+            'por_estado': []
+        }
+        
+        try:
+            compras_qs = CompraCajaChica.objects.all()
+            
+            if filtrar_por_centro and user_centro:
+                compras_qs = compras_qs.filter(centro=user_centro)
+            
+            if fecha_inicio:
+                compras_qs = compras_qs.filter(fecha_solicitud__date__gte=fecha_inicio)
+            if fecha_fin:
+                compras_qs = compras_qs.filter(fecha_solicitud__date__lte=fecha_fin)
+            
+            # Totales
+            caja_chica_data['total_compras'] = compras_qs.count()
+            
+            # Compras del mes
+            caja_chica_data['compras_mes'] = compras_qs.filter(
+                fecha_solicitud__date__gte=primer_dia_mes
+            ).count()
+            
+            # Montos (solo compras finalizadas/recibidas)
+            compras_finalizadas = compras_qs.filter(estado__in=['comprada', 'recibida'])
+            
+            totales = compras_finalizadas.aggregate(
+                monto=Coalesce(Sum('total'), Decimal('0'), output_field=DecimalField()),
+            )
+            caja_chica_data['monto_total'] = float(totales['monto'] or 0)
+            
+            # Monto del mes
+            monto_mes = compras_finalizadas.filter(
+                fecha_solicitud__date__gte=primer_dia_mes
+            ).aggregate(
+                monto=Coalesce(Sum('total'), Decimal('0'), output_field=DecimalField())
+            )
+            caja_chica_data['monto_mes'] = float(monto_mes['monto'] or 0)
+            
+            # Promedio
+            if caja_chica_data['total_compras'] > 0:
+                caja_chica_data['promedio_compra'] = round(
+                    caja_chica_data['monto_total'] / caja_chica_data['total_compras'], 2
+                )
+            
+            # Top centros compradores
+            top_compradores = list(
+                compras_qs.filter(
+                    centro__isnull=False
+                ).values(
+                    'centro__id', 'centro__nombre'
+                ).annotate(
+                    total_compras=Count('id'),
+                    monto_total=Coalesce(Sum('total'), Decimal('0'), output_field=DecimalField())
+                ).order_by('-monto_total')[:5]
+            )
+            
+            caja_chica_data['top_compradores'] = [
+                {
+                    'centro_id': item['centro__id'],
+                    'nombre': item['centro__nombre'] or 'Sin nombre',
+                    'total_compras': item['total_compras'],
+                    'monto_total': float(item['monto_total'] or 0)
+                }
+                for item in top_compradores
+            ]
+            
+            # Por estado
+            por_estado = list(
+                compras_qs.values('estado').annotate(
+                    cantidad=Count('id')
+                ).order_by('-cantidad')
+            )
+            caja_chica_data['por_estado'] = [
+                {'estado': item['estado'], 'cantidad': item['cantidad']}
+                for item in por_estado if item['cantidad'] > 0
+            ]
+            
+        except Exception as e:
+            logger.warning(f'Error obteniendo analytics de caja chica: {str(e)}')
+        
+        # =========================================
+        # 5. ALERTAS DE CADUCIDAD
+        # =========================================
+        caducidades_data = {
+            'vencidos': 0,
+            'vencen_15_dias': 0,
+            'vencen_30_dias': 0,
+            'vencen_90_dias': 0,
+            'lotes_criticos': []
+        }
+        
+        try:
+            lotes_qs = Lote.objects.filter(activo=True, cantidad_actual__gt=0)
+            
+            if filtrar_por_centro and user_centro:
+                lotes_qs = lotes_qs.filter(centro=user_centro)
+            elif not filtrar_por_centro:
+                # Vista global: solo farmacia central
+                lotes_qs = lotes_qs.filter(centro__isnull=True)
+            
+            # Calcular fechas límite
+            fecha_15 = hoy + timedelta(days=15)
+            fecha_30 = hoy + timedelta(days=30)
+            fecha_90 = hoy + timedelta(days=90)
+            
+            # Vencidos (fecha < hoy)
+            caducidades_data['vencidos'] = lotes_qs.filter(
+                fecha_caducidad__lt=hoy
+            ).count()
+            
+            # Vencen en 15 días (hoy <= fecha < hoy+15)
+            caducidades_data['vencen_15_dias'] = lotes_qs.filter(
+                fecha_caducidad__gte=hoy,
+                fecha_caducidad__lt=fecha_15
+            ).count()
+            
+            # Vencen en 30 días (hoy <= fecha < hoy+30) - incluye los de 15
+            caducidades_data['vencen_30_dias'] = lotes_qs.filter(
+                fecha_caducidad__gte=hoy,
+                fecha_caducidad__lt=fecha_30
+            ).count()
+            
+            # Vencen en 90 días
+            caducidades_data['vencen_90_dias'] = lotes_qs.filter(
+                fecha_caducidad__gte=hoy,
+                fecha_caducidad__lt=fecha_90
+            ).count()
+            
+            # Top 10 lotes más críticos (próximos a vencer o ya vencidos)
+            lotes_criticos = list(
+                lotes_qs.filter(
+                    fecha_caducidad__lt=fecha_30
+                ).select_related('producto').order_by('fecha_caducidad')[:10]
+            )
+            
+            caducidades_data['lotes_criticos'] = [
+                {
+                    'lote_id': lote.id,
+                    'numero_lote': lote.numero_lote,
+                    'producto_clave': lote.producto.clave if lote.producto else 'N/A',
+                    'producto_nombre': lote.producto.nombre if lote.producto else 'N/A',
+                    'cantidad': lote.cantidad_actual,
+                    'fecha_caducidad': lote.fecha_caducidad.isoformat() if lote.fecha_caducidad else None,
+                    'dias_para_vencer': (lote.fecha_caducidad - hoy).days if lote.fecha_caducidad else None,
+                    'estado': 'vencido' if lote.fecha_caducidad and lote.fecha_caducidad < hoy else 'critico'
+                }
+                for lote in lotes_criticos
+            ]
+            
+        except Exception as e:
+            logger.warning(f'Error obteniendo analytics de caducidades: {str(e)}')
+        
+        # =========================================
+        # RESPUESTA FINAL
+        # =========================================
+        response_data = {
+            'top_productos': top_productos,
+            'top_centros': top_centros,
+            'donaciones': donaciones_data,
+            'caja_chica': caja_chica_data,
+            'caducidades': caducidades_data,
+            'filtros_aplicados': {
+                'centro_id': centro_id,
+                'fecha_inicio': fecha_inicio,
+                'fecha_fin': fecha_fin
+            },
+            'generado_at': timezone.now().isoformat()
+        }
+        
+        # Guardar en caché (5 minutos)
+        cache_ttl = getattr(settings, 'CACHE_TTL_ESTADISTICAS', 300)
+        cache.set(cache_key, response_data, cache_ttl)
+        
+        return Response(response_data)
+        
+    except Exception as exc:
+        logger.exception('Error en dashboard_analytics')
+        return Response({
+            'error': 'Error interno del servidor',
+            'top_productos': [],
+            'top_centros': [],
+            'donaciones': {},
+            'caja_chica': {},
+            'caducidades': {}
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
 def trazabilidad_producto(request, clave):
     """
     Trazabilidad de un producto identificado por clave (case-insensitive).
