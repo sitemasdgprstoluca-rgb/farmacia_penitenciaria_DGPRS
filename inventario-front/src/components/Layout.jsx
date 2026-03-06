@@ -779,7 +779,7 @@ function Layout() {
 
         {/* Main Content */}
         <main 
-          className="flex-1 p-4 sm:p-6 lg:p-8 w-full max-w-full overflow-x-hidden"
+          className="flex-1 p-4 sm:p-6 lg:p-8 w-full max-w-full overflow-x-hidden pb-20 lg:pb-8"
           style={{ backgroundColor: "var(--color-background, #F8FAFC)" }}
         >
           <div className="w-full max-w-full">
@@ -787,9 +787,9 @@ function Layout() {
           </div>
         </main>
         
-        {/* Footer minimalista */}
+        {/* Footer minimalista - oculto en móvil por la bottom nav */}
         <footer 
-          className="py-3 px-6 text-center text-xs"
+          className="hidden lg:block py-3 px-6 text-center text-xs"
           style={{ 
             color: 'var(--color-text-secondary, #9CA3AF)',
             borderTop: '1px solid var(--color-border, #E5E7EB)',
@@ -798,6 +798,104 @@ function Layout() {
           © {new Date().getFullYear()} Sistema de Inventario Farmacéutico Penitenciario
         </footer>
       </div>
+
+      {/* ========== BOTTOM NAVIGATION MÓVIL ========== */}
+      <nav 
+        className="fixed bottom-0 left-0 right-0 z-40 lg:hidden flex items-center justify-around safe-area-inset-bottom"
+        style={{
+          background: 'white',
+          borderTop: '1px solid var(--color-border, #E5E7EB)',
+          boxShadow: '0 -4px 12px rgba(0, 0, 0, 0.08)',
+          paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))',
+        }}
+      >
+        {/* Dashboard */}
+        <Link
+          to="/dashboard"
+          className="flex flex-col items-center justify-center py-2 px-3 min-h-[56px] rounded-xl transition-all"
+          style={{
+            color: location.pathname === '/dashboard' 
+              ? 'var(--color-primary, #932043)' 
+              : 'var(--color-text-secondary, #757575)',
+            background: location.pathname === '/dashboard' 
+              ? 'rgba(147, 32, 67, 0.1)' 
+              : 'transparent',
+          }}
+        >
+          <FaHome size={20} />
+          <span className="text-[10px] font-medium mt-0.5">Inicio</span>
+        </Link>
+        
+        {/* Requisiciones (si tiene permiso) */}
+        {permisos?.verRequisiciones && (
+          <Link
+            to="/requisiciones"
+            className="flex flex-col items-center justify-center py-2 px-3 min-h-[56px] rounded-xl transition-all"
+            style={{
+              color: location.pathname === '/requisiciones' 
+                ? 'var(--color-primary, #932043)' 
+                : 'var(--color-text-secondary, #757575)',
+              background: location.pathname === '/requisiciones' 
+                ? 'rgba(147, 32, 67, 0.1)' 
+                : 'transparent',
+            }}
+          >
+            <FaClipboardList size={20} />
+            <span className="text-[10px] font-medium mt-0.5">Requisiciones</span>
+          </Link>
+        )}
+        
+        {/* Notificaciones con badge */}
+        {tienePermisoNotificaciones && (
+          <Link
+            to="/notificaciones"
+            className="relative flex flex-col items-center justify-center py-2 px-3 min-h-[56px] rounded-xl transition-all"
+            style={{
+              color: location.pathname === '/notificaciones' 
+                ? 'var(--color-primary, #932043)' 
+                : 'var(--color-text-secondary, #757575)',
+              background: location.pathname === '/notificaciones' 
+                ? 'rgba(147, 32, 67, 0.1)' 
+                : 'transparent',
+            }}
+          >
+            <div className="relative">
+              <FaBell size={20} />
+              {unreadCount > 0 && (
+                <span 
+                  className="absolute -top-1.5 -right-1.5 flex items-center justify-center min-w-[16px] h-[16px] px-1 text-[9px] font-bold rounded-full"
+                  style={{ 
+                    backgroundColor: '#EF4444',
+                    color: 'white',
+                  }}
+                >
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
+            </div>
+            <span className="text-[10px] font-medium mt-0.5">Alertas</span>
+          </Link>
+        )}
+        
+        {/* Menú (toggle sidebar) */}
+        <button
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className="flex flex-col items-center justify-center py-2 px-3 min-h-[56px] rounded-xl transition-all"
+          style={{
+            color: sidebarOpen 
+              ? 'var(--color-primary, #932043)' 
+              : 'var(--color-text-secondary, #757575)',
+            background: sidebarOpen 
+              ? 'rgba(147, 32, 67, 0.1)' 
+              : 'transparent',
+          }}
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+          <span className="text-[10px] font-medium mt-0.5">Menú</span>
+        </button>
+      </nav>
 
       {/* Overlay móvil */}
       {sidebarOpen && (

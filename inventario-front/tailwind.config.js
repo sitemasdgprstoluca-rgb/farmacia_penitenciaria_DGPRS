@@ -6,6 +6,13 @@ export default {
   ],
   theme: {
     extend: {
+      // Breakpoints adicionales para móvil (no reemplaza los default)
+      screens: {
+        'xs': '320px',    // Móviles muy pequeños
+        'mobile': '360px', // Móviles estándar
+        'mobile-lg': '390px', // iPhone Pro y similares
+        // Los default se mantienen: sm(640), md(768), lg(1024), xl(1280), 2xl(1536)
+      },
       colors: {
         // Colores oficiales Subsecretara de Seguridad - Estado de Mxico
         primary: {
