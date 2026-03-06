@@ -12,10 +12,25 @@
  * - Exportación a Excel y PDF
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { usePermissions } from '../hooks/usePermissions';
 import { auditoriaAPI, centrosAPI } from '../services/api';
 import toast from 'react-hot-toast';
+
+// Hook para debounce
+const useDebounce = (value, delay) => {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+  
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+    
+    return () => clearTimeout(handler);
+  }, [value, delay]);
+  
+  return debouncedValue;
+};
 import {
   FaShieldAlt,
   FaFilter,
@@ -288,18 +303,28 @@ export default function Auditoria() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
   
-  // Filtros
-  const [filtros, setFiltros] = useState({
-    fecha_inicio: '',
-    fecha_fin: '',
-    usuario: '',
+  // Filtros inmediatos (selects)
+  const [filtrosSelect, setFiltrosSelect] = useState({
     centro: '',
     modulo: '',
     accion: '',
     resultado: '',
     metodo: '',
+  });
+  
+  // Filtros con debounce (texto y fechas)
+  const [filtrosTexto, setFiltrosTexto] = useState({
+    fecha_inicio: '',
+    fecha_fin: '',
+    usuario: '',
     objeto_id: '',
   });
+  
+  // Aplicar debounce a filtros de texto (500ms)
+  const debouncedFiltrosTexto = useDebounce(filtrosTexto, 500);
+  
+  // Combinar filtros para enviar al API
+  const filtrosCombinados = { ...filtrosSelect, ...debouncedFiltrosTexto };
   
   // Opciones para filtros
   const [centros, setCentros] = useState([]);
@@ -308,6 +333,9 @@ export default function Auditoria() {
 
   // Verificar acceso (solo SUPER ADMIN)
   const esSuperAdmin = user?.is_superuser === true;
+  
+  // Referencia para evitar llamadas duplicadas
+  const isFirstRender = useRef(true);
 
   // Cargar datos iniciales
   useEffect(() => {
@@ -317,12 +345,21 @@ export default function Auditoria() {
     }
   }, [esSuperAdmin]);
 
-  // Cargar eventos cuando cambie página o filtros
+  // Cargar eventos cuando cambie página
   useEffect(() => {
     if (esSuperAdmin) {
       cargarEventos();
     }
-  }, [page, filtros, esSuperAdmin]);
+  }, [page, esSuperAdmin]);
+  
+  // Cargar eventos cuando cambien los filtros (con reset de página)
+  useEffect(() => {
+    if (esSuperAdmin && !isFirstRender.current) {
+      setPage(1); // Resetear a página 1 cuando cambian filtros
+      cargarEventos();
+    }
+    isFirstRender.current = false;
+  }, [filtrosSelect, debouncedFiltrosTexto]);
 
   const cargarOpciones = async () => {
     try {
@@ -335,7 +372,7 @@ export default function Auditoria() {
       setModulos(modulosRes.data || []);
       setAcciones(accionesRes.data || []);
     } catch (error) {
-      console.error('Error cargando opciones:', error);
+      console.error('Error cargando opciones de filtros:', error);
     }
   };
 
@@ -353,8 +390,12 @@ export default function Auditoria() {
     try {
       // Construir params solo con valores no vacíos
       const params = { page };
-      Object.entries(filtros).forEach(([key, value]) => {
-        if (value) params[key] = value;
+      Object.entries(filtrosCombinados).forEach(([key, value]) => {
+        if (value && value.trim && value.trim()) {
+          params[key] = value.trim();
+        } else if (value) {
+          params[key] = value;
+        }
       });
 
       const response = await auditoriaAPI.getAll(params);
@@ -365,7 +406,8 @@ export default function Auditoria() {
       console.error('Error cargando eventos:', error);
       if (error.response?.status === 403) {
         toast.error('Acceso denegado. Solo SUPER ADMIN puede acceder.');
-      } else {
+      } else if (error.response?.status !== 200) {
+        // Solo mostrar error si no es un problema de red transitorio
         toast.error('Error al cargar auditoría');
       }
     } finally {
@@ -388,15 +430,17 @@ export default function Auditoria() {
   };
 
   const limpiarFiltros = () => {
-    setFiltros({
-      fecha_inicio: '',
-      fecha_fin: '',
-      usuario: '',
+    setFiltrosSelect({
       centro: '',
       modulo: '',
       accion: '',
       resultado: '',
       metodo: '',
+    });
+    setFiltrosTexto({
+      fecha_inicio: '',
+      fecha_fin: '',
+      usuario: '',
       objeto_id: '',
     });
     setPage(1);
@@ -405,7 +449,7 @@ export default function Auditoria() {
   const exportarExcel = async () => {
     try {
       toast.loading('Generando Excel...');
-      const response = await auditoriaAPI.exportar(filtros);
+      const response = await auditoriaAPI.exportar(filtrosCombinados);
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -424,7 +468,7 @@ export default function Auditoria() {
   const exportarPdf = async () => {
     try {
       toast.loading('Generando PDF...');
-      const response = await auditoriaAPI.exportarPdf(filtros);
+      const response = await auditoriaAPI.exportarPdf(filtrosCombinados);
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -515,8 +559,8 @@ export default function Auditoria() {
               <label className="block text-xs font-medium text-gray-700 mb-1">Fecha Inicio</label>
               <input
                 type="date"
-                value={filtros.fecha_inicio}
-                onChange={(e) => setFiltros({...filtros, fecha_inicio: e.target.value})}
+                value={filtrosTexto.fecha_inicio}
+                onChange={(e) => setFiltrosTexto({...filtrosTexto, fecha_inicio: e.target.value})}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
               />
             </div>
@@ -524,8 +568,8 @@ export default function Auditoria() {
               <label className="block text-xs font-medium text-gray-700 mb-1">Fecha Fin</label>
               <input
                 type="date"
-                value={filtros.fecha_fin}
-                onChange={(e) => setFiltros({...filtros, fecha_fin: e.target.value})}
+                value={filtrosTexto.fecha_fin}
+                onChange={(e) => setFiltrosTexto({...filtrosTexto, fecha_fin: e.target.value})}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
               />
             </div>
@@ -533,8 +577,8 @@ export default function Auditoria() {
               <label className="block text-xs font-medium text-gray-700 mb-1">Usuario</label>
               <input
                 type="text"
-                value={filtros.usuario}
-                onChange={(e) => setFiltros({...filtros, usuario: e.target.value})}
+                value={filtrosTexto.usuario}
+                onChange={(e) => setFiltrosTexto({...filtrosTexto, usuario: e.target.value})}
                 placeholder="Buscar usuario..."
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
               />
@@ -542,8 +586,8 @@ export default function Auditoria() {
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Centro</label>
               <select
-                value={filtros.centro}
-                onChange={(e) => setFiltros({...filtros, centro: e.target.value})}
+                value={filtrosSelect.centro}
+                onChange={(e) => setFiltrosSelect({...filtrosSelect, centro: e.target.value})}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
               >
                 <option value="">Todos</option>
@@ -555,8 +599,8 @@ export default function Auditoria() {
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Módulo</label>
               <select
-                value={filtros.modulo}
-                onChange={(e) => setFiltros({...filtros, modulo: e.target.value})}
+                value={filtrosSelect.modulo}
+                onChange={(e) => setFiltrosSelect({...filtrosSelect, modulo: e.target.value})}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
               >
                 <option value="">Todos</option>
@@ -568,8 +612,8 @@ export default function Auditoria() {
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Acción</label>
               <select
-                value={filtros.accion}
-                onChange={(e) => setFiltros({...filtros, accion: e.target.value})}
+                value={filtrosSelect.accion}
+                onChange={(e) => setFiltrosSelect({...filtrosSelect, accion: e.target.value})}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
               >
                 <option value="">Todas</option>
@@ -581,8 +625,8 @@ export default function Auditoria() {
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Resultado</label>
               <select
-                value={filtros.resultado}
-                onChange={(e) => setFiltros({...filtros, resultado: e.target.value})}
+                value={filtrosSelect.resultado}
+                onChange={(e) => setFiltrosSelect({...filtrosSelect, resultado: e.target.value})}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
               >
                 {RESULTADOS.map(r => (
@@ -593,8 +637,8 @@ export default function Auditoria() {
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Método HTTP</label>
               <select
-                value={filtros.metodo}
-                onChange={(e) => setFiltros({...filtros, metodo: e.target.value})}
+                value={filtrosSelect.metodo}
+                onChange={(e) => setFiltrosSelect({...filtrosSelect, metodo: e.target.value})}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
               >
                 {METODOS_HTTP.map(m => (
@@ -606,8 +650,8 @@ export default function Auditoria() {
               <label className="block text-xs font-medium text-gray-700 mb-1">ID Objeto</label>
               <input
                 type="text"
-                value={filtros.objeto_id}
-                onChange={(e) => setFiltros({...filtros, objeto_id: e.target.value})}
+                value={filtrosTexto.objeto_id}
+                onChange={(e) => setFiltrosTexto({...filtrosTexto, objeto_id: e.target.value})}
                 placeholder="ID específico..."
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
               />
