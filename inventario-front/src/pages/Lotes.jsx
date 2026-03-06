@@ -2111,9 +2111,10 @@ const handleImportar = async (e) => {
               </h2>
               <button 
                 onClick={() => { setShowModal(false); resetForm(); }}
-                className="text-white hover:text-pink-200 transition-colors text-2xl font-bold"
+                className="text-white hover:text-gray-200 p-1 transition-colors"
+                title="Cerrar"
               >
-                --
+                <FaTimes className="text-xl" />
               </button>
             </div>
             

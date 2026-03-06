@@ -2295,7 +2295,25 @@ const Productos = () => {
 
               </div>
 
-              <span className="text-sm font-semibold">{editingProduct ? editingProduct.clave : 'Nuevo'}</span>
+              <div className="flex items-center gap-3">
+
+                <span className="text-sm font-semibold">{editingProduct ? editingProduct.clave : 'Nuevo'}</span>
+
+                <button
+
+                  onClick={closeModal}
+
+                  className="text-white hover:text-gray-200 p-1 transition-colors"
+
+                  title="Cerrar"
+
+                >
+
+                  <FaTimes className="text-xl" />
+
+                </button>
+
+              </div>
 
             </div>
             
