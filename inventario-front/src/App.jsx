@@ -76,6 +76,7 @@ const Pacientes = lazy(() => import('./pages/Pacientes'));
 const Dispensaciones = lazy(() => import('./pages/Dispensaciones'));
 const ComprasCajaChica = lazy(() => import('./pages/ComprasCajaChica'));
 const InventarioCajaChica = lazy(() => import('./pages/InventarioCajaChica'));
+const Auditoria = lazy(() => import('./pages/Auditoria'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const ServerError = lazy(() => import('./pages/ServerError'));
 
@@ -787,6 +788,8 @@ function App() {
                 <ConfiguracionTema />
               </PermissionsGuard>
             } />
+            {/* Panel de Auditoría - Solo SUPER ADMIN */}
+            <Route path="auditoria" element={<Auditoria />} />
           </Route>
           
           {/* Páginas de error */}

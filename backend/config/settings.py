@@ -326,6 +326,18 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'core.middleware.SecurityHeadersMiddleware',  # CSP y headers de seguridad adicionales
     'core.middleware.PdfInlineMiddleware',  # PDFs se abren en visor del navegador (inline, no attachment)
+    'core.middleware.AuditMiddleware',  # Auditoría completa para Panel SUPER ADMIN
+]
+
+# Configuración de Auditoría
+AUDIT_ENABLED = True  # Activar/desactivar registro de auditoría
+AUDIT_LOG_READS = False  # No loguear GETs por defecto (muy verboso)
+AUDIT_EXCLUDE_PATHS = [  # Paths excluidos de auditoría
+    '/api/auth/token/refresh/',
+    '/api/health/',
+    '/api/metrics/',
+    '/media/',
+    '/static/',
 ]
 
 

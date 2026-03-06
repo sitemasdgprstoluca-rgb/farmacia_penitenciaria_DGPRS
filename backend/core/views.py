@@ -37,7 +37,8 @@ from core.serializers import (
     UserSerializer, CentroSerializer, UserMeSerializer,
     ProductoSerializer, LoteSerializer, RequisicionSerializer,
     DetalleRequisicionSerializer, MovimientoSerializer,
-    AuditoriaLogSerializer, ImportacionLogSerializer, NotificacionSerializer,
+    AuditoriaLogSerializer, AuditoriaLogDetalleSerializer,
+    ImportacionLogSerializer, NotificacionSerializer,
     ConfiguracionSistemaSerializer,
     # Módulo Compras Caja Chica
     CompraCajaChicaSerializer, CompraCajaChicaListSerializer,
@@ -1117,40 +1118,83 @@ class DetalleRequisicionViewSet(viewsets.ModelViewSet):
         return queryset.none()
 
 
+# =============================================================================
+# PANEL DE AUDITORÍA SUPER ADMIN
+# =============================================================================
+
 class AuditoriaLogViewSet(viewsets.ReadOnlyModelViewSet):
-    """ViewSet para registros de auditoria (solo lectura)"""
+    """
+    ViewSet para Panel de Auditoría SUPER ADMIN.
+    
+    Proporciona trazabilidad completa de todas las acciones del sistema.
+    ACCESO EXCLUSIVO: Solo usuarios con is_superuser=True (403 para otros).
+    
+    Filtros disponibles:
+    - fecha_inicio, fecha_fin: Rango de fechas
+    - usuario: Búsqueda por username o nombre
+    - centro: ID del centro
+    - modulo: Nombre del módulo (PRODUCTOS, LOTES, REQUISICIONES, etc.)
+    - accion: Tipo de acción (CREAR, ACTUALIZAR, ELIMINAR, APROBAR, etc.)
+    - resultado: success, fail, error, warning
+    - objeto_id: ID específico del objeto
+    
+    Endpoints:
+    - GET /api/auditoria/ - Lista paginada con filtros
+    - GET /api/auditoria/{id}/ - Detalle de un evento
+    - GET /api/auditoria/stats/ - Estadísticas de auditoría
+    - GET /api/auditoria/exportar/ - Exportar a Excel
+    - GET /api/auditoria/exportar-pdf/ - Exportar a PDF
+    - GET /api/auditoria/modulos/ - Lista de módulos disponibles
+    - GET /api/auditoria/acciones/ - Lista de acciones disponibles
+    """
     queryset = AuditoriaLog.objects.all()
     serializer_class = AuditoriaLogSerializer
-    # Solo Superuser/Admin puede leer el log de auditoría.
+    # ACCESO EXCLUSIVO SUPER ADMIN - 403 para cualquier otro rol
     permission_classes = [IsSuperuserOnly]
     pagination_class = StandardResultsSetPagination
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['modelo', 'usuario__username', 'accion']
-    ordering_fields = ['timestamp']
+    search_fields = ['modelo', 'usuario__username', 'accion', 'objeto_id', 'endpoint']
+    ordering_fields = ['timestamp', 'usuario__username', 'modelo', 'accion', 'resultado']
     ordering = ['-timestamp']
     
-    # ISS-037: Límite máximo de registros para evitar slow queries
+    # Límites de seguridad
     MAX_AUDIT_RECORDS = 10000
+    MAX_EXPORT_RECORDS = 5000
+    MAX_PDF_RECORDS = 2000
+    
+    def get_serializer_class(self):
+        """Usa serializer detallado para vista individual."""
+        if self.action == 'retrieve':
+            return AuditoriaLogDetalleSerializer
+        return AuditoriaLogSerializer
     
     def get_queryset(self):
-        """Filtrado avanzado por parámetros de query.
-        
-        ISS-037: Se aplica un límite máximo para evitar escaneo de tabla completa.
         """
-        queryset = AuditoriaLog.objects.select_related('usuario').order_by('-timestamp')
+        Filtrado avanzado con paginación eficiente.
         
-        # Filtro por acción
-        accion = self.request.query_params.get('accion')
-        if accion:
-            queryset = queryset.filter(accion=accion)
+        Optimizaciones:
+        - select_related para evitar N+1 queries
+        - Índices de BD para filtros comunes
+        - Límites de safety para evitar escaneo completo
+        """
+        queryset = AuditoriaLog.objects.select_related(
+            'usuario', 'centro'
+        ).order_by('-timestamp')
         
-        # Filtro por modelo
-        modelo = self.request.query_params.get('modelo')
-        if modelo:
-            queryset = queryset.filter(modelo__icontains=modelo)
+        params = self.request.query_params
         
-        # Filtro por usuario
-        usuario = self.request.query_params.get('usuario')
+        # Filtro por fecha inicio
+        fecha_inicio = params.get('fecha_inicio')
+        if fecha_inicio:
+            queryset = queryset.filter(timestamp__date__gte=fecha_inicio)
+        
+        # Filtro por fecha fin
+        fecha_fin = params.get('fecha_fin')
+        if fecha_fin:
+            queryset = queryset.filter(timestamp__date__lte=fecha_fin)
+        
+        # Filtro por usuario (busca en username, first_name, last_name)
+        usuario = params.get('usuario')
         if usuario:
             queryset = queryset.filter(
                 Q(usuario__username__icontains=usuario) |
@@ -1158,18 +1202,173 @@ class AuditoriaLogViewSet(viewsets.ReadOnlyModelViewSet):
                 Q(usuario__last_name__icontains=usuario)
             )
         
-        # Filtro por fecha inicio
-        fecha_inicio = self.request.query_params.get('fecha_inicio')
-        if fecha_inicio:
-            queryset = queryset.filter(timestamp__date__gte=fecha_inicio)
+        # Filtro por centro
+        centro = params.get('centro')
+        if centro:
+            queryset = queryset.filter(centro_id=centro)
         
-        # Filtro por fecha fin
-        fecha_fin = self.request.query_params.get('fecha_fin')
-        if fecha_fin:
-            queryset = queryset.filter(timestamp__date__lte=fecha_fin)
+        # Filtro por módulo
+        modulo = params.get('modulo')
+        if modulo:
+            queryset = queryset.filter(modelo__iexact=modulo)
         
-        # ISS-037: La paginación manejará el límite de registros
+        # Filtro por acción
+        accion = params.get('accion')
+        if accion:
+            queryset = queryset.filter(accion__iexact=accion)
+        
+        # Filtro por resultado
+        resultado = params.get('resultado')
+        if resultado:
+            queryset = queryset.filter(resultado__iexact=resultado)
+        
+        # Filtro por objeto_id
+        objeto_id = params.get('objeto_id')
+        if objeto_id:
+            queryset = queryset.filter(objeto_id=objeto_id)
+        
+        # Filtro por endpoint (búsqueda parcial)
+        endpoint = params.get('endpoint')
+        if endpoint:
+            queryset = queryset.filter(endpoint__icontains=endpoint)
+        
+        # Filtro por request_id (para correlación)
+        request_id = params.get('request_id')
+        if request_id:
+            queryset = queryset.filter(request_id=request_id)
+        
+        # Filtro por método HTTP
+        metodo = params.get('metodo')
+        if metodo:
+            queryset = queryset.filter(metodo_http__iexact=metodo)
+        
         return queryset
+    
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        """
+        Estadísticas de auditoría para el dashboard del panel.
+        GET /api/auditoria/stats/
+        
+        Retorna:
+        - Total de eventos (últimos 30 días)
+        - Eventos por día
+        - Eventos por módulo
+        - Eventos por resultado
+        - Usuarios más activos
+        - Eventos críticos (errores)
+        """
+        from django.db.models import Count
+        from django.db.models.functions import TruncDate
+        from datetime import timedelta
+        
+        # Últimos 30 días
+        fecha_limite = timezone.now() - timedelta(days=30)
+        queryset = AuditoriaLog.objects.filter(timestamp__gte=fecha_limite)
+        
+        # Total eventos
+        total_eventos = queryset.count()
+        
+        # Por día (últimos 7 días)
+        eventos_por_dia = list(
+            queryset
+            .annotate(fecha=TruncDate('timestamp'))
+            .values('fecha')
+            .annotate(total=Count('id'))
+            .order_by('-fecha')[:7]
+        )
+        
+        # Por módulo
+        eventos_por_modulo = list(
+            queryset
+            .values('modelo')
+            .annotate(total=Count('id'))
+            .order_by('-total')[:10]
+        )
+        
+        # Por resultado
+        eventos_por_resultado = list(
+            queryset
+            .values('resultado')
+            .annotate(total=Count('id'))
+            .order_by('-total')
+        )
+        
+        # Por acción
+        eventos_por_accion = list(
+            queryset
+            .values('accion')
+            .annotate(total=Count('id'))
+            .order_by('-total')[:10]
+        )
+        
+        # Usuarios más activos
+        usuarios_activos = list(
+            queryset
+            .filter(usuario__isnull=False)
+            .values('usuario__username', 'usuario__first_name', 'usuario__last_name')
+            .annotate(total=Count('id'))
+            .order_by('-total')[:5]
+        )
+        
+        # Eventos críticos (errores y fallas)
+        eventos_criticos = queryset.filter(
+            Q(resultado__in=['fail', 'error']) | Q(status_code__gte=400)
+        ).count()
+        
+        return Response({
+            'periodo': '30 días',
+            'total_eventos': total_eventos,
+            'eventos_criticos': eventos_criticos,
+            'eventos_por_dia': eventos_por_dia,
+            'eventos_por_modulo': eventos_por_modulo,
+            'eventos_por_resultado': eventos_por_resultado,
+            'eventos_por_accion': eventos_por_accion,
+            'usuarios_activos': usuarios_activos,
+        })
+    
+    @action(detail=False, methods=['get'])
+    def modulos(self, request):
+        """
+        Lista de módulos disponibles para filtrar.
+        GET /api/auditoria/modulos/
+        """
+        modulos = (
+            AuditoriaLog.objects
+            .values_list('modelo', flat=True)
+            .distinct()
+            .order_by('modelo')
+        )
+        return Response(list(modulos))
+    
+    @action(detail=False, methods=['get'])
+    def acciones(self, request):
+        """
+        Lista de acciones disponibles para filtrar.
+        GET /api/auditoria/acciones/
+        """
+        acciones = (
+            AuditoriaLog.objects
+            .values_list('accion', flat=True)
+            .distinct()
+            .order_by('accion')
+        )
+        return Response(list(acciones))
+    
+    @action(detail=False, methods=['get'])
+    def criticos(self, request):
+        """
+        Eventos críticos (errores y accesos denegados).
+        GET /api/auditoria/criticos/
+        
+        Filtro predefinido para mostrar solo eventos problemáticos.
+        """
+        queryset = self.get_queryset().filter(
+            Q(resultado__in=['fail', 'error']) | Q(status_code__gte=400)
+        )[:100]
+        
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
     def exportar(self, request):
@@ -1178,20 +1377,20 @@ class AuditoriaLogViewSet(viewsets.ReadOnlyModelViewSet):
         GET /api/auditoria/exportar/
         """
         try:
-            logs = self.get_queryset()[:5000]  # Limitar a 5000 registros
+            logs = self.get_queryset()[:self.MAX_EXPORT_RECORDS]
             
             wb = openpyxl.Workbook()
             ws = wb.active
             ws.title = 'Auditoria'
             
             # Título
-            ws.merge_cells('A1:G1')
+            ws.merge_cells('A1:J1')
             titulo = ws['A1']
-            titulo.value = 'REPORTE DE AUDITORÍA'
+            titulo.value = 'REPORTE DE AUDITORÍA - PANEL SUPER ADMIN'
             titulo.font = openpyxl.styles.Font(bold=True, size=14, color='632842')
             titulo.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
             
-            ws.merge_cells('A2:G2')
+            ws.merge_cells('A2:J2')
             fecha = ws['A2']
             fecha.value = f'Generado el {timezone.now().strftime("%d/%m/%Y %H:%M")}'
             fecha.font = openpyxl.styles.Font(size=10, italic=True)
@@ -1199,8 +1398,11 @@ class AuditoriaLogViewSet(viewsets.ReadOnlyModelViewSet):
             
             ws.append([])
             
-            # Encabezados
-            headers = ['#', 'Fecha', 'Usuario', 'Acción', 'Modelo', 'Objeto', 'IP']
+            # Encabezados extendidos
+            headers = [
+                '#', 'Fecha', 'Usuario', 'Rol', 'Centro', 
+                'Acción', 'Módulo', 'Objeto', 'Resultado', 'IP'
+            ]
             ws.append(headers)
             
             header_fill = openpyxl.styles.PatternFill(start_color='632842', end_color='632842', fill_type='solid')
@@ -1212,30 +1414,26 @@ class AuditoriaLogViewSet(viewsets.ReadOnlyModelViewSet):
             
             # Datos
             for idx, log in enumerate(logs, 1):
-                objeto_repr = ''
-                if log.detalles and isinstance(log.detalles, dict):
-                    objeto_repr = log.detalles.get('objeto_repr', '')
-                if not objeto_repr:
-                    objeto_repr = f"{log.modelo} #{log.objeto_id}" if log.objeto_id else log.modelo
-                
                 ws.append([
                     idx,
                     log.timestamp.strftime('%d/%m/%Y %H:%M:%S') if log.timestamp else '',
                     log.usuario.username if log.usuario else 'Sistema',
+                    getattr(log, 'rol_usuario', '') or (log.usuario.rol if log.usuario else ''),
+                    log.centro.nombre if log.centro else '',
                     log.accion,
                     log.modelo,
-                    str(objeto_repr),  # SIN TRUNCAR
+                    log.objeto_id or '',
+                    getattr(log, 'resultado', 'success') or 'success',
                     log.ip_address or ''
                 ])
             
-            # Ajustar anchos - Columna Descripción más ancha para texto completo
-            ws.column_dimensions['A'].width = 8
-            ws.column_dimensions['B'].width = 20
-            ws.column_dimensions['C'].width = 15
-            ws.column_dimensions['D'].width = 12
-            ws.column_dimensions['E'].width = 20
-            ws.column_dimensions['F'].width = 80  # Más ancho para descripciones completas
-            ws.column_dimensions['G'].width = 15
+            # Ajustar anchos
+            column_widths = {
+                'A': 8, 'B': 20, 'C': 15, 'D': 15, 'E': 25,
+                'F': 15, 'G': 20, 'H': 20, 'I': 12, 'J': 15
+            }
+            for col, width in column_widths.items():
+                ws.column_dimensions[col].width = width
             
             from django.http import HttpResponse
             response = HttpResponse(
@@ -1262,7 +1460,7 @@ class AuditoriaLogViewSet(viewsets.ReadOnlyModelViewSet):
         Ideal para reportes oficiales de auditoría y cumplimiento normativo.
         """
         try:
-            logs = self.get_queryset()[:2000]  # Limitar para PDFs
+            logs = self.get_queryset()[:self.MAX_PDF_RECORDS]
             
             # Preparar datos para el generador
             auditoria_data = []
@@ -1279,7 +1477,8 @@ class AuditoriaLogViewSet(viewsets.ReadOnlyModelViewSet):
                     'accion': log.accion,
                     'modelo': log.modelo,
                     'objeto_repr': objeto_repr,
-                    'ip_address': log.ip_address or ''
+                    'ip_address': log.ip_address or '',
+                    'resultado': getattr(log, 'resultado', 'success') or 'success',
                 })
             
             # Filtros aplicados
@@ -1288,7 +1487,8 @@ class AuditoriaLogViewSet(viewsets.ReadOnlyModelViewSet):
                 'fecha_fin': request.query_params.get('fecha_fin'),
                 'usuario': request.query_params.get('usuario'),
                 'accion': request.query_params.get('accion'),
-                'modelo': request.query_params.get('modelo'),
+                'modulo': request.query_params.get('modulo'),
+                'resultado': request.query_params.get('resultado'),
             }
             filtros = {k: v for k, v in filtros.items() if v}
             

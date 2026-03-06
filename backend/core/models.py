@@ -2910,25 +2910,72 @@ ImportacionLog = ImportacionLogs
 
 class AuditoriaLogs(models.Model):
     """
-    Log de AuditorÃ­a - Supabase
+    Log de Auditoría - Supabase
     
-    Campos en Supabase: id, usuario_id, accion, modelo, objeto_id,
-    datos_anteriores, datos_nuevos, ip_address, user_agent, detalles, timestamp
+    PANEL SUPER ADMIN: Trazabilidad completa de todas las acciones del sistema.
+    
+    Campos base (existentes):
+    - id, usuario_id, accion, modelo, objeto_id
+    - datos_anteriores, datos_nuevos
+    - ip_address, user_agent, detalles, timestamp
+    
+    Campos extendidos (requieren migración 003_auditoria_super_admin.sql):
+    - resultado: success/fail/error/warning
+    - status_code: código HTTP
+    - endpoint: path de la API
+    - request_id: ID único para correlación
+    - idempotency_key: clave de idempotencia
+    - rol_usuario: rol al momento de la acción
+    - centro_id: centro al momento de la acción
+    - metodo_http: GET/POST/PUT/PATCH/DELETE
     """
-    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='auditoria_logs', db_column='usuario_id')
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.SET_NULL, 
+        null=True, blank=True, 
+        related_name='auditoria_logs', 
+        db_column='usuario_id'
+    )
     accion = models.CharField(max_length=50)
     modelo = models.CharField(max_length=100)
-    objeto_id = models.CharField(max_length=50, null=True, blank=True)  # Schema says 50 chars
+    objeto_id = models.CharField(max_length=50, null=True, blank=True)
     datos_anteriores = models.JSONField(null=True, blank=True)
     datos_nuevos = models.JSONField(null=True, blank=True)
     ip_address = models.CharField(max_length=45, null=True, blank=True)
     user_agent = models.TextField(null=True, blank=True)
     detalles = models.JSONField(null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
+    
+    # Campos extendidos para Panel SUPER ADMIN
+    # Nota: Requieren ejecutar migración SQL antes de usar
+    resultado = models.CharField(max_length=20, null=True, blank=True, default='success')
+    status_code = models.IntegerField(null=True, blank=True, default=200)
+    endpoint = models.CharField(max_length=255, null=True, blank=True)
+    request_id = models.CharField(max_length=100, null=True, blank=True)
+    idempotency_key = models.CharField(max_length=255, null=True, blank=True)
+    rol_usuario = models.CharField(max_length=50, null=True, blank=True)
+    centro = models.ForeignKey(
+        'Centro', 
+        on_delete=models.SET_NULL, 
+        null=True, blank=True, 
+        related_name='auditoria_logs',
+        db_column='centro_id'
+    )
+    metodo_http = models.CharField(max_length=10, null=True, blank=True)
 
     class Meta:
         db_table = 'auditoria_logs'
         managed = False  # Tabla en Supabase
+        ordering = ['-timestamp']
+        indexes = [
+            # Los índices se crean en SQL, esto es solo documentación
+            # models.Index(fields=['-timestamp', 'usuario']),
+            # models.Index(fields=['modelo', 'accion']),
+            # models.Index(fields=['resultado']),
+        ]
+    
+    def __str__(self):
+        return f"{self.timestamp}: {self.accion} - {self.modelo} #{self.objeto_id}"
 
 # Alias para compatibilidad con cÃ³digo existente (si es necesario)
 AuditLog = AuditoriaLogs

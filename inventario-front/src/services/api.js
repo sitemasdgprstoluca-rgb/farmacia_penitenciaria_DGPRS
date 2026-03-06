@@ -1467,13 +1467,33 @@ export const requisicionesAPI = {
   }),
 };
 
-// Auditora -  NUEVO
+// Auditoría - Panel SUPER ADMIN
 export const auditoriaAPI = {
+  // Lista paginada con filtros
   getAll: (params) => apiClient.get('/auditoria/', { params }),
+  
+  // Detalle de un evento
+  getById: (id) => apiClient.get(`/auditoria/${id}/`),
+  
+  // Estadísticas para dashboard
+  getStats: () => apiClient.get('/auditoria/stats/'),
+  
+  // Lista de módulos disponibles
+  getModulos: () => apiClient.get('/auditoria/modulos/'),
+  
+  // Lista de acciones disponibles
+  getAcciones: () => apiClient.get('/auditoria/acciones/'),
+  
+  // Eventos críticos
+  getCriticos: () => apiClient.get('/auditoria/criticos/'),
+  
+  // Exportar a Excel
   exportar: (params) => apiClient.get('/auditoria/exportar/', { 
     params, 
     responseType: 'blob' 
   }),
+  
+  // Exportar a PDF
   exportarPdf: (params) => apiClient.get('/auditoria/exportar-pdf/', { 
     params, 
     responseType: 'blob' 

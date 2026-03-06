@@ -2663,25 +2663,76 @@ class NotificacionSerializer(serializers.ModelSerializer):
 
 
 # =============================================================================
-# AUDITORIA LOG SERIALIZER
+# AUDITORIA LOG SERIALIZER - Panel SUPER ADMIN
 # =============================================================================
 
 class AuditoriaLogSerializer(serializers.ModelSerializer):
+    """
+    Serializer para logs de auditoría.
+    Incluye campos extendidos para Panel SUPER ADMIN.
+    """
     usuario_nombre = serializers.SerializerMethodField()
+    usuario_username = serializers.CharField(source='usuario.username', read_only=True, default=None)
+    centro_nombre = serializers.CharField(source='centro.nombre', read_only=True, default=None)
     fecha = serializers.DateTimeField(source='timestamp', read_only=True)
     
     class Meta:
         model = AuditoriaLogs
         fields = [
-            'id', 'usuario', 'usuario_nombre', 'accion', 'modelo', 
-            'objeto_id', 'ip_address', 'user_agent', 'detalles', 'fecha'
+            'id', 
+            'usuario', 'usuario_nombre', 'usuario_username',
+            'rol_usuario',
+            'centro', 'centro_nombre',
+            'accion', 'modelo', 'objeto_id',
+            'resultado', 'status_code', 'metodo_http',
+            'endpoint', 'request_id', 'idempotency_key',
+            'ip_address', 'user_agent', 
+            'datos_anteriores', 'datos_nuevos', 'detalles', 
+            'fecha'
         ]
         read_only_fields = fields
     
     def get_usuario_nombre(self, obj):
         if obj.usuario:
-            return obj.usuario.get_full_name() or obj.usuario.username
+            nombre = obj.usuario.get_full_name()
+            return nombre if nombre.strip() else obj.usuario.username
         return 'Sistema'
+
+
+class AuditoriaLogDetalleSerializer(AuditoriaLogSerializer):
+    """
+    Serializer detallado para vista de evento individual.
+    Incluye datos before/after completos.
+    """
+    cambios_resumen = serializers.SerializerMethodField()
+    
+    class Meta(AuditoriaLogSerializer.Meta):
+        fields = AuditoriaLogSerializer.Meta.fields + ['cambios_resumen']
+    
+    def get_cambios_resumen(self, obj):
+        """Genera un resumen de los cambios realizados."""
+        if not obj.datos_anteriores and not obj.datos_nuevos:
+            return None
+        
+        cambios = []
+        antes = obj.datos_anteriores or {}
+        despues = obj.datos_nuevos or {}
+        
+        # Encontrar campos modificados
+        todos_campos = set(antes.keys()) | set(despues.keys())
+        
+        for campo in todos_campos:
+            valor_antes = antes.get(campo)
+            valor_despues = despues.get(campo)
+            
+            if valor_antes != valor_despues:
+                cambios.append({
+                    'campo': campo,
+                    'antes': valor_antes,
+                    'despues': valor_despues,
+                })
+        
+        return cambios if cambios else None
 
 
 # =============================================================================

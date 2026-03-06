@@ -423,6 +423,8 @@ function Layout() {
     { path: "/notificaciones", icon: FaBell, label: "Notificaciones", permission: "verNotificaciones", badge: unreadCount },
     { path: "/perfil", icon: FaIdBadge, label: "Perfil", permission: "verPerfil" },
     { path: "/configuracion-tema", icon: FaPalette, label: "Personalizar Tema", permission: "configurarTema" },
+    // Panel Auditoría - Solo SUPER ADMIN
+    { path: "/auditoria", icon: FaShieldAlt, label: "Auditoría", superAdminOnly: true },
   ], [unreadCount]);
 
   // Toggle para expandir/colapsar submenús
@@ -451,8 +453,15 @@ function Layout() {
     if (isValidating) {
       return menuItems.filter(item => item.path === "/perfil");
     }
-    return menuItems.filter((item) => !item.permission || permisos[item.permission]);
-  }, [menuItems, isValidating, permisos]);
+    return menuItems.filter((item) => {
+      // Items exclusivos de SUPER ADMIN
+      if (item.superAdminOnly) {
+        return user?.is_superuser === true;
+      }
+      // Items normales con permisos
+      return !item.permission || permisos[item.permission];
+    });
+  }, [menuItems, isValidating, permisos, user]);
 
   // Responsive sidebar
   useEffect(() => {
