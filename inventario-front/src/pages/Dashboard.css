@@ -392,3 +392,250 @@ a:focus-visible {
   .kpi-section-dot { animation: none; }
   .kpi-card-wrapper { transition-duration: 0s !important; }
 }
+
+/* ============================================================================
+   DASHBOARD SECTIONS - Estilos para secciones modernizadas
+   ============================================================================ */
+
+/* --- Mini Stat Cards --- */
+.dash-stat-mini {
+  border-radius: 10px;
+  padding: 10px 14px;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.dash-stat-mini:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+
+.dash-stat-success { background: linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%); }
+.dash-stat-danger  { background: linear-gradient(135deg, #FEF2F2 0%, #FECACA 100%); }
+.dash-stat-info    { background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%); }
+.dash-stat-warning { background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%); }
+.dash-stat-primary { background: linear-gradient(135deg, #F5F3FF 0%, #EDE9FE 100%); }
+
+/* --- Bar Ranking Items --- */
+.dash-bar-rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 800;
+  color: white;
+  background: #6B7280;
+  flex-shrink: 0;
+}
+
+.dash-ranking-item {
+  padding: 8px 10px;
+  border-radius: 10px;
+  transition: background 0.15s ease;
+}
+
+.dash-ranking-item:hover {
+  background: #F9FAFB;
+}
+
+.dash-ranking-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #6B7280;
+  background: #F3F4F6;
+  flex-shrink: 0;
+}
+
+.dash-ranking-medal {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+/* --- Requisiciones Badge --- */
+.dash-req-badge {
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: white;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.dash-req-badge:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+
+/* --- Caducidad Alert Cards --- */
+.dash-alert-section {
+  margin-bottom: 0;
+}
+
+.dash-caducidad-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.dash-caducidad-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.dash-caducidad-red    { background: linear-gradient(135deg, #FEF2F2 0%, #FEE2E2 100%); border-left: 4px solid #EF4444; }
+.dash-caducidad-orange { background: linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 100%); border-left: 4px solid #F97316; }
+.dash-caducidad-yellow { background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%); border-left: 4px solid #F59E0B; }
+
+.dash-caducidad-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.dash-caducidad-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  opacity: 0.3;
+}
+
+/* --- Centro Item --- */
+.dash-centro-item {
+  padding: 10px 12px;
+  border-radius: 10px;
+  transition: background 0.15s ease;
+}
+
+.dash-centro-item:hover {
+  background: #F9FAFB;
+}
+
+/* --- List Row --- */
+.dash-list-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  transition: background 0.15s ease;
+}
+
+.dash-list-row:hover {
+  background: #F9FAFB;
+}
+
+/* --- Money Card --- */
+.dash-money-card {
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%);
+  border: 1px solid rgba(16, 185, 129, 0.1);
+}
+
+/* --- Timeline (Movimientos) --- */
+.dash-timeline {
+  position: relative;
+}
+
+.dash-timeline-item {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  margin-left: 12px;
+  border-left: 2px solid #E5E7EB;
+  transition: background 0.15s ease;
+}
+
+.dash-timeline-item:hover {
+  background: #FAFAFA;
+  border-radius: 0 10px 10px 0;
+}
+
+.dash-timeline-item:last-child {
+  border-left-color: transparent;
+}
+
+.dash-timeline-dot {
+  position: absolute;
+  left: -6px;
+  top: 16px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid white;
+  box-shadow: 0 0 0 2px currentColor;
+  flex-shrink: 0;
+  z-index: 1;
+}
+
+.dash-timeline-content {
+  flex: 1;
+  min-width: 0;
+  padding-left: 6px;
+}
+
+/* --- Update Footer --- */
+.dash-update-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding-top: 12px;
+  border-top: 1px solid #F3F4F6;
+  margin-top: 12px;
+}
+
+/* --- Dashboard Footer --- */
+.dash-footer {
+  padding-top: 20px;
+  margin-top: 8px;
+  border-top: 1px solid rgba(0, 0, 0, 0.04);
+  text-align: center;
+}
+
+/* --- Animations for new sections --- */
+@keyframes dashFadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.dash-caducidad-card,
+.dash-ranking-item,
+.dash-centro-item,
+.dash-timeline-item {
+  animation: dashFadeUp 0.3s ease-out both;
+}
+
+.dash-caducidad-card:nth-child(1) { animation-delay: 0.05s; }
+.dash-caducidad-card:nth-child(2) { animation-delay: 0.1s; }
+.dash-caducidad-card:nth-child(3) { animation-delay: 0.15s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .dash-caducidad-card,
+  .dash-ranking-item,
+  .dash-centro-item,
+  .dash-timeline-item {
+    animation: none;
+  }
+}
