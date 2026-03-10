@@ -4544,7 +4544,9 @@ class MovimientoViewSet(
         
         # SEGURIDAD: Verificar permisos y determinar filtro de centro
         user = request.user
-        filtrar_por_centro = not is_farmacia_or_admin(user)
+        # ISS-AUDIT FIX: Usar has_global_read_access para incluir VISTA
+        tiene_acceso_global = has_global_read_access(user)
+        filtrar_por_centro = not tiene_acceso_global
         user_centro = get_user_centro(user) if filtrar_por_centro else None
         
         clave = request.query_params.get('producto_clave')
@@ -4637,9 +4639,10 @@ class MovimientoViewSet(
         """
         from core.utils.pdf_reports import generar_reporte_trazabilidad
         
-        # SEGURIDAD: Solo admin/farmacia pueden exportar trazabilidad de lotes
-        if not is_farmacia_or_admin(request.user):
-            return Response({'error': 'Solo administradores y farmacia pueden exportar trazabilidad de lotes'}, status=status.HTTP_403_FORBIDDEN)
+        # SEGURIDAD: Solo admin/farmacia/vista pueden exportar trazabilidad de lotes
+        # ISS-AUDIT FIX: Incluir VISTA con has_global_read_access
+        if not has_global_read_access(request.user):
+            return Response({'error': 'Solo usuarios con acceso global pueden exportar trazabilidad de lotes'}, status=status.HTTP_403_FORBIDDEN)
         
         numero_lote = request.query_params.get('numero_lote')
         if not numero_lote:
@@ -8278,13 +8281,15 @@ def dashboard_resumen(request):
     try:
         # SEGURIDAD: Filtrar por centro si el usuario no es admin/farmacia/vista
         user = request.user
-        filtrar_por_centro = not is_farmacia_or_admin(user)
+        # ISS-AUDIT FIX: Usar has_global_read_access para incluir rol VISTA
+        tiene_acceso_global = has_global_read_access(user)
+        filtrar_por_centro = not tiene_acceso_global
         user_centro = get_user_centro(user) if filtrar_por_centro else None
         
         # Admin/farmacia/vista puede filtrar por centro específico
         centro_param = request.query_params.get('centro')
         if centro_param and centro_param not in ['', 'null', 'undefined', 'todos']:
-            if is_farmacia_or_admin(user):
+            if tiene_acceso_global:
                 # ISS-FIX: Manejar 'central' para filtrar solo Farmacia Central (centro=null)
                 if centro_param.lower() == 'central':
                     user_centro = None  # Marcador especial
@@ -8472,13 +8477,15 @@ def dashboard_graficas(request):
         
         # SEGURIDAD: Determinar filtro de centro
         user = request.user
-        filtrar_por_centro = not is_farmacia_or_admin(user)
+        # ISS-AUDIT FIX: Usar has_global_read_access para incluir rol VISTA
+        tiene_acceso_global = has_global_read_access(user)
+        filtrar_por_centro = not tiene_acceso_global
         user_centro = get_user_centro(user) if filtrar_por_centro else None
         
-        # Admin/farmacia puede filtrar por centro específico
+        # Admin/farmacia/vista puede filtrar por centro específico
         centro_param = request.query_params.get('centro')
         if centro_param and centro_param not in ['', 'null', 'undefined', 'todos']:
-            if is_farmacia_or_admin(user):
+            if tiene_acceso_global:
                 try:
                     user_centro = Centro.objects.get(pk=int(centro_param))
                     filtrar_por_centro = True
@@ -8722,17 +8729,18 @@ def dashboard_analytics(request):
     
     try:
         user = request.user
-        es_admin_farmacia = is_farmacia_or_admin(user)
-        filtrar_por_centro = not es_admin_farmacia
+        # ISS-AUDIT FIX: Usar has_global_read_access para incluir rol VISTA
+        tiene_acceso_global = has_global_read_access(user)
+        filtrar_por_centro = not tiene_acceso_global
         user_centro = get_user_centro(user) if filtrar_por_centro else None
         
         # SEGURIDAD: Guardar rol para cache key y validaciones
-        rol_usuario = 'admin' if es_admin_farmacia else 'centro'
+        rol_usuario = 'global' if tiene_acceso_global else 'centro'
         
-        # Admin/farmacia puede filtrar por centro específico
+        # Admin/farmacia/vista puede filtrar por centro específico
         centro_param = request.query_params.get('centro')
         if centro_param and centro_param not in ['', 'null', 'undefined', 'todos']:
-            if es_admin_farmacia:
+            if tiene_acceso_global:
                 try:
                     user_centro = Centro.objects.get(pk=int(centro_param))
                     filtrar_por_centro = True
@@ -9127,12 +9135,13 @@ def trazabilidad_producto(request, clave):
         if not user or not user.is_authenticated:
             return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_403_FORBIDDEN)
         
-        # ISS-SEC-FIX: Trazabilidad solo para admin/farmacia
-        # CENTRO y VISTA no deben acceder (alineado con frontend PermissionsGuard)
-        if not is_farmacia_or_admin(user):
+        # ISS-AUDIT FIX: Trazabilidad para admin/farmacia/vista (lectura global)
+        # CENTRO no debe acceder (alineado con frontend PermissionsGuard)
+        if not has_global_read_access(user):
             return Response({'error': 'No tienes permiso para trazabilidad'}, status=status.HTTP_403_FORBIDDEN)
         
-        filtrar_por_centro = not is_farmacia_or_admin(user)
+        tiene_acceso_global = has_global_read_access(user)
+        filtrar_por_centro = not tiene_acceso_global
         user_centro = get_user_centro(user) if filtrar_por_centro else None
         
         # Obtener parámetros de filtro
@@ -9145,7 +9154,7 @@ def trazabilidad_producto(request, clave):
         # Variable para indicar si filtrar solo Almacén Central (centro=null)
         filtrar_solo_central = False
         
-        if centro_param and is_farmacia_or_admin(user):
+        if centro_param and tiene_acceso_global:
             if centro_param.lower() == 'central':
                 # 'central' = Solo Farmacia Central (centro=null)
                 filtrar_solo_central = True
@@ -9434,13 +9443,14 @@ def trazabilidad_lote(request, codigo):
     from datetime import datetime
     
     try:
-        if not request.user or not request.user.is_authenticated or not is_farmacia_or_admin(request.user):
-            return Response({'error': 'Solo usuarios de farmacia o administradores pueden acceder a reportes'}, status=status.HTTP_403_FORBIDDEN)
+        # ISS-AUDIT FIX: Usar has_global_read_access para incluir VISTA
+        if not request.user or not request.user.is_authenticated or not has_global_read_access(request.user):
+            return Response({'error': 'Solo usuarios con acceso global pueden acceder a reportes de trazabilidad'}, status=status.HTTP_403_FORBIDDEN)
 
         # SEGURIDAD: Determinar filtro de centro
         user = request.user
-        es_admin_farmacia = is_farmacia_or_admin(user)
-        filtrar_por_centro = not es_admin_farmacia
+        tiene_acceso_global = has_global_read_access(user)
+        filtrar_por_centro = not tiene_acceso_global
         user_centro = get_user_centro(user) if filtrar_por_centro else None
         
         # ISS-FIX: Variable para indicar filtro solo Almacén Central
@@ -9448,7 +9458,7 @@ def trazabilidad_lote(request, codigo):
         
         # ISS-FIX: Procesar parámetro centro
         centro_param = request.query_params.get('centro')
-        if centro_param and es_admin_farmacia:
+        if centro_param and tiene_acceso_global:
             if centro_param.lower() == 'central':
                 # Solo Almacén Central (centro=null)
                 filtrar_solo_central = True
@@ -9717,8 +9727,9 @@ def reporte_inventario(request):
     
     try:
         logger.info(f"reporte_inventario: params={dict(request.query_params)}, user={request.user}")
-        if not request.user or not request.user.is_authenticated or not is_farmacia_or_admin(request.user):
-            return Response({'error': 'Solo usuarios de farmacia o administradores pueden acceder a reportes'}, status=status.HTTP_403_FORBIDDEN)
+        # ISS-AUDIT FIX: Usar has_global_read_access para incluir VISTA
+        if not request.user or not request.user.is_authenticated or not has_global_read_access(request.user):
+            return Response({'error': 'Solo usuarios de farmacia, administradores o vista pueden acceder a reportes'}, status=status.HTTP_403_FORBIDDEN)
         # SEGURIDAD: Determinar filtro de centro
         user = request.user
         
@@ -9727,13 +9738,15 @@ def reporte_inventario(request):
         user_centro = None  # NULL = Farmacia Central por defecto
         ver_solo_cprs = False  # Flag para ver solo CPRs (excluir Farmacia Central)
         
-        if not is_farmacia_or_admin(user):
+        # ISS-AUDIT FIX: Usar has_global_read_access en vez de is_farmacia_or_admin
+        tiene_acceso_global = has_global_read_access(user)
+        if not tiene_acceso_global:
             # Usuario de centro: filtrar por su centro obligatoriamente
             user_centro = get_user_centro(user)
         
-        # Admin/farmacia puede filtrar por centro específico
+        # Admin/farmacia/vista puede filtrar por centro específico
         centro_param = request.query_params.get('centro')
-        if centro_param and is_farmacia_or_admin(user):
+        if centro_param and tiene_acceso_global:
             if centro_param.lower() == 'central':
                 # Filtrar solo farmacia central
                 user_centro = None
@@ -10375,7 +10388,9 @@ def reporte_movimientos(request):
                 )
         
         # SEGURIDAD: Determinar filtro de centro
-        filtrar_por_centro = not is_farmacia_or_admin(user)
+        # ISS-AUDIT FIX: Usar has_global_read_access para incluir VISTA con perm_reportes
+        tiene_acceso_global = has_global_read_access(user)
+        filtrar_por_centro = not tiene_acceso_global
         user_centro = get_user_centro(user) if filtrar_por_centro else None
         
         # ISS-FIX SEGURIDAD: Si usuario no-admin debe filtrar por centro pero no tiene centro,
@@ -10390,7 +10405,7 @@ def reporte_movimientos(request):
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        # Admin/farmacia puede filtrar por centro específico
+        # Admin/farmacia/vista puede filtrar por centro específico
         centro_param = request.query_params.get('centro')
         
         # Flags para control de filtros
@@ -10398,8 +10413,8 @@ def reporte_movimientos(request):
         es_filtro_todos_centros = False     # Solo movimientos de los CPRs (excluir Farmacia Central interna)
         es_filtro_centro_especifico = False # Un centro específico por ID
         
-        # Procesar parámetro de centro para admin/farmacia
-        if is_farmacia_or_admin(user):
+        # Procesar parámetro de centro para admin/farmacia/vista
+        if tiene_acceso_global:
             if centro_param and centro_param.lower() == 'central':
                 # FARMACIA CENTRAL: Solo movimientos internos de Farmacia Central
                 es_filtro_farmacia_central = True

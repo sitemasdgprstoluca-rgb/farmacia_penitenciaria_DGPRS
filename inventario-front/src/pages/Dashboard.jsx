@@ -149,7 +149,13 @@ const CustomTooltip = ({ active, payload, label, formatter }) => {
 };
 
 /**
- * Card de KPI Premium - Diseño pulido y profesional
+ * Card de KPI Profesional
+ * - Sparkline mini-chart integrado
+ * - Doble métrica (principal + secundaria)
+ * - Colores Pantone institucionales (Guinda + Dorado)
+ * - Glassmorphism + border animado
+ * - 3D tilt en hover
+ * - Counter con spring physics
  */
 const KPICard = ({ 
   title, 
@@ -161,41 +167,85 @@ const KPICard = ({
   colorType = 'primary',
   onClick,
   delay = 0,
-  loading = false
+  loading = false,
+  sparklineData,
+  secondaryLabel,
+  secondaryValue,
+  prefix = '',
+  suffix = '',
 }) => {
+  const cardRef = useRef(null);
   const [isVisible, setIsVisible] = useState(false);
   const [displayValue, setDisplayValue] = useState(0);
-  const [isHovered, setIsHovered] = useState(false);
+  const [tilt, setTilt] = useState({ x: 0, y: 0 });
   
-  // Colores por tipo
+  // Paleta institucional Pantone
   const colorConfig = {
-    primary: {
-      gradient: 'linear-gradient(135deg, #9F2241 0%, #6B1839 100%)',
-      bg: 'rgba(159, 34, 65, 0.08)',
-      bgHover: 'rgba(159, 34, 65, 0.12)',
-      text: '#9F2241',
-      light: 'rgba(159, 34, 65, 0.1)',
+    primary: { // Pantone 7420C Guinda
+      solid: '#932043',
+      accent: '#C9A876', // Pantone 467C Dorado
+      glow: 'rgba(147, 32, 67, 0.25)',
+      text: '#932043',
+      light: 'rgba(147, 32, 67, 0.08)',
+      lightHover: 'rgba(147, 32, 67, 0.14)',
+      gradient: 'linear-gradient(135deg, #932043, #632842)',
+      sparkStroke: '#932043',
+      sparkFill: 'rgba(147, 32, 67, 0.12)',
     },
-    success: {
-      gradient: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
-      bg: 'rgba(16, 185, 129, 0.08)',
-      bgHover: 'rgba(16, 185, 129, 0.12)',
-      text: '#059669',
-      light: 'rgba(16, 185, 129, 0.1)',
+    success: { // Verde institucional
+      solid: '#0F766E',
+      accent: '#5EEAD4',
+      glow: 'rgba(15, 118, 110, 0.25)',
+      text: '#0F766E',
+      light: 'rgba(15, 118, 110, 0.08)',
+      lightHover: 'rgba(15, 118, 110, 0.14)',
+      gradient: 'linear-gradient(135deg, #0F766E, #134E4A)',
+      sparkStroke: '#0F766E',
+      sparkFill: 'rgba(15, 118, 110, 0.12)',
     },
-    info: {
-      gradient: 'linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%)',
-      bg: 'rgba(14, 165, 233, 0.08)',
-      bgHover: 'rgba(14, 165, 233, 0.12)',
-      text: '#0284C7',
-      light: 'rgba(14, 165, 233, 0.1)',
+    info: { // Azul institucional
+      solid: '#1E40AF',
+      accent: '#60A5FA',
+      glow: 'rgba(30, 64, 175, 0.25)',
+      text: '#1E40AF',
+      light: 'rgba(30, 64, 175, 0.08)',
+      lightHover: 'rgba(30, 64, 175, 0.14)',
+      gradient: 'linear-gradient(135deg, #1E40AF, #1E3A5F)',
+      sparkStroke: '#1E40AF',
+      sparkFill: 'rgba(30, 64, 175, 0.12)',
     },
-    warning: {
-      gradient: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
-      bg: 'rgba(245, 158, 11, 0.08)',
-      bgHover: 'rgba(245, 158, 11, 0.12)',
-      text: '#D97706',
-      light: 'rgba(245, 158, 11, 0.1)',
+    warning: { // Pantone 4635C Terracota
+      solid: '#9F663E',
+      accent: '#D2B595', // Pantone 468C Beige
+      glow: 'rgba(159, 102, 62, 0.25)',
+      text: '#9F663E',
+      light: 'rgba(159, 102, 62, 0.08)',
+      lightHover: 'rgba(159, 102, 62, 0.14)',
+      gradient: 'linear-gradient(135deg, #9F663E, #7A4E2F)',
+      sparkStroke: '#9F663E',
+      sparkFill: 'rgba(159, 102, 62, 0.12)',
+    },
+    gold: { // Pantone 7504C Dorado institucional
+      solid: '#9B7E4C',
+      accent: '#C9A876',
+      glow: 'rgba(155, 126, 76, 0.25)',
+      text: '#9B7E4C',
+      light: 'rgba(155, 126, 76, 0.08)',
+      lightHover: 'rgba(155, 126, 76, 0.14)',
+      gradient: 'linear-gradient(135deg, #9B7E4C, #7A6339)',
+      sparkStroke: '#9B7E4C',
+      sparkFill: 'rgba(155, 126, 76, 0.12)',
+    },
+    danger: { // Rojo alertas
+      solid: '#DC2626',
+      accent: '#FCA5A5',
+      glow: 'rgba(220, 38, 38, 0.25)',
+      text: '#DC2626',
+      light: 'rgba(220, 38, 38, 0.08)',
+      lightHover: 'rgba(220, 38, 38, 0.14)',
+      gradient: 'linear-gradient(135deg, #DC2626, #991B1B)',
+      sparkStroke: '#DC2626',
+      sparkFill: 'rgba(220, 38, 38, 0.12)',
     },
   };
   
@@ -206,147 +256,166 @@ const KPICard = ({
     return () => clearTimeout(timer);
   }, [delay]);
   
-  // Animación de contador suave
+  // Counter con spring physics
   useEffect(() => {
     if (!isVisible || loading) return;
-    
-    const duration = 1200;
+    const duration = 1400;
     const frameDuration = 1000 / 60;
     const totalFrames = Math.round(duration / frameDuration);
     let frame = 0;
-    
     const counter = setInterval(() => {
       frame++;
       const progress = frame / totalFrames;
-      // Easing: ease-out-cubic
-      const easeProgress = 1 - Math.pow(1 - progress, 3);
-      const currentValue = Math.round(easeProgress * value);
-      
-      setDisplayValue(currentValue);
-      
-      if (frame === totalFrames) {
-        clearInterval(counter);
-        setDisplayValue(value);
-      }
+      const spring = 1 - Math.pow(Math.E, -5.5 * progress) * Math.cos(progress * Math.PI * 1.8);
+      setDisplayValue(Math.round(Math.min(1, Math.max(0, spring)) * value));
+      if (frame >= totalFrames) { clearInterval(counter); setDisplayValue(value); }
     }, frameDuration);
-    
     return () => clearInterval(counter);
   }, [value, isVisible, loading]);
+  
+  // 3D tilt
+  const handleMouseMove = useCallback((e) => {
+    if (!cardRef.current) return;
+    const rect = cardRef.current.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+    setTilt({ x: (y - 0.5) * -8, y: (x - 0.5) * 8 });
+  }, []);
+  const handleMouseLeave = useCallback(() => setTilt({ x: 0, y: 0 }), []);
+  
+  // Sparkline SVG path
+  const sparklinePath = useMemo(() => {
+    if (!sparklineData || sparklineData.length < 2) return null;
+    const W = 120, H = 36, pad = 2;
+    const vals = sparklineData.map(d => (typeof d === 'number' ? d : d.value || 0));
+    const max = Math.max(...vals, 1);
+    const min = Math.min(...vals, 0);
+    const range = max - min || 1;
+    const points = vals.map((v, i) => ({
+      x: pad + (i / (vals.length - 1)) * (W - pad * 2),
+      y: pad + (1 - (v - min) / range) * (H - pad * 2),
+    }));
+    const line = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+    const area = `${line} L${points[points.length - 1].x.toFixed(1)},${H} L${points[0].x.toFixed(1)},${H} Z`;
+    return { line, area, W, H };
+  }, [sparklineData]);
 
   return (
     <div 
-      onClick={onClick}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      className={`
-        relative overflow-hidden rounded-2xl
-        bg-white border border-gray-100
-        transform transition-all duration-300 ease-out
-        ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}
-        ${onClick ? 'cursor-pointer' : ''}
-        group
-      `}
+      className="kpi-card-wrapper"
       style={{ 
-        transitionDelay: `${delay}ms`,
-        boxShadow: isHovered 
-          ? '0 20px 40px -12px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.02)'
-          : '0 4px 16px -4px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.02)',
-        transform: isHovered && onClick ? 'translateY(-4px) scale(1.01)' : 'translateY(0) scale(1)',
+        perspective: '800px',
+        opacity: isVisible ? 1 : 0,
+        transform: isVisible ? 'translateY(0)' : 'translateY(24px)',
+        transition: `all 0.6s cubic-bezier(0.16, 1, 0.3, 1) ${delay}ms`,
       }}
     >
-      {/* Barra de color superior */}
       <div 
-        className="h-1 w-full"
-        style={{ background: colors.gradient }}
-      />
-      
-      {/* Contenido principal */}
-      <div className="p-3 sm:p-5">
-        {/* Header: Título + Icono */}
-        <div className="flex items-start justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
-          <div className="flex-1 min-w-0">
-            <p 
-              className="text-[10px] sm:text-[11px] font-bold uppercase tracking-widest mb-0.5"
-              style={{ color: colors.text }}
-            >
-              {title}
-            </p>
-            <p className="text-[10px] sm:text-xs text-gray-400 truncate">{subtext}</p>
-          </div>
+        className="kpi-glow-border"
+        style={{ '--kpi-color-1': colors.solid, '--kpi-color-2': colors.accent, '--kpi-glow': colors.glow }}
+      >
+        <div 
+          ref={cardRef}
+          onClick={onClick}
+          onMouseMove={handleMouseMove}
+          onMouseLeave={handleMouseLeave}
+          className={`kpi-card-modern ${onClick ? 'cursor-pointer' : ''}`}
+          style={{
+            transform: `rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`,
+            transition: tilt.x === 0 && tilt.y === 0 
+              ? 'transform 0.5s cubic-bezier(0.16, 1, 0.3, 1)' 
+              : 'transform 0.08s ease-out',
+          }}
+        >
+          {/* Franja superior Pantone */}
+          <div className="h-[3px]" style={{ background: colors.gradient }} />
           
-          {/* Icono con fondo */}
-          <div 
-            className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center transition-all duration-300"
-            style={{ 
-              background: colors.gradient,
-              boxShadow: isHovered 
-                ? `0 8px 20px -4px ${colors.light}`
-                : `0 4px 12px -2px ${colors.light}`,
-              transform: isHovered ? 'scale(1.08) rotate(3deg)' : 'scale(1) rotate(0)',
-            }}
-          >
-            <Icon className="text-white text-xl" />
+          <div className="relative z-10 p-4 sm:p-5">
+            {/* Fila 1: Icono + Título + Trend badge */}
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex items-center gap-2.5">
+                <div 
+                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-transform duration-300"
+                  style={{ background: colors.gradient }}
+                >
+                  <Icon className="text-white text-sm sm:text-base" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[11px] sm:text-xs font-bold uppercase tracking-[0.12em]" style={{ color: colors.text }}>
+                    {title}
+                  </p>
+                  <p className="text-[10px] text-gray-400 truncate mt-0.5">{subtext}</p>
+                </div>
+              </div>
+              {trend && (
+                <div className={`
+                  flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] sm:text-[11px] font-bold flex-shrink-0
+                  ${trend === 'up' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'}
+                `}>
+                  {trend === 'up' ? <FaArrowUp size={8} /> : <FaArrowDown size={8} />}
+                  {trendValue}%
+                </div>
+              )}
+            </div>
+            
+            {/* Fila 2: Número principal */}
+            <div className="mb-1">
+              {loading ? (
+                <div className="h-10 w-28 rounded-lg skeleton-loader" />
+              ) : (
+                <div className="flex items-baseline gap-1">
+                  {prefix && <span className="text-lg font-bold" style={{ color: colors.text }}>{prefix}</span>}
+                  <span className="text-3xl sm:text-4xl font-black tracking-tight tabular-nums" style={{ color: '#111827' }}>
+                    {displayValue.toLocaleString('es-MX')}
+                  </span>
+                  {suffix && <span className="text-sm font-semibold text-gray-400 ml-0.5">{suffix}</span>}
+                </div>
+              )}
+            </div>
+            
+            {/* Fila 3: Métrica secundaria (opcional) */}
+            {secondaryLabel && (
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-[10px] text-gray-400">{secondaryLabel}</span>
+                <span className="text-xs font-bold" style={{ color: colors.text }}>{secondaryValue}</span>
+              </div>
+            )}
+            
+            {/* Sparkline mini-chart (opcional) */}
+            {sparklinePath && (
+              <div className="mt-2 mb-1 kpi-sparkline-wrap">
+                <svg 
+                  viewBox={`0 0 ${sparklinePath.W} ${sparklinePath.H}`} 
+                  className="w-full h-9 sm:h-10"
+                  preserveAspectRatio="none"
+                >
+                  <defs>
+                    <linearGradient id={`spark-fill-${colorType}-${delay}`} x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={colors.sparkStroke} stopOpacity="0.2" />
+                      <stop offset="100%" stopColor={colors.sparkStroke} stopOpacity="0" />
+                    </linearGradient>
+                  </defs>
+                  <path d={sparklinePath.area} fill={`url(#spark-fill-${colorType}-${delay})`} />
+                  <path d={sparklinePath.line} fill="none" stroke={colors.sparkStroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+            )}
+            
+            {/* Footer: Action link */}
+            {onClick && (
+              <div className="flex items-center justify-end mt-2 pt-2 border-t" style={{ borderColor: 'rgba(0,0,0,0.04)' }}>
+                <div 
+                  className="kpi-action-link flex items-center gap-1 text-[10px] sm:text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-all duration-300"
+                  style={{ color: colors.text, backgroundColor: colors.light }}
+                >
+                  <span>Ver detalle</span>
+                  <FaArrowRight size={8} className="kpi-action-arrow" />
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-        
-        {/* Valor principal */}
-        <div className="mb-2 sm:mb-3">
-          {loading ? (
-            <div className="h-10 sm:h-12 w-24 sm:w-28 bg-gray-100 rounded-lg animate-pulse" />
-          ) : (
-            <div className="flex items-baseline gap-1">
-              <span 
-                className="text-3xl sm:text-4xl font-black tracking-tight tabular-nums"
-                style={{ 
-                  color: '#1F2937',
-                  textShadow: '0 1px 2px rgba(0,0,0,0.05)'
-                }}
-              >
-                {displayValue.toLocaleString('es-MX')}
-              </span>
-            </div>
-          )}
-        </div>
-        
-        {/* Footer: Trend o indicador de acción */}
-        <div className="flex items-center justify-between pt-3 border-t border-gray-50">
-          {trend ? (
-            <div 
-              className={`
-                inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold
-                ${trend === 'up' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}
-              `}
-            >
-              {trend === 'up' ? <FaArrowUp size={9} /> : <FaArrowDown size={9} />}
-              {trendValue}%
-            </div>
-          ) : (
-            <div className="text-xs text-gray-300">•</div>
-          )}
-          
-          {onClick && (
-            <div 
-              className="flex items-center gap-1 text-xs font-medium transition-all duration-300"
-              style={{ 
-                color: isHovered ? colors.text : '#9CA3AF',
-                transform: isHovered ? 'translateX(2px)' : 'translateX(0)',
-              }}
-            >
-              <span>Ver más</span>
-              <FaArrowRight size={10} />
-            </div>
-          )}
         </div>
       </div>
-      
-      {/* Decoración de fondo */}
-      <div 
-        className="absolute -right-8 -bottom-8 w-32 h-32 rounded-full opacity-[0.03] transition-opacity duration-300"
-        style={{ 
-          background: colors.gradient,
-          opacity: isHovered ? 0.08 : 0.03,
-        }}
-      />
     </div>
   );
 };
@@ -908,25 +977,45 @@ const Dashboard = () => {
     }
   };
 
-  // KPI Cards - Configuración optimizada
+  // KPI Cards - Con sparklines y métricas enriquecidas
+  const consumoSparkline = useMemo(() => {
+    if (!graficas.consumo_mensual || graficas.consumo_mensual.length < 2) return null;
+    return graficas.consumo_mensual.map(m => m.salidas || 0);
+  }, [graficas.consumo_mensual]);
+
+  const entradasSparkline = useMemo(() => {
+    if (!graficas.consumo_mensual || graficas.consumo_mensual.length < 2) return null;
+    return graficas.consumo_mensual.map(m => m.entradas || 0);
+  }, [graficas.consumo_mensual]);
+
+  const stockSparkline = useMemo(() => {
+    if (!graficas.stock_por_centro || graficas.stock_por_centro.length < 2) return null;
+    return graficas.stock_por_centro.map(c => c.stock || 0);
+  }, [graficas.stock_por_centro]);
+
   const kpiCards = useMemo(() => [
     {
       title: 'Productos',
       value: kpis.total_productos || 0,
-      subtext: 'Registrados en catálogo',
+      subtext: selectedCentro && selectedCentro !== 'central' ? `En ${centroNombre || 'centro'}` : 'Catálogo activo',
       icon: FaBox,
       colorType: 'primary',
       show: permisos?.verDashboard && permisos?.verProductos,
       onClick: () => permisos?.verProductos && navigate('/productos'),
+      sparklineData: entradasSparkline,
+      secondaryLabel: 'Lotes:',
+      secondaryValue: (kpis.lotes_activos || 0).toLocaleString('es-MX'),
     },
     {
       title: 'Inventario Total',
       value: kpis.stock_total || 0,
-      subtext: selectedCentro ? `En ${centroNombre || 'centro'}` : 'Unidades en inventario',
+      subtext: selectedCentro ? `En ${centroNombre || 'centro'}` : 'Unidades en existencia',
       icon: FaCubes,
       colorType: 'success',
       show: permisos?.verDashboard,
       onClick: () => permisos?.verLotes && navigate('/lotes'),
+      sparklineData: stockSparkline,
+      suffix: 'uds',
     },
     {
       title: 'Lotes Activos',
@@ -936,17 +1025,20 @@ const Dashboard = () => {
       colorType: 'info',
       show: permisos?.verDashboard && permisos?.verLotes,
       onClick: () => permisos?.verLotes && navigate('/lotes'),
+      secondaryLabel: analytics?.caducidades?.vencen_30_dias > 0 ? '⚠ Por vencer (30d):' : null,
+      secondaryValue: analytics?.caducidades?.vencen_30_dias > 0 ? String(analytics.caducidades.vencen_30_dias) : null,
     },
     {
       title: 'Movimientos',
       value: kpis.movimientos_mes || 0,
-      subtext: `En ${(() => { const m = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']; return m[new Date().getMonth()]; })()} de ${new Date().getFullYear()}`,
+      subtext: `${(() => { const m = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']; return m[new Date().getMonth()]; })()} ${new Date().getFullYear()}`,
       icon: FaExchangeAlt,
       colorType: 'warning',
       show: permisos?.verDashboard && permisos?.verMovimientos,
       onClick: () => permisos?.verMovimientos && navigate('/movimientos'),
+      sparklineData: consumoSparkline,
     },
-  ], [kpis, permisos, navigate, selectedCentro, centroNombre]);
+  ], [kpis, permisos, navigate, selectedCentro, centroNombre, consumoSparkline, entradasSparkline, stockSparkline, analytics]);
 
   // Quick access items - Usando CSS variables y permisos granulares
   const quickAccessItems = useMemo(() => [
@@ -1260,13 +1352,19 @@ const Dashboard = () => {
         </div>
       )}
 
-      {/* ========== KPI CARDS ========== */}
-      <section>
-        <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4 flex items-center gap-2">
-          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: 'var(--color-primary, #9F2241)' }}></span>
-          Indicadores principales
-        </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      {/* ========== KPI CARDS - Dashboard Profesional ========== */}
+      <section className="kpi-section-wrapper rounded-2xl sm:rounded-3xl p-4 sm:p-6">
+        <div className="flex items-center gap-3 mb-4 sm:mb-5">
+          <div className="kpi-section-dot" />
+          <h2 
+            className="text-[11px] sm:text-xs font-extrabold uppercase tracking-[0.18em]"
+            style={{ color: 'var(--color-primary, #932043)' }}
+          >
+            Indicadores principales
+          </h2>
+          <div className="h-px flex-1 bg-gradient-to-r from-gray-200 to-transparent" />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
           {kpiCards
             .filter(card => card.show)
             .map((card, index) => (
@@ -1278,6 +1376,85 @@ const Dashboard = () => {
               />
             ))}
         </div>
+
+        {/* Fila secundaria de analytics - Solo Admin/Farmacia */}
+        {puedeVerGraficasCompletas && analytics && (
+          <>
+            <div className="flex items-center gap-3 mt-6 sm:mt-7 mb-4 sm:mb-5">
+              <div className="kpi-section-dot" style={{ background: 'linear-gradient(135deg, #9B7E4C, #C9A876)' }} />
+              <h2 
+                className="text-[11px] sm:text-xs font-extrabold uppercase tracking-[0.18em]"
+                style={{ color: '#9B7E4C' }}
+              >
+                Análisis avanzado
+              </h2>
+              <div className="h-px flex-1 bg-gradient-to-r from-gray-200 to-transparent" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+              {/* Requisiciones totales */}
+              {permisos?.verRequisiciones && (
+                <KPICard
+                  title="Requisiciones"
+                  value={totalRequisiciones}
+                  subtext="Total activas en sistema"
+                  icon={FaClipboardList}
+                  colorType="gold"
+                  delay={400}
+                  loading={refreshing}
+                  onClick={() => navigate('/requisiciones')}
+                  secondaryLabel="Estados:"
+                  secondaryValue={`${graficas.requisiciones_por_estado?.length || 0} diferentes`}
+                />
+              )}
+              {/* Caducidades - alerta */}
+              {analytics.caducidades && (
+                <KPICard
+                  title="Alertas Caducidad"
+                  value={(analytics.caducidades.vencidos || 0) + (analytics.caducidades.vencen_30_dias || 0)}
+                  subtext="Lotes vencidos + próximos 30 días"
+                  icon={FaExclamationTriangle}
+                  colorType={analytics.caducidades.vencidos > 0 ? 'danger' : 'warning'}
+                  delay={500}
+                  loading={analyticsLoading}
+                  secondaryLabel={analytics.caducidades.vencidos > 0 ? '🔴 Vencidos:' : '90 días:'}
+                  secondaryValue={analytics.caducidades.vencidos > 0 
+                    ? String(analytics.caducidades.vencidos) 
+                    : String(analytics.caducidades.vencen_90_dias || 0)}
+                />
+              )}
+              {/* Donaciones */}
+              {analytics.donaciones && permisos?.verDonaciones && (
+                <KPICard
+                  title="Donaciones"
+                  value={analytics.donaciones.total_donaciones || 0}
+                  subtext={`${(analytics.donaciones.total_unidades || 0).toLocaleString('es-MX')} unidades donadas`}
+                  icon={FaHandHoldingHeart}
+                  colorType="info"
+                  delay={600}
+                  loading={analyticsLoading}
+                  onClick={() => navigate('/donaciones')}
+                  secondaryLabel="Este mes:"
+                  secondaryValue={String(analytics.donaciones.donaciones_mes || 0)}
+                />
+              )}
+              {/* Caja Chica */}
+              {analytics.caja_chica && (
+                <KPICard
+                  title="Caja Chica"
+                  value={Math.round(analytics.caja_chica.monto_total || 0)}
+                  subtext={`${analytics.caja_chica.total_compras || 0} compras realizadas`}
+                  icon={FaMoneyBillWave}
+                  colorType="success"
+                  delay={700}
+                  loading={analyticsLoading}
+                  prefix="$"
+                  secondaryLabel="Promedio:"
+                  secondaryValue={`$${(analytics.caja_chica.promedio_compra || 0).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+                />
+              )}
+            </div>
+          </>
+        )}
       </section>
 
       {/* ========== GRÁFICAS PRINCIPALES ========== */}
