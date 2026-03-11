@@ -1647,15 +1647,20 @@ const Dashboard = () => {
         </section>
       )}
 
-      {/* ========== REQUISICIONES + INVENTARIO LADO A LADO ========== */}
+      {/* ========== REQUISICIONES — CARD UNIFICADA ========== */}
       {puedeVerGraficasCompletas && graficas.requisiciones_por_estado.length > 0 && (
-        <section className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-          {/* Requisiciones — Turno Automatizado */}
-          <ChartCard 
-            title="Requisiciones - Turno Automatizado" 
+        <section>
+          <ChartCard
+            title="Requisiciones"
             icon={FaClipboardList}
             action={
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
+                {graficas.requisiciones_resumen?.dias_promedio_cumplimiento != null && (
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50">
+                    <FaClock size={10} className="text-blue-500" />
+                    <span className="text-[10px] font-bold text-blue-700">Promedio cumplimiento: {graficas.requisiciones_resumen.dias_promedio_cumplimiento} días</span>
+                  </div>
+                )}
                 <button
                   onClick={() => navigate('/requisiciones')}
                   className="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors hover:bg-gray-100"
@@ -1666,159 +1671,8 @@ const Dashboard = () => {
               </div>
             }
           >
-            {/* Badges de resumen */}
-            {graficas.requisiciones_resumen && (
-              <div className="flex items-center flex-wrap gap-2 mb-3 pb-3 border-b border-gray-100">
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg" style={{ background: 'rgba(159, 34, 65, 0.06)' }}>
-                  <span className="text-lg font-black" style={{ color: '#9F2241' }}>{graficas.requisiciones_resumen.total}</span>
-                  <span className="text-[10px] text-gray-500">Total</span>
-                </div>
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50">
-                  <span className="text-lg font-black text-amber-700">{graficas.requisiciones_resumen.en_proceso}</span>
-                  <span className="text-[10px] text-gray-500">En Proceso</span>
-                </div>
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50">
-                  <span className="text-lg font-black text-emerald-700">{graficas.requisiciones_resumen.completadas}</span>
-                  <span className="text-[10px] text-gray-500">Completadas</span>
-                </div>
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-50">
-                  <span className="text-lg font-black text-red-600">{graficas.requisiciones_resumen.rechazadas || 0}</span>
-                  <span className="text-[10px] text-gray-500">Rechazadas</span>
-                </div>
-                {graficas.requisiciones_resumen.dias_promedio_cumplimiento != null && (
-                  <div className="ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50">
-                    <FaClock size={10} className="text-blue-500" />
-                    <span className="text-[10px] font-bold text-blue-700">Promedio {graficas.requisiciones_resumen.dias_promedio_cumplimiento}d</span>
-                  </div>
-                )}
-              </div>
-            )}
+            <p className="text-[10px] text-gray-400 font-semibold -mt-1 mb-3">Turno Automatizado</p>
 
-            {/* Stacked progress bar — Distribución de estados */}
-            {graficas.requisiciones_por_estado.length > 0 && totalRequisiciones > 0 && (
-              <div className="mb-4">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Distribución por Estado</span>
-                  <span className="text-[10px] font-bold text-gray-500">{totalRequisiciones} total</span>
-                </div>
-                <div className="w-full h-3 rounded-full overflow-hidden flex bg-gray-100">
-                  {graficas.requisiciones_por_estado.map((item, idx) => {
-                    const pct = (item.cantidad / totalRequisiciones) * 100;
-                    if (pct < 0.5) return null;
-                    const color = COLORES_ESTADO_REQUISICION[item.estado] || COLORES_ESTADO_REQUISICION.DEFAULT;
-                    return (
-                      <div
-                        key={item.estado}
-                        className="h-full transition-all duration-700 first:rounded-l-full last:rounded-r-full"
-                        style={{ width: `${pct}%`, backgroundColor: color }}
-                        title={`${formatearEstado(item.estado)}: ${item.cantidad} (${pct.toFixed(0)}%)`}
-                      />
-                    );
-                  })}
-                </div>
-                <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5">
-                  {graficas.requisiciones_por_estado.slice(0, 5).map((item) => {
-                    const color = COLORES_ESTADO_REQUISICION[item.estado] || COLORES_ESTADO_REQUISICION.DEFAULT;
-                    return (
-                      <div key={item.estado} className="flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
-                        <span className="text-[8px] text-gray-400">{formatearEstado(item.estado)}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Gráfica de tendencia */}
-            <div className="min-w-0 mb-3">
-              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Tendencia Mensual</p>
-              {graficas.requisiciones_por_mes.length > 0 ? (
-                <ResponsiveContainer width="100%" height={130} minWidth={0} minHeight={0}>
-                  <BarChart data={graficas.requisiciones_por_mes} barGap={1} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                    <XAxis dataKey="mes_corto" tick={{ fontSize: 9, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 9, fill: '#9CA3AF' }} axisLine={false} tickLine={false} allowDecimals={false} width={22} />
-                    <Tooltip
-                      content={({ active, payload }) => {
-                        if (!active || !payload?.length) return null;
-                        const d = payload[0]?.payload;
-                        return (
-                          <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-2 min-w-[100px]">
-                            <p className="text-[10px] font-bold text-gray-700 mb-1">{d?.mes}</p>
-                            <p className="text-[10px]"><span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1" />{d?.completadas} completadas</p>
-                            <p className="text-[10px]"><span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 mr-1" />{d?.pendientes} en proceso</p>
-                            <p className="text-[10px]"><span className="inline-block w-1.5 h-1.5 rounded-full bg-red-400 mr-1" />{d?.rechazadas} rechazadas</p>
-                          </div>
-                        );
-                      }}
-                    />
-                    <Bar dataKey="completadas" stackId="a" fill="#10B981" radius={[0, 0, 0, 0]} />
-                    <Bar dataKey="pendientes" stackId="a" fill="#F59E0B" radius={[0, 0, 0, 0]} />
-                    <Bar dataKey="rechazadas" stackId="a" fill="#EF4444" radius={[3, 3, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="flex items-center justify-center h-[130px] text-gray-300 text-xs">Sin datos</div>
-              )}
-              <div className="flex items-center justify-center gap-3 mt-0.5">
-                {[{ l: 'Completadas', c: '#10B981' }, { l: 'En proceso', c: '#F59E0B' }, { l: 'Rechazadas', c: '#EF4444' }].map(x => (
-                  <div key={x.l} className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: x.c }} />
-                    <span className="text-[9px] text-gray-400">{x.l}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Tabla de detalle por producto */}
-            {analytics?.top_productos?.length > 0 && (
-              <div className="pt-3 border-t border-gray-100">
-                <div className="max-h-[180px] overflow-y-auto custom-scrollbar">
-                  <table className="w-full text-left">
-                    <thead className="sticky top-0 z-10">
-                      <tr className="bg-gray-50/90">
-                        <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1">Clave</th>
-                        <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1">Producto</th>
-                        <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1 text-center">Surtido</th>
-                        <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1 text-center">Solicit.</th>
-                        <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1 text-right w-20">Cumpl.</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {analytics.top_productos.slice(0, 5).map((item, idx) => (
-                        <tr key={idx} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
-                          <td className="px-2 py-1">
-                            <span className="text-[10px] font-mono font-bold text-gray-600">{item.clave}</span>
-                          </td>
-                          <td className="px-2 py-1">
-                            <span className="text-[10px] text-gray-500 truncate block max-w-[100px]" title={item.nombre}>{item.nombre}</span>
-                          </td>
-                          <td className="px-2 py-1 text-center">
-                            <span className="text-[11px] font-bold text-gray-800 tabular-nums">{(item.total_surtido || 0).toLocaleString('es-MX')}</span>
-                          </td>
-                          <td className="px-2 py-1 text-center">
-                            <span className="text-[11px] font-bold text-gray-600 tabular-nums">{item.veces_solicitado || 0}</span>
-                          </td>
-                          <td className="px-2 py-1">
-                            <div className="flex items-center gap-1 justify-end">
-                              <div className="w-10 bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                                <div className="h-full rounded-full" style={{ width: `${item.porcentaje_cumplimiento || 0}%`, backgroundColor: (item.porcentaje_cumplimiento || 0) >= 80 ? '#10B981' : (item.porcentaje_cumplimiento || 0) >= 50 ? '#F59E0B' : '#EF4444' }} />
-                              </div>
-                              <span className={`text-[10px] font-black tabular-nums ${(item.porcentaje_cumplimiento || 0) >= 80 ? 'text-emerald-600' : (item.porcentaje_cumplimiento || 0) >= 50 ? 'text-amber-600' : 'text-red-600'}`}>{(item.porcentaje_cumplimiento || 0).toFixed(0)}%</span>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </ChartCard>
-
-          {/* Uso de Requisiciones — Premium Donut Dashboard */}
-          <ChartCard title="Uso de Requisiciones" icon={FaChartBar}>
             {(() => {
               const completadas = graficas.requisiciones_resumen?.completadas || 0;
               const enProceso = graficas.requisiciones_resumen?.en_proceso || 0;
@@ -1826,13 +1680,13 @@ const Dashboard = () => {
               const pctComp = totalRequisiciones > 0 ? Math.round((completadas / totalRequisiciones) * 100) : 0;
               const pctProc = totalRequisiciones > 0 ? Math.round((enProceso / totalRequisiciones) * 100) : 0;
               const pctRech = totalRequisiciones > 0 ? Math.round((rechazadas / totalRequisiciones) * 100) : 0;
-              
+
               return (
-                <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
-                  {/* Donut premium — grande con profundidad */}
-                  <div className="lg:col-span-2 flex flex-col items-center gap-4">
-                    <div className="relative dash-donut-container" style={{ width: 220, height: 220 }}>
-                      <ResponsiveContainer width={220} height={220} minWidth={0} minHeight={0}>
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  {/* ── COLUMNA IZQUIERDA: Donut + porcentajes ── */}
+                  <div className="lg:col-span-3 flex flex-col items-center gap-3">
+                    <div className="relative dash-donut-container" style={{ width: 200, height: 200 }}>
+                      <ResponsiveContainer width={200} height={200} minWidth={0} minHeight={0}>
                         <PieChart>
                           <defs>
                             {graficas.requisiciones_por_estado.map((entry, index) => {
@@ -1852,8 +1706,8 @@ const Dashboard = () => {
                             data={graficas.requisiciones_por_estado}
                             cx="50%"
                             cy="50%"
-                            innerRadius={58}
-                            outerRadius={98}
+                            innerRadius={52}
+                            outerRadius={90}
                             paddingAngle={3}
                             dataKey="cantidad"
                             cornerRadius={6}
@@ -1863,15 +1717,15 @@ const Dashboard = () => {
                             style={{ filter: 'url(#donutShadow)' }}
                           >
                             {graficas.requisiciones_por_estado.map((entry, index) => (
-                              <Cell 
-                                key={`usecell-${index}`} 
+                              <Cell
+                                key={`usecell-${index}`}
                                 fill={`url(#reqGrad${index})`}
                                 stroke="#fff"
                                 strokeWidth={3}
                               />
                             ))}
                           </Pie>
-                          <Tooltip 
+                          <Tooltip
                             content={({ active, payload }) => {
                               if (!active || !payload?.length) return null;
                               const data = payload[0].payload;
@@ -1892,103 +1746,275 @@ const Dashboard = () => {
                       </ResponsiveContainer>
                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                         <div className="text-center dash-donut-center">
-                          <p className="text-4xl font-black text-gray-900 leading-none tracking-tight">{totalRequisiciones}</p>
-                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Total</p>
+                          <p className="text-3xl font-black text-gray-900 leading-none tracking-tight">{totalRequisiciones}</p>
+                          <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-1">Total</p>
                         </div>
                       </div>
                     </div>
-                    {/* Cumplimiento ring — debajo del donut */}
-                    {graficas.requisiciones_resumen?.tasa_cumplimiento != null && (
-                      <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-emerald-50 border border-emerald-100">
-                        <MicroRadial 
-                          value={graficas.requisiciones_resumen.tasa_cumplimiento} 
-                          max={100} 
-                          color="#10B981" 
-                          size={40}
-                        />
-                        <div>
-                          <p className="text-sm font-black text-emerald-700">{graficas.requisiciones_resumen.tasa_cumplimiento}%</p>
-                          <p className="text-[9px] text-gray-400 font-semibold">Tasa de Cumplimiento</p>
+
+                    {/* Porcentajes por estado debajo del donut */}
+                    <div className="w-full space-y-1.5">
+                      <div className="flex items-center justify-between px-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                          <span className="text-[10px] text-gray-500">Completadas</span>
                         </div>
+                        <span className="text-xs font-black text-emerald-700">{pctComp}%</span>
                       </div>
-                    )}
+                      <div className="flex items-center justify-between px-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                          <span className="text-[10px] text-gray-500">En Proceso</span>
+                        </div>
+                        <span className="text-xs font-black text-amber-700">{pctProc}%</span>
+                      </div>
+                      <div className="flex items-center justify-between px-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
+                          <span className="text-[10px] text-gray-500">Rechazadas</span>
+                        </div>
+                        <span className="text-xs font-black text-red-600">{pctRech}%</span>
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Lado derecho — badges + barras de progreso */}
-                  <div className="lg:col-span-3 space-y-4">
-                    {/* Badge strip conectado */}
+                  {/* ── COLUMNA CENTRAL: badges + distribución + tendencia + tabla ── */}
+                  <div className="lg:col-span-6 space-y-4">
+                    {/* Badge strip */}
                     <div className="grid grid-cols-3 gap-0 rounded-xl overflow-hidden border border-gray-100 shadow-sm">
-                      <div className="text-center py-3 px-2" style={{ background: 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)' }}>
-                        <p className="text-2xl font-black text-emerald-700 leading-none">{completadas}</p>
-                        <p className="text-[9px] text-emerald-600 font-extrabold uppercase tracking-wider mt-1">Completadas</p>
+                      <div className="text-center py-2.5 px-2" style={{ background: 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)' }}>
+                        <p className="text-xl font-black text-emerald-700 leading-none">{completadas}</p>
+                        <p className="text-[8px] text-emerald-600 font-extrabold uppercase tracking-wider mt-1">Completadas</p>
                       </div>
-                      <div className="text-center py-3 px-2" style={{ background: 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)' }}>
-                        <p className="text-2xl font-black text-amber-700 leading-none">{enProceso}</p>
-                        <p className="text-[9px] text-amber-600 font-extrabold uppercase tracking-wider mt-1">En Proceso</p>
+                      <div className="text-center py-2.5 px-2" style={{ background: 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)' }}>
+                        <p className="text-xl font-black text-amber-700 leading-none">{enProceso}</p>
+                        <p className="text-[8px] text-amber-600 font-extrabold uppercase tracking-wider mt-1">En Proceso</p>
                       </div>
-                      <div className="text-center py-3 px-2" style={{ background: 'linear-gradient(135deg, #FEF2F2 0%, #FECACA 100%)' }}>
-                        <p className="text-2xl font-black text-red-600 leading-none">{rechazadas}</p>
-                        <p className="text-[9px] text-red-600 font-extrabold uppercase tracking-wider mt-1">Rechazadas</p>
+                      <div className="text-center py-2.5 px-2" style={{ background: 'linear-gradient(135deg, #FEF2F2 0%, #FECACA 100%)' }}>
+                        <p className="text-xl font-black text-red-600 leading-none">{rechazadas}</p>
+                        <p className="text-[8px] text-red-600 font-extrabold uppercase tracking-wider mt-1">Rechazadas</p>
                       </div>
                     </div>
 
-                    {/* Barras de progreso premium */}
-                    <div className="space-y-3">
-                      {/* Completadas */}
+                    {/* Barras de progreso */}
+                    <div className="space-y-2">
                       <div>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <div className="flex items-center gap-2">
-                            <span className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center">
-                              <FaCheckCircle size={11} className="text-emerald-600" />
-                            </span>
-                            <span className="text-sm font-semibold text-gray-700">Completadas</span>
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-1.5">
+                            <FaCheckCircle size={10} className="text-emerald-600" />
+                            <span className="text-xs font-semibold text-gray-700">Completadas</span>
                           </div>
-                          <span className="text-lg font-black text-gray-900 tabular-nums">{pctComp}%</span>
+                          <span className="text-sm font-black text-gray-900 tabular-nums">{pctComp}%</span>
                         </div>
-                        <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                        <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
                           <div className="h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${Math.max(pctComp, 1)}%`, background: 'linear-gradient(90deg, #10B981 0%, #34D399 50%, #6EE7B7 100%)' }} />
                         </div>
                       </div>
-
-                      {/* En Proceso */}
                       <div>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <div className="flex items-center gap-2">
-                            <span className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center">
-                              <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                            </span>
-                            <span className="text-sm font-semibold text-gray-700">En Proceso</span>
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                            <span className="text-xs font-semibold text-gray-700">En Proceso</span>
                           </div>
-                          <span className="text-lg font-black text-gray-900 tabular-nums">{pctProc}%</span>
+                          <span className="text-sm font-black text-gray-900 tabular-nums">{pctProc}%</span>
                         </div>
-                        <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                        <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
                           <div className="h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${Math.max(pctProc, 1)}%`, background: 'linear-gradient(90deg, #F59E0B 0%, #FBBF24 50%, #FCD34D 100%)' }} />
                         </div>
                       </div>
-
-                      {/* Rechazadas */}
                       <div>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <div className="flex items-center gap-2">
-                            <span className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center">
-                              <span className="w-2.5 h-2.5 rounded-full bg-red-600" />
-                            </span>
-                            <span className="text-sm font-semibold text-gray-700">Rechazadas</span>
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2.5 h-2.5 rounded-full bg-red-600" />
+                            <span className="text-xs font-semibold text-gray-700">Rechazadas</span>
                           </div>
-                          <span className="text-lg font-black text-gray-900 tabular-nums">{pctRech}%</span>
+                          <span className="text-sm font-black text-gray-900 tabular-nums">{pctRech}%</span>
                         </div>
-                        <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                        <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
                           <div className="h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${Math.max(pctRech, 1)}%`, background: 'linear-gradient(90deg, #DC2626 0%, #EF4444 50%, #FCA5A5 100%)' }} />
                         </div>
                       </div>
                     </div>
 
-                    {/* Footer: Tiempo promedio */}
+                    {/* Distribución por estado */}
+                    {graficas.requisiciones_por_estado.length > 0 && totalRequisiciones > 0 && (
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Distribución</span>
+                          <span className="text-[10px] font-bold text-gray-500">{totalRequisiciones} total</span>
+                        </div>
+                        <div className="w-full h-3 rounded-full overflow-hidden flex bg-gray-100">
+                          {graficas.requisiciones_por_estado.map((item, idx) => {
+                            const pct = (item.cantidad / totalRequisiciones) * 100;
+                            if (pct < 0.5) return null;
+                            const color = COLORES_ESTADO_REQUISICION[item.estado] || COLORES_ESTADO_REQUISICION.DEFAULT;
+                            return (
+                              <div
+                                key={item.estado}
+                                className="h-full transition-all duration-700 first:rounded-l-full last:rounded-r-full"
+                                style={{ width: `${pct}%`, backgroundColor: color }}
+                                title={`${formatearEstado(item.estado)}: ${item.cantidad} (${pct.toFixed(0)}%)`}
+                              />
+                            );
+                          })}
+                        </div>
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5">
+                          {graficas.requisiciones_por_estado.slice(0, 5).map((item) => {
+                            const color = COLORES_ESTADO_REQUISICION[item.estado] || COLORES_ESTADO_REQUISICION.DEFAULT;
+                            return (
+                              <div key={item.estado} className="flex items-center gap-1">
+                                <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
+                                <span className="text-[8px] text-gray-400">{formatearEstado(item.estado)}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Tendencia Mensual */}
+                    <div className="min-w-0">
+                      <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">Tendencia Mensual (Últimos 6 meses)</p>
+                      {graficas.requisiciones_por_mes.length > 0 ? (
+                        <ResponsiveContainer width="100%" height={110} minWidth={0} minHeight={0}>
+                          <BarChart data={graficas.requisiciones_por_mes} barGap={1} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                            <XAxis dataKey="mes_corto" tick={{ fontSize: 8, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+                            <YAxis tick={{ fontSize: 8, fill: '#9CA3AF' }} axisLine={false} tickLine={false} allowDecimals={false} width={20} />
+                            <Tooltip
+                              content={({ active, payload }) => {
+                                if (!active || !payload?.length) return null;
+                                const d = payload[0]?.payload;
+                                return (
+                                  <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-2 min-w-[100px]">
+                                    <p className="text-[10px] font-bold text-gray-700 mb-1">{d?.mes}</p>
+                                    <p className="text-[10px]"><span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1" />{d?.completadas} completadas</p>
+                                    <p className="text-[10px]"><span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 mr-1" />{d?.pendientes} en proceso</p>
+                                    <p className="text-[10px]"><span className="inline-block w-1.5 h-1.5 rounded-full bg-red-400 mr-1" />{d?.rechazadas} rechazadas</p>
+                                  </div>
+                                );
+                              }}
+                            />
+                            <Bar dataKey="completadas" stackId="a" fill="#10B981" radius={[0, 0, 0, 0]} />
+                            <Bar dataKey="pendientes" stackId="a" fill="#F59E0B" radius={[0, 0, 0, 0]} />
+                            <Bar dataKey="rechazadas" stackId="a" fill="#EF4444" radius={[3, 3, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="flex items-center justify-center h-[110px] text-gray-300 text-xs">Sin datos</div>
+                      )}
+                      <div className="flex items-center justify-center gap-3 mt-0.5">
+                        {[{ l: 'Completadas', c: '#10B981' }, { l: 'En proceso', c: '#F59E0B' }, { l: 'Rechazadas', c: '#EF4444' }].map(x => (
+                          <div key={x.l} className="flex items-center gap-1">
+                            <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: x.c }} />
+                            <span className="text-[8px] text-gray-400">{x.l}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Tabla de detalle por producto */}
+                    {analytics?.top_productos?.length > 0 && (
+                      <div className="pt-3 border-t border-gray-100">
+                        <div className="max-h-[150px] overflow-y-auto custom-scrollbar">
+                          <table className="w-full text-left">
+                            <thead className="sticky top-0 z-10">
+                              <tr className="bg-gray-50/90">
+                                <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1">Clave</th>
+                                <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1">Producto</th>
+                                <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1 text-center">Surtido</th>
+                                <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1 text-center">Solicit.</th>
+                                <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1 text-right w-20">Cumpl.</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {analytics.top_productos.slice(0, 5).map((item, idx) => (
+                                <tr key={idx} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
+                                  <td className="px-2 py-1">
+                                    <span className="text-[10px] font-mono font-bold text-gray-600">{item.clave}</span>
+                                  </td>
+                                  <td className="px-2 py-1">
+                                    <span className="text-[10px] text-gray-500 truncate block max-w-[120px]" title={item.nombre}>{item.nombre}</span>
+                                  </td>
+                                  <td className="px-2 py-1 text-center">
+                                    <span className="text-[11px] font-bold text-gray-800 tabular-nums">{(item.total_surtido || 0).toLocaleString('es-MX')}</span>
+                                  </td>
+                                  <td className="px-2 py-1 text-center">
+                                    <span className="text-[11px] font-bold text-gray-600 tabular-nums">{item.veces_solicitado || 0}</span>
+                                  </td>
+                                  <td className="px-2 py-1">
+                                    <div className="flex items-center gap-1 justify-end">
+                                      <div className="w-10 bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                                        <div className="h-full rounded-full" style={{ width: `${item.porcentaje_cumplimiento || 0}%`, backgroundColor: (item.porcentaje_cumplimiento || 0) >= 80 ? '#10B981' : (item.porcentaje_cumplimiento || 0) >= 50 ? '#F59E0B' : '#EF4444' }} />
+                                      </div>
+                                      <span className={`text-[10px] font-black tabular-nums ${(item.porcentaje_cumplimiento || 0) >= 80 ? 'text-emerald-600' : (item.porcentaje_cumplimiento || 0) >= 50 ? 'text-amber-600' : 'text-red-600'}`}>{(item.porcentaje_cumplimiento || 0).toFixed(0)}%</span>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ── COLUMNA DERECHA: Cumplimiento donut ── */}
+                  <div className="lg:col-span-3 flex flex-col items-center gap-4 pt-2">
+                    {graficas.requisiciones_resumen?.tasa_cumplimiento != null && (
+                      <>
+                        <div className="relative" style={{ width: 160, height: 160 }}>
+                          <ResponsiveContainer width={160} height={160} minWidth={0} minHeight={0}>
+                            <PieChart>
+                              <defs>
+                                <linearGradient id="cumplGrad" x1="0" y1="0" x2="1" y2="1">
+                                  <stop offset="0%" stopColor="#10B981" stopOpacity={1} />
+                                  <stop offset="100%" stopColor="#6EE7B7" stopOpacity={0.8} />
+                                </linearGradient>
+                              </defs>
+                              <Pie
+                                data={[
+                                  { name: 'Cumplimiento', value: graficas.requisiciones_resumen.tasa_cumplimiento },
+                                  { name: 'Restante', value: 100 - graficas.requisiciones_resumen.tasa_cumplimiento }
+                                ]}
+                                cx="50%"
+                                cy="50%"
+                                innerRadius={50}
+                                outerRadius={72}
+                                startAngle={90}
+                                endAngle={-270}
+                                paddingAngle={2}
+                                dataKey="value"
+                                cornerRadius={8}
+                                animationBegin={0}
+                                animationDuration={1400}
+                                animationEasing="ease-out"
+                              >
+                                <Cell fill="url(#cumplGrad)" stroke="none" />
+                                <Cell fill="#F3F4F6" stroke="none" />
+                              </Pie>
+                            </PieChart>
+                          </ResponsiveContainer>
+                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <div className="text-center">
+                              <p className="text-2xl font-black text-gray-900 leading-none">{graficas.requisiciones_resumen.tasa_cumplimiento}%</p>
+                              <p className="text-[8px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Total</p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-center px-4 py-2 rounded-xl bg-emerald-50 border border-emerald-100">
+                          <p className="text-sm font-black text-emerald-700">{graficas.requisiciones_resumen.tasa_cumplimiento}%</p>
+                          <p className="text-[9px] text-gray-400 font-semibold">Tasa de Cumplimiento</p>
+                        </div>
+                      </>
+                    )}
                     {graficas.requisiciones_resumen?.dias_promedio_cumplimiento != null && (
-                      <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
+                      <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-50 border border-blue-100">
                         <FaClock size={11} className="text-blue-500" />
-                        <span className="text-xs text-gray-500">Tiempo promedio de cumplimiento:</span>
-                        <span className="text-sm font-black text-blue-700">{graficas.requisiciones_resumen.dias_promedio_cumplimiento} días</span>
+                        <div>
+                          <p className="text-sm font-black text-blue-700">{graficas.requisiciones_resumen.dias_promedio_cumplimiento} días</p>
+                          <p className="text-[9px] text-gray-400 font-semibold">Tiempo Promedio</p>
+                        </div>
                       </div>
                     )}
                   </div>
