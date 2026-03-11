@@ -8750,12 +8750,31 @@ def dashboard_graficas(request):
         
         dias_promedio = round(tiempo_promedio.total_seconds() / 86400, 1) if tiempo_promedio else None
         
-        # Top centros solicitantes
-        req_por_centro = list(
+        # Top centros solicitantes — con desglose por estado
+        req_por_centro_raw = list(
             requisiciones_qs.values('centro_origen__nombre')
-            .annotate(total=Count('id'))
-            .order_by('-total')[:5]
+            .annotate(
+                total=Count('id'),
+                completadas=Count('id', filter=Q(estado__in=['surtida', 'entregada', 'parcial'])),
+                en_proceso=Count('id', filter=Q(estado__in=['borrador', 'pendiente_admin', 'pendiente_director', 'enviada', 'en_revision', 'autorizada', 'en_surtido'])),
+                rechazadas=Count('id', filter=Q(estado__in=['rechazada', 'devuelta'])),
+                urgentes=Count('id', filter=Q(es_urgente=True)),
+            )
+            .order_by('-total')[:10]
         )
+        
+        por_centro_detalle = []
+        for r in req_por_centro_raw:
+            t = r['total']
+            por_centro_detalle.append({
+                'centro': r['centro_origen__nombre'] or 'Sin centro',
+                'total': t,
+                'completadas': r['completadas'],
+                'en_proceso': r['en_proceso'],
+                'rechazadas': r['rechazadas'],
+                'urgentes': r['urgentes'],
+                'tasa': round((r['completadas'] / t * 100), 1) if t > 0 else 0,
+            })
         
         requisiciones_resumen = {
             'total': total_req,
@@ -8766,7 +8785,7 @@ def dashboard_graficas(request):
             'tasa_cumplimiento': round((completadas_total / total_req * 100), 1) if total_req > 0 else 0,
             'tasa_rechazo': round((rechazadas_total / total_req * 100), 1) if total_req > 0 else 0,
             'dias_promedio_cumplimiento': dias_promedio,
-            'por_centro': [{'centro': r['centro_origen__nombre'] or 'Sin centro', 'total': r['total']} for r in req_por_centro],
+            'por_centro': por_centro_detalle,
         }
         
         # ISS-005: Preparar respuesta y guardar en caché

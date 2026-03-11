@@ -1739,10 +1739,10 @@ const Dashboard = () => {
               </div>
             </div>
 
-            {/* Fila 2: Donut + Desglose por estado + Top centros */}
+            {/* Fila 2: Donut compacto + Tabla de Centros Solicitantes */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
-              {/* Donut compacto */}
-              <div className="lg:col-span-3 flex flex-col items-center">
+              {/* Donut compacto + cumplimiento */}
+              <div className="lg:col-span-3 flex flex-col items-center gap-2">
                 <div className="relative w-full">
                   <ResponsiveContainer width="100%" height={140}>
                     <PieChart>
@@ -1790,38 +1790,18 @@ const Dashboard = () => {
                     </div>
                   </div>
                 </div>
-              </div>
-
-              {/* Desglose por estado — scrollable si hay muchos */}
-              <div className="lg:col-span-6 min-w-0">
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Desglose por Estado</p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-[140px] overflow-y-auto pr-1">
-                  {graficas.requisiciones_por_estado.map((item) => {
-                    const color = COLORES_ESTADO_REQUISICION[item.estado] || COLORES_ESTADO_REQUISICION.DEFAULT;
-                    const pct = totalRequisiciones > 0 ? ((item.cantidad / totalRequisiciones) * 100).toFixed(0) : 0;
-                    return (
-                      <div key={item.estado} className="bg-gray-50 rounded-lg px-2 py-1.5 border border-gray-100 hover:border-gray-200 transition-colors">
-                        <div className="flex items-center gap-1.5 mb-0.5">
-                          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
-                          <span className="text-[10px] font-semibold text-gray-600 truncate">{formatearEstado(item.estado)}</span>
-                        </div>
-                        <div className="flex items-end justify-between">
-                          <span className="text-base font-black text-gray-800">{item.cantidad}</span>
-                          <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ color, backgroundColor: `${color}12` }}>{pct}%</span>
-                        </div>
-                        <div className="w-full bg-gray-100 rounded-full h-0.5 mt-1 overflow-hidden">
-                          <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />
-                        </div>
-                      </div>
-                    );
-                  })}
+                {/* Leyenda compacta debajo del donut */}
+                <div className="flex flex-wrap gap-x-2.5 gap-y-0.5 justify-center">
+                  {graficas.requisiciones_por_estado.map((item) => (
+                    <div key={item.estado} className="flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: COLORES_ESTADO_REQUISICION[item.estado] || COLORES_ESTADO_REQUISICION.DEFAULT }} />
+                      <span className="text-[9px] text-gray-400">{formatearEstado(item.estado)} ({item.cantidad})</span>
+                    </div>
+                  ))}
                 </div>
-              </div>
-
-              {/* Cumplimiento + Top centros */}
-              <div className="lg:col-span-3 space-y-1.5 min-w-0">
+                {/* Cumplimiento */}
                 {graficas.requisiciones_resumen && (
-                  <div className="bg-emerald-50/70 rounded-lg px-2.5 py-2 border border-emerald-100">
+                  <div className="w-full bg-emerald-50/70 rounded-lg px-2.5 py-2 border border-emerald-100">
                     <div className="flex items-center justify-between mb-0.5">
                       <div className="flex items-center gap-1">
                         <FaChartLine size={9} className="text-emerald-500" />
@@ -1834,22 +1814,90 @@ const Dashboard = () => {
                     </div>
                   </div>
                 )}
+              </div>
 
-                {graficas.requisiciones_resumen?.por_centro?.length > 0 && (
-                  <div className="bg-gray-50 rounded-lg px-2.5 py-2 border border-gray-100">
-                    <div className="flex items-center gap-1 mb-1">
-                      <FaBuilding size={9} className="text-gray-400" />
-                      <span className="text-[9px] font-medium text-gray-500">Top Centros</span>
-                    </div>
-                    <div className="space-y-0.5">
-                      {graficas.requisiciones_resumen.por_centro.slice(0, 3).map((c, i) => (
-                        <div key={i} className="flex items-center gap-1">
-                          <span className="text-[9px] text-gray-400">{i + 1}.</span>
-                          <span className="text-[9px] text-gray-500 truncate flex-1 min-w-0">{c.centro}</span>
-                          <span className="text-[9px] font-bold text-gray-700 flex-shrink-0">{c.total}</span>
-                        </div>
-                      ))}
-                    </div>
+              {/* Tabla de centros solicitantes */}
+              <div className="lg:col-span-9 min-w-0">
+                <div className="flex items-center gap-2 mb-2">
+                  <FaBuilding size={11} className="text-gray-400" />
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Centros con Mayor Número de Requisiciones</p>
+                </div>
+                {graficas.requisiciones_resumen?.por_centro?.length > 0 ? (
+                  <div className="overflow-x-auto rounded-lg border border-gray-100">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="bg-gray-50/80 border-b border-gray-100">
+                          <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-3 py-2">#</th>
+                          <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-3 py-2">Centro</th>
+                          <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-3 py-2 text-center">Total</th>
+                          <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-3 py-2 text-center">
+                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 mr-0.5" />Compl.
+                          </th>
+                          <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-3 py-2 text-center">
+                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 mr-0.5" />Proceso
+                          </th>
+                          <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-3 py-2 text-center">
+                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-400 mr-0.5" />Rech.
+                          </th>
+                          <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-3 py-2 text-center">
+                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-orange-400 mr-0.5" />Urg.
+                          </th>
+                          <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-3 py-2 text-right">Cumplimiento</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {graficas.requisiciones_resumen.por_centro.map((c, i) => {
+                          const maxTotal = graficas.requisiciones_resumen.por_centro[0]?.total || 1;
+                          const barWidth = (c.total / maxTotal) * 100;
+                          return (
+                            <tr key={i} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
+                              <td className="px-3 py-1.5">
+                                <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[8px] font-black text-white ${i === 0 ? 'bg-yellow-400' : i === 1 ? 'bg-gray-300' : i === 2 ? 'bg-amber-600' : 'bg-gray-200 text-gray-500'}`}>
+                                  {i + 1}
+                                </span>
+                              </td>
+                              <td className="px-3 py-1.5 min-w-0 max-w-[220px]">
+                                <p className="text-[11px] font-semibold text-gray-700 truncate" title={c.centro}>{c.centro}</p>
+                                <div className="w-full bg-gray-100 rounded-full h-0.5 mt-0.5 overflow-hidden">
+                                  <div className="h-full rounded-full" style={{ width: `${barWidth}%`, backgroundColor: '#9F2241' }} />
+                                </div>
+                              </td>
+                              <td className="px-3 py-1.5 text-center">
+                                <span className="text-sm font-black text-gray-800">{c.total}</span>
+                              </td>
+                              <td className="px-3 py-1.5 text-center">
+                                <span className="text-[11px] font-bold text-emerald-600">{c.completadas}</span>
+                              </td>
+                              <td className="px-3 py-1.5 text-center">
+                                <span className="text-[11px] font-bold text-amber-600">{c.en_proceso}</span>
+                              </td>
+                              <td className="px-3 py-1.5 text-center">
+                                <span className="text-[11px] font-bold text-red-500">{c.rechazadas}</span>
+                              </td>
+                              <td className="px-3 py-1.5 text-center">
+                                {c.urgentes > 0 ? (
+                                  <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-1 py-0.5 rounded">{c.urgentes}</span>
+                                ) : (
+                                  <span className="text-[10px] text-gray-300">—</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-1.5 text-right">
+                                <div className="flex items-center justify-end gap-1">
+                                  <div className="w-10 bg-gray-100 rounded-full h-1 overflow-hidden">
+                                    <div className="h-full rounded-full" style={{ width: `${c.tasa}%`, backgroundColor: c.tasa >= 70 ? '#10B981' : c.tasa >= 40 ? '#F59E0B' : '#EF4444' }} />
+                                  </div>
+                                  <span className="text-[10px] font-bold" style={{ color: c.tasa >= 70 ? '#10B981' : c.tasa >= 40 ? '#F59E0B' : '#EF4444' }}>{c.tasa}%</span>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-[120px] text-gray-300 text-xs bg-gray-50 rounded-lg border border-gray-100">
+                    Sin datos de centros
                   </div>
                 )}
               </div>
