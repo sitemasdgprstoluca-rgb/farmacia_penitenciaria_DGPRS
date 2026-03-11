@@ -1739,59 +1739,59 @@ const Dashboard = () => {
               </div>
             </div>
 
-            {/* Fila 2: Donut compacto + Tabla de Centros Solicitantes */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
-              {/* Donut compacto + cumplimiento */}
-              <div className="lg:col-span-3 flex flex-col items-center gap-2">
-                <div className="relative w-full">
-                  <ResponsiveContainer width="100%" height={140}>
-                    <PieChart>
-                      <Pie
-                        data={graficas.requisiciones_por_estado}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={38}
-                        outerRadius={60}
-                        paddingAngle={2}
-                        dataKey="cantidad"
-                        cornerRadius={3}
-                      >
-                        {graficas.requisiciones_por_estado.map((entry, index) => (
-                          <Cell 
-                            key={`cell-${index}`} 
-                            fill={COLORES_ESTADO_REQUISICION[entry.estado] || COLORES_ESTADO_REQUISICION.DEFAULT}
-                            stroke="#fff"
-                            strokeWidth={2}
-                          />
-                        ))}
-                      </Pie>
-                      <Tooltip 
-                        content={({ active, payload }) => {
-                          if (!active || !payload?.length) return null;
-                          const data = payload[0].payload;
-                          const color = COLORES_ESTADO_REQUISICION[data.estado] || COLORES_ESTADO_REQUISICION.DEFAULT;
-                          return (
-                            <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-2 min-w-[110px]">
-                              <div className="flex items-center gap-1.5 mb-0.5">
-                                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
-                                <span className="font-bold text-gray-800 text-[10px]">{formatearEstado(data.estado)}</span>
-                              </div>
-                              <p className="text-sm font-black text-gray-900">{data.cantidad} <span className="text-[9px] font-normal text-gray-400">/ {totalRequisiciones}</span></p>
+            {/* Fila 2: Donut + Leyenda + Cumplimiento */}
+            <div className="flex flex-wrap items-center justify-center gap-4">
+              {/* Donut compacto */}
+              <div className="relative" style={{ width: 140, height: 140 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={graficas.requisiciones_por_estado}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={38}
+                      outerRadius={60}
+                      paddingAngle={2}
+                      dataKey="cantidad"
+                      cornerRadius={3}
+                    >
+                      {graficas.requisiciones_por_estado.map((entry, index) => (
+                        <Cell 
+                          key={`cell-${index}`} 
+                          fill={COLORES_ESTADO_REQUISICION[entry.estado] || COLORES_ESTADO_REQUISICION.DEFAULT}
+                          stroke="#fff"
+                          strokeWidth={2}
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      content={({ active, payload }) => {
+                        if (!active || !payload?.length) return null;
+                        const data = payload[0].payload;
+                        const color = COLORES_ESTADO_REQUISICION[data.estado] || COLORES_ESTADO_REQUISICION.DEFAULT;
+                        return (
+                          <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-2 min-w-[110px]">
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                              <span className="font-bold text-gray-800 text-[10px]">{formatearEstado(data.estado)}</span>
                             </div>
-                          );
-                        }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="text-center">
-                      <p className="text-xl font-black text-gray-900">{totalRequisiciones}</p>
-                      <p className="text-[8px] text-gray-400">Total</p>
-                    </div>
+                            <p className="text-sm font-black text-gray-900">{data.cantidad} <span className="text-[9px] font-normal text-gray-400">/ {totalRequisiciones}</span></p>
+                          </div>
+                        );
+                      }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="text-center">
+                    <p className="text-xl font-black text-gray-900">{totalRequisiciones}</p>
+                    <p className="text-[8px] text-gray-400">Total</p>
                   </div>
                 </div>
-                {/* Leyenda compacta debajo del donut */}
-                <div className="flex flex-wrap gap-x-2.5 gap-y-0.5 justify-center">
+              </div>
+              {/* Leyenda + Cumplimiento */}
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5">
                   {graficas.requisiciones_por_estado.map((item) => (
                     <div key={item.estado} className="flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: COLORES_ESTADO_REQUISICION[item.estado] || COLORES_ESTADO_REQUISICION.DEFAULT }} />
@@ -1799,105 +1799,14 @@ const Dashboard = () => {
                     </div>
                   ))}
                 </div>
-                {/* Cumplimiento */}
                 {graficas.requisiciones_resumen && (
-                  <div className="w-full bg-emerald-50/70 rounded-lg px-2.5 py-2 border border-emerald-100">
-                    <div className="flex items-center justify-between mb-0.5">
-                      <div className="flex items-center gap-1">
-                        <FaChartLine size={9} className="text-emerald-500" />
-                        <span className="text-[9px] font-medium text-emerald-600">Cumplimiento</span>
-                      </div>
-                      <span className="text-base font-black text-emerald-800">{graficas.requisiciones_resumen.tasa_cumplimiento}%</span>
-                    </div>
-                    <div className="w-full bg-emerald-100 rounded-full h-1 overflow-hidden">
+                  <div className="bg-emerald-50/70 rounded-lg px-3 py-1.5 border border-emerald-100 flex items-center gap-2">
+                    <FaChartLine size={9} className="text-emerald-500" />
+                    <span className="text-[9px] font-medium text-emerald-600">Cumplimiento</span>
+                    <div className="w-16 bg-emerald-100 rounded-full h-1 overflow-hidden">
                       <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${graficas.requisiciones_resumen.tasa_cumplimiento}%` }} />
                     </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Tabla de centros solicitantes */}
-              <div className="lg:col-span-9 min-w-0">
-                <div className="flex items-center gap-2 mb-2">
-                  <FaBuilding size={11} className="text-gray-400" />
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Centros con Mayor Número de Requisiciones</p>
-                </div>
-                {graficas.requisiciones_resumen?.por_centro?.length > 0 ? (
-                  <div className="overflow-x-auto rounded-lg border border-gray-100">
-                    <table className="w-full text-left">
-                      <thead>
-                        <tr className="bg-gray-50/80 border-b border-gray-100">
-                          <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-3 py-2">#</th>
-                          <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-3 py-2">Centro</th>
-                          <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-3 py-2 text-center">Total</th>
-                          <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-3 py-2 text-center">
-                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 mr-0.5" />Compl.
-                          </th>
-                          <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-3 py-2 text-center">
-                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 mr-0.5" />Proceso
-                          </th>
-                          <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-3 py-2 text-center">
-                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-400 mr-0.5" />Rech.
-                          </th>
-                          <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-3 py-2 text-center">
-                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-orange-400 mr-0.5" />Urg.
-                          </th>
-                          <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-3 py-2 text-right">Cumplimiento</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {graficas.requisiciones_resumen.por_centro.map((c, i) => {
-                          const maxTotal = graficas.requisiciones_resumen.por_centro[0]?.total || 1;
-                          const barWidth = (c.total / maxTotal) * 100;
-                          return (
-                            <tr key={i} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
-                              <td className="px-3 py-1.5">
-                                <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[8px] font-black text-white ${i === 0 ? 'bg-yellow-400' : i === 1 ? 'bg-gray-300' : i === 2 ? 'bg-amber-600' : 'bg-gray-200 text-gray-500'}`}>
-                                  {i + 1}
-                                </span>
-                              </td>
-                              <td className="px-3 py-1.5 min-w-0 max-w-[220px]">
-                                <p className="text-[11px] font-semibold text-gray-700 truncate" title={c.centro}>{c.centro}</p>
-                                <div className="w-full bg-gray-100 rounded-full h-0.5 mt-0.5 overflow-hidden">
-                                  <div className="h-full rounded-full" style={{ width: `${barWidth}%`, backgroundColor: '#9F2241' }} />
-                                </div>
-                              </td>
-                              <td className="px-3 py-1.5 text-center">
-                                <span className="text-sm font-black text-gray-800">{c.total}</span>
-                              </td>
-                              <td className="px-3 py-1.5 text-center">
-                                <span className="text-[11px] font-bold text-emerald-600">{c.completadas}</span>
-                              </td>
-                              <td className="px-3 py-1.5 text-center">
-                                <span className="text-[11px] font-bold text-amber-600">{c.en_proceso}</span>
-                              </td>
-                              <td className="px-3 py-1.5 text-center">
-                                <span className="text-[11px] font-bold text-red-500">{c.rechazadas}</span>
-                              </td>
-                              <td className="px-3 py-1.5 text-center">
-                                {c.urgentes > 0 ? (
-                                  <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-1 py-0.5 rounded">{c.urgentes}</span>
-                                ) : (
-                                  <span className="text-[10px] text-gray-300">—</span>
-                                )}
-                              </td>
-                              <td className="px-3 py-1.5 text-right">
-                                <div className="flex items-center justify-end gap-1">
-                                  <div className="w-10 bg-gray-100 rounded-full h-1 overflow-hidden">
-                                    <div className="h-full rounded-full" style={{ width: `${c.tasa}%`, backgroundColor: c.tasa >= 70 ? '#10B981' : c.tasa >= 40 ? '#F59E0B' : '#EF4444' }} />
-                                  </div>
-                                  <span className="text-[10px] font-bold" style={{ color: c.tasa >= 70 ? '#10B981' : c.tasa >= 40 ? '#F59E0B' : '#EF4444' }}>{c.tasa}%</span>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center h-[120px] text-gray-300 text-xs bg-gray-50 rounded-lg border border-gray-100">
-                    Sin datos de centros
+                    <span className="text-sm font-black text-emerald-800">{graficas.requisiciones_resumen.tasa_cumplimiento}%</span>
                   </div>
                 )}
               </div>
@@ -2055,60 +1964,87 @@ const Dashboard = () => {
               </ChartCard>
             )}
 
-            {/* Top Centros Solicitantes */}
-            {analytics.top_centros && analytics.top_centros.length > 0 && (
-              <ChartCard title="Centros que más Solicitan" icon={FaHospital}>
+            {/* Centros que más Solicitan — tabla con desglose */}
+            {graficas.requisiciones_resumen?.por_centro?.length > 0 && (
+              <ChartCard title="Centros que más Solicitan" icon={FaBuilding}>
                 {(() => {
-                  const maxReq = Math.max(...analytics.top_centros.map(c => c.total_requisiciones || 0), 1);
-                  const totalReq = analytics.top_centros.reduce((s, c) => s + (c.total_requisiciones || 0), 0);
-                  const totalSurtidas = analytics.top_centros.reduce((s, c) => s + (c.surtidas || 0), 0);
-                  const totalPendientes = analytics.top_centros.reduce((s, c) => s + (c.pendientes || 0), 0);
+                  const centros = graficas.requisiciones_resumen.por_centro;
+                  const totalCentros = centros.reduce((s, c) => s + c.total, 0);
+                  const totalCompl = centros.reduce((s, c) => s + c.completadas, 0);
                   return (
-                    <div className="space-y-3">
+                    <div>
+                      {/* Mini KPIs */}
                       <div className="grid grid-cols-3 gap-2 mb-3">
                         <div className="dash-stat-mini dash-stat-info">
                           <span className="text-[9px] font-bold text-blue-600 uppercase tracking-wider">Requisiciones</span>
-                          <p className="text-lg font-black text-blue-800 mt-0.5">{totalReq}</p>
+                          <p className="text-lg font-black text-blue-800 mt-0.5">{totalCentros}</p>
                         </div>
                         <div className="dash-stat-mini dash-stat-success">
-                          <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider">Surtidas</span>
-                          <p className="text-lg font-black text-emerald-800 mt-0.5">{totalSurtidas}</p>
+                          <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider">Completadas</span>
+                          <p className="text-lg font-black text-emerald-800 mt-0.5">{totalCompl}</p>
                         </div>
                         <div className="dash-stat-mini dash-stat-warning">
-                          <span className="text-[9px] font-bold text-amber-600 uppercase tracking-wider">Pendientes</span>
-                          <p className="text-lg font-black text-amber-800 mt-0.5">{totalPendientes}</p>
+                          <span className="text-[9px] font-bold text-amber-600 uppercase tracking-wider">Cumplimiento</span>
+                          <p className="text-lg font-black text-amber-800 mt-0.5">{totalCentros > 0 ? Math.round(totalCompl / totalCentros * 100) : 0}%</p>
                         </div>
                       </div>
-                      <div className={`space-y-2.5 ${analytics.top_centros.length > 5 ? 'max-h-[300px] overflow-y-auto pr-2 custom-scrollbar' : ''}`}>
-                        {analytics.top_centros.map((item, idx) => {
-                          const pctReq = (item.total_requisiciones || 0) / maxReq * 100;
-                          const tasa = item.tasa_cumplimiento || 0;
-                          return (
-                            <div key={idx} className="dash-centro-item group">
-                              <div className="flex items-center justify-between mb-1.5">
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <span className="dash-bar-rank bg-blue-500 text-white">{idx + 1}</span>
-                                  <span className="text-sm font-semibold text-gray-700 truncate" title={item.nombre}>{item.nombre}</span>
-                                </div>
-                                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${tasa >= 80 ? 'bg-emerald-50 text-emerald-700' : tasa >= 50 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>
-                                  {tasa.toFixed(0)}% cumpl.
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-3 text-[10px] text-gray-500 mb-1.5">
-                                <span className="tabular-nums"><span className="font-bold text-blue-600">{item.total_requisiciones}</span> req</span>
-                                <span className="tabular-nums"><span className="font-bold text-emerald-600">{item.surtidas || 0}</span> surtidas</span>
-                                <span className="tabular-nums"><span className="font-bold text-amber-600">{item.pendientes || 0}</span> pend.</span>
-                              </div>
-                              <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                                <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pctReq}%`, background: tasa >= 80 ? '#10B981' : tasa >= 50 ? '#F59E0B' : '#EF4444' }} />
-                              </div>
-                            </div>
-                          );
-                        })}
+                      {/* Tabla */}
+                      <div className={`${centros.length > 5 ? 'max-h-[340px] overflow-y-auto pr-1 custom-scrollbar' : ''}`}>
+                        <table className="w-full text-left">
+                          <thead className="sticky top-0 z-10">
+                            <tr className="bg-gray-50/90 border-b border-gray-100">
+                              <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider pl-2 pr-1 py-1.5 w-7">#</th>
+                              <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1.5">Centro</th>
+                              <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1.5 text-center w-12">Total</th>
+                              <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1.5 text-center w-14">
+                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 align-middle mr-0.5" />Compl.
+                              </th>
+                              <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1.5 text-center w-14">
+                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 align-middle mr-0.5" />Proc.
+                              </th>
+                              <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider pl-2 pr-3 py-1.5 text-right w-16">Tasa</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {centros.map((c, i) => {
+                              const maxTotal = centros[0]?.total || 1;
+                              const barWidth = (c.total / maxTotal) * 100;
+                              return (
+                                <tr key={i} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
+                                  <td className="pl-2 pr-1 py-1.5">
+                                    <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[8px] font-black text-white ${i === 0 ? 'bg-yellow-400' : i === 1 ? 'bg-gray-300' : i === 2 ? 'bg-amber-600' : 'bg-gray-200 text-gray-500'}`}>
+                                      {i + 1}
+                                    </span>
+                                  </td>
+                                  <td className="px-2 py-1.5 min-w-0">
+                                    <p className="text-xs font-semibold text-gray-700 truncate" title={c.centro}>{c.centro}</p>
+                                    <div className="w-full bg-gray-100 rounded-full h-1 mt-1 overflow-hidden">
+                                      <div className="h-full rounded-full transition-all duration-700" style={{ width: `${barWidth}%`, background: 'linear-gradient(90deg, #932043aa, #932043)' }} />
+                                    </div>
+                                  </td>
+                                  <td className="px-2 py-1.5 text-center">
+                                    <span className="text-sm font-black text-gray-800">{c.total}</span>
+                                  </td>
+                                  <td className="px-2 py-1.5 text-center">
+                                    <span className="text-xs font-bold text-emerald-600">{c.completadas}</span>
+                                  </td>
+                                  <td className="px-2 py-1.5 text-center">
+                                    <span className="text-xs font-bold text-amber-600">{c.en_proceso}</span>
+                                  </td>
+                                  <td className="pl-2 pr-3 py-1.5 text-right">
+                                    <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${c.tasa >= 70 ? 'bg-emerald-50 text-emerald-700' : c.tasa >= 40 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>
+                                      {c.tasa}%
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
                       </div>
                       <div className="pt-3 mt-1 border-t border-gray-100 flex justify-between items-center">
-                        <span className="text-xs text-gray-400">{analytics.top_centros.length} centros</span>
-                        <span className="text-xs text-gray-500">Prom. cumplimiento: <span className="font-bold text-gray-700">{totalReq > 0 ? (totalSurtidas / totalReq * 100).toFixed(0) : 0}%</span></span>
+                        <span className="text-xs text-gray-400">{centros.length} centros</span>
+                        <span className="text-xs text-gray-500">Prom. cumplimiento: <span className="font-bold text-gray-700">{totalCentros > 0 ? Math.round(totalCompl / totalCentros * 100) : 0}%</span></span>
                       </div>
                     </div>
                   );
