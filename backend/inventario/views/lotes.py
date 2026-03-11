@@ -897,6 +897,10 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                 cons['cantidad_contrato_total'] += lote.cantidad_contrato
             cons['lotes_ids'].append(lote.id)  # Agregar ID para verificar movimientos
             
+            # Actualizar estado activo desde el lote real
+            if not lote.activo:
+                cons['activo'] = False
+            
             # Registrar centro
             centro_nombre = lote.centro.nombre if lote.centro else 'Almacén Central'
             if centro_nombre not in cons['centros']:

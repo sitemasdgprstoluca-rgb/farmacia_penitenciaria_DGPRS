@@ -1690,7 +1690,7 @@ const Productos = () => {
               </div>
               
               {/* Info grid */}
-              <div className="grid grid-cols-3 gap-3 text-center py-3 border-y border-gray-100">
+              <div className={`grid ${esCentroUser ? 'grid-cols-2' : 'grid-cols-3'} gap-3 text-center py-3 border-y border-gray-100`}>
                 <div>
                   <div className={`text-lg font-bold ${
                     nivelStock === 'sin_stock' || nivelStock === 'critico' ? 'text-red-600' :
@@ -1710,10 +1710,12 @@ const Productos = () => {
                   </button>
                   <div className="text-xs text-gray-500">Lotes</div>
                 </div>
+                {!esCentroUser && (
                 <div>
                   <div className="text-lg font-bold text-slate-700">{producto.stock_minimo || '-'}</div>
                   <div className="text-xs text-gray-500">Mín.</div>
                 </div>
+                )}
               </div>
               
               {/* Acciones */}
@@ -1763,10 +1765,10 @@ const Productos = () => {
         {renderMobileCards()}
         
         {/* Vista desktop: tabla */}
-        <div className="hidden lg:block w-full rounded-lg border border-gray-200 shadow-md">
+        <div className="hidden lg:block w-full table-soft">
         <table className="w-full table-fixed divide-y divide-gray-200">
 
-          <thead className="bg-theme-gradient sticky top-0 z-10">
+          <thead className="thead-soft sticky top-0 z-10">
 
             <tr>
 
@@ -1774,25 +1776,25 @@ const Productos = () => {
 
                 { key: '#', width: 'w-[3%]' },
 
-                { key: 'Clave', width: 'w-[7%]' },
+                { key: 'Clave', width: esCentroUser ? 'w-[8%]' : 'w-[7%]' },
 
-                { key: 'Nombre', width: 'w-[18%]' },
+                { key: 'Nombre', width: esCentroUser ? 'w-[22%]' : 'w-[18%]' },
 
-                { key: 'Presentación', width: 'w-[14%]' },
+                { key: 'Presentación', width: esCentroUser ? 'w-[18%]' : 'w-[14%]' },
 
-                { key: 'Inventario', width: 'w-[8%]' },
+                { key: 'Inventario', width: esCentroUser ? 'w-[10%]' : 'w-[8%]' },
 
-                { key: 'Lotes', width: 'w-[5%]' },
+                { key: 'Lotes', width: esCentroUser ? 'w-[7%]' : 'w-[5%]' },
 
-                { key: 'Inv. Mín.', width: 'w-[6%]' },
+                ...(!esCentroUser ? [{ key: 'Inv. Mín.', width: 'w-[6%]' }] : []),
 
-                { key: 'Estado', width: 'w-[9%]' },
+                { key: 'Estado', width: esCentroUser ? 'w-[10%]' : 'w-[9%]' },
 
-                { key: 'Nivel', width: 'w-[9%]' },
+                { key: 'Nivel', width: esCentroUser ? 'w-[10%]' : 'w-[9%]' },
 
-                { key: 'Creado por', width: 'w-[10%]' },
+                ...(!esCentroUser ? [{ key: 'Creado por', width: 'w-[10%]' }] : []),
 
-                ...(puede.tieneAcciones ? [{ key: 'Acciones', width: 'w-[11%]' }] : []),
+                ...(puede.tieneAcciones ? [{ key: 'Acciones', width: esCentroUser ? 'w-[12%]' : 'w-[11%]' }] : []),
 
               ].map((col) => (
 
@@ -1867,6 +1869,7 @@ const Productos = () => {
                   </button>
                 </td>
 
+                {!esCentroUser && (
                 <td 
                   className="px-2 py-2 text-xs cursor-help"
                   title={`📉 Stock Mínimo\n━━━━━━━━━━━━━━━━━━━━\nCantidad: ${producto.stock_minimo || 'No definido'}\n💡 Cuando el inventario baja de este valor, el producto se marca como "Por surtir"`}
@@ -1875,12 +1878,14 @@ const Productos = () => {
                     {producto.stock_minimo || '-'}
                   </span>
                 </td>
+                )}
 
                 <td className="px-2 py-2 text-xs">{renderEstadoBadge(estadoInventario.label, estadoInventario.activo)}</td>
 
                 <td className="px-2 py-2 text-xs">{renderStockBadge(nivelStock)}</td>
 
-                {/* Creado por / Modificado por */}
+                {/* Creado por / Modificado por - solo visible para Farmacia/Admin */}
+                {!esCentroUser && (
                 <td className="px-2 py-2 text-[11px]">
                   {producto.creado_por_nombre ? (
                     <div className="leading-tight">
@@ -1897,6 +1902,7 @@ const Productos = () => {
                     <span className="text-gray-400 italic">Sistema</span>
                   )}
                 </td>
+                )}
 
                 {puede.tieneAcciones && (
                 <td className="px-2 py-2 text-xs">
@@ -2873,9 +2879,9 @@ const Productos = () => {
                   <span className="ml-3 text-gray-600">Cargando lotes...</span>
                 </div>
               ) : lotesModalData?.lotes?.length ? (
-                <div className="w-full overflow-x-auto">
+                <div className="w-full overflow-x-auto table-soft">
                   <table className="w-full min-w-[550px] divide-y divide-gray-200">
-                    <thead className="bg-theme-gradient sticky top-0 z-10">
+                    <thead className="thead-soft sticky top-0 z-10">
                       <tr>
                         <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Lote</th>
                         <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Cantidad</th>

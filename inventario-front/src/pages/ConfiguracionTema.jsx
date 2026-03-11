@@ -1,5 +1,5 @@
 /**
- * ConfiguracionTema - M├│dulo de personalizaci├│n del tema del sistema
+ * ConfiguracionTema - Módulo de personalización del tema del sistema
  * @version 2.0.0 - ColorInput movido antes del componente principal (fix hoisting)
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -30,12 +30,12 @@ import {
 import './ConfiguracionTema.css';
 
 /**
- * Expresi├│n regular para validar colores hex
+ * Expresión regular para validar colores hex
  */
 const HEX_COLOR_REGEX = /^#[0-9A-Fa-f]{6}$/;
 
 /**
- * Valida si un string es un color hexadecimal v├ílido
+ * Valida si un string es un color hexadecimal válido
  */
 const esColorValido = (color) => {
   if (!color) return false;
@@ -43,12 +43,12 @@ const esColorValido = (color) => {
 };
 
 /**
- * Normaliza un color a formato hex v├ílido
- * Retorna el color si es v├ílido, o un fallback si no
+ * Normaliza un color a formato hex válido
+ * Retorna el color si es válido, o un fallback si no
  */
 const normalizarColor = (color, fallback = '#000000') => {
   if (!color) return fallback;
-  // Si ya es v├ílido, retornar
+  // Si ya es válido, retornar
   if (esColorValido(color)) return color.toUpperCase();
   // Intentar agregar # si falta
   if (/^[0-9A-Fa-f]{6}$/.test(color)) return `#${color}`.toUpperCase();
@@ -56,7 +56,7 @@ const normalizarColor = (color, fallback = '#000000') => {
 };
 
 /**
- * Genera un color hover m├ís oscuro a partir de un color base
+ * Genera un color hover más oscuro a partir de un color base
  * Oscurece el color un 15% aprox.
  */
 const generarColorHover = (hexColor) => {
@@ -69,7 +69,7 @@ const generarColorHover = (hexColor) => {
 };
 
 /**
- * Componente de input de color mejorado con validaci├│n
+ * Componente de input de color mejorado con validación
  */
 const ColorInput = ({ label, name, value, onChange, error, disabled }) => (
   <div>
@@ -101,14 +101,14 @@ const ColorInput = ({ label, name, value, onChange, error, disabled }) => (
 );
 
 /**
- * P├ígina de configuraci├│n del tema del sistema
+ * Página de configuración del tema del sistema
  * Solo accesible por superusuarios
  * 
  * Funcionalidades:
- * - Selecci├│n de temas predefinidos
- * - Personalizaci├│n de colores
+ * - Selección de temas predefinidos
+ * - Personalización de colores
  * - Subida de logos (header e institucional para PDFs)
- * - Configuraci├│n de textos institucionales
+ * - Configuración de textos institucionales
  * - Vista previa en tiempo real
  */
 const ConfiguracionTema = () => {
@@ -130,7 +130,7 @@ const ConfiguracionTema = () => {
     eliminarLogoTema,
     temasDisponibles,
     aplicarCSSVariablesLocalmente, // Para preview en tiempo real
-    cargarTema // Para recargar tema despu├®s de guardar
+    cargarTema // Para recargar tema después de guardar
   } = useTheme();
   
   const [formData, setFormData] = useState({});
@@ -139,7 +139,7 @@ const ConfiguracionTema = () => {
   const [activeTab, setActiveTab] = useState('temas');
   const [erroresColor, setErroresColor] = useState({});
   
-  // Estados de carga separados para cada operaci├│n
+  // Estados de carga separados para cada operación
   const [operacionEnCurso, setOperacionEnCurso] = useState({
     aplicandoTema: false,
     guardandoColores: false,
@@ -177,7 +177,7 @@ const ConfiguracionTema = () => {
   const tienePermisoTema = permisos?.configurarTema || user?.is_superuser || permisos?.esSuperusuario;
   const permisosResueltos = !cargandoPermisos && user !== undefined;
   
-  // ISS-SEC: Hook de confirmaci├│n en dos pasos
+  // ISS-SEC: Hook de confirmación en dos pasos
   const {
     confirmState,
     requestDeleteConfirmation,
@@ -205,7 +205,7 @@ const ConfiguracionTema = () => {
   
   /**
    * Resetea todas las operaciones en curso (escape de seguridad)
-   * ├Ütil cuando una operaci├│n queda bloqueada por error de red
+   * Útil cuando una operación queda bloqueada por error de red
    */
   const resetearOperaciones = useCallback(() => {
     setOperacionEnCurso({
@@ -272,7 +272,7 @@ const ConfiguracionTema = () => {
         color_error: normalizarColor(tema.color_error, '#F44336'),
         color_info: normalizarColor(tema.color_info, '#2196F3'),
         
-        // Tipograf├¡a (valores por defecto)
+        // Tipografía (valores por defecto)
         fuente_principal: 'Montserrat',
         fuente_titulos: 'Montserrat',
         
@@ -290,18 +290,18 @@ const ConfiguracionTema = () => {
   }, [temaGlobal, configuracion]);
 
   /**
-   * Valida permisos antes de ejecutar una acci├│n
+   * Valida permisos antes de ejecutar una acción
    */
   const validarPermisos = useCallback(() => {
     if (!tienePermisoTema) {
-      toast.error('No tienes permisos para realizar esta acci├│n');
+      toast.error('No tienes permisos para realizar esta acción');
       return false;
     }
     return true;
   }, [tienePermisoTema]);
 
   /**
-   * Handler gen├®rico para operaciones as├¡ncronas con manejo de errores
+   * Handler genérico para operaciones asíncronas con manejo de errores
    * Permite concurrencia entre grupos de operaciones diferentes
    * Incluye timeout de seguridad para evitar bloqueos permanentes
    */
@@ -315,7 +315,7 @@ const ConfiguracionTema = () => {
                          grupoBloqueo === 'reportes' ? hayOperacionReportesEnCurso : false;
     
     if (estaBloquado) {
-      toast.error('Espera a que termine la operaci├│n actual');
+      toast.error('Espera a que termine la operación actual');
       return { success: false };
     }
 
@@ -326,7 +326,7 @@ const ConfiguracionTema = () => {
     timeoutRef.current = setTimeout(() => {
       setOperacionEnCurso(prev => {
         if (prev[nombreOperacion]) {
-          toast.error('La operaci├│n tard├│ demasiado. Se ha desbloqueado autom├íticamente.');
+          toast.error('La operación tardó demasiado. Se ha desbloqueado automáticamente.');
           return { ...prev, [nombreOperacion]: false };
         }
         return prev;
@@ -340,14 +340,14 @@ const ConfiguracionTema = () => {
         toast.success(mensajeExito);
         return resultado;
       } else {
-        toast.error(resultado.error || 'Error en la operaci├│n');
+        toast.error(resultado.error || 'Error en la operación');
         return resultado;
       }
     } catch (error) {
       console.error(`Error en ${nombreOperacion}:`, error);
       const mensaje = error.response?.data?.error || 
                       error.message || 
-                      'Error de conexi├│n. Intenta de nuevo.';
+                      'Error de conexión. Intenta de nuevo.';
       toast.error(mensaje);
       return { success: false, error: mensaje };
     } finally {
@@ -369,8 +369,8 @@ const ConfiguracionTema = () => {
   };
 
   /**
-   * Maneja cambios en inputs de color con validaci├│n
-   * Aplica preview en tiempo real si el color es v├ílido
+   * Maneja cambios en inputs de color con validación
+   * Aplica preview en tiempo real si el color es válido
    */
   const handleColorChange = (e) => {
     const { name, value } = e.target;
@@ -382,7 +382,7 @@ const ConfiguracionTema = () => {
     
     // Validar el color
     if (value && !esColorValido(value)) {
-      setErroresColor(prev => ({ ...prev, [name]: 'Formato inv├ílido. Use #RRGGBB' }));
+      setErroresColor(prev => ({ ...prev, [name]: 'Formato inválido. Use #RRGGBB' }));
     } else {
       setErroresColor(prev => {
         const nuevos = { ...prev };
@@ -390,7 +390,7 @@ const ConfiguracionTema = () => {
         return nuevos;
       });
       
-      // Aplicar preview en tiempo real si el color es v├ílido
+      // Aplicar preview en tiempo real si el color es válido
       if (esColorValido(value)) {
         aplicarCSSVariablesLocalmente(nuevoFormData);
       }
@@ -411,7 +411,7 @@ const ConfiguracionTema = () => {
     const errores = {};
     camposColor.forEach(campo => {
       if (formData[campo] && !esColorValido(formData[campo])) {
-        errores[campo] = 'Color inv├ílido';
+        errores[campo] = 'Color inválido';
       }
     });
     
@@ -432,9 +432,9 @@ const ConfiguracionTema = () => {
       return;
     }
     
-    // Evitar llamadas redundantes si el tema ya est├í activo
+    // Evitar llamadas redundantes si el tema ya está activo
     if (tema === temaSeleccionado && tema === configuracion?.tema_activo) {
-      toast.info('Este tema ya est├í activo');
+      toast.info('Este tema ya está activo');
       return;
     }
 
@@ -453,16 +453,16 @@ const ConfiguracionTema = () => {
 
   /**
    * Guarda los colores personalizados usando TemaGlobal API
-   * NOTA: Los colores hover se generan autom├íticamente oscureciendo el color base
+   * NOTA: Los colores hover se generan automáticamente oscureciendo el color base
    */
   const handleGuardar = async () => {
     if (!validarColoresAntesDeGuardar()) {
-      toast.error('Corrige los colores con formato inv├ílido');
+      toast.error('Corrige los colores con formato inválido');
       return;
     }
 
     // Preparar datos para TemaGlobal - mapeo directo a columnas de BD
-    // Los colores hover se generan autom├íticamente oscureciendo el color base
+    // Los colores hover se generan automáticamente oscureciendo el color base
     const datosActualizacion = {
       // Colores principales con hover generado
       color_primario: formData.color_primario,
@@ -478,7 +478,7 @@ const ConfiguracionTema = () => {
       color_texto_sidebar: formData.color_texto_sidebar,
       color_texto_header: formData.color_texto_header,
       color_texto_links: formData.color_primario,
-      // Colores de estado con hover generado autom├íticamente
+      // Colores de estado con hover generado automáticamente
       color_exito: formData.color_exito,
       color_exito_hover: generarColorHover(formData.color_exito),
       color_alerta: formData.color_advertencia,
@@ -495,7 +495,7 @@ const ConfiguracionTema = () => {
     const resultado = await ejecutarOperacion(
       'guardandoColores',
       () => actualizarTemaGlobal ? actualizarTemaGlobal(datosActualizacion) : actualizarTema({ ...formData, tema_activo: 'custom' }),
-      'Configuraci├│n de colores guardada correctamente',
+      'Configuración de colores guardada correctamente',
       'tema'
     );
 
@@ -532,7 +532,7 @@ const ConfiguracionTema = () => {
   };
 
   /**
-   * Guarda la configuraci├│n de reportes usando TemaGlobal
+   * Guarda la configuración de reportes usando TemaGlobal
    * Solo guarda campos que existen en BD: reporte_color_encabezado, reporte_color_texto
    */
   const handleGuardarReportes = async () => {
@@ -544,7 +544,7 @@ const ConfiguracionTema = () => {
     const resultado = await ejecutarOperacion(
       'guardandoReportes',
       () => actualizarTemaGlobal ? actualizarTemaGlobal(datosReportes) : actualizarTema(datosReportes),
-      'Configuraci├│n de reportes actualizada',
+      'Configuración de reportes actualizada',
       'reportes'
     );
 
@@ -553,7 +553,7 @@ const ConfiguracionTema = () => {
     }
   };
 
-  // ISS-SEC: Funci├│n de ejecuci├│n para restablecer tema
+  // ISS-SEC: Función de ejecución para restablecer tema
   const executeRestablecer = async () => {
     const resultado = await ejecutarOperacion(
       'restableciendo',
@@ -570,13 +570,13 @@ const ConfiguracionTema = () => {
 
   /**
    * Restablece el tema a valores por defecto (legacy)
-   * ISS-SEC: Ahora usa confirmaci├│n en 2 pasos
+   * ISS-SEC: Ahora usa confirmación en 2 pasos
    */
   const handleRestablecer = () => {
     requestDeleteConfirmation({
       title: 'Restablecer colores',
-      message: 'Esto restablecer├í todos los colores pero mantendr├í los logos e informaci├│n institucional.',
-      itemInfo: { 'Acci├│n': 'Restablecer a valores por defecto' },
+      message: 'Esto restablecerá todos los colores pero mantendrá los logos e información institucional.',
+      itemInfo: { 'Acción': 'Restablecer a valores por defecto' },
       onConfirm: executeRestablecer,
       isCritical: false,
       confirmText: 'Restablecer'
@@ -605,16 +605,16 @@ const ConfiguracionTema = () => {
 
   /**
    * Restablece completamente al tema institucional (TemaGlobal)
-   * Restaura colores, tipograf├¡as, logos y fondos oficiales
-   * ISS-SEC: Ahora usa confirmaci├│n en 2 pasos con escritura obligatoria
+   * Restaura colores, tipografías, logos y fondos oficiales
+   * ISS-SEC: Ahora usa confirmación en 2 pasos con escritura obligatoria
    */
   const handleRestablecerInstitucional = () => {
     requestDeleteConfirmation({
       title: 'Restablecer tema institucional',
-      message: 'Esta acci├│n restaurar├í todos los colores oficiales, tipograf├¡as, logos institucionales y fondos. Esta acci├│n no se puede deshacer.',
+      message: 'Esta acción restaurará todos los colores oficiales, tipografías, logos institucionales y fondos. Esta acción no se puede deshacer.',
       itemInfo: {
-        'Afectar├í': 'Colores, tipograf├¡as, logos y fondos',
-        'Advertencia': 'Los cambios personalizados se perder├ín'
+        'Afectará': 'Colores, tipografías, logos y fondos',
+        'Advertencia': 'Los cambios personalizados se perderán'
       },
       onConfirm: executeRestablecerInstitucional,
       isCritical: true,
@@ -633,7 +633,7 @@ const ConfiguracionTema = () => {
     // Validaciones
     const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
     if (!allowedTypes.includes(file.type)) {
-      toast.error('Formato no v├ílido. Use PNG, JPG o WebP');
+      toast.error('Formato no válido. Use PNG, JPG o WebP');
       return;
     }
     if (file.size > 500 * 1024) {
@@ -662,7 +662,7 @@ const ConfiguracionTema = () => {
     // Validaciones
     const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg'];
     if (!allowedTypes.includes(file.type)) {
-      toast.error('Formato no v├ílido. Use PNG o JPG');
+      toast.error('Formato no válido. Use PNG o JPG');
       return;
     }
     if (file.size > 2 * 1024 * 1024) {
@@ -681,7 +681,7 @@ const ConfiguracionTema = () => {
     if (logoPdfRef.current) logoPdfRef.current.value = '';
   };
 
-  // ISS-SEC: Funci├│n de ejecuci├│n para eliminar logo header
+  // ISS-SEC: Función de ejecución para eliminar logo header
   const executeEliminarLogoHeader = async () => {
     await ejecutarOperacion(
       'eliminandoLogoHeader',
@@ -693,12 +693,12 @@ const ConfiguracionTema = () => {
 
   /**
    * Elimina el logo del header
-   * ISS-SEC: Ahora usa confirmaci├│n en 2 pasos
+   * ISS-SEC: Ahora usa confirmación en 2 pasos
    */
   const handleEliminarLogoHeader = () => {
     requestDeleteConfirmation({
       title: 'Eliminar logo del header',
-      message: '┬┐Est├í seguro de eliminar el logo del header? Esta acci├│n no se puede deshacer.',
+      message: '¿Está seguro de eliminar el logo del header? Esta acción no se puede deshacer.',
       itemInfo: { 'Tipo': 'Logo de encabezado' },
       onConfirm: executeEliminarLogoHeader,
       isCritical: false,
@@ -706,7 +706,7 @@ const ConfiguracionTema = () => {
     });
   };
 
-  // ISS-SEC: Funci├│n de ejecuci├│n para eliminar logo PDF
+  // ISS-SEC: Función de ejecución para eliminar logo PDF
   const executeEliminarLogoPdf = async () => {
     await ejecutarOperacion(
       'eliminandoLogoPdf',
@@ -718,12 +718,12 @@ const ConfiguracionTema = () => {
 
   /**
    * Elimina el logo para PDFs
-   * ISS-SEC: Ahora usa confirmaci├│n en 2 pasos
+   * ISS-SEC: Ahora usa confirmación en 2 pasos
    */
   const handleEliminarLogoPdf = () => {
     requestDeleteConfirmation({
       title: 'Eliminar logo para PDFs',
-      message: '┬┐Est├í seguro de eliminar el logo para PDFs? Los reportes se generar├ín sin logo.',
+      message: '¿Está seguro de eliminar el logo para PDFs? Los reportes se generarán sin logo.',
       itemInfo: { 'Tipo': 'Logo de PDFs/Reportes' },
       onConfirm: executeEliminarLogoPdf,
       isCritical: false,
@@ -732,9 +732,9 @@ const ConfiguracionTema = () => {
   };
 
   /**
-   * Handler gen├®rico para subir logos usando TemaGlobal API
+   * Handler genérico para subir logos usando TemaGlobal API
    * @param {string} tipo - header, login, reportes, favicon, fondo_login, fondo_reportes
-   * @param {string} nombreOperacion - nombre para el estado de operaci├│n
+   * @param {string} nombreOperacion - nombre para el estado de operación
    * @param {File} file - archivo a subir
    * @param {object} validaciones - { maxSize, allowedTypes }
    */
@@ -744,7 +744,7 @@ const ConfiguracionTema = () => {
     const { maxSize = 500 * 1024, allowedTypes = ['image/png', 'image/jpeg', 'image/jpg'] } = validaciones;
 
     if (!allowedTypes.includes(file.type)) {
-      toast.error('Formato no v├ílido');
+      toast.error('Formato no válido');
       return;
     }
     if (file.size > maxSize) {
@@ -761,8 +761,8 @@ const ConfiguracionTema = () => {
   };
 
   /**
-   * Handler gen├®rico para eliminar logos usando TemaGlobal API
-   * ISS-SEC: Ahora usa confirmaci├│n en 2 pasos
+   * Handler genérico para eliminar logos usando TemaGlobal API
+   * ISS-SEC: Ahora usa confirmación en 2 pasos
    */
   const handleEliminarLogoTema = (tipo, nombreOperacion, mensaje) => {
     const executeEliminar = async () => {
@@ -776,7 +776,7 @@ const ConfiguracionTema = () => {
 
     requestDeleteConfirmation({
       title: `Eliminar ${mensaje}`,
-      message: `┬┐Est├í seguro de eliminar ${mensaje.toLowerCase()}? Esta acci├│n no se puede deshacer.`,
+      message: `¿Está seguro de eliminar ${mensaje.toLowerCase()}? Esta acción no se puede deshacer.`,
       itemInfo: { 'Tipo': mensaje },
       onConfirm: executeEliminar,
       isCritical: false,
@@ -784,7 +784,7 @@ const ConfiguracionTema = () => {
     });
   };
 
-  // Handlers espec├¡ficos para cada tipo de logo/imagen del TemaGlobal
+  // Handlers específicos para cada tipo de logo/imagen del TemaGlobal
   const handleSubirLogoLogin = async (e) => {
     await handleSubirLogoTema('login', 'subiendoLogoLogin', e.target.files[0], {
       maxSize: 500 * 1024,
@@ -829,14 +829,14 @@ const ConfiguracionTema = () => {
         <div className="text-center">
           <FaSpinner className="animate-spin text-4xl mx-auto mb-4 text-theme-primary" />
           <p className="text-gray-600">
-            {!permisosResueltos ? 'Verificando permisos...' : 'Cargando configuraci├│n...'}
+            {!permisosResueltos ? 'Verificando permisos...' : 'Cargando configuración...'}
           </p>
         </div>
       </div>
     );
   }
 
-  // Acceso restringido (solo despu├®s de resolver permisos)
+  // Acceso restringido (solo después de resolver permisos)
   // Usa tienePermisoTema para ser coherente con el guard de rutas
   if (!tienePermisoTema) {
     return (
@@ -844,7 +844,7 @@ const ConfiguracionTema = () => {
         <div className="bg-white p-8 rounded-xl shadow-lg text-center max-w-md">
           <FaLock className="text-6xl text-red-500 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-gray-800 mb-2">Acceso Restringido</h2>
-          <p className="text-gray-600">Solo los administradores del sistema y personal de farmacia pueden acceder a la configuraci├│n del tema.</p>
+          <p className="text-gray-600">Solo los administradores del sistema y personal de farmacia pueden acceder a la configuración del tema.</p>
         </div>
       </div>
     );
@@ -880,13 +880,13 @@ const ConfiguracionTema = () => {
             <FaPalette className="text-2xl text-white" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-800">Configuraci├│n del Tema</h1>
+            <h1 className="text-2xl font-bold text-gray-800">Configuración del Tema</h1>
             <p className="text-gray-600">Personaliza la apariencia del sistema, logos y colores de reportes PDF</p>
           </div>
         </div>
       </div>
 
-      {/* Indicador de operaci├│n en curso con bot├│n de desbloqueo */}
+      {/* Indicador de operación en curso con botón de desbloqueo */}
       {hayOperacionEnCurso && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -896,14 +896,14 @@ const ConfiguracionTema = () => {
           <button
             onClick={resetearOperaciones}
             className="text-sm text-blue-600 hover:text-blue-800 underline"
-            title="Usar si la operaci├│n parece bloqueada"
+            title="Usar si la operación parece bloqueada"
           >
             Desbloquear
           </button>
         </div>
       )}
 
-      {/* Tabs de navegaci├│n */}
+      {/* Tabs de navegación */}
       <div className="bg-white rounded-xl shadow-lg overflow-hidden">
         <div className="flex border-b border-gray-200">
           {tabs.map(tab => (
@@ -974,7 +974,7 @@ const ConfiguracionTema = () => {
                   </button>
                 ))}
                 
-                {/* Opci├│n Personalizado */}
+                {/* Opción Personalizado */}
                 <button
                   className={`relative p-4 rounded-xl border-2 transition-all hover:scale-105 ${
                     temaSeleccionado === 'custom' 
@@ -1001,11 +1001,11 @@ const ConfiguracionTema = () => {
             </div>
           )}
 
-          {/* TAB: Personalizaci├│n de Colores */}
+          {/* TAB: Personalización de Colores */}
           {activeTab === 'colores' && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold text-gray-800">Personalizaci├│n de Colores</h2>
+                <h2 className="text-lg font-bold text-gray-800">Personalización de Colores</h2>
                 <div className="flex gap-2">
                   <button
                     onClick={handleRestablecer}
@@ -1039,11 +1039,11 @@ const ConfiguracionTema = () => {
                 </div>
               </div>
 
-              {/* Alerta de errores de validaci├│n */}
+              {/* Alerta de errores de validación */}
               {hayErroresColor && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-3">
                   <FaExclamationTriangle className="text-red-500" />
-                  <span className="text-red-700">Hay colores con formato inv├ílido. Usa el formato #RRGGBB (ej: #FF5500)</span>
+                  <span className="text-red-700">Hay colores con formato inválido. Usa el formato #RRGGBB (ej: #FF5500)</span>
                 </div>
               )}
 
@@ -1094,7 +1094,7 @@ const ConfiguracionTema = () => {
                 <div className="bg-gray-50 p-5 rounded-xl">
                   <h3 className="font-semibold text-gray-700 mb-4">Colores de Estado</h3>
                   <div className="grid grid-cols-2 gap-4">
-                    <ColorInput label="├ëxito" name="color_exito" value={formData.color_exito} onChange={handleColorChange} error={erroresColor.color_exito} disabled={hayOperacionTemaEnCurso} />
+                    <ColorInput label="Éxito" name="color_exito" value={formData.color_exito} onChange={handleColorChange} error={erroresColor.color_exito} disabled={hayOperacionTemaEnCurso} />
                     <ColorInput label="Advertencia" name="color_advertencia" value={formData.color_advertencia} onChange={handleColorChange} error={erroresColor.color_advertencia} disabled={hayOperacionTemaEnCurso} />
                     <ColorInput label="Error" name="color_error" value={formData.color_error} onChange={handleColorChange} error={erroresColor.color_error} disabled={hayOperacionTemaEnCurso} />
                     <ColorInput label="Info" name="color_info" value={formData.color_info} onChange={handleColorChange} error={erroresColor.color_info} disabled={hayOperacionTemaEnCurso} />
@@ -1147,7 +1147,7 @@ const ConfiguracionTema = () => {
                               Primario
                             </button>
                             <button className="px-3 py-1 rounded text-sm text-white" style={{ background: formData.color_exito }}>
-                              ├ëxito
+                              Éxito
                             </button>
                             <button className="px-3 py-1 rounded text-sm text-white" style={{ background: formData.color_error }}>
                               Error
@@ -1166,7 +1166,7 @@ const ConfiguracionTema = () => {
           {activeTab === 'logos' && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold text-gray-800">Gesti├│n de Logos e Im├ígenes</h2>
+                <h2 className="text-lg font-bold text-gray-800">Gestión de Logos e Imágenes</h2>
                 {restablecerTemaInstitucional && (
                   <button
                     onClick={handleRestablecerInstitucional}
@@ -1217,7 +1217,7 @@ const ConfiguracionTema = () => {
                       </button>
                     )}
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">PNG, JPG, WebP. M├íx 500KB</p>
+                  <p className="text-xs text-gray-500 mt-2">PNG, JPG, WebP. Máx 500KB</p>
                 </div>
 
                 {/* Logo Login */}
@@ -1226,7 +1226,7 @@ const ConfiguracionTema = () => {
                     <FaGlobe className="text-xl text-blue-600" />
                     <div>
                       <h3 className="font-semibold text-gray-800">Logo de Login</h3>
-                      <p className="text-sm text-gray-500">Pantalla de inicio de sesi├│n</p>
+                      <p className="text-sm text-gray-500">Pantalla de inicio de sesión</p>
                     </div>
                   </div>
                   
@@ -1253,7 +1253,7 @@ const ConfiguracionTema = () => {
                       </button>
                     )}
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">PNG, JPG, WebP. M├íx 500KB</p>
+                  <p className="text-xs text-gray-500 mt-2">PNG, JPG, WebP. Máx 500KB</p>
                 </div>
 
                 {/* Logo Reportes */}
@@ -1289,7 +1289,7 @@ const ConfiguracionTema = () => {
                       </button>
                     )}
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">PNG, JPG. M├íx 2MB</p>
+                  <p className="text-xs text-gray-500 mt-2">PNG, JPG. Máx 2MB</p>
                 </div>
 
                 {/* Favicon */}
@@ -1325,7 +1325,7 @@ const ConfiguracionTema = () => {
                       </button>
                     )}
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">PNG, ICO. M├íx 100KB. 32x32 recomendado</p>
+                  <p className="text-xs text-gray-500 mt-2">PNG, ICO. Máx 100KB. 32x32 recomendado</p>
                 </div>
 
                 {/* Fondo Login */}
@@ -1361,7 +1361,7 @@ const ConfiguracionTema = () => {
                       </button>
                     )}
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">PNG, JPG, WebP. M├íx 2MB</p>
+                  <p className="text-xs text-gray-500 mt-2">PNG, JPG, WebP. Máx 2MB</p>
                 </div>
 
                 {/* Fondo Reportes */}
@@ -1397,7 +1397,7 @@ const ConfiguracionTema = () => {
                       </button>
                     )}
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">PNG, JPG. M├íx 2MB</p>
+                  <p className="text-xs text-gray-500 mt-2">PNG, JPG. Máx 2MB</p>
                 </div>
               </div>
             </div>
@@ -1407,7 +1407,7 @@ const ConfiguracionTema = () => {
           {activeTab === 'reportes' && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold text-gray-800">Configuraci├│n de Reportes PDF</h2>
+                <h2 className="text-lg font-bold text-gray-800">Configuración de Reportes PDF</h2>
                 <button
                   onClick={handleGuardarReportes}
                   disabled={hayOperacionReportesEnCurso}
@@ -1420,7 +1420,7 @@ const ConfiguracionTema = () => {
                     </>
                   ) : (
                     <>
-                      <FaSave /> Guardar Configuraci├│n
+                      <FaSave /> Guardar Configuración
                     </>
                   )}
                 </button>
@@ -1431,7 +1431,7 @@ const ConfiguracionTema = () => {
                 <FaExclamationTriangle className="text-amber-500 mt-0.5 flex-shrink-0" />
                 <div className="text-sm text-amber-700">
                   <strong>Nota:</strong> Solo los colores de encabezado y texto se guardan en la base de datos. 
-                  Las opciones de "Filas Alternas", "Pie de P├ígina" y "A├▒o Visible" aplican solo durante esta sesi├│n.
+                  Las opciones de "Filas Alternas", "Pie de Página" y "Año Visible" aplican solo durante esta sesión.
                 </div>
               </div>
 
@@ -1467,7 +1467,7 @@ const ConfiguracionTema = () => {
                   </div>
                 </div>
 
-                {/* Configuraci├│n adicional */}
+                {/* Configuración adicional */}
                 <div className="bg-gray-50 p-5 rounded-xl">
                   <h3 className="font-semibold text-gray-700 mb-4 flex items-center gap-2">
                     <FaFileAlt className="text-gray-500" />
@@ -1476,14 +1476,14 @@ const ConfiguracionTema = () => {
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Pie de P├ígina
+                        Pie de Página
                       </label>
                       <input
                         type="text"
                         name="reporte_pie_pagina"
                         value={formData.reporte_pie_pagina || ''}
                         onChange={handleInputChange}
-                        placeholder="Texto del pie de p├ígina en reportes"
+                        placeholder="Texto del pie de página en reportes"
                         disabled={hayOperacionReportesEnCurso}
                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 disabled:opacity-50 disabled:bg-gray-100"
                       />
@@ -1502,11 +1502,11 @@ const ConfiguracionTema = () => {
                           className="w-5 h-5 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
                         />
                         <span className="text-sm font-medium text-gray-700">
-                          Mostrar a├▒o en reportes
+                          Mostrar año en reportes
                         </span>
                       </label>
                       <p className="text-xs text-gray-500 mt-1 ml-8">
-                        Muestra el a├▒o actual en el encabezado de los reportes PDF
+                        Muestra el año actual en el encabezado de los reportes PDF
                       </p>
                     </div>
                   </div>
@@ -1591,39 +1591,39 @@ const ConfiguracionTema = () => {
                       disabled={hayOperacionIdentidadEnCurso}
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 disabled:opacity-50 disabled:bg-gray-100"
                     />
-                    <p className="text-xs text-gray-500 mt-1">Aparece en el t├¡tulo del navegador y header</p>
+                    <p className="text-xs text-gray-500 mt-1">Aparece en el título del navegador y header</p>
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Nombre de la Instituci├│n
+                      Nombre de la Institución
                     </label>
                     <input
                       type="text"
                       name="nombre_institucion"
                       value={formData.nombre_institucion || ''}
                       onChange={handleInputChange}
-                      placeholder="Secretar├¡a de Seguridad"
+                      placeholder="Secretaría de Seguridad"
                       disabled={hayOperacionIdentidadEnCurso}
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 disabled:opacity-50 disabled:bg-gray-100"
                     />
-                    <p className="text-xs text-gray-500 mt-1">T├¡tulo principal en reportes PDF</p>
+                    <p className="text-xs text-gray-500 mt-1">Título principal en reportes PDF</p>
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Subt├¡tulo de la Instituci├│n
+                      Subtítulo de la Institución
                     </label>
                     <input
                       type="text"
                       name="subtitulo_institucion"
                       value={formData.subtitulo_institucion || ''}
                       onChange={handleInputChange}
-                      placeholder="Direcci├│n General de Prevenci├│n y Reinserci├│n Social"
+                      placeholder="Dirección General de Prevención y Reinserción Social"
                       disabled={hayOperacionIdentidadEnCurso}
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 disabled:opacity-50 disabled:bg-gray-100"
                     />
-                    <p className="text-xs text-gray-500 mt-1">Subt├¡tulo en reportes PDF</p>
+                    <p className="text-xs text-gray-500 mt-1">Subtítulo en reportes PDF</p>
                   </div>
                 </div>
 
@@ -1646,10 +1646,10 @@ const ConfiguracionTema = () => {
                         </div>
                       )}
                       <h3 className="text-lg font-bold text-gray-800">
-                        {formData.nombre_institucion || 'Nombre de la Instituci├│n'}
+                        {formData.nombre_institucion || 'Nombre de la Institución'}
                       </h3>
                       <p className="text-sm text-gray-600">
-                        {formData.subtitulo_institucion || 'Subt├¡tulo de la Instituci├│n'}
+                        {formData.subtitulo_institucion || 'Subtítulo de la Institución'}
                       </p>
                       <p className="text-xs text-gray-500 mt-1">
                         {formData.nombre_sistema || 'Sistema de Farmacia'}
@@ -1672,7 +1672,7 @@ const ConfiguracionTema = () => {
         </div>
       </div>
 
-      {/* Modal de confirmaci├│n en dos pasos */}
+      {/* Modal de confirmación en dos pasos */}
       <TwoStepConfirmModal
         isOpen={confirmState.isOpen}
         onClose={cancelConfirmation}

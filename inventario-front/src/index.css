@@ -754,6 +754,31 @@ code {
   background: linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 100%) !important;
 }
 
+/* ===== MODERN SOFT UI TABLES ===== */
+.thead-soft {
+  background: linear-gradient(135deg, #fdf2f5 0%, #f3e4e9 100%) !important;
+  border-bottom: 2px solid color-mix(in srgb, var(--color-primary, #9F2241) 18%, transparent) !important;
+}
+.thead-soft th {
+  color: var(--color-primary, #9F2241) !important;
+  opacity: 0.88;
+  font-weight: 700 !important;
+  letter-spacing: 0.06em;
+}
+.table-soft {
+  border-radius: 0.75rem;
+  border: 1px solid #f0e4e8;
+  box-shadow: 0 1px 4px rgba(159, 34, 65, 0.05);
+  overflow: hidden;
+  background: white;
+}
+.table-soft tbody tr {
+  transition: background-color 0.15s ease;
+}
+.table-soft tbody tr:hover {
+  background-color: #fef7f9 !important;
+}
+
 /* ===== RESPONSIVE DESIGN IMPROVEMENTS ===== */
 
 /* Contenedor principal responsive */

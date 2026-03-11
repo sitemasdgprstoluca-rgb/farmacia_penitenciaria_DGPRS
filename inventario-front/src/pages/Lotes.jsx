@@ -1975,7 +1975,7 @@ const handleImportar = async (e) => {
         </div>
         
         {/* Vista desktop: tabla */}
-        <div className="hidden lg:block w-full overflow-x-auto">
+        <div className="hidden lg:block w-full overflow-x-auto table-soft">
           <table className="w-full min-w-[650px] divide-y divide-gray-200 table-fixed">
             <colgroup>
               <col className="w-10" /> {/* # */}
@@ -1987,7 +1987,7 @@ const handleImportar = async (e) => {
               <col className="w-24" /> {/* Inventario */}
               <col className="w-24" /> {/* Acciones */}
             </colgroup>
-            <thead className="bg-theme-gradient sticky top-0 z-10">
+            <thead className="thead-soft sticky top-0 z-10">
             <tr>
               {['#', 'Producto', 'Lote', 'Caducidad', 'Alerta', 'Marca / Lab', 'Inventario', 'Acciones'].map((col) => (
                 <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">

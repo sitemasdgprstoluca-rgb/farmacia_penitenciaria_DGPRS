@@ -2399,9 +2399,9 @@ const Requisiciones = () => {
                         <p className="text-sm">Intenta con otra búsqueda</p>
                       </div>
                     ) : (
-                      <div className="w-full overflow-x-auto rounded-lg border border-gray-200">
+                      <div className="w-full overflow-x-auto table-soft">
                         <table className="w-full min-w-[700px] text-sm table-fixed">
-                          <thead className="bg-theme-gradient sticky top-0 z-10">
+                          <thead className="thead-soft sticky top-0 z-10">
                             <tr>
                               <th className="text-left px-2 py-3 text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap" style={{width: '70px'}}>Clave</th>
                               <th className="text-left px-2 py-3 text-xs font-semibold uppercase tracking-wider text-white" style={{width: '35%'}}>Nombre</th>

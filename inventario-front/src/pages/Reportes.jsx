@@ -1626,8 +1626,9 @@ const Reportes = () => {
               <p className="text-gray-500 mt-2">Intenta ajustar los filtros o selecciona otro tipo de reporte</p>
             </div>
           ) : (
+            <div className="table-soft overflow-x-auto">
             <table className="w-full text-xs md:text-sm" style={{ minWidth: '800px' }}>
-              <thead className="bg-theme-gradient sticky top-0 z-10">
+              <thead className="thead-soft sticky top-0 z-10">
                 <tr>
                   {columnas.map((col) => (
                     <th 
@@ -1810,6 +1811,7 @@ const Reportes = () => {
                 })}
               </tbody>
             </table>
+            </div>
           )}
         </div>
 

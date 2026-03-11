@@ -1077,21 +1077,25 @@ const Dispensaciones = () => {
               </div>
               
               {/* Info grid */}
-              <div className="grid grid-cols-2 gap-3 py-3 border-y border-gray-100 text-sm">
+              <div className={`grid ${esUsuarioCentro ? 'grid-cols-2' : 'grid-cols-2'} gap-3 py-3 border-y border-gray-100 text-sm`}>
+                {!esUsuarioCentro && (
                 <div>
                   <div className="text-gray-500 text-xs">Centro</div>
                   <div className="font-medium text-gray-800">{disp.centro_nombre}</div>
                 </div>
+                )}
                 <div>
                   <div className="text-gray-500 text-xs">Fecha</div>
                   <div className="font-medium text-gray-800">
                     {new Date(disp.fecha_dispensacion || disp.created_at).toLocaleDateString()}
                   </div>
                 </div>
+                {!esUsuarioCentro && (
                 <div>
                   <div className="text-gray-500 text-xs">Creado por</div>
                   <div className="font-medium text-gray-800">{disp.created_by_nombre || disp.medico_prescriptor || '-'}</div>
                 </div>
+                )}
                 <div>
                   <div className="text-gray-500 text-xs">Items</div>
                   <div className="font-medium text-gray-800">{disp.total_items || disp.detalles?.length || 0}</div>
@@ -1140,14 +1144,14 @@ const Dispensaciones = () => {
         </div>
         
         {/* Vista desktop: tabla */}
-        <div className="hidden lg:block w-full overflow-x-auto">
+        <div className="hidden lg:block w-full overflow-x-auto table-soft">
           <table className="w-full min-w-[700px] divide-y divide-gray-200">
-              <thead className="bg-theme-gradient sticky top-0 z-10">
+              <thead className="thead-soft sticky top-0 z-10">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Folio</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Paciente</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Centro</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Creado por</th>
+                  {!esUsuarioCentro && <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Centro</th>}
+                  {!esUsuarioCentro && <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Creado por</th>}
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Tipo</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Fecha</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Items</th>
@@ -1170,15 +1174,19 @@ const Dispensaciones = () => {
                         </div>
                       </div>
                     </td>
+                    {!esUsuarioCentro && (
                     <td className="px-4 py-3 text-sm text-gray-500">
                       {disp.centro_nombre}
                     </td>
+                    )}
+                    {!esUsuarioCentro && (
                     <td className="px-4 py-3">
                       <div className="flex items-center">
                         <FaUserShield className="text-guinda mr-2" />
                         <span className="text-sm text-gray-700">{disp.created_by_nombre || disp.medico_prescriptor || '-'}</span>
                       </div>
                     </td>
+                    )}
                     <td className="px-4 py-3">
                       <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">
                         {disp.tipo_dispensacion_display || disp.tipo_dispensacion}

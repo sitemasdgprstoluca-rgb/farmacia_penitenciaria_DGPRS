@@ -406,9 +406,9 @@ function Notificaciones() {
         </div>
         
         {/* Vista desktop: tabla */}
-        <div className="hidden lg:block w-full overflow-x-auto">
-          <table className="w-full min-w-[600px] divide-y divide-gray-200">
-            <thead className="bg-theme-gradient sticky top-0 z-10">
+          <div className="hidden lg:block w-full overflow-x-auto table-soft">
+            <table className="w-full min-w-[600px] divide-y divide-gray-200">
+            <thead className="thead-soft sticky top-0 z-10">
             <tr>
               <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Título</th>
               <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Mensaje</th>

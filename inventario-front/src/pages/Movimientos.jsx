@@ -2507,13 +2507,13 @@ const Movimientos = () => {
                 </div>
               )}
             </div>
-            <div className="overflow-x-auto rounded-b-xl">
+            <div className="overflow-x-auto table-soft rounded-b-xl">
               <table className="w-full table-fixed text-sm">
-                <thead className="bg-theme-gradient sticky top-0 z-10 shadow-md">
+                <thead className="thead-soft sticky top-0 z-10">
                   <tr>
                     <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider text-white/90" style={{ width: esCentroUser ? '50%' : '40%' }}>
                       <div className="flex items-center gap-2">
-                        <FaBoxes className="text-white/70 flex-shrink-0" />
+                        <FaBoxes className="opacity-60 flex-shrink-0" />
                         <span>Detalle / Productos</span>
                       </div>
                     </th>
@@ -2856,7 +2856,7 @@ const Movimientos = () => {
                                                           <th className="px-3 py-2 text-left font-semibold">Lote</th>
                                                           <th className="px-3 py-2 text-center font-semibold">Cantidad</th>
                                                           <th className="px-3 py-2 text-center font-semibold">Fecha</th>
-                                                          <th className="px-3 py-2 text-right font-semibold">Realizado por</th>
+                                                          {!esCentroUser && <th className="px-3 py-2 text-right font-semibold">Realizado por</th>}
                                                         </tr>
                                                       </thead>
                                                       <tbody className="divide-y divide-slate-100">
@@ -2879,9 +2879,11 @@ const Movimientos = () => {
                                                             <td className="px-3 py-2.5 text-center text-xs text-slate-500">
                                                               {(mov.fecha_salida || mov.fecha) ? new Date(mov.fecha_salida || mov.fecha).toLocaleDateString('es-MX', {day: '2-digit', month: 'short'}) : '-'}
                                                             </td>
+                                                            {!esCentroUser && (
                                                             <td className="px-3 py-2.5 text-right">
                                                               <span className="text-xs font-medium text-slate-700 bg-slate-100 px-2 py-0.5 rounded">{mov.usuario_nombre || 'Sistema'}</span>
                                                             </td>
+                                                            )}
                                                           </tr>
                                                         ))}
                                                       </tbody>
@@ -2890,7 +2892,7 @@ const Movimientos = () => {
                                                 );
                                               })()}
                                               
-                                              {/* Salidas/Dispensaciones */}
+                                              {/* Salidas/Dispensaciones */}}
                                               {(() => {
                                                 const salidas = (grupo.salidas || grupo.items || []).filter(m => m.tipo === 'salida');
                                                 if (salidas.length === 0) return null;
@@ -2911,7 +2913,7 @@ const Movimientos = () => {
                                                           <th className="px-3 py-2 text-left font-semibold">Lote</th>
                                                           <th className="px-3 py-2 text-center font-semibold">Cantidad</th>
                                                           <th className="px-3 py-2 text-center font-semibold">Fecha</th>
-                                                          <th className="px-3 py-2 text-right font-semibold">Realizado por</th>
+                                                          {!esCentroUser && <th className="px-3 py-2 text-right font-semibold">Realizado por</th>}
                                                         </tr>
                                                       </thead>
                                                       <tbody className="divide-y divide-slate-100">
@@ -2934,9 +2936,11 @@ const Movimientos = () => {
                                                             <td className="px-3 py-2.5 text-center text-xs text-slate-500">
                                                               {(mov.fecha_salida || mov.fecha) ? new Date(mov.fecha_salida || mov.fecha).toLocaleDateString('es-MX', {day: '2-digit', month: 'short'}) : '-'}
                                                             </td>
+                                                            {!esCentroUser && (
                                                             <td className="px-3 py-2.5 text-right">
                                                               <span className="text-xs font-medium text-slate-700 bg-slate-100 px-2 py-0.5 rounded">{mov.usuario_nombre || 'Sistema'}</span>
                                                             </td>
+                                                            )}
                                                           </tr>
                                                         ))}
                                                       </tbody>
@@ -3326,10 +3330,12 @@ const Movimientos = () => {
 
                                     {/* Usuario + Fecha + Folio opcional */}
                                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                      {!esCentroUser && (
                                       <div className="bg-gray-50 rounded-lg p-3">
                                         <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Registrado por</span>
                                         <p className="text-gray-800 font-medium text-sm">{mov.usuario_nombre || 'Sistema'}</p>
                                       </div>
+                                      )}
                                       <div className="bg-gray-50 rounded-lg p-3">
                                         <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Fecha y hora</span>
                                         <p className="text-gray-800 font-medium text-sm">
@@ -3609,10 +3615,12 @@ const Movimientos = () => {
 
                                   {/* Usuario + Fecha + Folio */}
                                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                    {!esCentroUser && (
                                     <div className="bg-gray-50 rounded-lg p-3">
                                       <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Registrado por</span>
                                       <p className="text-gray-800 font-medium text-sm">{mov.usuario_nombre || 'Sistema'}</p>
                                     </div>
+                                    )}
                                     <div className="bg-gray-50 rounded-lg p-3">
                                       <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Fecha y hora</span>
                                       <p className="text-gray-800 font-medium text-sm">

@@ -1370,9 +1370,9 @@ const Trazabilidad = () => {
               </div>
               
               {/* Vista desktop: tabla */}
-              <div className="hidden lg:block w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
+              <div className="hidden lg:block w-full overflow-x-auto table-soft">
                 <table className="w-full min-w-[700px] divide-y divide-gray-200 text-sm">
-                  <thead className="bg-theme-gradient sticky top-0 z-10">
+                  <thead className="thead-soft sticky top-0 z-10">
                     <tr>
                       <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Fecha</th>
                       <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Tipo</th>
@@ -1568,9 +1568,9 @@ const Trazabilidad = () => {
               </div>
               
               {/* Vista desktop: tabla */}
-              <div className="hidden lg:block w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
+              <div className="hidden lg:block w-full overflow-x-auto table-soft">
                 <table className="w-full min-w-[600px] divide-y divide-gray-200 text-sm">
-                  <thead className="bg-theme-gradient sticky top-0 z-10">
+                  <thead className="thead-soft sticky top-0 z-10">
                     <tr>
                       <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Lote</th>
                       <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Caducidad</th>
@@ -1647,9 +1647,9 @@ const Trazabilidad = () => {
               </div>
               
               {/* Vista desktop: tabla */}
-              <div className="hidden lg:block w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
+              <div className="hidden lg:block w-full overflow-x-auto table-soft">
                 <table className="w-full min-w-[650px] divide-y divide-gray-200 text-sm">
-                  <thead className="bg-theme-gradient sticky top-0 z-10">
+                  <thead className="thead-soft sticky top-0 z-10">
                     <tr>
                       <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Fecha</th>
                       <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Tipo</th>

@@ -1532,9 +1532,9 @@ const RequisicionDetalle = () => {
         ) : (
           <div className="w-full overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
             <div className="inline-block min-w-full align-middle">
-              <div className="overflow-hidden rounded-lg border border-gray-200 shadow-md">
+              <div className="overflow-hidden table-soft">
                 <table className="min-w-full border-collapse text-xs">
-                  <thead className="bg-theme-gradient">
+                  <thead className="thead-soft">
                     <tr>
                       <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase text-white whitespace-nowrap">Clave</th>
                       <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase text-white">Producto</th>

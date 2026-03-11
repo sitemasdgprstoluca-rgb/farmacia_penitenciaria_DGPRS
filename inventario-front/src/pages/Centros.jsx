@@ -613,9 +613,9 @@ const Centros = () => {
             ))
           )}
         </div>
-        <div className="hidden lg:block w-full overflow-x-auto">
-          <table className="w-full min-w-[700px] divide-y divide-gray-200">
-            <thead className="bg-theme-gradient sticky top-0 z-10">
+          <div className="hidden lg:block w-full overflow-x-auto table-soft">
+            <table className="w-full min-w-[700px] divide-y divide-gray-200">
+            <thead className="thead-soft sticky top-0 z-10">
             <tr>
               {['#', 'Nombre', 'Dirección', 'Teléfono', 'Email', 'Requisiciones', 'Usuarios', 'Estado', 'Acciones'].map((col) => (
                 <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
