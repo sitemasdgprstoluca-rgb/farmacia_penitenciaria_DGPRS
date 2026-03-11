@@ -551,9 +551,10 @@ a:focus-visible {
   border: 1px solid rgba(16, 185, 129, 0.1);
 }
 
-/* --- Timeline (Movimientos) --- */
+/* --- Timeline (Movimientos) --- Activity Timeline Moderno --- */
 .dash-timeline {
   position: relative;
+  padding-left: 4px;
 }
 
 .dash-timeline-item {
@@ -561,15 +562,16 @@ a:focus-visible {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 8px 10px;
+  padding: 10px 12px 10px 20px;
   margin-left: 10px;
   border-left: 2px solid #E5E7EB;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .dash-timeline-item:hover {
-  background: #FAFAFA;
-  border-radius: 0 8px 8px 0;
+  background: linear-gradient(90deg, rgba(147, 32, 67, 0.02), transparent);
+  border-radius: 0 10px 10px 0;
+  border-left-color: var(--timeline-color, #E5E7EB);
 }
 
 .dash-timeline-item:last-child {
@@ -579,20 +581,26 @@ a:focus-visible {
 .dash-timeline-dot {
   position: absolute;
   left: -5px;
-  top: 12px;
+  top: 14px;
   width: 8px;
   height: 8px;
   border-radius: 50%;
   border: 2px solid white;
-  box-shadow: 0 0 0 2px currentColor;
+  box-shadow: 0 0 0 2px currentColor, 0 2px 4px rgba(0, 0, 0, 0.1);
   flex-shrink: 0;
   z-index: 1;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.dash-timeline-item:hover .dash-timeline-dot {
+  transform: scale(1.3);
+  box-shadow: 0 0 0 2px currentColor, 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .dash-timeline-content {
   flex: 1;
   min-width: 0;
-  padding-left: 6px;
+  padding-left: 4px;
 }
 
 /* --- Update Footer --- */
@@ -612,6 +620,44 @@ a:focus-visible {
   margin-top: 8px;
   border-top: 1px solid rgba(0, 0, 0, 0.04);
   text-align: center;
+}
+
+/* --- Enhanced Card Shadows --- SaaS-style elevation system --- */
+.bg-white.rounded-xl {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+.bg-white.rounded-xl:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+/* --- Stacked Progress Bar --- */
+.dash-stacked-bar {
+  display: flex;
+  width: 100%;
+  height: 10px;
+  border-radius: 9999px;
+  overflow: hidden;
+  background: #F3F4F6;
+}
+
+.dash-stacked-bar > div {
+  transition: width 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* --- Section Divider Modern --- */
+.dash-section-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0 16px 0;
+}
+
+.dash-section-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(0,0,0,0.06), transparent);
 }
 
 /* --- Alert Card (Reference Style) --- */

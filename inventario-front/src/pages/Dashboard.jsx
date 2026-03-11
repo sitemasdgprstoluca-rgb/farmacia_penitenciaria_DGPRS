@@ -450,7 +450,7 @@ const ChartCard = ({
       )}
       <div className={`
         bg-white rounded-xl shadow-sm border border-gray-100/80 overflow-hidden
-        transition-all duration-200 hover:shadow-md
+        transition-all duration-300 hover:shadow-lg hover:border-gray-200/80
         ${isExpanded ? 'fixed inset-6 z-50 shadow-2xl overflow-y-auto' : ''}
         ${className}
       `}>
@@ -897,6 +897,27 @@ const Dashboard = () => {
     return graficas.stock_por_centro.map(c => c.stock || 0);
   }, [graficas.stock_por_centro]);
 
+  // Tendencias calculadas desde consumo mensual (mes actual vs anterior)
+  const trends = useMemo(() => {
+    const cm = graficas.consumo_mensual;
+    if (!cm || cm.length < 2) return {};
+    const curr = cm[cm.length - 1];
+    const prev = cm[cm.length - 2];
+    const calcTrend = (c, p) => {
+      if (!p || p === 0) return null;
+      const pct = Math.round(((c - p) / p) * 100);
+      return { dir: pct >= 0 ? 'up' : 'down', val: Math.abs(pct) };
+    };
+    return {
+      entradas: calcTrend(curr?.entradas || 0, prev?.entradas),
+      salidas: calcTrend(curr?.salidas || 0, prev?.salidas),
+      movimientos: calcTrend(
+        (curr?.entradas || 0) + (curr?.salidas || 0),
+        (prev?.entradas || 0) + (prev?.salidas || 0)
+      ),
+    };
+  }, [graficas.consumo_mensual]);
+
   const kpiCards = useMemo(() => [
     {
       title: 'Productos',
@@ -907,6 +928,8 @@ const Dashboard = () => {
       show: permisos?.verDashboard && permisos?.verProductos,
       onClick: () => permisos?.verProductos && navigate('/productos'),
       sparklineData: entradasSparkline,
+      trend: trends.entradas?.dir,
+      trendValue: trends.entradas?.val,
       secondaryLabel: 'Lotes:',
       secondaryValue: (kpis.lotes_activos || 0).toLocaleString('es-MX'),
     },
@@ -919,6 +942,8 @@ const Dashboard = () => {
       show: permisos?.verDashboard,
       onClick: () => permisos?.verLotes && navigate('/lotes'),
       sparklineData: stockSparkline,
+      trend: trends.entradas?.dir === 'up' ? 'up' : trends.salidas?.dir === 'up' ? 'down' : null,
+      trendValue: trends.entradas?.val || trends.salidas?.val,
       suffix: 'uds',
     },
     {
@@ -941,8 +966,10 @@ const Dashboard = () => {
       show: permisos?.verDashboard && permisos?.verMovimientos,
       onClick: () => permisos?.verMovimientos && navigate('/movimientos'),
       sparklineData: consumoSparkline,
+      trend: trends.movimientos?.dir,
+      trendValue: trends.movimientos?.val,
     },
-  ], [kpis, permisos, navigate, selectedCentro, centroNombre, consumoSparkline, entradasSparkline, stockSparkline, analytics]);
+  ], [kpis, permisos, navigate, selectedCentro, centroNombre, consumoSparkline, entradasSparkline, stockSparkline, analytics, trends]);
 
   // Quick access items - Usando CSS variables y permisos granulares
   const quickAccessItems = useMemo(() => [
@@ -1588,219 +1615,430 @@ const Dashboard = () => {
         </section>
       )}
 
-      {/* ========== REQUISICIONES — PANEL ACUMULATIVO ========== */}
+      {/* ========== REQUISICIONES + INVENTARIO LADO A LADO ========== */}
       {puedeVerGraficasCompletas && graficas.requisiciones_por_estado.length > 0 && (
-        <section>
+        <section className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          {/* Requisiciones — Turno Automatizado */}
           <ChartCard 
-            title="Requisiciones — Turno Automatizado" 
+            title="Requisiciones - Turno Automatizado" 
             icon={FaClipboardList}
             action={
-              <button
-                onClick={() => navigate('/requisiciones')}
-                className="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors hover:bg-gray-100"
-                style={{ color: 'var(--color-primary, #9F2241)' }}
-              >
-                Ver todas →
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => navigate('/requisiciones')}
+                  className="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors hover:bg-gray-100"
+                  style={{ color: 'var(--color-primary, #9F2241)' }}
+                >
+                  Ver todas →
+                </button>
+              </div>
             }
           >
-            {/* Fila superior: Badges de resumen en línea */}
+            {/* Badges de resumen */}
             {graficas.requisiciones_resumen && (
-              <div className="flex items-center flex-wrap gap-2 mb-4 pb-3 border-b border-gray-100">
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg" style={{ background: 'rgba(159, 34, 65, 0.06)' }}>
+              <div className="flex items-center flex-wrap gap-2 mb-3 pb-3 border-b border-gray-100">
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg" style={{ background: 'rgba(159, 34, 65, 0.06)' }}>
                   <span className="text-lg font-black" style={{ color: '#9F2241' }}>{graficas.requisiciones_resumen.total}</span>
-                  <span className="text-xs text-gray-500">Total</span>
+                  <span className="text-[10px] text-gray-500">Pendientes</span>
                 </div>
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50">
-                  <span className="text-lg font-black text-emerald-700">{graficas.requisiciones_resumen.completadas}</span>
-                  <span className="text-xs text-gray-500">Completadas</span>
-                </div>
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50">
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50">
                   <span className="text-lg font-black text-amber-700">{graficas.requisiciones_resumen.en_proceso}</span>
-                  <span className="text-xs text-gray-500">Procesando</span>
+                  <span className="text-[10px] text-gray-500">Procesando</span>
                 </div>
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-50">
-                  <span className="text-lg font-black text-red-600">{graficas.requisiciones_resumen.rechazadas}</span>
-                  <span className="text-xs text-gray-500">Rechazadas</span>
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50">
+                  <span className="text-lg font-black text-emerald-700">{graficas.requisiciones_resumen.completadas}</span>
+                  <span className="text-[10px] text-gray-500">Aportado</span>
                 </div>
-                {graficas.requisiciones_resumen.urgentes > 0 && (
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-50">
-                    <FaExclamationTriangle size={10} className="text-orange-500" />
-                    <span className="text-lg font-black text-orange-700">{graficas.requisiciones_resumen.urgentes}</span>
-                    <span className="text-xs text-gray-500">Urgentes</span>
-                  </div>
-                )}
                 {graficas.requisiciones_resumen.dias_promedio_cumplimiento != null && (
-                  <div className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50">
+                  <div className="ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50">
                     <FaClock size={10} className="text-blue-500" />
-                    <span className="text-xs font-bold text-blue-700">{graficas.requisiciones_resumen.dias_promedio_cumplimiento}d</span>
-                    <span className="text-[10px] text-gray-400">promedio</span>
+                    <span className="text-[10px] font-bold text-blue-700">VM {graficas.requisiciones_resumen.dias_promedio_cumplimiento}d</span>
                   </div>
                 )}
               </div>
             )}
 
-            {/* Gráficas: Tendencia + Donut en grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              {/* Tendencia mensual — ocupa 2 cols */}
-              <div className="lg:col-span-2 min-w-0">
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Tendencia Mensual</p>
-                {graficas.requisiciones_por_mes.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={165} minWidth={0} minHeight={0}>
-                    <BarChart data={graficas.requisiciones_por_mes} barGap={1} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                      <XAxis dataKey="mes_corto" tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} allowDecimals={false} width={25} />
-                      <Tooltip
-                        content={({ active, payload }) => {
-                          if (!active || !payload?.length) return null;
-                          const d = payload[0]?.payload;
-                          return (
-                            <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-2 min-w-[110px]">
-                              <p className="text-[10px] font-bold text-gray-700 mb-1">{d?.mes}</p>
-                              <p className="text-[10px] text-gray-500"><span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1" />{d?.completadas} completadas</p>
-                              <p className="text-[10px] text-gray-500"><span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 mr-1" />{d?.pendientes} en proceso</p>
-                              <p className="text-[10px] text-gray-500"><span className="inline-block w-1.5 h-1.5 rounded-full bg-red-400 mr-1" />{d?.rechazadas} rechazadas</p>
-                              <p className="text-[10px] font-bold text-gray-800 pt-0.5 mt-0.5 border-t border-gray-100">{d?.total} total</p>
-                            </div>
-                          );
-                        }}
-                      />
-                      <Bar dataKey="completadas" stackId="a" fill="#10B981" radius={[0, 0, 0, 0]} />
-                      <Bar dataKey="pendientes" stackId="a" fill="#F59E0B" radius={[0, 0, 0, 0]} />
-                      <Bar dataKey="rechazadas" stackId="a" fill="#EF4444" radius={[3, 3, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="flex items-center justify-center h-[165px] text-gray-300 text-xs">Sin datos de tendencia</div>
-                )}
-                <div className="flex items-center justify-center gap-3 mt-0.5">
-                  {[{ l: 'Completadas', c: '#10B981' }, { l: 'En proceso', c: '#F59E0B' }, { l: 'Rechazadas', c: '#EF4444' }].map(x => (
-                    <div key={x.l} className="flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: x.c }} />
-                      <span className="text-[9px] text-gray-400">{x.l}</span>
-                    </div>
-                  ))}
+            {/* Stacked progress bar — Distribución de estados */}
+            {graficas.requisiciones_por_estado.length > 0 && totalRequisiciones > 0 && (
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Distribución por Estado</span>
+                  <span className="text-[10px] font-bold text-gray-500">{totalRequisiciones} total</span>
                 </div>
-
-                {/* Tabla de detalle por producto — referencia */}
-                {analytics?.top_productos?.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-gray-100">
-                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Detalle por Producto</p>
-                    <div className="max-h-[200px] overflow-y-auto custom-scrollbar">
-                      <table className="w-full text-left">
-                        <thead className="sticky top-0 z-10">
-                          <tr className="bg-gray-50/90">
-                            <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1.5">Clave</th>
-                            <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1.5">Producto</th>
-                            <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1.5 text-center">Surtido</th>
-                            <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1.5 text-center">Solicit.</th>
-                            <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1.5 text-right w-24">Cumplimiento</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {analytics.top_productos.slice(0, 5).map((item, idx) => (
-                            <tr key={idx} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
-                              <td className="px-2 py-1.5">
-                                <span className="text-[10px] font-mono font-bold text-gray-600">{item.clave}</span>
-                              </td>
-                              <td className="px-2 py-1.5">
-                                <span className="text-[10px] text-gray-500 truncate block max-w-[120px]" title={item.nombre}>{item.nombre}</span>
-                              </td>
-                              <td className="px-2 py-1.5 text-center">
-                                <span className="text-xs font-bold text-gray-800 tabular-nums">{(item.total_surtido || 0).toLocaleString('es-MX')}</span>
-                              </td>
-                              <td className="px-2 py-1.5 text-center">
-                                <span className="text-xs font-bold text-gray-600 tabular-nums">{item.veces_solicitado || 0}</span>
-                              </td>
-                              <td className="px-2 py-1.5">
-                                <div className="flex items-center gap-1.5 justify-end">
-                                  <div className="w-12 bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                                    <div className="h-full rounded-full transition-all duration-500" style={{ width: `${item.porcentaje_cumplimiento || 0}%`, backgroundColor: (item.porcentaje_cumplimiento || 0) >= 80 ? '#10B981' : (item.porcentaje_cumplimiento || 0) >= 50 ? '#F59E0B' : '#EF4444' }} />
-                                  </div>
-                                  <span className={`text-[10px] font-black tabular-nums ${(item.porcentaje_cumplimiento || 0) >= 80 ? 'text-emerald-600' : (item.porcentaje_cumplimiento || 0) >= 50 ? 'text-amber-600' : 'text-red-600'}`}>{(item.porcentaje_cumplimiento || 0).toFixed(0)}%</span>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
+                <div className="w-full h-3 rounded-full overflow-hidden flex bg-gray-100">
+                  {graficas.requisiciones_por_estado.map((item, idx) => {
+                    const pct = (item.cantidad / totalRequisiciones) * 100;
+                    if (pct < 0.5) return null;
+                    const color = COLORES_ESTADO_REQUISICION[item.estado] || COLORES_ESTADO_REQUISICION.DEFAULT;
+                    return (
+                      <div
+                        key={item.estado}
+                        className="h-full transition-all duration-700 first:rounded-l-full last:rounded-r-full"
+                        style={{ width: `${pct}%`, backgroundColor: color }}
+                        title={`${formatearEstado(item.estado)}: ${item.cantidad} (${pct.toFixed(0)}%)`}
+                      />
+                    );
+                  })}
+                </div>
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5">
+                  {graficas.requisiciones_por_estado.slice(0, 5).map((item) => {
+                    const color = COLORES_ESTADO_REQUISICION[item.estado] || COLORES_ESTADO_REQUISICION.DEFAULT;
+                    return (
+                      <div key={item.estado} className="flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
+                        <span className="text-[8px] text-gray-400">{formatearEstado(item.estado)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
+            )}
 
-              {/* Donut + Leyenda + Cumplimiento */}
-              <div className="flex flex-col items-center gap-3">
-                {/* Donut compacto */}
-                <div className="relative" style={{ width: 160, height: 160 }}>
-                  <ResponsiveContainer width={160} height={160} minWidth={0} minHeight={0}>
-                    <PieChart>
-                      <Pie
-                        data={graficas.requisiciones_por_estado}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={44}
-                      outerRadius={68}
-                      paddingAngle={2}
-                      dataKey="cantidad"
-                      cornerRadius={3}
-                    >
-                      {graficas.requisiciones_por_estado.map((entry, index) => (
-                        <Cell 
-                          key={`cell-${index}`} 
-                          fill={COLORES_ESTADO_REQUISICION[entry.estado] || COLORES_ESTADO_REQUISICION.DEFAULT}
-                          stroke="#fff"
-                          strokeWidth={2}
-                        />
-                      ))}
-                    </Pie>
-                    <Tooltip 
+            {/* Gráfica de tendencia */}
+            <div className="min-w-0 mb-3">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Tendencia Mensual</p>
+              {graficas.requisiciones_por_mes.length > 0 ? (
+                <ResponsiveContainer width="100%" height={130} minWidth={0} minHeight={0}>
+                  <BarChart data={graficas.requisiciones_por_mes} barGap={1} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                    <XAxis dataKey="mes_corto" tick={{ fontSize: 9, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 9, fill: '#9CA3AF' }} axisLine={false} tickLine={false} allowDecimals={false} width={22} />
+                    <Tooltip
                       content={({ active, payload }) => {
                         if (!active || !payload?.length) return null;
-                        const data = payload[0].payload;
-                        const color = COLORES_ESTADO_REQUISICION[data.estado] || COLORES_ESTADO_REQUISICION.DEFAULT;
+                        const d = payload[0]?.payload;
                         return (
-                          <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-2 min-w-[110px]">
-                            <div className="flex items-center gap-1.5 mb-0.5">
-                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
-                              <span className="font-bold text-gray-800 text-[10px]">{formatearEstado(data.estado)}</span>
-                            </div>
-                            <p className="text-sm font-black text-gray-900">{data.cantidad} <span className="text-[9px] font-normal text-gray-400">/ {totalRequisiciones}</span></p>
+                          <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-2 min-w-[100px]">
+                            <p className="text-[10px] font-bold text-gray-700 mb-1">{d?.mes}</p>
+                            <p className="text-[10px]"><span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1" />{d?.completadas} completadas</p>
+                            <p className="text-[10px]"><span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 mr-1" />{d?.pendientes} en proceso</p>
+                            <p className="text-[10px]"><span className="inline-block w-1.5 h-1.5 rounded-full bg-red-400 mr-1" />{d?.rechazadas} rechazadas</p>
                           </div>
                         );
                       }}
                     />
-                  </PieChart>
+                    <Bar dataKey="completadas" stackId="a" fill="#10B981" radius={[0, 0, 0, 0]} />
+                    <Bar dataKey="pendientes" stackId="a" fill="#F59E0B" radius={[0, 0, 0, 0]} />
+                    <Bar dataKey="rechazadas" stackId="a" fill="#EF4444" radius={[3, 3, 0, 0]} />
+                  </BarChart>
                 </ResponsiveContainer>
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="text-center">
-                    <p className="text-xl font-black text-gray-900">{totalRequisiciones}</p>
-                    <p className="text-[8px] text-gray-400">Total</p>
+              ) : (
+                <div className="flex items-center justify-center h-[130px] text-gray-300 text-xs">Sin datos</div>
+              )}
+              <div className="flex items-center justify-center gap-3 mt-0.5">
+                {[{ l: 'Completadas', c: '#10B981' }, { l: 'En proceso', c: '#F59E0B' }, { l: 'Rechazadas', c: '#EF4444' }].map(x => (
+                  <div key={x.l} className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: x.c }} />
+                    <span className="text-[9px] text-gray-400">{x.l}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Tabla de detalle por producto */}
+            {analytics?.top_productos?.length > 0 && (
+              <div className="pt-3 border-t border-gray-100">
+                <div className="max-h-[180px] overflow-y-auto custom-scrollbar">
+                  <table className="w-full text-left">
+                    <thead className="sticky top-0 z-10">
+                      <tr className="bg-gray-50/90">
+                        <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1">Clave</th>
+                        <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1">Producto</th>
+                        <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1 text-center">Surtido</th>
+                        <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1 text-center">Solicit.</th>
+                        <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1 text-right w-20">Cumpl.</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {analytics.top_productos.slice(0, 5).map((item, idx) => (
+                        <tr key={idx} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
+                          <td className="px-2 py-1">
+                            <span className="text-[10px] font-mono font-bold text-gray-600">{item.clave}</span>
+                          </td>
+                          <td className="px-2 py-1">
+                            <span className="text-[10px] text-gray-500 truncate block max-w-[100px]" title={item.nombre}>{item.nombre}</span>
+                          </td>
+                          <td className="px-2 py-1 text-center">
+                            <span className="text-[11px] font-bold text-gray-800 tabular-nums">{(item.total_surtido || 0).toLocaleString('es-MX')}</span>
+                          </td>
+                          <td className="px-2 py-1 text-center">
+                            <span className="text-[11px] font-bold text-gray-600 tabular-nums">{item.veces_solicitado || 0}</span>
+                          </td>
+                          <td className="px-2 py-1">
+                            <div className="flex items-center gap-1 justify-end">
+                              <div className="w-10 bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                                <div className="h-full rounded-full" style={{ width: `${item.porcentaje_cumplimiento || 0}%`, backgroundColor: (item.porcentaje_cumplimiento || 0) >= 80 ? '#10B981' : (item.porcentaje_cumplimiento || 0) >= 50 ? '#F59E0B' : '#EF4444' }} />
+                              </div>
+                              <span className={`text-[10px] font-black tabular-nums ${(item.porcentaje_cumplimiento || 0) >= 80 ? 'text-emerald-600' : (item.porcentaje_cumplimiento || 0) >= 50 ? 'text-amber-600' : 'text-red-600'}`}>{(item.porcentaje_cumplimiento || 0).toFixed(0)}%</span>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </ChartCard>
+
+          {/* Inventario por Centro — Vista barras horizontales */}
+          <ChartCard 
+            title="Inventario por Centro" 
+            icon={FaWarehouse}
+            action={
+              permisos?.verReportes ? (
+                <button
+                  onClick={() => navigate('/reportes', { state: { tipo: 'inventario' } })}
+                  className="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors hover:bg-gray-100"
+                  style={{ color: 'var(--color-primary, #9F2241)' }}
+                >
+                  Ver todos →
+                </button>
+              ) : null
+            }
+          >
+            {(() => {
+              const stockCentro = graficas.stock_por_centro || [];
+              const stockProducto = graficas.stock_por_producto || [];
+              const items = stockCentro.length > 1 ? stockCentro : stockProducto;
+              const labelKey = stockCentro.length > 1 ? 'centro' : 'producto';
+              if (items.length === 0) return (
+                <div className="flex flex-col items-center justify-center h-48 text-gray-400">
+                  <FaWarehouse className="text-3xl mb-2 opacity-50" />
+                  <p className="text-sm">Sin datos de inventario</p>
+                </div>
+              );
+              const sorted = [...items].sort((a, b) => b.stock - a.stock);
+              const maxStock = sorted[0]?.stock || 1;
+              const totalStock = sorted.reduce((s, p) => s + p.stock, 0);
+              return (
+                <div className={`space-y-3 ${sorted.length > 5 ? 'max-h-[420px] overflow-y-auto pr-1 custom-scrollbar' : ''}`}>
+                  {sorted.map((item, index) => {
+                    const pct = Math.max((item.stock / maxStock) * 100, 3);
+                    return (
+                      <div
+                        key={item.centro_id || item[labelKey]}
+                        className={`group ${permisos?.verReportes && stockCentro.length > 1 ? 'cursor-pointer' : ''}`}
+                        onClick={() => permisos?.verReportes && stockCentro.length > 1 && navigate('/reportes', { state: { tipo: 'inventario', centro: item.centro_id } })}
+                      >
+                        <div className="flex items-baseline justify-between mb-1">
+                          <span className="text-sm font-semibold text-gray-700 truncate flex-1 mr-3 group-hover:text-gray-900 transition-colors" title={item[labelKey]}>
+                            {item[labelKey]}
+                          </span>
+                          <div className="flex items-baseline gap-3 flex-shrink-0">
+                            <span className="text-lg font-black text-gray-900 tabular-nums">{item.stock.toLocaleString('es-MX')}</span>
+                            <span className="text-xs text-gray-400 tabular-nums">{totalStock.toLocaleString('es-MX')}</span>
+                          </div>
+                        </div>
+                        <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
+                          <div className="h-full rounded-full transition-all duration-700 ease-out" style={{ width: `${pct}%`, background: `linear-gradient(90deg, var(--color-primary, #932043)88, var(--color-primary, #932043))` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div className="pt-2 mt-1 border-t border-gray-100 flex items-center justify-between text-[10px] text-gray-400">
+                    <span>Uso de compras</span>
+                    <span>Caducidad próxima</span>
+                  </div>
+                </div>
+              );
+            })()}
+          </ChartCard>
+        </section>
+      )}
+
+      {/* ========== CADUCOS QUE REQUIEREN SOLUCIÓN ========== */}
+      {puedeVerGraficasCompletas && analytics?.caducidades?.lotes_criticos?.length > 0 && (
+        <section>
+          <ChartCard title="Caducos que requieren Solución" icon={FaExclamationTriangle}>
+            {/* Progress indicator: Nivel de urgencia */}
+            {(() => {
+              const lc = analytics.caducidades.lotes_criticos;
+              const vencidos = lc.filter(l => l.estado === 'vencido').length;
+              const urgentes = lc.filter(l => l.dias_para_vencer != null && l.dias_para_vencer <= 15 && l.estado !== 'vencido').length;
+              const proximos = lc.length - vencidos - urgentes;
+              const total = lc.length;
+              return (
+                <div className="mb-4 p-3 rounded-xl bg-gray-50/80 border border-gray-100">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Nivel de Urgencia</span>
+                    <span className="text-[10px] font-bold text-gray-600">{total} lotes afectados</span>
+                  </div>
+                  <div className="w-full h-3 rounded-full overflow-hidden flex bg-gray-200">
+                    {vencidos > 0 && <div className="h-full bg-red-500 transition-all duration-700" style={{ width: `${(vencidos / total) * 100}%` }} title={`${vencidos} vencidos`} />}
+                    {urgentes > 0 && <div className="h-full bg-orange-500 transition-all duration-700" style={{ width: `${(urgentes / total) * 100}%` }} title={`${urgentes} urgentes (≤15d)`} />}
+                    {proximos > 0 && <div className="h-full bg-amber-400 transition-all duration-700" style={{ width: `${(proximos / total) * 100}%` }} title={`${proximos} próximos`} />}
+                  </div>
+                  <div className="flex items-center gap-4 mt-1.5">
+                    {vencidos > 0 && <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" /><span className="text-[9px] text-gray-500">{vencidos} vencidos</span></div>}
+                    {urgentes > 0 && <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500" /><span className="text-[9px] text-gray-500">{urgentes} urgentes</span></div>}
+                    {proximos > 0 && <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400" /><span className="text-[9px] text-gray-500">{proximos} próximos</span></div>}
+                  </div>
+                </div>
+              );
+            })()}
+            <div className="space-y-2.5 max-h-[280px] overflow-y-auto custom-scrollbar">
+              {analytics.caducidades.lotes_criticos.map((lote, idx) => {
+                const isVencido = lote.estado === 'vencido';
+                const diasAbs = lote.dias_para_vencer != null ? Math.abs(lote.dias_para_vencer) : 0;
+                const barPct = isVencido ? 100 : Math.max(Math.min(100 - (lote.dias_para_vencer / 90 * 100), 100), 10);
+                return (
+                  <div key={idx} className="flex items-center gap-3 py-2 px-3 rounded-xl border border-gray-100 hover:bg-gray-50/50 transition-colors">
+                    <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${isVencido ? 'bg-red-500' : lote.dias_para_vencer <= 15 ? 'bg-orange-500' : 'bg-amber-400'}`} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-700 truncate" title={`${lote.producto_nombre} - ${lote.numero_lote}`}>
+                        {lote.centro_nombre || 'Centro'} - {lote.producto_nombre}
+                      </p>
+                      <p className="text-[10px] text-gray-400">Lote {lote.numero_lote} · {lote.producto_clave}</p>
+                    </div>
+                    <div className="w-24 flex-shrink-0">
+                      <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${barPct}%`, backgroundColor: isVencido ? '#EF4444' : lote.dias_para_vencer <= 15 ? '#F97316' : '#F59E0B' }} />
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0 min-w-[90px]">
+                      <span className={`text-[10px] font-bold ${isVencido ? 'text-red-600' : 'text-orange-600'}`}>
+                        {isVencido ? 'CADUCADO' : 'CADUCIDAD'}
+                      </span>
+                      <span className="text-[10px] text-gray-400 ml-1">
+                        {isVencido ? `${diasAbs}d vencido` : `${lote.dias_para_vencer}d`}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-gray-400 flex-shrink-0 tabular-nums">{lote.cantidad} uds</span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+              <button
+                onClick={() => navigate('/lotes')}
+                className="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors hover:bg-gray-100 flex items-center gap-1.5"
+                style={{ color: 'var(--color-primary, #9F2241)' }}
+              >
+                <FaBoxes size={10} />
+                Gestionar Lotes
+              </button>
+              <button
+                onClick={() => navigate('/productos')}
+                className="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors hover:bg-gray-100 flex items-center gap-1.5"
+                style={{ color: 'var(--color-primary, #9F2241)' }}
+              >
+                Actualizar stock →
+              </button>
+            </div>
+          </ChartCard>
+        </section>
+      )}
+
+      {/* ========== USO DE REQUISICIONES — DONUT GRANDE ========== */}
+      {puedeVerGraficasCompletas && graficas.requisiciones_por_estado.length > 0 && (
+        <section>
+          <ChartCard title="Uso de Requisiciones" icon={FaChartBar}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+              {/* Donut grande */}
+              <div className="flex flex-col items-center">
+                <div className="relative" style={{ width: 220, height: 220 }}>
+                  <ResponsiveContainer width={220} height={220} minWidth={0} minHeight={0}>
+                    <PieChart>
+                      <Pie
+                        data={graficas.requisiciones_por_estado}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={95}
+                        paddingAngle={2}
+                        dataKey="cantidad"
+                        cornerRadius={4}
+                      >
+                        {graficas.requisiciones_por_estado.map((entry, index) => (
+                          <Cell 
+                            key={`usecell-${index}`} 
+                            fill={COLORES_ESTADO_REQUISICION[entry.estado] || COLORES_ESTADO_REQUISICION.DEFAULT}
+                            stroke="#fff"
+                            strokeWidth={2}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                        content={({ active, payload }) => {
+                          if (!active || !payload?.length) return null;
+                          const data = payload[0].payload;
+                          const color = COLORES_ESTADO_REQUISICION[data.estado] || COLORES_ESTADO_REQUISICION.DEFAULT;
+                          return (
+                            <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-2 min-w-[110px]">
+                              <div className="flex items-center gap-1.5 mb-0.5">
+                                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                                <span className="font-bold text-gray-800 text-xs">{formatearEstado(data.estado)}</span>
+                              </div>
+                              <p className="text-sm font-black text-gray-900">{data.cantidad} <span className="text-[10px] font-normal text-gray-400">/ {totalRequisiciones}</span></p>
+                            </div>
+                          );
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="text-center">
+                      <p className="text-3xl font-black text-gray-900">{totalRequisiciones}</p>
+                      <p className="text-xs text-gray-400 font-semibold">
+                        {graficas.requisiciones_resumen?.tasa_cumplimiento != null ? `${graficas.requisiciones_resumen.tasa_cumplimiento}%` : ''} Demanda
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
-              {/* Leyenda + Cumplimiento */}
-              <div className="flex flex-col gap-2 mt-2">
-                <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-                  {graficas.requisiciones_por_estado.map((item) => (
-                    <div key={item.estado} className="flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: COLORES_ESTADO_REQUISICION[item.estado] || COLORES_ESTADO_REQUISICION.DEFAULT }} />
-                      <span className="text-[9px] text-gray-400">{formatearEstado(item.estado)} ({item.cantidad})</span>
-                    </div>
-                  ))}
+
+              {/* Stats desglose */}
+              <div>
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-3">Referencia / Desglose</p>
+                <div className="grid grid-cols-3 gap-3 mb-4">
+                  {(() => {
+                    const completadas = graficas.requisiciones_resumen?.completadas || 0;
+                    const enProceso = graficas.requisiciones_resumen?.en_proceso || 0;
+                    const rechazadas = graficas.requisiciones_resumen?.rechazadas || 0;
+                    return (
+                      <>
+                        <div className="text-center p-3 rounded-xl bg-emerald-50 border border-emerald-100">
+                          <p className="text-2xl font-black text-emerald-700">{completadas}</p>
+                          <p className="text-[10px] text-emerald-600 font-semibold">Realizados</p>
+                        </div>
+                        <div className="text-center p-3 rounded-xl bg-amber-50 border border-amber-100">
+                          <p className="text-2xl font-black text-amber-700">{enProceso}</p>
+                          <p className="text-[10px] text-amber-600 font-semibold">Formalizados</p>
+                        </div>
+                        <div className="text-center p-3 rounded-xl bg-red-50 border border-red-100">
+                          <p className="text-2xl font-black text-red-600">{rechazadas}</p>
+                          <p className="text-[10px] text-red-600 font-semibold">Parciales</p>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+                {/* Leyenda detallada */}
+                <div className="space-y-2">
+                  {graficas.requisiciones_por_estado.map((item) => {
+                    const color = COLORES_ESTADO_REQUISICION[item.estado] || COLORES_ESTADO_REQUISICION.DEFAULT;
+                    const pct = totalRequisiciones > 0 ? ((item.cantidad / totalRequisiciones) * 100).toFixed(0) : 0;
+                    return (
+                      <div key={item.estado} className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                        <span className="text-xs text-gray-600 flex-1">{formatearEstado(item.estado)}</span>
+                        <span className="text-xs font-bold text-gray-800 tabular-nums">{item.cantidad}</span>
+                        <span className="text-[10px] text-gray-400 tabular-nums w-8 text-right">{pct}%</span>
+                      </div>
+                    );
+                  })}
                 </div>
                 {graficas.requisiciones_resumen && (
-                  <div className="bg-emerald-50/70 rounded-lg px-3 py-1.5 border border-emerald-100 flex items-center gap-2">
-                    <FaChartLine size={9} className="text-emerald-500" />
-                    <span className="text-[9px] font-medium text-emerald-600">Cumplimiento</span>
-                    <div className="w-16 bg-emerald-100 rounded-full h-1.5 overflow-hidden">
+                  <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2">
+                    <FaChartLine size={10} className="text-emerald-500" />
+                    <span className="text-xs font-medium text-gray-500">Cumplimiento</span>
+                    <div className="w-20 bg-gray-100 rounded-full h-2 overflow-hidden flex-shrink-0">
                       <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${graficas.requisiciones_resumen.tasa_cumplimiento}%` }} />
                     </div>
-                    <span className="text-sm font-black text-emerald-800">{graficas.requisiciones_resumen.tasa_cumplimiento}%</span>
+                    <span className="text-sm font-black text-emerald-700">{graficas.requisiciones_resumen.tasa_cumplimiento}%</span>
                   </div>
                 )}
-              </div>
               </div>
             </div>
           </ChartCard>
@@ -1810,6 +2048,13 @@ const Dashboard = () => {
       {/* ========== ANALYTICS AVANZADOS (Solo Farmacia/Admin) ========== */}
       {puedeVerGraficasCompletas && analytics && (
         <>
+          {/* Separador de sección Analytics */}
+          <div className="flex items-center gap-3 pt-2">
+            <div className="w-1.5 h-6 rounded-full" style={{ background: 'linear-gradient(180deg, #932043, #C9A876)' }} />
+            <h2 className="text-xs font-extrabold text-gray-600 uppercase tracking-[0.15em]">Analytics Avanzados</h2>
+            <div className="h-px flex-1 bg-gradient-to-r from-gray-200 to-transparent" />
+          </div>
+
           {/* Alertas de Caducidad */}
           {analytics.caducidades && (analytics.caducidades.vencidos > 0 || analytics.caducidades.vencen_15_dias > 0 || analytics.caducidades.vencen_30_dias > 0) && (
             <section className="dash-alert-section">
@@ -1874,30 +2119,6 @@ const Dashboard = () => {
                   </div>
                 )}
               </div>
-
-              {/* Lotes Críticos detalle */}
-              {analytics.caducidades.lotes_criticos?.length > 0 && (
-                <div className="bg-white rounded-xl border border-gray-100 p-4">
-                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-                    <FaExclamationTriangle className="text-red-400" size={10} />
-                    Lotes Críticos — Detalle
-                  </p>
-                  <div className="space-y-2 max-h-52 overflow-y-auto custom-scrollbar">
-                    {analytics.caducidades.lotes_criticos.map((lote, idx) => (
-                      <div key={idx} className="dash-list-row">
-                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${lote.estado === 'vencido' ? 'bg-red-500' : 'bg-orange-500'}`} />
-                        <span className="text-[10px] font-mono text-gray-400 flex-shrink-0">{lote.producto_clave}</span>
-                        <span className="text-xs font-medium text-gray-600 truncate flex-1" title={lote.producto_nombre}>{lote.producto_nombre}</span>
-                        <span className="text-[10px] font-mono text-gray-400 flex-shrink-0">Lote: {lote.numero_lote}</span>
-                        <span className="text-xs font-bold tabular-nums flex-shrink-0" style={{ color: lote.estado === 'vencido' ? '#EF4444' : '#F97316' }}>
-                          {lote.dias_para_vencer != null ? (lote.dias_para_vencer < 0 ? `${Math.abs(lote.dias_para_vencer)}d vencido` : `${lote.dias_para_vencer}d`) : ''}
-                        </span>
-                        <span className="text-[10px] text-gray-400 flex-shrink-0">{lote.cantidad} uds</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </section>
           )}
 
@@ -2049,60 +2270,75 @@ const Dashboard = () => {
           <section className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             {/* Resumen Donaciones */}
             {analytics.donaciones && (
-              <ChartCard title="Resumen de Donaciones" icon={FaHandHoldingHeart}>
-                {/* KPIs principales */}
-                <div className="grid grid-cols-2 gap-2 mb-3">
-                  <div className="dash-stat-mini dash-stat-primary">
-                    <div className="flex items-center gap-1 mb-0.5">
-                      <FaGift className="text-purple-500" size={9} />
-                      <span className="text-[9px] font-bold text-purple-600 uppercase tracking-wider">Total</span>
-                    </div>
-                    <p className="text-xl font-black text-purple-700">{analytics.donaciones.total_donaciones || 0}</p>
-                    <p className="text-[9px] text-purple-400 mt-0.5">donaciones registradas</p>
+              <ChartCard title="Recepción de Donaciones" icon={FaHandHoldingHeart}>
+                {/* Total KPI + badges */}
+                <div className="flex items-center flex-wrap gap-3 mb-4 pb-3 border-b border-gray-100">
+                  <div className="flex items-center gap-2">
+                    <FaGift className="text-purple-500" size={14} />
+                    <span className="text-3xl font-black text-gray-900">{(analytics.donaciones.total_donaciones || 0).toLocaleString('es-MX')}</span>
+                    <span className="text-xs text-gray-400">totalidades</span>
                   </div>
-                  <div className="dash-stat-mini dash-stat-success">
-                    <div className="flex items-center gap-1 mb-0.5">
-                      <FaCalendarAlt className="text-emerald-500" size={9} />
-                      <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider">Este mes</span>
-                    </div>
-                    <p className="text-xl font-black text-emerald-700">{analytics.donaciones.donaciones_mes || 0}</p>
-                    <p className="text-[9px] text-emerald-400 mt-0.5">nuevas donaciones</p>
+                  <div className="flex items-center gap-2 ml-auto">
+                    <span className="text-[10px] font-bold px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100">
+                      <FaArrowDown size={8} className="inline mr-1" />{analytics.donaciones.donaciones_mes || 0} lotes
+                    </span>
+                    <span className="text-[10px] font-bold px-2 py-1 rounded-md bg-blue-50 text-blue-700 border border-blue-100">
+                      {((analytics.donaciones.donaciones_mes || 0) / Math.max(analytics.donaciones.total_donaciones || 1, 1) * 100).toFixed(1)}% utilizados
+                    </span>
                   </div>
                 </div>
-                
-                {/* Por Estado */}
-                {analytics.donaciones.por_estado?.length > 0 && (
-                  <div className="mb-4">
-                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2.5 flex items-center gap-2">
-                      <FaClipboardList className="text-purple-400" size={10} />
-                      Por Estado
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {analytics.donaciones.por_estado.map((item, idx) => (
-                        <span key={idx} className="text-[10px] font-bold px-2.5 py-1.5 rounded-lg bg-purple-50 text-purple-700 border border-purple-100">
-                          {item.estado}: <span className="text-sm">{item.cantidad}</span>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
 
-                {/* Top Centros Receptores */}
-                {analytics.donaciones.top_receptores?.length > 0 && (
-                  <div>
-                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2.5 flex items-center gap-2">
-                      <FaBuilding className="text-purple-400" size={10} />
-                      Top Centros Receptores
-                    </p>
-                    <div className="space-y-1.5 max-h-44 overflow-y-auto custom-scrollbar">
-                      {analytics.donaciones.top_receptores.map((item, idx) => (
-                        <div key={idx} className="dash-list-row">
-                          <span className="dash-bar-rank text-[10px]" style={{ background: '#8B5CF6' }}>{idx + 1}</span>
-                          <span className="text-xs font-medium text-gray-600 truncate flex-1" title={item.nombre}>{item.nombre}</span>
-                          <span className="text-xs font-bold text-purple-600 tabular-nums">{item.total} donaciones</span>
-                        </div>
-                      ))}
+                {/* Stacked bar de donaciones por estado */}
+                {analytics.donaciones.por_estado?.length > 0 && (() => {
+                  const totalDon = analytics.donaciones.por_estado.reduce((s, i) => s + (i.cantidad || 0), 0) || 1;
+                  const DON_COLORS = ['#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#0EA5E9'];
+                  return (
+                    <div className="mb-4">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Distribución por Estado</span>
+                        <span className="text-[10px] font-bold text-gray-500">{totalDon} total</span>
+                      </div>
+                      <div className="w-full h-3 rounded-full overflow-hidden flex bg-gray-100">
+                        {analytics.donaciones.por_estado.map((item, idx) => {
+                          const pct = (item.cantidad / totalDon) * 100;
+                          if (pct < 0.5) return null;
+                          return (
+                            <div
+                              key={idx}
+                              className="h-full transition-all duration-700 first:rounded-l-full last:rounded-r-full"
+                              style={{ width: `${pct}%`, backgroundColor: DON_COLORS[idx % DON_COLORS.length] }}
+                              title={`${item.estado}: ${item.cantidad} (${pct.toFixed(0)}%)`}
+                            />
+                          );
+                        })}
+                      </div>
                     </div>
+                  );
+                })()}
+
+                {/* Por Estado con barras horizontales */}
+                {analytics.donaciones.por_estado?.length > 0 && (
+                  <div className="space-y-3">
+                    {(() => {
+                      const totalDon = analytics.donaciones.por_estado.reduce((s, i) => s + (i.cantidad || 0), 0) || 1;
+                      const maxDon = Math.max(...analytics.donaciones.por_estado.map(i => i.cantidad || 0), 1);
+                      const DON_COLORS = { 'Cuadrado': '#10B981', 'Procesando': '#F59E0B', 'Cancelados': '#EF4444' };
+                      return analytics.donaciones.por_estado.map((item, idx) => {
+                        const pct = ((item.cantidad || 0) / totalDon * 100).toFixed(0);
+                        const barPct = Math.max((item.cantidad / maxDon) * 100, 5);
+                        return (
+                          <div key={idx} className="flex items-center gap-3">
+                            <span className={`w-2 h-2 rounded-full flex-shrink-0`} style={{ backgroundColor: Object.values(DON_COLORS)[idx % 3] || '#8B5CF6' }} />
+                            <span className="text-xs font-semibold text-gray-600 w-24 truncate">{item.estado}</span>
+                            <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
+                              <div className="h-full rounded-full transition-all duration-500" style={{ width: `${barPct}%`, backgroundColor: Object.values(DON_COLORS)[idx % 3] || '#8B5CF6' }} />
+                            </div>
+                            <span className="text-xs font-bold text-gray-700 tabular-nums w-10 text-right">{pct}%</span>
+                            <span className="text-[10px] text-gray-400 tabular-nums w-12 text-right">{item.cantidad}</span>
+                          </div>
+                        );
+                      });
+                    })()}
                   </div>
                 )}
               </ChartCard>
@@ -2136,39 +2372,33 @@ const Dashboard = () => {
                   </div>
                 }
               >
-                <div className="max-h-[420px] overflow-y-auto custom-scrollbar">
-                  <table className="dash-logs-table">
-                    <thead>
-                      <tr>
-                        <th>Tipo</th>
-                        <th>Responsable</th>
-                        <th>Descripción</th>
-                        <th className="text-center">Cant.</th>
-                        <th className="text-right">Fecha</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(mostrarTodos ? movimientos : movimientos.slice(0, 8)).map((mov, index) => (
-                        <tr 
-                          key={mov.id || index}
-                          className="cursor-pointer group"
-                          onClick={() => permisos?.verMovimientos && navigate('/movimientos', { state: { highlightId: mov.id } })}
-                        >
-                          <td>
-                            <span className={`inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${
-                              mov.tipo_movimiento === 'ENTRADA' ? 'bg-emerald-50 text-emerald-700' : 
-                              mov.tipo_movimiento === 'SALIDA' ? 'bg-red-50 text-red-700' : 'bg-indigo-50 text-indigo-700'
-                            }`}>
-                              {mov.tipo_movimiento === 'ENTRADA' ? <FaArrowDown size={8} /> : <FaArrowUp size={8} />}
-                              {mov.tipo_movimiento || 'MOV'}
-                            </span>
-                          </td>
-                          <td>
-                            <span className="text-xs font-medium text-gray-600">{mov.usuario || 'Sistema'}</span>
-                          </td>
-                          <td>
-                            <div className="max-w-[200px]">
-                              <p className="text-xs font-semibold text-gray-800 truncate group-hover:text-gray-900" title={mov.producto__descripcion}>
+                {/* Activity Timeline */}
+                <div className="dash-timeline max-h-[420px] overflow-y-auto custom-scrollbar">
+                  {(mostrarTodos ? movimientos : movimientos.slice(0, 8)).map((mov, index) => {
+                    const isEntrada = mov.tipo_movimiento === 'ENTRADA';
+                    const isSalida = mov.tipo_movimiento === 'SALIDA';
+                    const dotColor = isEntrada ? '#10B981' : isSalida ? '#EF4444' : '#6366F1';
+                    return (
+                      <div
+                        key={mov.id || index}
+                        className="dash-timeline-item cursor-pointer group"
+                        style={{ '--timeline-color': dotColor }}
+                        onClick={() => permisos?.verMovimientos && navigate('/movimientos', { state: { highlightId: mov.id } })}
+                      >
+                        <div className="dash-timeline-dot" style={{ color: dotColor, backgroundColor: dotColor }} />
+                        <div className="dash-timeline-content">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-0.5">
+                                <span className={`inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md ${
+                                  isEntrada ? 'bg-emerald-50 text-emerald-700' : isSalida ? 'bg-red-50 text-red-700' : 'bg-indigo-50 text-indigo-700'
+                                }`}>
+                                  {isEntrada ? <FaArrowDown size={7} /> : <FaArrowUp size={7} />}
+                                  {mov.tipo_movimiento || 'MOV'}
+                                </span>
+                                <span className="text-[10px] text-gray-400">{mov.usuario || 'Sistema'}</span>
+                              </div>
+                              <p className="text-xs font-semibold text-gray-800 truncate group-hover:text-gray-900 transition-colors" title={mov.producto__descripcion}>
                                 {mov.producto__descripcion || 'Producto'}
                               </p>
                               <div className="flex items-center gap-2 mt-0.5">
@@ -2178,23 +2408,19 @@ const Dashboard = () => {
                                 )}
                               </div>
                             </div>
-                          </td>
-                          <td className="text-center">
-                            <span className={`text-sm font-black tabular-nums ${
-                              mov.tipo_movimiento === 'ENTRADA' ? 'text-emerald-600' : mov.tipo_movimiento === 'SALIDA' ? 'text-red-600' : 'text-indigo-600'
-                            }`}>
-                              {mov.tipo_movimiento === 'ENTRADA' ? '+' : mov.tipo_movimiento === 'SALIDA' ? '-' : ''}{mov.cantidad}
-                            </span>
-                          </td>
-                          <td className="text-right">
-                            <span className="text-[11px] text-gray-500 whitespace-nowrap">
-                              {mov.fecha_movimiento ? new Date(mov.fecha_movimiento).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                            <div className="flex flex-col items-end flex-shrink-0">
+                              <span className={`text-sm font-black tabular-nums ${isEntrada ? 'text-emerald-600' : isSalida ? 'text-red-600' : 'text-indigo-600'}`}>
+                                {isEntrada ? '+' : isSalida ? '-' : ''}{mov.cantidad}
+                              </span>
+                              <span className="text-[10px] text-gray-400 whitespace-nowrap mt-0.5">
+                                {mov.fecha_movimiento ? new Date(mov.fecha_movimiento).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }) : ''}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
                 <button
                   onClick={() => navigate('/movimientos')}
