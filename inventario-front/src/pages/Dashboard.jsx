@@ -1976,52 +1976,6 @@ const Dashboard = () => {
                     )}
                   </div>
                 </div>
-
-                {/* ── TABLA FULL-WIDTH: Detalle por producto ── */}
-                {analytics?.top_productos?.length > 0 && (
-                  <div className="pt-3 border-t border-gray-100">
-                    <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">Top Productos Solicitados</p>
-                    <div className="rounded-xl border border-gray-100 overflow-hidden">
-                      <table className="w-full text-left">
-                        <thead>
-                          <tr style={{ background: 'linear-gradient(135deg, #F9FAFB 0%, #F3F4F6 100%)' }}>
-                            <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-3 py-2">Clave</th>
-                            <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-3 py-2">Producto</th>
-                            <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-3 py-2 text-center">Surtido</th>
-                            <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-3 py-2 text-center">Solicitado</th>
-                            <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-3 py-2 text-right" style={{ minWidth: 140 }}>Cumplimiento</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {analytics.top_productos.slice(0, 5).map((item, idx) => (
-                            <tr key={idx} className={`border-b border-gray-50 last:border-0 hover:bg-gray-50/60 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
-                              <td className="px-3 py-1.5">
-                                <span className="text-[11px] font-mono font-bold text-gray-700">{item.clave}</span>
-                              </td>
-                              <td className="px-3 py-1.5">
-                                <span className="text-[11px] text-gray-600 truncate block max-w-[280px]" title={item.nombre}>{item.nombre}</span>
-                              </td>
-                              <td className="px-3 py-1.5 text-center">
-                                <span className="text-[11px] font-bold text-gray-800 tabular-nums">{(item.total_surtido || 0).toLocaleString('es-MX')}</span>
-                              </td>
-                              <td className="px-3 py-1.5 text-center">
-                                <span className="text-[11px] font-bold text-gray-600 tabular-nums">{item.veces_solicitado || 0}</span>
-                              </td>
-                              <td className="px-3 py-1.5">
-                                <div className="flex items-center gap-2 justify-end">
-                                  <div className="w-20 bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                                    <div className="h-full rounded-full transition-all duration-700" style={{ width: `${item.porcentaje_cumplimiento || 0}%`, background: (item.porcentaje_cumplimiento || 0) >= 80 ? 'linear-gradient(90deg, #10B981, #34D399)' : (item.porcentaje_cumplimiento || 0) >= 50 ? 'linear-gradient(90deg, #F59E0B, #FBBF24)' : 'linear-gradient(90deg, #DC2626, #EF4444)' }} />
-                                  </div>
-                                  <span className={`text-[11px] font-black tabular-nums min-w-[32px] text-right ${(item.porcentaje_cumplimiento || 0) >= 80 ? 'text-emerald-600' : (item.porcentaje_cumplimiento || 0) >= 50 ? 'text-amber-600' : 'text-red-600'}`}>{(item.porcentaje_cumplimiento || 0).toFixed(0)}%</span>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
                 </div>
               );
             })()}
