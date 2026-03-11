@@ -1614,14 +1614,16 @@ const Dashboard = () => {
                     <XAxis type="number" tick={{ fill: '#9CA3AF', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} />
                     <YAxis dataKey="name" type="category" tick={{ fill: '#6B7280', fontSize: 11, fontWeight: 500 }} axisLine={false} tickLine={false} width={130} />
                     <Tooltip
-                      content={({ active, payload }) => {
+                      content={({ active, payload, label }) => {
                         if (!active || !payload?.length) return null;
-                        const d = payload[0]?.payload;
+                        const matched = barData.find(b => b.name === label);
+                        const fullName = matched?.fullName || label;
+                        const stock = matched?.stock ?? payload[0]?.value ?? 0;
                         return (
                           <div className="bg-white rounded-lg shadow-xl border border-gray-200 p-3 min-w-[140px]">
-                            <p className="text-xs font-bold text-gray-800 mb-1">{d?.fullName}</p>
-                            <p className="text-lg font-black text-gray-900">{d?.stock?.toLocaleString('es-MX')} <span className="text-xs font-normal text-gray-400">uds</span></p>
-                            <p className="text-[10px] text-gray-400">{totalStock > 0 ? ((d?.stock / totalStock) * 100).toFixed(1) : 0}% del total</p>
+                            <p className="text-xs font-bold text-gray-800 mb-1">{fullName}</p>
+                            <p className="text-lg font-black text-gray-900">{stock?.toLocaleString('es-MX')} <span className="text-xs font-normal text-gray-400">uds</span></p>
+                            <p className="text-[10px] text-gray-400">{totalStock > 0 ? ((stock / totalStock) * 100).toFixed(1) : 0}% del total</p>
                           </div>
                         );
                       }}
@@ -1814,194 +1816,7 @@ const Dashboard = () => {
             )}
           </ChartCard>
 
-          {/* Distribución de Inventario — Donut compacto */}
-          <ChartCard 
-            title="Distribución de Inventario" 
-            icon={FaChartBar}
-            action={
-              permisos?.verReportes ? (
-                <button
-                  onClick={() => navigate('/reportes', { state: { tipo: 'inventario' } })}
-                  className="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors hover:bg-gray-100"
-                  style={{ color: 'var(--color-primary, #9F2241)' }}
-                >
-                  Ver reportes →
-                </button>
-              ) : null
-            }
-          >
-            {(() => {
-              const stockCentro = graficas.stock_por_centro || [];
-              const stockProducto = graficas.stock_por_producto || [];
-              const items = stockCentro.length > 1 ? stockCentro : stockProducto;
-              const labelKey = stockCentro.length > 1 ? 'centro' : 'producto';
-              const DIST_COLORS = ['#932043', '#0EA5E9', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316'];
-              if (items.length === 0) return (
-                <div className="flex flex-col items-center justify-center h-48 text-gray-400">
-                  <FaChartBar className="text-3xl mb-2 opacity-50" />
-                  <p className="text-sm">Sin datos de distribución</p>
-                </div>
-              );
-              const sorted = [...items].sort((a, b) => b.stock - a.stock).slice(0, 8);
-              const totalStock = sorted.reduce((s, p) => s + p.stock, 0);
-              const pieData = sorted.map((item, i) => ({
-                name: item[labelKey]?.length > 20 ? item[labelKey].substring(0, 20) + '…' : item[labelKey],
-                fullName: item[labelKey],
-                value: item.stock,
-                fill: DIST_COLORS[i % DIST_COLORS.length],
-                centro_id: item.centro_id,
-              }));
-              return (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
-                  <div className="relative flex justify-center" style={{ width: '100%', maxWidth: 200, margin: '0 auto' }}>
-                    <ResponsiveContainer width="100%" height={200} minWidth={0} minHeight={0}>
-                      <PieChart>
-                        <Pie
-                          data={pieData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={50}
-                          outerRadius={85}
-                          paddingAngle={2}
-                          dataKey="value"
-                          cornerRadius={4}
-                        >
-                          {pieData.map((entry, index) => (
-                            <Cell key={`dist-${index}`} fill={entry.fill} stroke="#fff" strokeWidth={2} />
-                          ))}
-                        </Pie>
-                        <Tooltip
-                          content={({ active, payload }) => {
-                            if (!active || !payload?.length) return null;
-                            const d = payload[0]?.payload;
-                            return (
-                              <div className="bg-white rounded-lg shadow-xl border border-gray-200 p-3 min-w-[140px]">
-                                <p className="text-xs font-bold text-gray-800 mb-1">{d?.fullName}</p>
-                                <p className="text-lg font-black text-gray-900">{d?.value?.toLocaleString('es-MX')} <span className="text-xs font-normal text-gray-400">uds</span></p>
-                                <p className="text-[10px] text-gray-400">{totalStock > 0 ? ((d?.value / totalStock) * 100).toFixed(1) : 0}% del total</p>
-                              </div>
-                            );
-                          }}
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                      <div className="text-center">
-                        <p className="text-2xl font-black text-gray-900">{totalStock.toLocaleString('es-MX')}</p>
-                        <p className="text-[9px] text-gray-400 font-semibold uppercase tracking-wider">Total Stock</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    {pieData.map((item, idx) => {
-                      const pct = totalStock > 0 ? ((item.value / totalStock) * 100).toFixed(1) : 0;
-                      return (
-                        <div
-                          key={idx}
-                          className={`flex items-center gap-2 px-2 py-1.5 rounded-lg transition-colors hover:bg-gray-50 ${permisos?.verReportes && stockCentro.length > 1 ? 'cursor-pointer' : ''}`}
-                          onClick={() => permisos?.verReportes && stockCentro.length > 1 && item.centro_id && navigate('/reportes', { state: { tipo: 'inventario', centro: item.centro_id } })}
-                        >
-                          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: item.fill }} />
-                          <span className="text-[11px] font-medium text-gray-600 flex-1 truncate" title={item.fullName}>{item.name}</span>
-                          <span className="text-[11px] font-black text-gray-800 tabular-nums">{item.value.toLocaleString('es-MX')}</span>
-                          <span className="text-[9px] text-gray-400 tabular-nums w-10 text-right">{pct}%</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })()}
-          </ChartCard>
-        </section>
-      )}
-
-      {/* ========== CADUCOS QUE REQUIEREN SOLUCIÓN ========== */}
-      {puedeVerGraficasCompletas && analytics?.caducidades?.lotes_criticos?.length > 0 && (
-        <section>
-          <ChartCard title="Caducos que requieren Solución" icon={FaExclamationTriangle}>
-            {/* Progress indicator: Nivel de urgencia */}
-            {(() => {
-              const lc = analytics.caducidades.lotes_criticos;
-              const vencidos = lc.filter(l => l.estado === 'vencido').length;
-              const urgentes = lc.filter(l => l.dias_para_vencer != null && l.dias_para_vencer <= 15 && l.estado !== 'vencido').length;
-              const proximos = lc.length - vencidos - urgentes;
-              const total = lc.length;
-              return (
-                <div className="mb-4 p-3 rounded-xl bg-gray-50/80 border border-gray-100">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Nivel de Urgencia</span>
-                    <span className="text-[10px] font-bold text-gray-600">{total} lotes afectados</span>
-                  </div>
-                  <div className="w-full h-3 rounded-full overflow-hidden flex bg-gray-200">
-                    {vencidos > 0 && <div className="h-full bg-red-500 transition-all duration-700" style={{ width: `${(vencidos / total) * 100}%` }} title={`${vencidos} vencidos`} />}
-                    {urgentes > 0 && <div className="h-full bg-orange-500 transition-all duration-700" style={{ width: `${(urgentes / total) * 100}%` }} title={`${urgentes} urgentes (≤15d)`} />}
-                    {proximos > 0 && <div className="h-full bg-amber-400 transition-all duration-700" style={{ width: `${(proximos / total) * 100}%` }} title={`${proximos} próximos`} />}
-                  </div>
-                  <div className="flex items-center gap-4 mt-1.5">
-                    {vencidos > 0 && <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" /><span className="text-[9px] text-gray-500">{vencidos} vencidos</span></div>}
-                    {urgentes > 0 && <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500" /><span className="text-[9px] text-gray-500">{urgentes} urgentes</span></div>}
-                    {proximos > 0 && <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400" /><span className="text-[9px] text-gray-500">{proximos} próximos</span></div>}
-                  </div>
-                </div>
-              );
-            })()}
-            <div className="space-y-2.5 max-h-[280px] overflow-y-auto custom-scrollbar">
-              {analytics.caducidades.lotes_criticos.map((lote, idx) => {
-                const isVencido = lote.estado === 'vencido';
-                const diasAbs = lote.dias_para_vencer != null ? Math.abs(lote.dias_para_vencer) : 0;
-                const barPct = isVencido ? 100 : Math.max(Math.min(100 - (lote.dias_para_vencer / 90 * 100), 100), 10);
-                return (
-                  <div key={idx} className="flex items-center gap-3 py-2 px-3 rounded-xl border border-gray-100 hover:bg-gray-50/50 transition-colors">
-                    <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${isVencido ? 'bg-red-500' : lote.dias_para_vencer <= 15 ? 'bg-orange-500' : 'bg-amber-400'}`} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-gray-700 truncate" title={`${lote.producto_nombre} - ${lote.numero_lote}`}>
-                        {lote.centro_nombre || 'Centro'} - {lote.producto_nombre}
-                      </p>
-                      <p className="text-[10px] text-gray-400">Lote {lote.numero_lote} · {lote.producto_clave}</p>
-                    </div>
-                    <div className="w-24 flex-shrink-0">
-                      <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-                        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${barPct}%`, backgroundColor: isVencido ? '#EF4444' : lote.dias_para_vencer <= 15 ? '#F97316' : '#F59E0B' }} />
-                      </div>
-                    </div>
-                    <div className="text-right flex-shrink-0 min-w-[90px]">
-                      <span className={`text-[10px] font-bold ${isVencido ? 'text-red-600' : 'text-orange-600'}`}>
-                        {isVencido ? 'CADUCADO' : 'CADUCIDAD'}
-                      </span>
-                      <span className="text-[10px] text-gray-400 ml-1">
-                        {isVencido ? `${diasAbs}d vencido` : `${lote.dias_para_vencer}d`}
-                      </span>
-                    </div>
-                    <span className="text-[10px] text-gray-400 flex-shrink-0 tabular-nums">{lote.cantidad} uds</span>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-              <button
-                onClick={() => navigate('/lotes')}
-                className="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors hover:bg-gray-100 flex items-center gap-1.5"
-                style={{ color: 'var(--color-primary, #9F2241)' }}
-              >
-                <FaBoxes size={10} />
-                Gestionar Lotes
-              </button>
-              <button
-                onClick={() => navigate('/productos')}
-                className="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors hover:bg-gray-100 flex items-center gap-1.5"
-                style={{ color: 'var(--color-primary, #9F2241)' }}
-              >
-                Actualizar stock →
-              </button>
-            </div>
-          </ChartCard>
-        </section>
-      )}
-
-      {/* ========== USO DE REQUISICIONES — DONUT MODERNO ========== */}
-      {puedeVerGraficasCompletas && graficas.requisiciones_por_estado.length > 0 && (
-        <section>
+          {/* Uso de Requisiciones — Donut Moderno */}
           <ChartCard title="Uso de Requisiciones" icon={FaChartBar}>
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
               {/* Donut moderno con glow center */}
@@ -2133,6 +1948,91 @@ const Dashboard = () => {
           </ChartCard>
         </section>
       )}
+
+      {/* ========== CADUCOS QUE REQUIEREN SOLUCIÓN ========== */}
+      {puedeVerGraficasCompletas && analytics?.caducidades?.lotes_criticos?.length > 0 && (
+        <section>
+          <ChartCard title="Caducos que requieren Solución" icon={FaExclamationTriangle}>
+            {/* Progress indicator: Nivel de urgencia */}
+            {(() => {
+              const lc = analytics.caducidades.lotes_criticos;
+              const vencidos = lc.filter(l => l.estado === 'vencido').length;
+              const urgentes = lc.filter(l => l.dias_para_vencer != null && l.dias_para_vencer <= 15 && l.estado !== 'vencido').length;
+              const proximos = lc.length - vencidos - urgentes;
+              const total = lc.length;
+              return (
+                <div className="mb-4 p-3 rounded-xl bg-gray-50/80 border border-gray-100">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Nivel de Urgencia</span>
+                    <span className="text-[10px] font-bold text-gray-600">{total} lotes afectados</span>
+                  </div>
+                  <div className="w-full h-3 rounded-full overflow-hidden flex bg-gray-200">
+                    {vencidos > 0 && <div className="h-full bg-red-500 transition-all duration-700" style={{ width: `${(vencidos / total) * 100}%` }} title={`${vencidos} vencidos`} />}
+                    {urgentes > 0 && <div className="h-full bg-orange-500 transition-all duration-700" style={{ width: `${(urgentes / total) * 100}%` }} title={`${urgentes} urgentes (≤15d)`} />}
+                    {proximos > 0 && <div className="h-full bg-amber-400 transition-all duration-700" style={{ width: `${(proximos / total) * 100}%` }} title={`${proximos} próximos`} />}
+                  </div>
+                  <div className="flex items-center gap-4 mt-1.5">
+                    {vencidos > 0 && <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" /><span className="text-[9px] text-gray-500">{vencidos} vencidos</span></div>}
+                    {urgentes > 0 && <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500" /><span className="text-[9px] text-gray-500">{urgentes} urgentes</span></div>}
+                    {proximos > 0 && <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400" /><span className="text-[9px] text-gray-500">{proximos} próximos</span></div>}
+                  </div>
+                </div>
+              );
+            })()}
+            <div className="space-y-2.5 max-h-[280px] overflow-y-auto custom-scrollbar">
+              {analytics.caducidades.lotes_criticos.map((lote, idx) => {
+                const isVencido = lote.estado === 'vencido';
+                const diasAbs = lote.dias_para_vencer != null ? Math.abs(lote.dias_para_vencer) : 0;
+                const barPct = isVencido ? 100 : Math.max(Math.min(100 - (lote.dias_para_vencer / 90 * 100), 100), 10);
+                return (
+                  <div key={idx} className="flex items-center gap-3 py-2 px-3 rounded-xl border border-gray-100 hover:bg-gray-50/50 transition-colors">
+                    <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${isVencido ? 'bg-red-500' : lote.dias_para_vencer <= 15 ? 'bg-orange-500' : 'bg-amber-400'}`} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-700 truncate" title={`${lote.producto_nombre} - ${lote.numero_lote}`}>
+                        {lote.centro_nombre || 'Centro'} - {lote.producto_nombre}
+                      </p>
+                      <p className="text-[10px] text-gray-400">Lote {lote.numero_lote} · {lote.producto_clave}</p>
+                    </div>
+                    <div className="w-24 flex-shrink-0">
+                      <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${barPct}%`, backgroundColor: isVencido ? '#EF4444' : lote.dias_para_vencer <= 15 ? '#F97316' : '#F59E0B' }} />
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0 min-w-[90px]">
+                      <span className={`text-[10px] font-bold ${isVencido ? 'text-red-600' : 'text-orange-600'}`}>
+                        {isVencido ? 'CADUCADO' : 'CADUCIDAD'}
+                      </span>
+                      <span className="text-[10px] text-gray-400 ml-1">
+                        {isVencido ? `${diasAbs}d vencido` : `${lote.dias_para_vencer}d`}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-gray-400 flex-shrink-0 tabular-nums">{lote.cantidad} uds</span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+              <button
+                onClick={() => navigate('/lotes')}
+                className="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors hover:bg-gray-100 flex items-center gap-1.5"
+                style={{ color: 'var(--color-primary, #9F2241)' }}
+              >
+                <FaBoxes size={10} />
+                Gestionar Lotes
+              </button>
+              <button
+                onClick={() => navigate('/productos')}
+                className="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors hover:bg-gray-100 flex items-center gap-1.5"
+                style={{ color: 'var(--color-primary, #9F2241)' }}
+              >
+                Actualizar stock →
+              </button>
+            </div>
+          </ChartCard>
+        </section>
+      )}
+
+
 
       {/* ========== ANALYTICS AVANZADOS (Solo Farmacia/Admin) ========== */}
       {puedeVerGraficasCompletas && analytics && (
@@ -2436,7 +2336,7 @@ const Dashboard = () => {
             {/* Últimos Logs Críticos — junto a Donaciones (referencia) */}
             {puedeVerGraficasBasicas && permisos?.verMovimientos && movimientos.length > 0 && (
               <ChartCard 
-                title="Últimos Logs Críticos" 
+                title="Últimos Movimientos" 
                 icon={FaExchangeAlt}
                 action={
                   <div className="flex items-center gap-2">
