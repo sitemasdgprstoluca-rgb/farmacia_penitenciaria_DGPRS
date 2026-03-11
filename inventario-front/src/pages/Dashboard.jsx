@@ -1406,140 +1406,180 @@ const Dashboard = () => {
       {/* ========== GRÁFICAS PRINCIPALES ========== */}
       {puedeVerGraficasBasicas && (
         <section className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-          <ChartCard 
-            title="Consumo Mensual (Últimos 6 meses)" 
-            icon={FaChartLine} 
-            expandable
-            action={
-              <div className="flex items-center gap-2">
-                {(() => {
-                  const totalE = graficas.consumo_mensual.reduce((s, m) => s + (m.entradas || 0), 0);
-                  const totalS = graficas.consumo_mensual.reduce((s, m) => s + (m.salidas || 0), 0);
-                  return (
-                    <>
-                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">↓ {totalE.toLocaleString('es-MX')}</span>
-                      <span className="text-[10px] font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded-md">↑ {totalS.toLocaleString('es-MX')}</span>
-                    </>
-                  );
-                })()}
-              </div>
-            }
-          >
-            {graficas.consumo_mensual.length > 0 ? (
-              <>
-                {/* Resumen compacto del período */}
-                {(() => {
-                  const totalEntradas = graficas.consumo_mensual.reduce((s, m) => s + (m.entradas || 0), 0);
-                  const totalSalidas = graficas.consumo_mensual.reduce((s, m) => s + (m.salidas || 0), 0);
-                  const balance = totalEntradas - totalSalidas;
-                  const mesActual = graficas.consumo_mensual[graficas.consumo_mensual.length - 1];
-                  const mesAnterior = graficas.consumo_mensual[graficas.consumo_mensual.length - 2];
-                  const tendencia = mesAnterior?.salidas ? (((mesActual?.salidas || 0) - mesAnterior.salidas) / mesAnterior.salidas * 100).toFixed(0) : 0;
-                  return (
-                    <div className="flex items-center gap-3 mb-3 flex-wrap">
-                      <div className="dash-stat-mini dash-stat-success flex-1 min-w-[100px]">
-                        <div className="flex items-center gap-1 mb-0.5">
-                          <FaArrowDown className="text-emerald-500" size={9} />
-                          <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider">Entradas</span>
+          {/* Consumo Mensual — Premium Layout */}
+          {(() => {
+            const MES_ES = { Jan: 'Ene', Feb: 'Feb', Mar: 'Mar', Apr: 'Abr', May: 'May', Jun: 'Jun', Jul: 'Jul', Aug: 'Ago', Sep: 'Sep', Oct: 'Oct', Nov: 'Nov', Dec: 'Dic' };
+            const mesES = (m) => MES_ES[m] || m;
+            const totalEntradas = graficas.consumo_mensual.reduce((s, m) => s + (m.entradas || 0), 0);
+            const totalSalidas = graficas.consumo_mensual.reduce((s, m) => s + (m.salidas || 0), 0);
+            const balance = totalEntradas - totalSalidas;
+            const mesActual = graficas.consumo_mensual[graficas.consumo_mensual.length - 1];
+            const mesAnterior = graficas.consumo_mensual[graficas.consumo_mensual.length - 2];
+            const trendEntradas = mesAnterior?.entradas ? ((mesActual?.entradas || 0) - mesAnterior.entradas) : 0;
+            const trendSalidas = mesAnterior?.salidas ? ((mesActual?.salidas || 0) - mesAnterior.salidas) : 0;
+
+            return (
+              <ChartCard 
+                title="Consumo Mensual (Últimos 6 meses)" 
+                icon={FaChartLine} 
+                expandable
+                action={
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">+ {totalEntradas.toLocaleString('es-MX')}</span>
+                    <span className="text-[10px] font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded-md">+ {totalSalidas.toLocaleString('es-MX')}</span>
+                  </div>
+                }
+              >
+                {graficas.consumo_mensual.length > 0 ? (
+                  <>
+                    {/* KPI Cards — Grandes y espaciosos */}
+                    <div className="grid grid-cols-3 gap-3 mb-6">
+                      <div className="rounded-xl border-2 border-emerald-100 bg-gradient-to-br from-emerald-50/80 to-white p-4">
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <FaArrowDown className="text-emerald-500" size={10} />
+                          <span className="text-[10px] font-extrabold text-emerald-600 uppercase tracking-wider">Entradas</span>
                         </div>
-                        <p className="text-lg font-black text-emerald-700 tabular-nums">{totalEntradas.toLocaleString('es-MX')}</p>
+                        <div className="flex items-baseline justify-between">
+                          <p className="text-2xl font-black text-gray-900 tabular-nums">{totalEntradas.toLocaleString('es-MX')}</p>
+                          {trendEntradas !== 0 && (
+                            <span className={`text-[10px] font-bold tabular-nums ${trendEntradas > 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                              {trendEntradas > 0 ? '+' : ''}{trendEntradas.toLocaleString('es-MX')}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div className="dash-stat-mini dash-stat-danger flex-1 min-w-[100px]">
-                        <div className="flex items-center gap-1 mb-0.5">
-                          <FaArrowUp className="text-red-500" size={9} />
-                          <span className="text-[9px] font-bold text-red-600 uppercase tracking-wider">Salidas</span>
+                      <div className="rounded-xl border-2 border-red-100 bg-gradient-to-br from-red-50/80 to-white p-4">
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <FaArrowUp className="text-red-500" size={10} />
+                          <span className="text-[10px] font-extrabold text-red-600 uppercase tracking-wider">Salidas</span>
                         </div>
-                        <p className="text-lg font-black text-red-700 tabular-nums">{totalSalidas.toLocaleString('es-MX')}</p>
+                        <div className="flex items-baseline justify-between">
+                          <p className="text-2xl font-black text-gray-900 tabular-nums">{totalSalidas.toLocaleString('es-MX')}</p>
+                          {trendSalidas !== 0 && (
+                            <span className={`text-[10px] font-bold tabular-nums ${trendSalidas > 0 ? 'text-red-500' : 'text-emerald-500'}`}>
+                              {trendSalidas > 0 ? '+' : ''}{trendSalidas.toLocaleString('es-MX')}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div className={`dash-stat-mini ${balance >= 0 ? 'dash-stat-info' : 'dash-stat-warning'} flex-1 min-w-[100px]`}>
-                        <div className="flex items-center gap-1 mb-0.5">
-                          <FaChartBar className={balance >= 0 ? 'text-blue-500' : 'text-amber-500'} size={9} />
-                          <span className={`text-[9px] font-bold uppercase tracking-wider ${balance >= 0 ? 'text-blue-600' : 'text-amber-600'}`}>Balance</span>
+                      <div className={`rounded-xl border-2 p-4 ${balance >= 0 ? 'border-blue-100 bg-gradient-to-br from-blue-50/80 to-white' : 'border-amber-100 bg-gradient-to-br from-amber-50/80 to-white'}`}>
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <FaChartBar className={balance >= 0 ? 'text-blue-500' : 'text-amber-500'} size={10} />
+                          <span className={`text-[10px] font-extrabold uppercase tracking-wider ${balance >= 0 ? 'text-blue-600' : 'text-amber-600'}`}>Balance</span>
                         </div>
-                        <p className={`text-lg font-black tabular-nums ${balance >= 0 ? 'text-blue-700' : 'text-amber-700'}`}>
+                        <p className={`text-2xl font-black tabular-nums ${balance >= 0 ? 'text-gray-900' : 'text-amber-700'}`}>
                           {balance >= 0 ? '+' : ''}{balance.toLocaleString('es-MX')}
                         </p>
                       </div>
                     </div>
-                  );
-                })()}
-                {/* Gráfica Multi-línea de consumo por producto */}
-                {(() => {
-                  const consumoProd = graficas.consumo_por_producto || [];
-                  const PROD_COLORS = ['#932043', '#0EA5E9', '#10B981', '#F59E0B', '#8B5CF6'];
-                  if (consumoProd.length > 0) {
-                    const meses = graficas.consumo_mensual.map(m => m.mes);
-                    const multiLineData = meses.map((mes, i) => {
-                      const row = { mes };
-                      consumoProd.forEach(p => { row[p.nombre] = p.data?.[i] || 0; });
-                      return row;
-                    });
-                    return (
-                      <>
-                        <ResponsiveContainer width="100%" height={280} minWidth={0} minHeight={0}>
-                          <LineChart data={multiLineData} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
-                            <XAxis dataKey="mes" tick={{ fill: '#9CA3AF', fontSize: 11, fontWeight: 500 }} axisLine={false} tickLine={false} />
-                            <YAxis tick={{ fill: '#9CA3AF', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} />
-                            <Tooltip content={<CustomTooltip />} />
-                            {consumoProd.map((prod, idx) => (
-                              <Line
-                                key={prod.clave}
-                                type="monotone"
-                                dataKey={prod.nombre}
-                                stroke={PROD_COLORS[idx % PROD_COLORS.length]}
-                                strokeWidth={2.5}
-                                dot={{ fill: PROD_COLORS[idx % PROD_COLORS.length], strokeWidth: 2, r: 3.5, stroke: '#fff' }}
-                                activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2, fill: PROD_COLORS[idx % PROD_COLORS.length] }}
-                                name={prod.nombre}
-                              />
+                    {/* Gráfica Multi-línea de consumo por producto */}
+                    {(() => {
+                      const consumoProd = graficas.consumo_por_producto || [];
+                      const PROD_COLORS = ['#932043', '#0EA5E9', '#10B981', '#F59E0B', '#8B5CF6'];
+                      
+                      // Tooltip que solo muestra líneas con valor > 0
+                      const ConsumoTooltip = ({ active, payload, label }) => {
+                        if (!active || !payload?.length) return null;
+                        const withData = payload.filter(p => p.value > 0);
+                        if (withData.length === 0) return null;
+                        return (
+                          <div className="rounded-xl shadow-2xl border bg-white/98 p-3.5 min-w-[160px]" style={{ backdropFilter: 'blur(8px)', borderColor: 'rgba(147, 32, 67, 0.1)' }}>
+                            <p className="text-sm font-extrabold text-gray-800 mb-2 pb-1.5 border-b border-gray-100">{mesES(label) || label}</p>
+                            {withData.map((entry, index) => (
+                              <div key={index} className="flex items-center justify-between gap-4 py-0.5">
+                                <span className="flex items-center gap-2 text-xs text-gray-600">
+                                  <span className="w-2.5 h-2.5 rounded-full shadow-sm" style={{ backgroundColor: entry.color }} />
+                                  {entry.name}
+                                </span>
+                                <span className="text-xs font-black text-gray-900 tabular-nums">{entry.value?.toLocaleString('es-MX')}</span>
+                              </div>
                             ))}
-                          </LineChart>
-                        </ResponsiveContainer>
-                        <div className="flex flex-wrap justify-center gap-3 mt-2">
-                          {consumoProd.map((prod, idx) => (
-                            <div key={prod.clave} className="flex items-center gap-1.5">
-                              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: PROD_COLORS[idx % PROD_COLORS.length] }} />
-                              <span className="text-[10px] font-medium text-gray-500">{prod.nombre}</span>
+                          </div>
+                        );
+                      };
+                      
+                      if (consumoProd.length > 0) {
+                        const meses = graficas.consumo_mensual.map(m => m.mes);
+                        const multiLineData = meses.map((mes, i) => {
+                          const row = { mes };
+                          consumoProd.forEach(p => { row[p.nombre] = p.data?.[i] || 0; });
+                          return row;
+                        });
+                        return (
+                          <>
+                            <ResponsiveContainer width="100%" height={320} minWidth={0} minHeight={0}>
+                              <LineChart data={multiLineData} margin={{ top: 5, right: 15, left: -5, bottom: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
+                                <XAxis 
+                                  dataKey="mes" 
+                                  tickFormatter={mesES}
+                                  tick={{ fill: '#6B7280', fontSize: 12, fontWeight: 600 }} 
+                                  axisLine={false} 
+                                  tickLine={false} 
+                                />
+                                <YAxis tick={{ fill: '#9CA3AF', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} />
+                                <Tooltip content={<ConsumoTooltip />} />
+                                {consumoProd.map((prod, idx) => (
+                                  <Line
+                                    key={prod.clave}
+                                    type="monotone"
+                                    dataKey={prod.nombre}
+                                    stroke={PROD_COLORS[idx % PROD_COLORS.length]}
+                                    strokeWidth={2.5}
+                                    dot={{ fill: PROD_COLORS[idx % PROD_COLORS.length], strokeWidth: 2, r: 4, stroke: '#fff' }}
+                                    activeDot={{ r: 7, stroke: '#fff', strokeWidth: 2.5, fill: PROD_COLORS[idx % PROD_COLORS.length] }}
+                                    name={prod.nombre}
+                                    connectNulls
+                                  />
+                                ))}
+                              </LineChart>
+                            </ResponsiveContainer>
+                            <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 mt-3 pt-3 border-t border-gray-100">
+                              {consumoProd.map((prod, idx) => (
+                                <div key={prod.clave} className="flex items-center gap-1.5">
+                                  <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: PROD_COLORS[idx % PROD_COLORS.length] }} />
+                                  <span className="text-[11px] font-semibold text-gray-600 uppercase tracking-wide">{prod.nombre}</span>
+                                </div>
+                              ))}
                             </div>
-                          ))}
-                        </div>
-                      </>
-                    );
-                  }
-                  // Fallback: Entradas/Salidas AreaChart
-                  return (
-                    <ResponsiveContainer width="100%" height={280} minWidth={0} minHeight={0}>
-                      <AreaChart data={graficas.consumo_mensual}>
-                        <defs>
-                          <linearGradient id="colorEntradas" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#10B981" stopOpacity={0.25}/>
-                            <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
-                          </linearGradient>
-                          <linearGradient id="colorSalidas" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#EF4444" stopOpacity={0.25}/>
-                            <stop offset="95%" stopColor="#EF4444" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
-                        <XAxis dataKey="mes" tick={{ fill: '#9CA3AF', fontSize: 11, fontWeight: 500 }} axisLine={false} tickLine={false} />
-                        <YAxis tick={{ fill: '#9CA3AF', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} />
-                        <Tooltip content={<CustomTooltip />} />
-                        <Legend iconType="circle" wrapperStyle={{ paddingTop: '12px', fontSize: '12px' }} />
-                        <Area type="monotone" dataKey="entradas" stroke="#10B981" strokeWidth={2.5} fill="url(#colorEntradas)" name="Entradas" dot={{ fill: '#10B981', strokeWidth: 2, r: 3.5, stroke: '#fff' }} activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2, fill: '#10B981' }} />
-                        <Area type="monotone" dataKey="salidas" stroke="#EF4444" strokeWidth={2.5} fill="url(#colorSalidas)" name="Salidas" dot={{ fill: '#EF4444', strokeWidth: 2, r: 3.5, stroke: '#fff' }} activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2, fill: '#EF4444' }} />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  );
-                })()}
-              </>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-64 text-gray-400">
-                <FaChartLine className="text-4xl mb-3 opacity-50" />
-                <p>No hay datos de consumo disponibles</p>
-              </div>
-            )}
-          </ChartCard>
+                          </>
+                        );
+                      }
+                      // Fallback: Entradas/Salidas AreaChart
+                      return (
+                        <ResponsiveContainer width="100%" height={320} minWidth={0} minHeight={0}>
+                          <AreaChart data={graficas.consumo_mensual}>
+                            <defs>
+                              <linearGradient id="colorEntradas" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#10B981" stopOpacity={0.25}/>
+                                <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
+                              </linearGradient>
+                              <linearGradient id="colorSalidas" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#EF4444" stopOpacity={0.25}/>
+                                <stop offset="95%" stopColor="#EF4444" stopOpacity={0}/>
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
+                            <XAxis dataKey="mes" tickFormatter={mesES} tick={{ fill: '#6B7280', fontSize: 12, fontWeight: 600 }} axisLine={false} tickLine={false} />
+                            <YAxis tick={{ fill: '#9CA3AF', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} />
+                            <Tooltip content={<ConsumoTooltip />} />
+                            <Legend iconType="circle" wrapperStyle={{ paddingTop: '12px', fontSize: '12px' }} />
+                            <Area type="monotone" dataKey="entradas" stroke="#10B981" strokeWidth={2.5} fill="url(#colorEntradas)" name="Entradas" dot={{ fill: '#10B981', strokeWidth: 2, r: 4, stroke: '#fff' }} activeDot={{ r: 7, stroke: '#fff', strokeWidth: 2.5, fill: '#10B981' }} />
+                            <Area type="monotone" dataKey="salidas" stroke="#EF4444" strokeWidth={2.5} fill="url(#colorSalidas)" name="Salidas" dot={{ fill: '#EF4444', strokeWidth: 2, r: 4, stroke: '#fff' }} activeDot={{ r: 7, stroke: '#fff', strokeWidth: 2.5, fill: '#EF4444' }} />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      );
+                    })()}
+                  </>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+                    <FaChartLine className="text-4xl mb-3 opacity-50" />
+                    <p>No hay datos de consumo disponibles</p>
+                  </div>
+                )}
+              </ChartCard>
+            );
+          })()}
 
           {/* Stock por Centro / por Producto — Lista rankeada */}
           {(() => {
