@@ -1289,7 +1289,7 @@ const Dashboard = () => {
             ))}
         </div>
 
-        {/* Fila de Alertas del Sistema - Estilo referencia */}
+        {/* Fila de Alertas del Sistema - KPI Cards con animaciones completas */}
         {puedeVerGraficasCompletas && analytics && (
           <>
             <div className="flex items-center gap-2 mt-4 sm:mt-5 mb-3">
@@ -1303,102 +1303,50 @@ const Dashboard = () => {
               <div className="h-px flex-1 bg-gradient-to-r from-gray-200 to-transparent" />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-              {/* Alert KPI con micro-radials */}
-              <div className="dash-alert-kpi-card">
-                <div className="flex items-center justify-between gap-3 p-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #DC2626, #991B1B)' }}>
-                        <FaBox className="text-white text-[10px]" />
-                      </div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-red-600">Alertas Inventario</span>
-                    </div>
-                    <p className="text-2xl font-black text-gray-900">{(analytics.caducidades?.vencidos || 0) + (analytics.caducidades?.vencen_30_dias || 0) + (analytics.caducidades?.vencen_15_dias || 0)}</p>
-                    <p className="text-[9px] text-gray-400">Notificaciones activas</p>
-                    <div className="flex items-center gap-1 mt-1">
-                      <span className="text-[9px] text-gray-400">Preventivas:</span>
-                      <span className="text-[10px] font-bold text-red-600">{analytics.caducidades?.vencen_90_dias || 0}</span>
-                    </div>
-                  </div>
-                  <MicroRadial 
-                    value={(analytics.caducidades?.vencidos || 0) + (analytics.caducidades?.vencen_30_dias || 0) + (analytics.caducidades?.vencen_15_dias || 0)}
-                    max={Math.max((analytics.caducidades?.vencidos || 0) + (analytics.caducidades?.vencen_30_dias || 0) + (analytics.caducidades?.vencen_15_dias || 0) + (analytics.caducidades?.vencen_90_dias || 0), 1)}
-                    color="#DC2626"
-                  />
-                </div>
-              </div>
-
-              <div className="dash-alert-kpi-card">
-                <div className="flex items-center justify-between gap-3 p-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #9F663E, #7A4E2F)' }}>
-                        <FaWarehouse className="text-white text-[10px]" />
-                      </div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Alertas Lotes</span>
-                    </div>
-                    <p className="text-2xl font-black text-gray-900">{(analytics.caducidades?.vencen_15_dias || 0) + (analytics.caducidades?.vencen_30_dias || 0)}</p>
-                    <p className="text-[9px] text-gray-400">Lotes cercanos a vencer</p>
-                    <div className="flex items-center gap-1 mt-1">
-                      <span className="text-[9px] text-gray-400">En 15d:</span>
-                      <span className="text-[10px] font-bold text-amber-700">{analytics.caducidades?.vencen_15_dias || 0}</span>
-                    </div>
-                  </div>
-                  <MicroRadial 
-                    value={(analytics.caducidades?.vencen_15_dias || 0) + (analytics.caducidades?.vencen_30_dias || 0)}
-                    max={Math.max(kpis.lotes_activos || 1, 1)}
-                    color="#9F663E"
-                  />
-                </div>
-              </div>
-
-              <div className="dash-alert-kpi-card">
-                <div className="flex items-center justify-between gap-3 p-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #DC2626, #991B1B)' }}>
-                        <FaExclamationTriangle className="text-white text-[10px]" />
-                      </div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-red-600">Alertas Caducidad</span>
-                    </div>
-                    <p className="text-2xl font-black text-gray-900">{analytics.caducidades?.vencidos || 0}</p>
-                    <p className="text-[9px] text-gray-400">Productos vencidos</p>
-                    <div className="flex items-center gap-1 mt-1">
-                      <span className="text-[9px] text-gray-400">Vencen 30d:</span>
-                      <span className="text-[10px] font-bold text-red-600">{analytics.caducidades?.vencen_30_dias || 0}</span>
-                    </div>
-                  </div>
-                  <MicroRadial 
-                    value={analytics.caducidades?.vencidos || 0}
-                    max={Math.max((analytics.caducidades?.vencidos || 0) + (analytics.caducidades?.vencen_30_dias || 0), 1)}
-                    color="#DC2626"
-                  />
-                </div>
-              </div>
-
-              <div className="dash-alert-kpi-card">
-                <div className="flex items-center justify-between gap-3 p-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #1E40AF, #1E3A5F)' }}>
-                        <FaHandHoldingHeart className="text-white text-[10px]" />
-                      </div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700">Donaciones</span>
-                    </div>
-                    <p className="text-2xl font-black text-gray-900">{analytics.donaciones?.donaciones_mes || 0}</p>
-                    <p className="text-[9px] text-gray-400">Recibidas este mes</p>
-                    <div className="flex items-center gap-1 mt-1">
-                      <span className="text-[9px] text-gray-400">Total:</span>
-                      <span className="text-[10px] font-bold text-blue-700">{analytics.donaciones?.total_donaciones || 0}</span>
-                    </div>
-                  </div>
-                  <MicroRadial 
-                    value={analytics.donaciones?.donaciones_mes || 0}
-                    max={Math.max(analytics.donaciones?.total_donaciones || 1, 1)}
-                    color="#1E40AF"
-                  />
-                </div>
-              </div>
+              <KPICard
+                title="Alertas Inventario"
+                value={(analytics.caducidades?.vencidos || 0) + (analytics.caducidades?.vencen_30_dias || 0) + (analytics.caducidades?.vencen_15_dias || 0)}
+                subtext="Notificaciones activas"
+                icon={FaBox}
+                colorType="danger"
+                delay={50}
+                loading={refreshing}
+                secondaryLabel="Preventivas:"
+                secondaryValue={String(analytics.caducidades?.vencen_90_dias || 0)}
+              />
+              <KPICard
+                title="Alertas Lotes"
+                value={(analytics.caducidades?.vencen_15_dias || 0) + (analytics.caducidades?.vencen_30_dias || 0)}
+                subtext="Lotes cercanos a vencer"
+                icon={FaWarehouse}
+                colorType="warning"
+                delay={100}
+                loading={refreshing}
+                secondaryLabel="En 15d:"
+                secondaryValue={String(analytics.caducidades?.vencen_15_dias || 0)}
+              />
+              <KPICard
+                title="Alertas Caducidad"
+                value={analytics.caducidades?.vencidos || 0}
+                subtext="Productos vencidos"
+                icon={FaExclamationTriangle}
+                colorType="danger"
+                delay={150}
+                loading={refreshing}
+                secondaryLabel="Vencen 30d:"
+                secondaryValue={String(analytics.caducidades?.vencen_30_dias || 0)}
+              />
+              <KPICard
+                title="Donaciones"
+                value={analytics.donaciones?.donaciones_mes || 0}
+                subtext="Recibidas este mes"
+                icon={FaHandHoldingHeart}
+                colorType="info"
+                delay={200}
+                loading={refreshing}
+                secondaryLabel="Total:"
+                secondaryValue={String(analytics.donaciones?.total_donaciones || 0)}
+              />
             </div>
           </>
         )}
