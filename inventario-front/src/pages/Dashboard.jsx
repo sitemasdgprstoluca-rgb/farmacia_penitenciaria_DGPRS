@@ -45,6 +45,7 @@ import {
   FaUserTie,
   FaHandHoldingHeart,
   FaExclamationCircle,
+  FaCheckCircle,
 } from 'react-icons/fa';
 import { 
   AreaChart, Area, PieChart, Pie, Cell,
@@ -1513,7 +1514,15 @@ const Dashboard = () => {
                         return (
                           <>
                             <ResponsiveContainer width="100%" height={320} minWidth={0} minHeight={0}>
-                              <LineChart data={multiLineData} margin={{ top: 5, right: 15, left: -5, bottom: 0 }}>
+                              <AreaChart data={multiLineData} margin={{ top: 5, right: 15, left: -5, bottom: 0 }}>
+                                <defs>
+                                  {consumoProd.map((prod, idx) => (
+                                    <linearGradient key={`cg-${idx}`} id={`consumoGrad${idx}`} x1="0" y1="0" x2="0" y2="1">
+                                      <stop offset="5%" stopColor={PROD_COLORS[idx % PROD_COLORS.length]} stopOpacity={0.18} />
+                                      <stop offset="95%" stopColor={PROD_COLORS[idx % PROD_COLORS.length]} stopOpacity={0} />
+                                    </linearGradient>
+                                  ))}
+                                </defs>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
                                 <XAxis 
                                   dataKey="mes" 
@@ -1528,19 +1537,20 @@ const Dashboard = () => {
                                   cursor={{ stroke: '#D1D5DB', strokeWidth: 1, strokeDasharray: '4 4' }}
                                 />
                                 {consumoProd.map((prod, idx) => (
-                                  <Line
+                                  <Area
                                     key={prod.clave}
                                     type="natural"
                                     dataKey={prod.nombre}
                                     stroke={PROD_COLORS[idx % PROD_COLORS.length]}
                                     strokeWidth={2.5}
+                                    fill={`url(#consumoGrad${idx})`}
                                     dot={{ fill: PROD_COLORS[idx % PROD_COLORS.length], strokeWidth: 2, r: 4, stroke: '#fff' }}
                                     activeDot={{ r: 7, stroke: '#fff', strokeWidth: 2.5, fill: PROD_COLORS[idx % PROD_COLORS.length] }}
                                     name={prod.nombre}
                                     connectNulls
                                   />
                                 ))}
-                              </LineChart>
+                              </AreaChart>
                             </ResponsiveContainer>
                             <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 mt-3 pt-3 border-t border-gray-100">
                               {consumoProd.map((prod, idx) => (
@@ -1859,135 +1869,185 @@ const Dashboard = () => {
             )}
           </ChartCard>
 
-          {/* Uso de Requisiciones — Donut Moderno */}
+          {/* Uso de Requisiciones — Premium Donut Dashboard */}
           <ChartCard title="Uso de Requisiciones" icon={FaChartBar}>
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
-              {/* Donut moderno con glow center */}
-              <div className="lg:col-span-2 flex flex-col items-center">
-                <div className="relative dash-donut-container" style={{ width: 200, height: 200 }}>
-                  <ResponsiveContainer width={200} height={200} minWidth={0} minHeight={0}>
-                    <PieChart>
-                      <Pie
-                        data={graficas.requisiciones_por_estado}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={55}
-                        outerRadius={88}
-                        paddingAngle={2}
-                        dataKey="cantidad"
-                        cornerRadius={4}
-                        animationBegin={0}
-                        animationDuration={1200}
-                        animationEasing="ease-out"
-                      >
-                        {graficas.requisiciones_por_estado.map((entry, index) => (
-                          <Cell 
-                            key={`usecell-${index}`} 
-                            fill={COLORES_ESTADO_REQUISICION[entry.estado] || COLORES_ESTADO_REQUISICION.DEFAULT}
-                            stroke="#fff"
-                            strokeWidth={2}
+            {(() => {
+              const completadas = graficas.requisiciones_resumen?.completadas || 0;
+              const enProceso = graficas.requisiciones_resumen?.en_proceso || 0;
+              const rechazadas = graficas.requisiciones_resumen?.rechazadas || 0;
+              const pctComp = totalRequisiciones > 0 ? Math.round((completadas / totalRequisiciones) * 100) : 0;
+              const pctProc = totalRequisiciones > 0 ? Math.round((enProceso / totalRequisiciones) * 100) : 0;
+              const pctRech = totalRequisiciones > 0 ? Math.round((rechazadas / totalRequisiciones) * 100) : 0;
+              
+              return (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+                  {/* Donut premium — grande con profundidad */}
+                  <div className="flex justify-center">
+                    <div className="relative dash-donut-container" style={{ width: 260, height: 260 }}>
+                      <ResponsiveContainer width={260} height={260} minWidth={0} minHeight={0}>
+                        <PieChart>
+                          <defs>
+                            {graficas.requisiciones_por_estado.map((entry, index) => {
+                              const color = COLORES_ESTADO_REQUISICION[entry.estado] || COLORES_ESTADO_REQUISICION.DEFAULT;
+                              return (
+                                <linearGradient key={`reqGrad-${index}`} id={`reqGrad${index}`} x1="0" y1="0" x2="1" y2="1">
+                                  <stop offset="0%" stopColor={color} stopOpacity={1} />
+                                  <stop offset="100%" stopColor={color} stopOpacity={0.7} />
+                                </linearGradient>
+                              );
+                            })}
+                            <filter id="donutShadow">
+                              <feDropShadow dx="0" dy="2" stdDeviation="4" floodColor="#00000018" />
+                            </filter>
+                          </defs>
+                          <Pie
+                            data={graficas.requisiciones_por_estado}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={70}
+                            outerRadius={115}
+                            paddingAngle={3}
+                            dataKey="cantidad"
+                            cornerRadius={6}
+                            animationBegin={0}
+                            animationDuration={1400}
+                            animationEasing="ease-out"
+                            style={{ filter: 'url(#donutShadow)' }}
+                          >
+                            {graficas.requisiciones_por_estado.map((entry, index) => (
+                              <Cell 
+                                key={`usecell-${index}`} 
+                                fill={`url(#reqGrad${index})`}
+                                stroke="#fff"
+                                strokeWidth={3}
+                              />
+                            ))}
+                          </Pie>
+                          <Tooltip 
+                            content={({ active, payload }) => {
+                              if (!active || !payload?.length) return null;
+                              const data = payload[0].payload;
+                              const color = COLORES_ESTADO_REQUISICION[data.estado] || COLORES_ESTADO_REQUISICION.DEFAULT;
+                              return (
+                                <div className="bg-white rounded-xl shadow-2xl border border-gray-100 p-3.5 min-w-[140px]">
+                                  <div className="flex items-center gap-2 mb-1.5">
+                                    <span className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
+                                    <span className="font-bold text-gray-800 text-xs">{formatearEstado(data.estado)}</span>
+                                  </div>
+                                  <p className="text-2xl font-black text-gray-900">{data.cantidad} <span className="text-xs font-normal text-gray-400">/ {totalRequisiciones}</span></p>
+                                  <p className="text-[11px] text-gray-400 font-medium">{totalRequisiciones > 0 ? ((data.cantidad / totalRequisiciones) * 100).toFixed(1) : 0}%</p>
+                                </div>
+                              );
+                            }}
                           />
-                        ))}
-                      </Pie>
-                      <Tooltip 
-                        content={({ active, payload }) => {
-                          if (!active || !payload?.length) return null;
-                          const data = payload[0].payload;
-                          const color = COLORES_ESTADO_REQUISICION[data.estado] || COLORES_ESTADO_REQUISICION.DEFAULT;
-                          return (
-                            <div className="bg-white rounded-lg shadow-xl border border-gray-200 p-3 min-w-[130px]">
-                              <div className="flex items-center gap-1.5 mb-1">
-                                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
-                                <span className="font-bold text-gray-800 text-xs">{formatearEstado(data.estado)}</span>
-                              </div>
-                              <p className="text-lg font-black text-gray-900">{data.cantidad} <span className="text-[10px] font-normal text-gray-400">/ {totalRequisiciones}</span></p>
-                              <p className="text-[10px] text-gray-400">{totalRequisiciones > 0 ? ((data.cantidad / totalRequisiciones) * 100).toFixed(1) : 0}%</p>
-                            </div>
-                          );
-                        }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="text-center dash-donut-center">
-                      <p className="text-3xl font-black text-gray-900 leading-none">{totalRequisiciones}</p>
-                      <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider mt-0.5">Total</p>
-                    </div>
-                  </div>
-                </div>
-                {/* Cumplimiento ring below donut */}
-                {graficas.requisiciones_resumen?.tasa_cumplimiento != null && (
-                  <div className="flex items-center gap-3 mt-3 px-4 py-2 rounded-xl bg-gray-50 border border-gray-100">
-                    <MicroRadial 
-                      value={graficas.requisiciones_resumen.tasa_cumplimiento} 
-                      max={100} 
-                      color="#10B981" 
-                      size={40}
-                    />
-                    <div>
-                      <p className="text-sm font-black text-emerald-700">{graficas.requisiciones_resumen.tasa_cumplimiento}%</p>
-                      <p className="text-[9px] text-gray-400 font-semibold">Tasa de Cumplimiento</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Stats + leyenda modernizados */}
-              <div className="lg:col-span-3">
-                {/* Mini stat cards */}
-                <div className="grid grid-cols-3 gap-2 mb-4">
-                  {(() => {
-                    const completadas = graficas.requisiciones_resumen?.completadas || 0;
-                    const enProceso = graficas.requisiciones_resumen?.en_proceso || 0;
-                    const rechazadas = graficas.requisiciones_resumen?.rechazadas || 0;
-                    return (
-                      <>
-                        <div className="dash-stat-mini dash-stat-success text-center">
-                          <p className="text-xl font-black text-emerald-700">{completadas}</p>
-                          <p className="text-[9px] text-emerald-600 font-bold uppercase tracking-wider">Completadas</p>
-                        </div>
-                        <div className="dash-stat-mini dash-stat-warning text-center">
-                          <p className="text-xl font-black text-amber-700">{enProceso}</p>
-                          <p className="text-[9px] text-amber-600 font-bold uppercase tracking-wider">En Proceso</p>
-                        </div>
-                        <div className="dash-stat-mini dash-stat-danger text-center">
-                          <p className="text-xl font-black text-red-600">{rechazadas}</p>
-                          <p className="text-[9px] text-red-600 font-bold uppercase tracking-wider">Rechazadas</p>
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
-
-                {/* Leyenda con barras de progreso */}
-                <div className="space-y-2">
-                  {graficas.requisiciones_por_estado.map((item) => {
-                    const color = COLORES_ESTADO_REQUISICION[item.estado] || COLORES_ESTADO_REQUISICION.DEFAULT;
-                    const pct = totalRequisiciones > 0 ? ((item.cantidad / totalRequisiciones) * 100) : 0;
-                    return (
-                      <div key={item.estado} className="group">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <span className="w-2 h-2 rounded-full flex-shrink-0 transition-transform group-hover:scale-125" style={{ backgroundColor: color }} />
-                          <span className="text-[11px] font-medium text-gray-600 flex-1">{formatearEstado(item.estado)}</span>
-                          <span className="text-[11px] font-black text-gray-800 tabular-nums">{item.cantidad}</span>
-                          <span className="text-[9px] text-gray-400 tabular-nums w-10 text-right">{pct.toFixed(0)}%</span>
-                        </div>
-                        <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden ml-4" style={{ width: 'calc(100% - 16px)' }}>
-                          <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.max(pct, 1)}%`, backgroundColor: color }} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <div className="text-center dash-donut-center">
+                          <p className="text-5xl font-black text-gray-900 leading-none tracking-tight">{totalRequisiciones}</p>
+                          <p className="text-[11px] text-gray-400 font-bold uppercase tracking-widest mt-1">Total</p>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-                {graficas.requisiciones_resumen?.dias_promedio_cumplimiento != null && (
-                  <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2">
-                    <FaClock size={10} className="text-blue-500" />
-                    <span className="text-[10px] font-medium text-gray-500">Tiempo promedio de cumplimiento:</span>
-                    <span className="text-sm font-black text-blue-700">{graficas.requisiciones_resumen.dias_promedio_cumplimiento} días</span>
+                    </div>
                   </div>
-                )}
-              </div>
-            </div>
+
+                  {/* Lado derecho — badges + barras de progreso */}
+                  <div className="space-y-5">
+                    {/* Badge strip conectado */}
+                    <div className="grid grid-cols-3 gap-0 rounded-xl overflow-hidden border border-gray-100 shadow-sm">
+                      <div className="text-center py-3 px-2" style={{ background: 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)' }}>
+                        <p className="text-2xl font-black text-emerald-700 leading-none">{completadas}</p>
+                        <p className="text-[9px] text-emerald-600 font-extrabold uppercase tracking-wider mt-1">Completadas</p>
+                      </div>
+                      <div className="text-center py-3 px-2" style={{ background: 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)' }}>
+                        <p className="text-2xl font-black text-amber-700 leading-none">{enProceso}</p>
+                        <p className="text-[9px] text-amber-600 font-extrabold uppercase tracking-wider mt-1">En Proceso</p>
+                      </div>
+                      <div className="text-center py-3 px-2" style={{ background: 'linear-gradient(135deg, #FEF2F2 0%, #FECACA 100%)' }}>
+                        <p className="text-2xl font-black text-red-600 leading-none">{rechazadas}</p>
+                        <p className="text-[9px] text-red-600 font-extrabold uppercase tracking-wider mt-1">Rechazadas</p>
+                      </div>
+                    </div>
+
+                    {/* Barras de progreso premium */}
+                    <div className="space-y-4">
+                      {/* Completadas */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center">
+                              <FaCheckCircle size={11} className="text-emerald-600" />
+                            </span>
+                            <span className="text-sm font-semibold text-gray-700">Completadas</span>
+                          </div>
+                          <span className="text-lg font-black text-gray-900 tabular-nums">{pctComp}%</span>
+                        </div>
+                        <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                          <div className="h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${Math.max(pctComp, 1)}%`, background: 'linear-gradient(90deg, #10B981 0%, #34D399 50%, #6EE7B7 100%)' }} />
+                        </div>
+                      </div>
+
+                      {/* En Proceso */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center">
+                              <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                            </span>
+                            <span className="text-sm font-semibold text-gray-700">En Proceso</span>
+                          </div>
+                          <span className="text-lg font-black text-gray-900 tabular-nums">{pctProc}%</span>
+                        </div>
+                        <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                          <div className="h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${Math.max(pctProc, 1)}%`, background: 'linear-gradient(90deg, #F59E0B 0%, #FBBF24 50%, #FCD34D 100%)' }} />
+                        </div>
+                      </div>
+
+                      {/* Rechazadas */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center">
+                              <span className="w-2.5 h-2.5 rounded-full bg-red-600" />
+                            </span>
+                            <span className="text-sm font-semibold text-gray-700">Rechazadas</span>
+                          </div>
+                          <span className="text-lg font-black text-gray-900 tabular-nums">{pctRech}%</span>
+                        </div>
+                        <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                          <div className="h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${Math.max(pctRech, 1)}%`, background: 'linear-gradient(90deg, #DC2626 0%, #EF4444 50%, #FCA5A5 100%)' }} />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Footer: Cumplimiento + Tiempo promedio */}
+                    <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                      {graficas.requisiciones_resumen?.tasa_cumplimiento != null && (
+                        <div className="flex items-center gap-3">
+                          <MicroRadial 
+                            value={graficas.requisiciones_resumen.tasa_cumplimiento} 
+                            max={100} 
+                            color="#10B981" 
+                            size={48}
+                          />
+                          <div>
+                            <p className="text-lg font-black text-emerald-700">{graficas.requisiciones_resumen.tasa_cumplimiento}%</p>
+                            <p className="text-[10px] text-gray-400 font-semibold">Tasa de Cumplimiento</p>
+                          </div>
+                        </div>
+                      )}
+                      {graficas.requisiciones_resumen?.dias_promedio_cumplimiento != null && (
+                        <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-50 border border-blue-100">
+                          <FaClock size={12} className="text-blue-500" />
+                          <span className="text-[11px] font-medium text-gray-500">Tiempo promedio de cumplimiento:</span>
+                          <span className="text-base font-black text-blue-700">{graficas.requisiciones_resumen.dias_promedio_cumplimiento} días</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </ChartCard>
         </section>
       )}
