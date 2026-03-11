@@ -615,7 +615,7 @@ const Centros = () => {
                   {puedeEditar && (
                     <button onClick={() => handleEdit(centro)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"><FaEdit size={18} /></button>
                   )}
-                  {puedeToggle && (
+                  {puedeEditar && (
                     <button onClick={() => handleToggleActivo(centro)} className={`p-2 rounded-lg ${centro.activo ? 'text-green-600 hover:bg-green-50' : 'text-gray-500 hover:bg-gray-100'}`}>
                       {centro.activo ? <FaToggleOn size={20} /> : <FaToggleOff size={20} />}
                     </button>

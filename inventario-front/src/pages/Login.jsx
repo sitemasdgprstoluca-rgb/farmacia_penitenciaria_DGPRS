@@ -296,8 +296,9 @@ function Login() {
                 {temaGlobal?.reporte_subtitulo || 'Subsecretaría de Control Penitenciario'}
               </p>
               <p className="text-gray-400 text-xs mt-1">
-                {temaGlobal?.reporte_pie_pagina || 'Dirección General de Prevención y Readaptación Social'} · {new Date().getFullYear()}
+                {temaGlobal?.reporte_pie_pagina || 'Dirección General de Prevención y Readaptación Social'}
               </p>
+              <p className="text-gray-400 text-[10px] mt-0.5">v.2</p>
             </div>
           </div>
         </div>
@@ -389,8 +390,9 @@ function Login() {
                   {temaGlobal?.reporte_subtitulo || 'Subsecretaría de Control Penitenciario'}
                 </p>
                 <p className="text-white/40 text-xs mt-1">
-                  {temaGlobal?.reporte_pie_pagina || 'Dirección General de Prevención y Readaptación Social'} · {new Date().getFullYear()}
+                  {temaGlobal?.reporte_pie_pagina || 'Dirección General de Prevención y Readaptación Social'}
                 </p>
+                <p className="text-white/30 text-[10px] mt-0.5">v.2</p>
               </div>
             </div>
           </div>

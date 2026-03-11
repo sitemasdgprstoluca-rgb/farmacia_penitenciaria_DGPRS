@@ -1,12 +1,12 @@
 ﻿/**
  * Layout Principal - Sistema de Farmacia Penitenciaria
  * 
- * Diseño moderno y sofisticado con:
- * - Sidebar con animaciones fluidas y glassmorphism
- * - Header dinámico con integración del tema
+ * Diseño moderno tipo SaaS con:
+ * - Sidebar blanco colapsable con iconos modernos
+ * - Header blanco minimalista con separación sutil
  * - Navegación basada en permisos de usuario
- * - Soporte completo para CSS variables del tema
  * - Micro-interacciones y transiciones elegantes
+ * - Colores institucionales en estados activos
  */
 
 import { useEffect, useState, useMemo, useCallback } from "react";
@@ -50,257 +50,146 @@ import {
 // ============================================================================
 
 /**
- * Ítem del menú con animaciones y estados hover
- * Soporta submenús expandibles
+ * Ítem del menú - Diseño limpio tipo SaaS
+ * Soporta submenús expandibles y modo colapsado (solo icono)
  */
-const MenuItem = ({ item, isActive, onClick, isExpanded, onToggle, subItems, location }) => {
-  const [isHovered, setIsHovered] = useState(false);
+const MenuItem = ({ item, isActive, onClick, isExpanded, onToggle, location, collapsed }) => {
   const Icon = item.icon;
   const hasSubItems = item.subItems && item.subItems.length > 0;
   
-  // Si tiene subItems, es un menú padre
   if (hasSubItems) {
     const isSubActive = item.subItems.some(sub => location?.pathname === sub.path);
     
     return (
       <div>
-        {/* Botón padre del submenú */}
         <button
           onClick={() => onToggle && onToggle(item.id)}
-          onMouseEnter={() => setIsHovered(true)}
-          onMouseLeave={() => setIsHovered(false)}
-          className="w-full group relative flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all duration-300"
-          style={{
-            backgroundColor: isSubActive 
-              ? 'rgba(255,255,255,0.18)' 
-              : isHovered 
-                ? 'rgba(255,255,255,0.08)' 
-                : 'transparent',
-          }}
+          className={`
+            w-full group relative flex items-center gap-3 rounded-lg transition-all duration-200
+            ${collapsed ? 'px-0 py-2 justify-center' : 'px-3 py-2'}
+            ${isSubActive 
+              ? 'bg-[var(--color-primary-light,rgba(147,32,67,0.1))] text-[var(--color-primary,#932043)]' 
+              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}
+          `}
+          title={collapsed ? item.label : undefined}
         >
-          {/* Indicador activo */}
-          <div 
-            className="absolute left-0 top-1/2 -translate-y-1/2 w-1 rounded-r-full transition-all duration-300"
-            style={{
-              height: isSubActive ? '60%' : '0%',
-              backgroundColor: 'white',
-              opacity: isSubActive ? 1 : 0,
-            }}
-          />
+          {/* Barra indicadora activa */}
+          {isSubActive && (
+            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-[var(--color-primary,#932043)]" />
+          )}
           
-          {/* Icono */}
-          <div 
-            className="relative flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-300"
-            style={{
-              backgroundColor: isSubActive ? 'rgba(255,255,255,0.2)' : 'transparent',
-            }}
-          >
-            <Icon 
-              size={16} 
-              style={{ color: 'white', opacity: isSubActive ? 1 : 0.85 }}
-            />
+          <div className={`flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0 transition-colors duration-200
+            ${isSubActive ? 'bg-[var(--color-primary,#932043)] text-white' : 'text-gray-400 group-hover:text-gray-600'}`}>
+            <Icon size={16} />
           </div>
           
-          {/* Label */}
-          <span 
-            className="flex-1 text-sm text-left transition-all duration-300"
-            style={{ 
-              color: 'white',
-              fontWeight: isSubActive ? 600 : 400,
-              opacity: isSubActive ? 1 : 0.9,
-            }}
-          >
-            {item.label}
-          </span>
-          
-          {/* Flecha expandir/colapsar */}
-          <FaChevronDown 
-            size={12} 
-            className="transition-transform duration-300"
-            style={{
-              color: 'white',
-              opacity: 0.7,
-              transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-            }}
-          />
+          {!collapsed && (
+            <>
+              <span className={`flex-1 text-[13px] text-left transition-all duration-200 ${isSubActive ? 'font-semibold' : 'font-medium'}`}>
+                {item.label}
+              </span>
+              <FaChevronDown 
+                size={10} 
+                className={`transition-transform duration-200 ${isSubActive ? 'text-[var(--color-primary,#932043)]' : 'text-gray-400'}`}
+                style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
+              />
+            </>
+          )}
         </button>
         
-        {/* Submenú */}
-        <div 
-          className="overflow-hidden transition-all duration-300"
-          style={{
-            maxHeight: isExpanded ? `${item.subItems.length * 44}px` : '0',
-            opacity: isExpanded ? 1 : 0,
-          }}
-        >
-          <div className="ml-4 mt-1 space-y-0.5 border-l border-white/20 pl-2">
-            {item.subItems.map((subItem) => {
-              const SubIcon = subItem.icon;
-              const isSubItemActive = location?.pathname === subItem.path;
-              
-              return (
-                <Link
-                  key={subItem.path}
-                  to={subItem.path}
-                  onClick={onClick}
-                  className="group flex items-center gap-2 px-2 py-2 rounded-lg transition-all duration-300"
-                  style={{
-                    backgroundColor: isSubItemActive 
-                      ? 'rgba(255,255,255,0.15)' 
-                      : 'transparent',
-                  }}
-                  onMouseEnter={(e) => !isSubItemActive && (e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.08)')}
-                  onMouseLeave={(e) => !isSubItemActive && (e.currentTarget.style.backgroundColor = 'transparent')}
-                >
-                  <SubIcon 
-                    size={14} 
-                    style={{ color: 'white', opacity: isSubItemActive ? 1 : 0.7 }}
-                  />
-                  <span 
-                    className="text-sm"
-                    style={{ 
-                      color: 'white',
-                      fontWeight: isSubItemActive ? 500 : 400,
-                      opacity: isSubItemActive ? 1 : 0.85,
-                    }}
+        {!collapsed && (
+          <div 
+            className="overflow-hidden transition-all duration-200"
+            style={{ maxHeight: isExpanded ? `${item.subItems.length * 40}px` : '0', opacity: isExpanded ? 1 : 0 }}
+          >
+            <div className="ml-[22px] mt-0.5 space-y-0.5 border-l-2 border-gray-100 pl-3">
+              {item.subItems.map((subItem) => {
+                const SubIcon = subItem.icon;
+                const isSubItemActive = location?.pathname === subItem.path;
+                return (
+                  <Link
+                    key={subItem.path}
+                    to={subItem.path}
+                    onClick={onClick}
+                    className={`
+                      flex items-center gap-2.5 px-2.5 py-1.5 rounded-md transition-all duration-200 text-[13px]
+                      ${isSubItemActive 
+                        ? 'text-[var(--color-primary,#932043)] font-semibold bg-[var(--color-primary-light,rgba(147,32,67,0.08))]' 
+                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50 font-medium'}
+                    `}
                   >
-                    {subItem.label}
-                  </span>
-                </Link>
-              );
-            })}
+                    <SubIcon size={13} className={isSubItemActive ? 'text-[var(--color-primary,#932043)]' : 'text-gray-400'} />
+                    <span>{subItem.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     );
   }
   
-  // Item simple sin submenús
   return (
     <Link
       to={item.path}
       onClick={onClick}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      className="group relative flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all duration-300"
-      style={{
-        backgroundColor: isActive 
-          ? 'rgba(255,255,255,0.18)' 
-          : isHovered 
-            ? 'rgba(255,255,255,0.08)' 
-            : 'transparent',
-        transform: isHovered && !isActive ? 'translateX(4px)' : 'translateX(0)',
-      }}
+      className={`
+        group relative flex items-center gap-3 rounded-lg transition-all duration-200
+        ${collapsed ? 'px-0 py-2 justify-center' : 'px-3 py-2'}
+        ${isActive
+          ? 'bg-[var(--color-primary-light,rgba(147,32,67,0.1))] text-[var(--color-primary,#932043)]'
+          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}
+      `}
+      title={collapsed ? item.label : undefined}
     >
-      {/* Indicador activo */}
-      <div 
-        className="absolute left-0 top-1/2 -translate-y-1/2 w-1 rounded-r-full transition-all duration-300"
-        style={{
-          height: isActive ? '60%' : '0%',
-          backgroundColor: 'white',
-          opacity: isActive ? 1 : 0,
-        }}
-      />
-      
-      {/* Icono con efecto */}
-      <div 
-        className="relative flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-300"
-        style={{
-          backgroundColor: isActive ? 'rgba(255,255,255,0.2)' : 'transparent',
-          transform: isHovered ? 'scale(1.05)' : 'scale(1)',
-        }}
-      >
-        <Icon 
-          size={16} 
-          className="transition-transform duration-300"
-          style={{ 
-            color: 'white',
-            opacity: isActive ? 1 : 0.85,
-          }}
-        />
-      </div>
-      
-      {/* Label */}
-      <span 
-        className="flex-1 text-sm transition-all duration-300"
-        style={{ 
-          color: 'white',
-          fontWeight: isActive ? 600 : 400,
-          opacity: isActive ? 1 : 0.9,
-        }}
-      >
-        {item.label}
-      </span>
-      
-      {/* Badge de notificaciones */}
-      {item.badge > 0 && (
-        <span 
-          className="flex items-center justify-center min-w-[22px] h-[22px] px-1.5 text-[11px] font-bold rounded-full animate-pulse"
-          style={{ 
-            backgroundColor: '#EF4444',
-            color: 'white',
-            boxShadow: '0 2px 8px rgba(239, 68, 68, 0.4)',
-          }}
-        >
-          {item.badge > 99 ? '99+' : item.badge}
-        </span>
+      {/* Barra indicadora activa */}
+      {isActive && (
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-[var(--color-primary,#932043)]" />
       )}
       
-      {/* Flecha indicadora */}
-      <FaChevronRight 
-        size={12} 
-        className="transition-all duration-300"
-        style={{
-          color: 'white',
-          opacity: isHovered || isActive ? 0.8 : 0,
-          transform: isActive ? 'translateX(2px)' : 'translateX(-4px)',
-        }}
-      />
+      <div className={`flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0 transition-colors duration-200
+        ${isActive ? 'bg-[var(--color-primary,#932043)] text-white' : 'text-gray-400 group-hover:text-gray-600'}`}>
+        <Icon size={16} />
+      </div>
+      
+      {!collapsed && (
+        <>
+          <span className={`flex-1 text-[13px] transition-all duration-200 ${isActive ? 'font-semibold' : 'font-medium'}`}>
+            {item.label}
+          </span>
+          
+          {item.badge > 0 && (
+            <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-bold rounded-full bg-red-500 text-white">
+              {item.badge > 99 ? '99+' : item.badge}
+            </span>
+          )}
+        </>
+      )}
+      
+      {collapsed && item.badge > 0 && (
+        <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-red-500" />
+      )}
     </Link>
   );
 };
 
 /**
- * Badge de rol con colores dinámicos según tipo de usuario
+ * Badge de rol — estilo pill moderno
  */
 const RolBadge = ({ rol }) => {
   const config = useMemo(() => {
     switch(rol?.toUpperCase()) {
       case 'ADMIN':
-        return { 
-          icon: FaCrown, 
-          label: 'Admin', 
-          bg: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
-          shadow: 'rgba(245, 158, 11, 0.3)'
-        };
+        return { icon: FaCrown, label: 'Admin', color: '#D97706', bg: '#FEF3C7' };
       case 'FARMACIA':
-        return { 
-          icon: FaUserTie, 
-          label: 'Farmacia', 
-          bg: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
-          shadow: 'rgba(16, 185, 129, 0.3)'
-        };
+        return { icon: FaUserTie, label: 'Farmacia', color: '#059669', bg: '#D1FAE5' };
       case 'CENTRO':
-        return { 
-          icon: FaBuilding, 
-          label: 'Centro', 
-          bg: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)',
-          shadow: 'rgba(59, 130, 246, 0.3)'
-        };
+        return { icon: FaBuilding, label: 'Centro', color: '#2563EB', bg: '#DBEAFE' };
       case 'VISTA':
-        return { 
-          icon: FaEye, 
-          label: 'Vista', 
-          bg: 'linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%)',
-          shadow: 'rgba(139, 92, 246, 0.3)'
-        };
+        return { icon: FaEye, label: 'Vista', color: '#7C3AED', bg: '#EDE9FE' };
       default:
-        return { 
-          icon: FaShieldAlt, 
-          label: rol || 'Usuario', 
-          bg: 'linear-gradient(135deg, #6B7280 0%, #4B5563 100%)',
-          shadow: 'rgba(107, 114, 128, 0.3)'
-        };
+        return { icon: FaShieldAlt, label: rol || 'Usuario', color: '#6B7280', bg: '#F3F4F6' };
     }
   }, [rol]);
   
@@ -308,13 +197,10 @@ const RolBadge = ({ rol }) => {
   
   return (
     <div 
-      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide text-white"
-      style={{ 
-        background: config.bg,
-        boxShadow: `0 2px 8px ${config.shadow}`,
-      }}
+      className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide"
+      style={{ color: config.color, backgroundColor: config.bg }}
     >
-      <Icon size={10} />
+      <Icon size={9} />
       <span>{config.label}</span>
     </div>
   );
@@ -326,7 +212,7 @@ const RolBadge = ({ rol }) => {
 
 function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarHovered, setSidebarHovered] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loggingOut, setLoggingOut] = useState(false);
   const [expandedMenus, setExpandedMenus] = useState({}); // Para submenús expandidos
@@ -518,122 +404,75 @@ function Layout() {
     setUnreadCount(count);
   }, []);
 
+  const sidebarWidth = sidebarCollapsed ? 'w-[68px]' : 'w-64';
+  const sidebarMargin = sidebarOpen ? (sidebarCollapsed ? 'lg:ml-[68px]' : 'lg:ml-64') : 'ml-0';
+
   return (
     <div className="min-h-screen flex" style={{ backgroundColor: "var(--color-background, #F8FAFC)" }}>
-      {/* ========== SIDEBAR ========== */}
+      {/* ========== SIDEBAR MODERNO ========== */}
       <aside
-        onMouseEnter={() => setSidebarHovered(true)}
-        onMouseLeave={() => setSidebarHovered(false)}
         className={`
           fixed top-0 left-0 z-40 h-screen
-          transition-all duration-500 ease-out
+          transition-all duration-300 ease-out
           ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
-          w-72 flex flex-col
+          ${sidebarWidth} flex flex-col
+          bg-white border-r border-gray-200/80
         `}
-        style={{ 
-          background: "var(--color-sidebar-bg, linear-gradient(180deg, #9F2241 0%, #6B1839 100%))",
-          boxShadow: sidebarHovered 
-            ? '4px 0 30px rgba(0, 0, 0, 0.15)' 
-            : '2px 0 20px rgba(0, 0, 0, 0.1)',
-        }}
+        style={{ boxShadow: '1px 0 0 rgba(0,0,0,0.03)' }}
       >
-        {/* Header del Sidebar */}
-        <div className="relative px-4 py-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
-          {/* Fondo decorativo */}
+        {/* Logo & Brand */}
+        <div className={`flex items-center h-16 flex-shrink-0 border-b border-gray-100 ${sidebarCollapsed ? 'px-3 justify-center' : 'px-4 gap-3'}`}>
           <div 
-            className="absolute inset-0 opacity-10"
-            style={{
-              background: 'radial-gradient(circle at 100% 0%, rgba(255,255,255,0.3) 0%, transparent 50%)',
-            }}
-          />
-          
-          <div className="relative flex items-center gap-3">
-            {/* Logo con efecto de brillo */}
-            <div 
-              className="relative w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden"
-              style={{ 
-                backgroundColor: 'rgba(255,255,255,0.15)',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-              }}
-            >
-              <img 
-                src={logoHeaderUrl || "/logo-sistema.png"} 
-                alt="Logo" 
-                className="h-7 w-7 object-contain"
-                onError={(e) => { e.target.src = "/logo-sistema.png"; }}
-              />
-            </div>
-            
-            {/* Título */}
-            <div className="flex-1">
-              <h1 
-                className="text-base font-black tracking-wide"
-                style={{ color: "white" }}
-              >
-                FARMACIA
+            className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden"
+            style={{ backgroundColor: 'var(--color-primary, #932043)' }}
+          >
+            <img 
+              src={logoHeaderUrl || "/logo-sistema.png"} 
+              alt="Logo" 
+              className="h-6 w-6 object-contain"
+              onError={(e) => { e.target.src = "/logo-sistema.png"; }}
+            />
+          </div>
+          {!sidebarCollapsed && (
+            <div className="flex-1 min-w-0">
+              <h1 className="text-sm font-bold text-gray-900 tracking-tight truncate">
+                {nombreSistema || "SIFP"}
               </h1>
-              <p 
-                className="text-[9px] tracking-[0.15em] uppercase"
-                style={{ color: "rgba(255,255,255,0.6)" }}
-              >
+              <p className="text-[10px] text-gray-400 font-medium truncate">
                 Sistema Penitenciario
               </p>
             </div>
-          </div>
-        </div>
-
-        {/* Perfil de Usuario - Compacto */}
-        <div 
-          className="mx-3 mt-3 mb-1 p-3 rounded-xl"
-          style={{ 
-            backgroundColor: "rgba(0,0,0,0.15)",
-            backdropFilter: 'blur(10px)',
-          }}
-        >
-          <div className="flex items-center gap-2.5">
-            {/* Avatar con iniciales */}
-            <div 
-              className="relative w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm flex-shrink-0"
-              style={{ 
-                background: 'linear-gradient(135deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.1) 100%)',
-                color: 'white',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-              }}
+          )}
+          {/* Botón colapsar — solo desktop */}
+          {!sidebarCollapsed && (
+            <button
+              onClick={() => setSidebarCollapsed(true)}
+              className="hidden lg:flex w-7 h-7 items-center justify-center rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
+              title="Colapsar menú"
             >
-              {inicialesUsuario}
-              {/* Indicador online */}
-              <div 
-                className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2"
-                style={{ 
-                  backgroundColor: '#10B981',
-                  borderColor: 'var(--color-primary, #9F2241)',
-                }}
-              />
-            </div>
-            
-            {/* Info usuario */}
-            <div className="flex-1 min-w-0">
-              <p 
-                className="font-semibold text-[13px] truncate leading-tight"
-                style={{ color: "white" }}
-              >
-                {nombreUsuario}
-              </p>
-              <p 
-                className="text-[11px] truncate"
-                style={{ color: "rgba(255,255,255,0.6)" }}
-              >
-                {user?.email}
-              </p>
-            </div>
-            
-            {/* Badge de rol - Inline */}
-            <RolBadge rol={rolPrincipal} />
-          </div>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7" />
+              </svg>
+            </button>
+          )}
+          {sidebarCollapsed && (
+            <button
+              onClick={() => setSidebarCollapsed(false)}
+              className="hidden lg:flex absolute -right-3 top-5 w-6 h-6 items-center justify-center rounded-full bg-white border border-gray-200 shadow-sm hover:bg-gray-50 text-gray-400 hover:text-gray-600 transition-colors z-50"
+              title="Expandir menú"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7" />
+              </svg>
+            </button>
+          )}
         </div>
 
-        {/* Navegación - Sin scroll */}
-        <nav className="flex-1 px-2 py-1 overflow-y-auto">
+        {/* Navegación */}
+        <nav className={`flex-1 overflow-y-auto overflow-x-hidden py-3 ${sidebarCollapsed ? 'px-2' : 'px-3'} layout-scrollbar`}>
+          {!sidebarCollapsed && (
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 px-3">Menú</p>
+          )}
           <div className="space-y-0.5">
             {visibleMenuItems.map((item) => (
               <MenuItem
@@ -644,129 +483,122 @@ function Layout() {
                 onToggle={toggleSubmenu}
                 location={location}
                 onClick={() => window.innerWidth < 1024 && setSidebarOpen(false)}
+                collapsed={sidebarCollapsed}
               />
             ))}
           </div>
         </nav>
 
-        {/* Footer - Logout Compacto */}
-        <div 
-          className="p-3"
-          style={{ 
-            borderTop: "1px solid rgba(255,255,255,0.1)",
-            background: 'rgba(0,0,0,0.08)',
-          }}
-        >
-          <button
-            onClick={handleLogout}
-            disabled={loggingOut}
-            className="
-              w-full flex items-center justify-center gap-2 
-              px-3 py-2.5 rounded-xl
-              font-semibold text-[13px]
-              transition-all duration-300
-              disabled:opacity-50 disabled:cursor-not-allowed
-            "
-            style={{ 
-              backgroundColor: loggingOut ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.12)',
-              color: 'white',
-            }}
-            onMouseEnter={(e) => !loggingOut && (e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.2)')}
-            onMouseLeave={(e) => !loggingOut && (e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.12)')}
-          >
-            <FaSignOutAlt 
-              size={15} 
-              className={loggingOut ? 'animate-spin' : ''} 
-            />
-            <span>{loggingOut ? 'Cerrando...' : 'Cerrar Sesión'}</span>
-          </button>
+        {/* Perfil + Logout — Footer */}
+        <div className="flex-shrink-0 border-t border-gray-100">
+          {/* Perfil */}
+          <div className={`${sidebarCollapsed ? 'p-2 flex justify-center' : 'px-3 py-3'}`}>
+            {sidebarCollapsed ? (
+              <button
+                onClick={() => navigate('/perfil')}
+                className="w-9 h-9 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 transition-colors hover:ring-2 hover:ring-gray-200"
+                style={{ backgroundColor: 'var(--color-primary-light, rgba(147,32,67,0.1))', color: 'var(--color-primary, #932043)' }}
+                title={nombreUsuario}
+              >
+                {inicialesUsuario}
+              </button>
+            ) : (
+              <div className="flex items-center gap-2.5">
+                <button
+                  onClick={() => navigate('/perfil')}
+                  className="w-9 h-9 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 transition-colors hover:ring-2 hover:ring-gray-200"
+                  style={{ backgroundColor: 'var(--color-primary-light, rgba(147,32,67,0.1))', color: 'var(--color-primary, #932043)' }}
+                >
+                  {inicialesUsuario}
+                </button>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-semibold text-gray-800 truncate">{nombreUsuario}</p>
+                  <RolBadge rol={rolPrincipal} />
+                </div>
+              </div>
+            )}
+          </div>
           
-          {/* Versión */}
-          <p 
-            className="text-center text-[9px] mt-2"
-            style={{ color: 'rgba(255,255,255,0.4)' }}
-          >
-            SIFP v2.0 • {new Date().getFullYear()}
-          </p>
+          {/* Logout */}
+          <div className={`border-t border-gray-100 ${sidebarCollapsed ? 'p-2' : 'px-3 py-2'}`}>
+            <button
+              onClick={handleLogout}
+              disabled={loggingOut}
+              className={`
+                flex items-center gap-2 rounded-lg transition-all duration-200
+                text-gray-500 hover:text-red-600 hover:bg-red-50
+                disabled:opacity-50 disabled:cursor-not-allowed
+                ${sidebarCollapsed ? 'w-full justify-center p-2' : 'w-full px-3 py-2 text-[13px] font-medium'}
+              `}
+              title={sidebarCollapsed ? (loggingOut ? 'Cerrando...' : 'Cerrar Sesión') : undefined}
+            >
+              <FaSignOutAlt size={14} className={loggingOut ? 'animate-spin' : ''} />
+              {!sidebarCollapsed && <span>{loggingOut ? 'Cerrando...' : 'Cerrar Sesión'}</span>}
+            </button>
+          </div>
         </div>
       </aside>
 
       {/* ========== CONTENIDO PRINCIPAL ========== */}
-      <div className={`flex-1 transition-all duration-500 min-h-screen flex flex-col ${sidebarOpen ? 'lg:ml-72' : 'ml-0'}`}>
-        {/* Header - Fixed para que siempre esté visible */}
+      <div className={`flex-1 transition-all duration-300 min-h-screen flex flex-col ${sidebarMargin}`}>
+        {/* Header Moderno — Blanco, minimalista */}
         <header 
-          className={`fixed top-0 right-0 z-30 h-16 flex items-center px-4 sm:px-6 transition-all duration-500 ${sidebarOpen ? 'lg:left-72' : 'left-0'}`}
-          style={{ 
-            background: "linear-gradient(135deg, var(--color-header-bg, var(--color-primary, #9F2241)) 0%, var(--color-primary-hover, #6B1839) 100%)",
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
-          }}
+          className={`fixed top-0 right-0 z-30 h-14 flex items-center px-4 sm:px-6 bg-white border-b border-gray-200/80 transition-all duration-300
+            ${sidebarOpen ? (sidebarCollapsed ? 'lg:left-[68px]' : 'lg:left-64') : 'left-0'}`}
         >
-          <div className="flex items-center justify-between w-full gap-4">
-            {/* Izquierda: Menú hamburguesa + Título */}
-            <div className="flex items-center gap-4 min-w-0">
+          <div className="flex items-center justify-between w-full">
+            {/* Izquierda: Toggle + Breadcrumb */}
+            <div className="flex items-center gap-3 min-w-0">
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="relative w-10 h-10 rounded-lg transition-all duration-300 hover:bg-white/15 flex items-center justify-center"
-                style={{ color: 'var(--color-header-text, #FFFFFF)' }}
+                className="w-9 h-9 rounded-lg transition-colors duration-200 hover:bg-gray-100 flex items-center justify-center text-gray-500"
                 title={sidebarOpen ? "Ocultar menú" : "Mostrar menú"}
               >
                 {sidebarOpen ? (
-                  /* Icono de flecha izquierda (ocultar) */
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                  <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
                   </svg>
                 ) : (
-                  /* Icono de menú hamburguesa */
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
                   </svg>
                 )}
               </button>
               
-              {/* Título del sistema */}
-              <div className="hidden sm:block min-w-0">
-                <h1
-                  className="text-sm md:text-base font-semibold truncate tracking-wide"
-                  style={{ color: 'var(--color-header-text, #FFFFFF)' }}
-                >
+              {/* Título de página */}
+              <div className="hidden sm:flex items-center gap-2 min-w-0">
+                <h2 className="text-sm font-semibold text-gray-800 truncate">
                   {nombreSistema || "Sistema de Farmacia Penitenciaria"}
-                </h1>
+                </h2>
               </div>
             </div>
             
             {/* Derecha: Acciones */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5">
+              {/* Estado de conexión — siempre visible como dot */}
+              
+              {/* Badge desarrollo */}
+              {DEV_CONFIG?.ENABLED && (
+                <span className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-bold bg-teal-50 text-teal-700 border border-teal-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-pulse" />
+                  DEV
+                </span>
+              )}
+              
               {/* Notificaciones */}
               <NotificacionesBell 
                 externalCount={unreadCount} 
                 onCountChange={handleNotificationCountChange}
               />
               
-              {/* Badge desarrollo */}
-              {DEV_CONFIG?.ENABLED && (
-                <span
-                  className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold"
-                  style={{ 
-                    background: "linear-gradient(135deg, #14B8A6 0%, #0D9488 100%)",
-                    color: 'var(--color-header-text, #FFFFFF)',
-                  }}
-                >
-                  <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
-                  DEV
-                </span>
-              )}
-              
-              {/* Avatar mini en móvil */}
+              {/* Avatar en header — solo móvil */}
               <button 
                 onClick={() => navigate('/perfil')}
-                className="lg:hidden w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs border-2 transition-all"
+                className="lg:hidden w-8 h-8 rounded-lg flex items-center justify-center font-bold text-[11px] transition-all"
                 style={{ 
-                  backgroundColor: 'rgba(255,255,255,0.15)',
-                  color: 'var(--color-header-text, #FFFFFF)',
-                  borderColor: 'rgba(255,255,255,0.3)',
+                  backgroundColor: 'var(--color-primary-light, rgba(147,32,67,0.1))',
+                  color: 'var(--color-primary, #932043)',
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.5)'}
-                onMouseLeave={(e) => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.3)'}
               >
                 {inicialesUsuario}
               </button>
@@ -774,8 +606,8 @@ function Layout() {
           </div>
         </header>
 
-        {/* Spacer para el header fijo */}
-        <div className="h-16 flex-shrink-0" />
+        {/* Spacer para header fijo */}
+        <div className="h-14 flex-shrink-0" />
 
         {/* Main Content */}
         <main 
@@ -787,90 +619,66 @@ function Layout() {
           </div>
         </main>
         
-        {/* Footer minimalista - oculto en móvil por la bottom nav */}
+        {/* Footer */}
         <footer 
-          className="hidden lg:block py-3 px-6 text-center text-xs"
+          className="hidden lg:block py-3 px-6 text-center text-[11px]"
           style={{ 
             color: 'var(--color-text-secondary, #9CA3AF)',
             borderTop: '1px solid var(--color-border, #E5E7EB)',
           }}
         >
-          © {new Date().getFullYear()} Sistema de Inventario Farmacéutico Penitenciario
+          Sistema de Inventario Farmacéutico Penitenciario — v.2
         </footer>
       </div>
 
       {/* ========== BOTTOM NAVIGATION MÓVIL ========== */}
       <nav 
-        className="fixed bottom-0 left-0 right-0 z-[100] lg:hidden flex items-center justify-around"
+        className="fixed bottom-0 left-0 right-0 z-[100] lg:hidden flex items-center justify-around bg-white border-t border-gray-200"
         style={{
-          background: 'linear-gradient(135deg, var(--color-primary, #932043) 0%, var(--color-primary-hover, #632842) 100%)',
-          borderTop: '3px solid rgba(255,255,255,0.2)',
-          boxShadow: '0 -4px 20px rgba(0, 0, 0, 0.25)',
-          paddingTop: '0.5rem',
-          paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))',
+          paddingTop: '0.375rem',
+          paddingBottom: 'max(0.375rem, env(safe-area-inset-bottom))',
+          boxShadow: '0 -1px 3px rgba(0,0,0,0.05)',
         }}
       >
-        {/* Dashboard */}
         <Link
           to="/dashboard"
-          className="flex flex-col items-center justify-center py-1.5 px-4 min-h-[52px] rounded-xl transition-all"
-          style={{
-            color: location.pathname === '/dashboard' 
-              ? 'white' 
-              : 'rgba(255,255,255,0.7)',
-            background: location.pathname === '/dashboard' 
-              ? 'rgba(255,255,255,0.2)' 
-              : 'transparent',
-          }}
+          className={`flex flex-col items-center justify-center py-1 px-3 min-h-[48px] rounded-lg transition-all ${
+            location.pathname === '/dashboard' 
+              ? 'text-[var(--color-primary,#932043)]' 
+              : 'text-gray-400'
+          }`}
         >
-          <FaHome size={22} />
+          <FaHome size={20} />
           <span className="text-[10px] font-semibold mt-0.5">Inicio</span>
         </Link>
         
-        {/* Requisiciones (si tiene permiso) */}
         {permisos?.verRequisiciones && (
           <Link
             to="/requisiciones"
-            className="flex flex-col items-center justify-center py-1.5 px-4 min-h-[52px] rounded-xl transition-all"
-            style={{
-              color: location.pathname === '/requisiciones' 
-                ? 'white' 
-                : 'rgba(255,255,255,0.7)',
-              background: location.pathname === '/requisiciones' 
-                ? 'rgba(255,255,255,0.2)' 
-                : 'transparent',
-            }}
+            className={`flex flex-col items-center justify-center py-1 px-3 min-h-[48px] rounded-lg transition-all ${
+              location.pathname === '/requisiciones' 
+                ? 'text-[var(--color-primary,#932043)]' 
+                : 'text-gray-400'
+            }`}
           >
-            <FaClipboardList size={22} />
+            <FaClipboardList size={20} />
             <span className="text-[10px] font-semibold mt-0.5">Requisiciones</span>
           </Link>
         )}
         
-        {/* Notificaciones con badge */}
         {tienePermisoNotificaciones && (
           <Link
             to="/notificaciones"
-            className="relative flex flex-col items-center justify-center py-1.5 px-4 min-h-[52px] rounded-xl transition-all"
-            style={{
-              color: location.pathname === '/notificaciones' 
-                ? 'white' 
-                : 'rgba(255,255,255,0.7)',
-              background: location.pathname === '/notificaciones' 
-                ? 'rgba(255,255,255,0.2)' 
-                : 'transparent',
-            }}
+            className={`relative flex flex-col items-center justify-center py-1 px-3 min-h-[48px] rounded-lg transition-all ${
+              location.pathname === '/notificaciones' 
+                ? 'text-[var(--color-primary,#932043)]' 
+                : 'text-gray-400'
+            }`}
           >
             <div className="relative">
-              <FaBell size={22} />
+              <FaBell size={20} />
               {unreadCount > 0 && (
-                <span 
-                  className="absolute -top-1.5 -right-2 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold rounded-full animate-pulse"
-                  style={{ 
-                    backgroundColor: '#FCD34D',
-                    color: '#92400E',
-                    boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
-                  }}
-                >
+                <span className="absolute -top-1 -right-1.5 flex items-center justify-center min-w-[16px] h-4 px-1 text-[9px] font-bold rounded-full bg-red-500 text-white">
                   {unreadCount > 99 ? '99+' : unreadCount}
                 </span>
               )}
@@ -879,21 +687,14 @@ function Layout() {
           </Link>
         )}
         
-        {/* Menú (toggle sidebar) */}
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="flex flex-col items-center justify-center py-1.5 px-4 min-h-[52px] rounded-xl transition-all"
-          style={{
-            color: sidebarOpen 
-              ? 'white' 
-              : 'rgba(255,255,255,0.7)',
-            background: sidebarOpen 
-              ? 'rgba(255,255,255,0.2)' 
-              : 'transparent',
-          }}
+          className={`flex flex-col items-center justify-center py-1 px-3 min-h-[48px] rounded-lg transition-all ${
+            sidebarOpen ? 'text-[var(--color-primary,#932043)]' : 'text-gray-400'
+          }`}
         >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
           </svg>
           <span className="text-[10px] font-semibold mt-0.5">Menú</span>
         </button>
@@ -902,28 +703,27 @@ function Layout() {
       {/* Overlay móvil */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-30 lg:hidden transition-opacity duration-300"
+          className="fixed inset-0 bg-black/30 backdrop-blur-sm z-30 lg:hidden transition-opacity duration-300"
           onClick={() => setSidebarOpen(false)}
         />
       )}
       
-      {/* Indicador de estado de conexión - aparece cuando hay problemas */}
       <ConnectionIndicator />
       
-      {/* Estilos del scrollbar personalizado */}
+      {/* Scrollbar styles para sidebar */}
       <style>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 4px;
+        .layout-scrollbar::-webkit-scrollbar {
+          width: 3px;
         }
-        .custom-scrollbar::-webkit-scrollbar-track {
+        .layout-scrollbar::-webkit-scrollbar-track {
           background: transparent;
         }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(255,255,255,0.2);
-          border-radius: 4px;
+        .layout-scrollbar::-webkit-scrollbar-thumb {
+          background: #E5E7EB;
+          border-radius: 3px;
         }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: rgba(255,255,255,0.3);
+        .layout-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #D1D5DB;
         }
       `}</style>
     </div>

@@ -1373,7 +1373,7 @@ const ComprasCajaChica = () => {
                     >
                       <FaEye size={18} />
                     </button>
-                    {puedeEditar(compra) && (
+                    {puedeEditar && ['pendiente', 'rechazada'].includes(compra.estado) && esSolicitante(compra) && (
                       <button
                         onClick={() => handleEdit(compra)}
                         className="p-2 text-yellow-600 hover:bg-yellow-50 rounded-lg"
@@ -1382,22 +1382,24 @@ const ComprasCajaChica = () => {
                         <FaEdit size={18} />
                       </button>
                     )}
-                    {puedeEliminar(compra) && (
+                    {((puedeEditar && compra.estado === 'pendiente') || 
+                      ((esUsuarioFarmacia || user?.is_superuser) && 
+                       !['cancelada', 'rechazada', 'rechazada_farmacia'].includes(compra.estado))) && (
                       <button
-                        onClick={() => handleDelete(compra)}
+                        onClick={() => setDeleteModal({ show: true, compra })}
                         className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
-                        title="Eliminar"
+                        title={compra.estado === 'pendiente' ? 'Eliminar' : 'Eliminar (Admin Farmacia)'}
                       >
                         <FaTrash size={18} />
                       </button>
                     )}
-                    {puedeCambiarEstado && (
+                    {puedeCancelar && !['comprada', 'recibida', 'cancelada', 'rechazada'].includes(compra.estado) && (
                       <button
-                        onClick={() => setStatusModal({ show: true, compra })}
+                        onClick={() => setCancelModal({ show: true, compra, motivo: '' })}
                         className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg"
-                        title="Cambiar estado"
+                        title="Cancelar"
                       >
-                        <FaHistory size={18} />
+                        <FaBan size={18} />
                       </button>
                     )}
                   </div>
