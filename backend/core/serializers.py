@@ -804,7 +804,12 @@ class ProductoSerializer(serializers.ModelSerializer):
 
     def get_stock_actual(self, obj):
         # Priorizar stock_calculado (anotación) sobre el campo
-        return getattr(obj, 'stock_calculado', None) or obj.stock_actual or 0
+        # ISS-FIX: Usar 'is not None' en vez de 'or' para que stock_calculado=0 NO caiga
+        # al fallback de stock_actual (campo desnormalizado que puede estar desactualizado)
+        stock_calculado = getattr(obj, 'stock_calculado', None)
+        if stock_calculado is not None:
+            return stock_calculado
+        return obj.stock_actual or 0
     
     def get_lotes_activos(self, obj):
         """
