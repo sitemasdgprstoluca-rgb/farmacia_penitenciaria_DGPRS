@@ -1770,7 +1770,7 @@ const Dashboard = () => {
                 <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Alertas de Caducidad</h2>
                 <div className="h-px flex-1 bg-gradient-to-r from-red-200 to-transparent" />
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                 {analytics.caducidades.vencidos > 0 && (
                   <div className="dash-caducidad-card dash-caducidad-red">
                     <div className="dash-caducidad-icon bg-red-100">
@@ -1779,7 +1779,7 @@ const Dashboard = () => {
                     <div className="flex-1">
                       <p className="text-3xl font-black text-red-700">{analytics.caducidades.vencidos}</p>
                       <p className="text-sm text-red-600 font-semibold">Lotes Vencidos</p>
-                      <p className="text-[10px] text-red-400 mt-1">Requiere acción inmediata</p>
+                      <p className="text-[10px] text-red-400 mt-1">Acción inmediata</p>
                     </div>
                     <div className="dash-caducidad-bar bg-red-500" />
                   </div>
@@ -1810,7 +1810,44 @@ const Dashboard = () => {
                     <div className="dash-caducidad-bar bg-amber-500" />
                   </div>
                 )}
+                {(analytics.caducidades.vencen_90_dias || 0) > 0 && (
+                  <div className="dash-caducidad-card" style={{ background: 'linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%)', borderLeft: '4px solid #3B82F6' }}>
+                    <div className="dash-caducidad-icon bg-blue-100">
+                      <FaCalendarAlt className="text-blue-500 text-lg" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-3xl font-black text-blue-700">{analytics.caducidades.vencen_90_dias}</p>
+                      <p className="text-sm text-blue-600 font-semibold">Vencen en 90 días</p>
+                      <p className="text-[10px] text-blue-400 mt-1">Atención preventiva</p>
+                    </div>
+                    <div className="dash-caducidad-bar bg-blue-500" />
+                  </div>
+                )}
               </div>
+
+              {/* Lotes Críticos detalle */}
+              {analytics.caducidades.lotes_criticos?.length > 0 && (
+                <div className="bg-white rounded-xl border border-gray-100 p-4">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <FaExclamationTriangle className="text-red-400" size={10} />
+                    Lotes Críticos — Detalle
+                  </p>
+                  <div className="space-y-2 max-h-52 overflow-y-auto custom-scrollbar">
+                    {analytics.caducidades.lotes_criticos.map((lote, idx) => (
+                      <div key={idx} className="dash-list-row">
+                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${lote.estado === 'vencido' ? 'bg-red-500' : 'bg-orange-500'}`} />
+                        <span className="text-[10px] font-mono text-gray-400 flex-shrink-0">{lote.producto_clave}</span>
+                        <span className="text-xs font-medium text-gray-600 truncate flex-1" title={lote.producto_nombre}>{lote.producto_nombre}</span>
+                        <span className="text-[10px] font-mono text-gray-400 flex-shrink-0">Lote: {lote.numero_lote}</span>
+                        <span className="text-xs font-bold tabular-nums flex-shrink-0" style={{ color: lote.estado === 'vencido' ? '#EF4444' : '#F97316' }}>
+                          {lote.dias_para_vencer != null ? (lote.dias_para_vencer < 0 ? `${Math.abs(lote.dias_para_vencer)}d vencido` : `${lote.dias_para_vencer}d`) : ''}
+                        </span>
+                        <span className="text-[10px] text-gray-400 flex-shrink-0">{lote.cantidad} uds</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </section>
           )}
 
@@ -1846,7 +1883,11 @@ const Dashboard = () => {
                                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md text-gray-500 bg-gray-100">{pctTotal}%</span>
                                   </div>
                                 </div>
-                                <p className="text-[10px] text-gray-400 truncate mb-1.5" title={item.nombre}>{item.nombre}</p>
+                                <p className="text-[10px] text-gray-400 truncate" title={item.nombre}>{item.nombre}</p>
+                                <div className="flex items-center gap-3 text-[10px] text-gray-400 mb-1.5">
+                                  <span>Solicitado <span className="font-bold text-gray-600">{(item.veces_solicitado || 0)}×</span></span>
+                                  <span>Cumpl. <span className={`font-bold ${(item.porcentaje_cumplimiento || 0) >= 80 ? 'text-emerald-600' : (item.porcentaje_cumplimiento || 0) >= 50 ? 'text-amber-600' : 'text-red-600'}`}>{(item.porcentaje_cumplimiento || 0).toFixed(0)}%</span></span>
+                                </div>
                                 <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
                                   <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, background: idx < 3 ? `linear-gradient(90deg, ${MEDAL_COLORS[Math.min(idx, 2)]}99, ${MEDAL_COLORS[Math.min(idx, 2)]})` : 'linear-gradient(90deg, #932043aa, #932043)' }} />
                                 </div>
@@ -1870,48 +1911,55 @@ const Dashboard = () => {
               <ChartCard title="Centros que más Solicitan" icon={FaHospital}>
                 {(() => {
                   const maxReq = Math.max(...analytics.top_centros.map(c => c.total_requisiciones || 0), 1);
-                  const maxUds = Math.max(...analytics.top_centros.map(c => c.total_unidades || 0), 1);
                   const totalReq = analytics.top_centros.reduce((s, c) => s + (c.total_requisiciones || 0), 0);
-                  const totalUds = analytics.top_centros.reduce((s, c) => s + (c.total_unidades || 0), 0);
+                  const totalSurtidas = analytics.top_centros.reduce((s, c) => s + (c.surtidas || 0), 0);
+                  const totalPendientes = analytics.top_centros.reduce((s, c) => s + (c.pendientes || 0), 0);
                   return (
                     <div className="space-y-3">
-                      <div className="grid grid-cols-2 gap-3 mb-4">
+                      <div className="grid grid-cols-3 gap-3 mb-4">
                         <div className="dash-stat-mini dash-stat-info">
                           <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Requisiciones</span>
                           <p className="text-xl font-black text-blue-800 mt-1">{totalReq}</p>
                         </div>
                         <div className="dash-stat-mini dash-stat-success">
-                          <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Unidades</span>
-                          <p className="text-xl font-black text-emerald-800 mt-1">{totalUds.toLocaleString('es-MX')}</p>
+                          <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Surtidas</span>
+                          <p className="text-xl font-black text-emerald-800 mt-1">{totalSurtidas}</p>
+                        </div>
+                        <div className="dash-stat-mini dash-stat-warning">
+                          <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Pendientes</span>
+                          <p className="text-xl font-black text-amber-800 mt-1">{totalPendientes}</p>
                         </div>
                       </div>
                       <div className={`space-y-2.5 ${analytics.top_centros.length > 5 ? 'max-h-[300px] overflow-y-auto pr-2 custom-scrollbar' : ''}`}>
                         {analytics.top_centros.map((item, idx) => {
                           const pctReq = (item.total_requisiciones || 0) / maxReq * 100;
-                          const pctUds = (item.total_unidades || 0) / maxUds * 100;
+                          const tasa = item.tasa_cumplimiento || 0;
                           return (
                             <div key={idx} className="dash-centro-item group">
-                              <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center justify-between mb-1.5">
                                 <div className="flex items-center gap-2 min-w-0">
                                   <span className="dash-bar-rank bg-blue-500 text-white">{idx + 1}</span>
-                                  <span className="text-sm font-semibold text-gray-700 truncate" title={item.centro}>{item.centro}</span>
+                                  <span className="text-sm font-semibold text-gray-700 truncate" title={item.nombre}>{item.nombre}</span>
                                 </div>
-                                <div className="flex items-center gap-3 flex-shrink-0">
-                                  <span className="text-xs font-bold text-blue-600 tabular-nums">{item.total_requisiciones} req</span>
-                                  <span className="text-xs font-bold text-emerald-600 tabular-nums">{(item.total_unidades || 0).toLocaleString('es-MX')} uds</span>
-                                </div>
+                                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${tasa >= 80 ? 'bg-emerald-50 text-emerald-700' : tasa >= 50 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>
+                                  {tasa.toFixed(0)}% cumpl.
+                                </span>
                               </div>
-                              <div className="flex gap-1.5">
-                                <div className="flex-1 bg-blue-50 rounded-full h-1.5 overflow-hidden">
-                                  <div className="h-full rounded-full bg-blue-500 transition-all duration-700" style={{ width: `${pctReq}%` }} />
-                                </div>
-                                <div className="flex-1 bg-emerald-50 rounded-full h-1.5 overflow-hidden">
-                                  <div className="h-full rounded-full bg-emerald-500 transition-all duration-700" style={{ width: `${pctUds}%` }} />
-                                </div>
+                              <div className="flex items-center gap-3 text-[10px] text-gray-500 mb-1.5">
+                                <span className="tabular-nums"><span className="font-bold text-blue-600">{item.total_requisiciones}</span> req</span>
+                                <span className="tabular-nums"><span className="font-bold text-emerald-600">{item.surtidas || 0}</span> surtidas</span>
+                                <span className="tabular-nums"><span className="font-bold text-amber-600">{item.pendientes || 0}</span> pend.</span>
+                              </div>
+                              <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                                <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pctReq}%`, background: tasa >= 80 ? '#10B981' : tasa >= 50 ? '#F59E0B' : '#EF4444' }} />
                               </div>
                             </div>
                           );
                         })}
+                      </div>
+                      <div className="pt-3 mt-1 border-t border-gray-100 flex justify-between items-center">
+                        <span className="text-xs text-gray-400">{analytics.top_centros.length} centros</span>
+                        <span className="text-xs text-gray-500">Prom. cumplimiento: <span className="font-bold text-gray-700">{totalReq > 0 ? (totalSurtidas / totalReq * 100).toFixed(0) : 0}%</span></span>
                       </div>
                     </div>
                   );
@@ -1926,22 +1974,14 @@ const Dashboard = () => {
             {analytics.donaciones && (
               <ChartCard title="Resumen de Donaciones" icon={FaHandHoldingHeart}>
                 {/* KPIs principales */}
-                <div className="grid grid-cols-3 gap-3 mb-5">
+                <div className="grid grid-cols-2 gap-3 mb-5">
                   <div className="dash-stat-mini dash-stat-primary">
                     <div className="flex items-center gap-1.5 mb-1">
                       <FaGift className="text-purple-500" size={10} />
                       <span className="text-[10px] font-bold text-purple-600 uppercase tracking-wider">Total</span>
                     </div>
                     <p className="text-2xl font-black text-purple-700">{analytics.donaciones.total_donaciones || 0}</p>
-                    <p className="text-[10px] text-purple-400 mt-0.5">donaciones</p>
-                  </div>
-                  <div className="dash-stat-mini dash-stat-info">
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <FaCubes className="text-indigo-500" size={10} />
-                      <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">Unidades</span>
-                    </div>
-                    <p className="text-2xl font-black text-indigo-700">{(analytics.donaciones.total_unidades || 0).toLocaleString('es-MX')}</p>
-                    <p className="text-[10px] text-indigo-400 mt-0.5">donadas</p>
+                    <p className="text-[10px] text-purple-400 mt-0.5">donaciones registradas</p>
                   </div>
                   <div className="dash-stat-mini dash-stat-success">
                     <div className="flex items-center gap-1.5 mb-1">
@@ -1949,47 +1989,45 @@ const Dashboard = () => {
                       <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Este mes</span>
                     </div>
                     <p className="text-2xl font-black text-emerald-700">{analytics.donaciones.donaciones_mes || 0}</p>
-                    <p className="text-[10px] text-emerald-400 mt-0.5">nuevas</p>
+                    <p className="text-[10px] text-emerald-400 mt-0.5">nuevas donaciones</p>
                   </div>
                 </div>
                 
-                {/* Top Centros Beneficiados y Productos */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {analytics.donaciones.top_centros_beneficiados?.length > 0 && (
-                    <div>
-                      <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2.5 flex items-center gap-2">
-                        <FaBuilding className="text-purple-400" size={10} />
-                        Centros Beneficiados
-                      </p>
-                      <div className="space-y-1.5 max-h-40 overflow-y-auto custom-scrollbar">
-                        {analytics.donaciones.top_centros_beneficiados.map((item, idx) => (
-                          <div key={idx} className="dash-list-row">
-                            <span className="dash-bar-rank text-[10px]" style={{ background: '#8B5CF6' }}>{idx + 1}</span>
-                            <span className="text-xs font-medium text-gray-600 truncate flex-1" title={item.centro}>{item.centro}</span>
-                            <span className="text-xs font-bold text-purple-600 tabular-nums">{item.total_unidades?.toLocaleString('es-MX')}</span>
-                          </div>
-                        ))}
-                      </div>
+                {/* Por Estado */}
+                {analytics.donaciones.por_estado?.length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2.5 flex items-center gap-2">
+                      <FaClipboardList className="text-purple-400" size={10} />
+                      Por Estado
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {analytics.donaciones.por_estado.map((item, idx) => (
+                        <span key={idx} className="text-[10px] font-bold px-2.5 py-1.5 rounded-lg bg-purple-50 text-purple-700 border border-purple-100">
+                          {item.estado}: <span className="text-sm">{item.cantidad}</span>
+                        </span>
+                      ))}
                     </div>
-                  )}
-                  {analytics.donaciones.top_productos_donados?.length > 0 && (
-                    <div>
-                      <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2.5 flex items-center gap-2">
-                        <FaCubes className="text-indigo-400" size={10} />
-                        Productos Donados
-                      </p>
-                      <div className="space-y-1.5 max-h-40 overflow-y-auto custom-scrollbar">
-                        {analytics.donaciones.top_productos_donados.map((item, idx) => (
-                          <div key={idx} className="dash-list-row">
-                            <span className="dash-bar-rank text-[10px]" style={{ background: '#6366F1' }}>{idx + 1}</span>
-                            <span className="text-xs font-medium text-gray-600 truncate flex-1" title={item.producto}>{item.producto}</span>
-                            <span className="text-xs font-bold text-indigo-600 tabular-nums">{item.total?.toLocaleString('es-MX')}</span>
-                          </div>
-                        ))}
-                      </div>
+                  </div>
+                )}
+
+                {/* Top Centros Receptores */}
+                {analytics.donaciones.top_receptores?.length > 0 && (
+                  <div>
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2.5 flex items-center gap-2">
+                      <FaBuilding className="text-purple-400" size={10} />
+                      Top Centros Receptores
+                    </p>
+                    <div className="space-y-1.5 max-h-44 overflow-y-auto custom-scrollbar">
+                      {analytics.donaciones.top_receptores.map((item, idx) => (
+                        <div key={idx} className="dash-list-row">
+                          <span className="dash-bar-rank text-[10px]" style={{ background: '#8B5CF6' }}>{idx + 1}</span>
+                          <span className="text-xs font-medium text-gray-600 truncate flex-1" title={item.nombre}>{item.nombre}</span>
+                          <span className="text-xs font-bold text-purple-600 tabular-nums">{item.total} donaciones</span>
+                        </div>
+                      ))}
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </ChartCard>
             )}
 
@@ -1997,7 +2035,7 @@ const Dashboard = () => {
             {analytics.caja_chica && (
               <ChartCard title="Resumen Caja Chica" icon={FaMoneyBillWave}>
                 {/* KPIs principales */}
-                <div className="grid grid-cols-2 gap-3 mb-5">
+                <div className="grid grid-cols-2 gap-3 mb-4">
                   <div className="dash-money-card">
                     <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Monto Total</span>
                     <p className="text-2xl font-black text-emerald-700 mt-1">
@@ -2012,25 +2050,38 @@ const Dashboard = () => {
                     <p className="text-2xl font-black text-teal-700 mt-1">
                       <span className="text-base">$</span>{(analytics.caja_chica.promedio_compra || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
                     </p>
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className="text-[10px] text-gray-400">{analytics.caja_chica.total_compras || 0} compras</span>
-                      <span className="text-[10px] text-gray-300">•</span>
-                      <span className="text-[10px] text-gray-400">{(analytics.caja_chica.total_productos || 0).toLocaleString('es-MX')} productos</span>
-                    </div>
+                    <p className="text-[10px] text-gray-400 mt-1.5">{analytics.caja_chica.total_compras || 0} compras totales</p>
                   </div>
                 </div>
                 
-                {/* Stats secundarios */}
-                <div className="grid grid-cols-2 gap-3 mb-5">
-                  <div className="dash-stat-mini dash-stat-primary">
-                    <span className="text-[10px] font-bold text-gray-500 uppercase">Compras</span>
-                    <p className="text-xl font-black text-gray-800 mt-1">{analytics.caja_chica.total_compras || 0}</p>
-                  </div>
+                {/* Stats del mes */}
+                <div className="grid grid-cols-2 gap-3 mb-4">
                   <div className="dash-stat-mini dash-stat-info">
-                    <span className="text-[10px] font-bold text-gray-500 uppercase">Productos</span>
-                    <p className="text-xl font-black text-gray-800 mt-1">{(analytics.caja_chica.total_productos || 0).toLocaleString('es-MX')}</p>
+                    <span className="text-[10px] font-bold text-blue-600 uppercase">Compras este mes</span>
+                    <p className="text-xl font-black text-blue-800 mt-1">{analytics.caja_chica.compras_mes || 0}</p>
+                  </div>
+                  <div className="dash-stat-mini dash-stat-success">
+                    <span className="text-[10px] font-bold text-emerald-600 uppercase">Monto del mes</span>
+                    <p className="text-lg font-black text-emerald-800 mt-1"><span className="text-xs">$</span>{(analytics.caja_chica.monto_mes || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
                   </div>
                 </div>
+
+                {/* Por Estado */}
+                {analytics.caja_chica.por_estado?.length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                      <FaClipboardList className="text-emerald-400" size={10} />
+                      Por Estado
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {analytics.caja_chica.por_estado.map((item, idx) => (
+                        <span key={idx} className="text-[10px] font-bold px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-100">
+                          {item.estado}: <span className="text-sm">{item.cantidad}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 
                 {/* Top Compradores */}
                 {analytics.caja_chica.top_compradores?.length > 0 && (
@@ -2039,11 +2090,11 @@ const Dashboard = () => {
                       <FaUserTie className="text-emerald-400" size={10} />
                       Principales Compradores
                     </p>
-                    <div className="space-y-1.5 max-h-40 overflow-y-auto custom-scrollbar">
+                    <div className="space-y-1.5 max-h-44 overflow-y-auto custom-scrollbar">
                       {analytics.caja_chica.top_compradores.map((item, idx) => (
                         <div key={idx} className="dash-list-row">
                           <span className="dash-bar-rank text-[10px]" style={{ background: '#0F766E' }}>{idx + 1}</span>
-                          <span className="text-xs font-medium text-gray-600 truncate flex-1">{item.usuario}</span>
+                          <span className="text-xs font-medium text-gray-600 truncate flex-1">{item.nombre}</span>
                           <div className="text-right flex-shrink-0">
                             <span className="text-xs font-bold text-emerald-600">${(item.monto_total || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
                             <span className="text-[10px] text-gray-400 ml-1.5">{item.total_compras}c</span>
@@ -2099,31 +2150,46 @@ const Dashboard = () => {
                         onClick={() => permisos?.verMovimientos && navigate('/movimientos', { state: { highlightId: mov.id } })}
                       >
                         <div className="dash-timeline-dot" style={{
-                          background: mov.tipo === 'ENTRADA' ? '#10B981' : mov.tipo === 'SALIDA' ? '#EF4444' : '#6366F1'
+                          background: mov.tipo_movimiento === 'ENTRADA' ? '#10B981' : mov.tipo_movimiento === 'SALIDA' ? '#EF4444' : '#6366F1'
                         }} />
                         <div className="dash-timeline-content">
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-0.5">
+                              <div className="flex items-center flex-wrap gap-1.5 mb-1">
                                 <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${
-                                  mov.tipo === 'ENTRADA' ? 'bg-emerald-50 text-emerald-700' : 
-                                  mov.tipo === 'SALIDA' ? 'bg-red-50 text-red-700' : 'bg-indigo-50 text-indigo-700'
-                                }`}>{mov.tipo}</span>
-                                {mov.centro_nombre && (
-                                  <span className="text-[10px] text-gray-400 truncate">{mov.centro_nombre}</span>
+                                  mov.tipo_movimiento === 'ENTRADA' ? 'bg-emerald-50 text-emerald-700' : 
+                                  mov.tipo_movimiento === 'SALIDA' ? 'bg-red-50 text-red-700' : 'bg-indigo-50 text-indigo-700'
+                                }`}>{mov.tipo_movimiento || 'MOV'}</span>
+                                {mov.lote__codigo_lote && (
+                                  <span className="text-[10px] font-mono text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded">Lote: {mov.lote__codigo_lote}</span>
                                 )}
                               </div>
-                              <p className="text-sm font-semibold text-gray-700 truncate group-hover:text-gray-900 transition-colors" title={mov.producto_nombre}>
-                                {mov.producto_nombre || mov.producto_clave || 'Producto'}
+                              <p className="text-sm font-bold text-gray-800 truncate group-hover:text-gray-900 transition-colors" title={mov.producto__descripcion}>
+                                {mov.producto__clave && <span className="text-xs font-mono text-gray-400 mr-1.5">{mov.producto__clave}</span>}
+                                {mov.producto__descripcion || 'Producto'}
                               </p>
+                              <div className="flex items-center flex-wrap gap-x-3 gap-y-0.5 mt-1">
+                                {mov.origen && (
+                                  <span className="text-[10px] text-gray-400"><span className="font-semibold text-gray-500">De:</span> {mov.origen}</span>
+                                )}
+                                {mov.destino && (
+                                  <span className="text-[10px] text-gray-400"><span className="font-semibold text-gray-500">A:</span> {mov.destino}</span>
+                                )}
+                                {mov.usuario && mov.usuario !== 'Sistema' && (
+                                  <span className="text-[10px] text-gray-400 flex items-center gap-0.5"><FaUser size={8} className="text-gray-300" />{mov.usuario}</span>
+                                )}
+                              </div>
                             </div>
                             <div className="text-right flex-shrink-0">
                               <p className={`text-lg font-black tabular-nums ${
-                                mov.tipo === 'ENTRADA' ? 'text-emerald-600' : mov.tipo === 'SALIDA' ? 'text-red-600' : 'text-indigo-600'
+                                mov.tipo_movimiento === 'ENTRADA' ? 'text-emerald-600' : mov.tipo_movimiento === 'SALIDA' ? 'text-red-600' : 'text-indigo-600'
                               }`}>
-                                {mov.tipo === 'ENTRADA' ? '+' : mov.tipo === 'SALIDA' ? '-' : ''}{mov.cantidad}
+                                {mov.tipo_movimiento === 'ENTRADA' ? '+' : mov.tipo_movimiento === 'SALIDA' ? '-' : ''}{mov.cantidad}
                               </p>
-                              <p className="text-[10px] text-gray-400">{mov.fecha ? new Date(mov.fecha).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }) : ''}</p>
+                              <p className="text-[10px] text-gray-400 mt-0.5">{mov.fecha_movimiento ? new Date(mov.fecha_movimiento).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}</p>
+                              {mov.requisicion_folio && (
+                                <p className="text-[9px] font-mono text-blue-400 mt-0.5">Req: {mov.requisicion_folio}</p>
+                              )}
                             </div>
                           </div>
                         </div>
