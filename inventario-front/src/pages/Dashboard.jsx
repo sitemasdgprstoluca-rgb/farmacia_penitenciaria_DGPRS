@@ -49,7 +49,7 @@ import {
 import { 
   AreaChart, Area, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  Legend, BarChart, Bar, LineChart, Line
+  Legend, BarChart, Bar, LineChart, Line, RadialBarChart, RadialBar
 } from 'recharts';
 import { usePermissions } from '../hooks/usePermissions';
 import PageHeader from '../components/PageHeader';
@@ -99,6 +99,30 @@ const formatearEstado = (estado) => {
     'PARCIAL': 'Parcial',
   };
   return ESTADOS_LABEL[estado] || estado?.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) || estado;
+};
+
+/**
+ * Micro Radial Progress — SVG mini radial para KPIs de alerta
+ */
+const MicroRadial = ({ value, max, color = '#932043', size = 44 }) => {
+  const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
+  const r = (size - 6) / 2;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (pct / 100) * circ;
+  return (
+    <svg width={size} height={size} className="flex-shrink-0">
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={`${color}18`} strokeWidth="4" />
+      <circle 
+        cx={size/2} cy={size/2} r={r} fill="none" 
+        stroke={color} strokeWidth="4" strokeLinecap="round"
+        strokeDasharray={circ} strokeDashoffset={offset}
+        transform={`rotate(-90 ${size/2} ${size/2})`}
+        style={{ transition: 'stroke-dashoffset 1s cubic-bezier(0.16, 1, 0.3, 1)' }}
+      />
+      <text x={size/2} y={size/2} textAnchor="middle" dominantBaseline="central" 
+        fill={color} fontSize="10" fontWeight="800">{Math.round(pct)}%</text>
+    </svg>
+  );
 };
 
 // ============================================================================
@@ -1278,46 +1302,102 @@ const Dashboard = () => {
               <div className="h-px flex-1 bg-gradient-to-r from-gray-200 to-transparent" />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-              <KPICard
-                title="Alertas de Inventario"
-                value={(analytics.caducidades?.vencidos || 0) + (analytics.caducidades?.vencen_30_dias || 0) + (analytics.caducidades?.vencen_15_dias || 0)}
-                subtext="Notificaciones activas"
-                icon={FaBox}
-                colorType="danger"
-                delay={0}
-                secondaryLabel="Preventivas:"
-                secondaryValue={String(analytics.caducidades?.vencen_90_dias || 0)}
-              />
-              <KPICard
-                title="Alertas de Lotes"
-                value={(analytics.caducidades?.vencen_15_dias || 0) + (analytics.caducidades?.vencen_30_dias || 0)}
-                subtext="Lotes cercanos a vencer"
-                icon={FaWarehouse}
-                colorType="warning"
-                delay={50}
-                secondaryLabel="En 15d:"
-                secondaryValue={String(analytics.caducidades?.vencen_15_dias || 0)}
-              />
-              <KPICard
-                title="Alertas de Caducidad"
-                value={analytics.caducidades?.vencidos || 0}
-                subtext="Productos vencidos o próximos"
-                icon={FaExclamationTriangle}
-                colorType="danger"
-                delay={100}
-                secondaryLabel="Vencen 30d:"
-                secondaryValue={String(analytics.caducidades?.vencen_30_dias || 0)}
-              />
-              <KPICard
-                title="Alertas de Donaciones"
-                value={analytics.donaciones?.donaciones_mes || 0}
-                subtext="Donaciones recibidas este mes"
-                icon={FaHandHoldingHeart}
-                colorType="info"
-                delay={150}
-                secondaryLabel="Total:"
-                secondaryValue={String(analytics.donaciones?.total_donaciones || 0)}
-              />
+              {/* Alert KPI con micro-radials */}
+              <div className="dash-alert-kpi-card">
+                <div className="flex items-center justify-between gap-3 p-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #DC2626, #991B1B)' }}>
+                        <FaBox className="text-white text-[10px]" />
+                      </div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-red-600">Alertas Inventario</span>
+                    </div>
+                    <p className="text-2xl font-black text-gray-900">{(analytics.caducidades?.vencidos || 0) + (analytics.caducidades?.vencen_30_dias || 0) + (analytics.caducidades?.vencen_15_dias || 0)}</p>
+                    <p className="text-[9px] text-gray-400">Notificaciones activas</p>
+                    <div className="flex items-center gap-1 mt-1">
+                      <span className="text-[9px] text-gray-400">Preventivas:</span>
+                      <span className="text-[10px] font-bold text-red-600">{analytics.caducidades?.vencen_90_dias || 0}</span>
+                    </div>
+                  </div>
+                  <MicroRadial 
+                    value={(analytics.caducidades?.vencidos || 0) + (analytics.caducidades?.vencen_30_dias || 0) + (analytics.caducidades?.vencen_15_dias || 0)}
+                    max={Math.max((analytics.caducidades?.vencidos || 0) + (analytics.caducidades?.vencen_30_dias || 0) + (analytics.caducidades?.vencen_15_dias || 0) + (analytics.caducidades?.vencen_90_dias || 0), 1)}
+                    color="#DC2626"
+                  />
+                </div>
+              </div>
+
+              <div className="dash-alert-kpi-card">
+                <div className="flex items-center justify-between gap-3 p-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #9F663E, #7A4E2F)' }}>
+                        <FaWarehouse className="text-white text-[10px]" />
+                      </div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Alertas Lotes</span>
+                    </div>
+                    <p className="text-2xl font-black text-gray-900">{(analytics.caducidades?.vencen_15_dias || 0) + (analytics.caducidades?.vencen_30_dias || 0)}</p>
+                    <p className="text-[9px] text-gray-400">Lotes cercanos a vencer</p>
+                    <div className="flex items-center gap-1 mt-1">
+                      <span className="text-[9px] text-gray-400">En 15d:</span>
+                      <span className="text-[10px] font-bold text-amber-700">{analytics.caducidades?.vencen_15_dias || 0}</span>
+                    </div>
+                  </div>
+                  <MicroRadial 
+                    value={(analytics.caducidades?.vencen_15_dias || 0) + (analytics.caducidades?.vencen_30_dias || 0)}
+                    max={Math.max(kpis.lotes_activos || 1, 1)}
+                    color="#9F663E"
+                  />
+                </div>
+              </div>
+
+              <div className="dash-alert-kpi-card">
+                <div className="flex items-center justify-between gap-3 p-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #DC2626, #991B1B)' }}>
+                        <FaExclamationTriangle className="text-white text-[10px]" />
+                      </div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-red-600">Alertas Caducidad</span>
+                    </div>
+                    <p className="text-2xl font-black text-gray-900">{analytics.caducidades?.vencidos || 0}</p>
+                    <p className="text-[9px] text-gray-400">Productos vencidos</p>
+                    <div className="flex items-center gap-1 mt-1">
+                      <span className="text-[9px] text-gray-400">Vencen 30d:</span>
+                      <span className="text-[10px] font-bold text-red-600">{analytics.caducidades?.vencen_30_dias || 0}</span>
+                    </div>
+                  </div>
+                  <MicroRadial 
+                    value={analytics.caducidades?.vencidos || 0}
+                    max={Math.max((analytics.caducidades?.vencidos || 0) + (analytics.caducidades?.vencen_30_dias || 0), 1)}
+                    color="#DC2626"
+                  />
+                </div>
+              </div>
+
+              <div className="dash-alert-kpi-card">
+                <div className="flex items-center justify-between gap-3 p-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #1E40AF, #1E3A5F)' }}>
+                        <FaHandHoldingHeart className="text-white text-[10px]" />
+                      </div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700">Donaciones</span>
+                    </div>
+                    <p className="text-2xl font-black text-gray-900">{analytics.donaciones?.donaciones_mes || 0}</p>
+                    <p className="text-[9px] text-gray-400">Recibidas este mes</p>
+                    <div className="flex items-center gap-1 mt-1">
+                      <span className="text-[9px] text-gray-400">Total:</span>
+                      <span className="text-[10px] font-bold text-blue-700">{analytics.donaciones?.total_donaciones || 0}</span>
+                    </div>
+                  </div>
+                  <MicroRadial 
+                    value={analytics.donaciones?.donaciones_mes || 0}
+                    max={Math.max(analytics.donaciones?.total_donaciones || 1, 1)}
+                    color="#1E40AF"
+                  />
+                </div>
+              </div>
             </div>
           </>
         )}
@@ -1461,75 +1541,39 @@ const Dashboard = () => {
             )}
           </ChartCard>
 
-          {/* Stock por Centro / por Producto */}
+          {/* Stock por Centro / por Producto — Horizontal BarChart moderno */}
           {(() => {
             const stockCentro = graficas.stock_por_centro || [];
             const stockProducto = graficas.stock_por_producto || [];
             const esCentroUnico = stockCentro.length <= 1 && stockProducto.length > 0;
             const chartTitle = esCentroUnico ? 'Inventario por Producto' : 'Inventario por Centro';
             const chartIcon = esCentroUnico ? FaCubes : FaWarehouse;
+            const items = esCentroUnico ? stockProducto : stockCentro;
+            const labelKey = esCentroUnico ? 'producto' : 'centro';
             const COLORS_BAR = ['#932043', '#0EA5E9', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316', '#6366F1', '#EF4444'];
 
-            const renderBarItems = (items, labelKey, idKey, canClick, onClickFn) => {
-              const sorted = [...items].sort((a, b) => b.stock - a.stock);
-              const maxStock = sorted[0]?.stock || 1;
-              const totalStock = sorted.reduce((s, p) => s + p.stock, 0);
-              return (
-                <div>
-                  {/* Resumen superior */}
-                  <div className="grid grid-cols-3 gap-2 mb-3">
-                    <div className="dash-stat-mini dash-stat-primary">
-                      <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">{esCentroUnico ? 'Productos' : 'Centros'}</span>
-                      <p className="text-lg font-black text-gray-800 mt-0.5">{sorted.length}</p>
-                    </div>
-                    <div className="dash-stat-mini dash-stat-success">
-                      <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Stock total</span>
-                      <p className="text-lg font-black text-gray-800 mt-0.5">{totalStock.toLocaleString('es-MX')}</p>
-                    </div>
-                    <div className="dash-stat-mini dash-stat-info">
-                      <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Promedio</span>
-                      <p className="text-lg font-black text-gray-800 mt-0.5">{Math.round(totalStock / (sorted.length || 1)).toLocaleString('es-MX')}</p>
-                    </div>
-                  </div>
-                  {/* Barras */}
-                  <div className={`space-y-2.5 ${sorted.length > 6 ? 'max-h-[340px] overflow-y-auto pr-2 custom-scrollbar' : ''}`}>
-                    {sorted.map((item, index) => {
-                      const pct = Math.max((item.stock / maxStock) * 100, 2);
-                      const pctTotal = ((item.stock / totalStock) * 100).toFixed(1);
-                      const color = COLORS_BAR[index % COLORS_BAR.length];
-                      return (
-                        <div
-                          key={item[idKey] || item[labelKey]}
-                          className={`dash-bar-item group ${canClick ? 'cursor-pointer' : ''}`}
-                          onClick={() => canClick && onClickFn?.(item.centro_id)}
-                        >
-                          <div className="flex items-center gap-2.5 mb-1.5">
-                            <span className="dash-bar-rank" style={{ background: color }}>{index + 1}</span>
-                            <span className="text-sm font-semibold text-gray-700 truncate flex-1 group-hover:text-gray-900 transition-colors" title={item[labelKey]}>
-                              {item[labelKey]}
-                            </span>
-                            <span className="text-sm font-bold text-gray-900 tabular-nums whitespace-nowrap">
-                              {item.stock.toLocaleString('es-MX')} <span className="text-gray-400 font-normal text-[10px]">uds</span>
-                            </span>
-                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md tabular-nums" style={{ color, backgroundColor: `${color}15` }}>
-                              {pctTotal}%
-                            </span>
-                          </div>
-                          <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-                            <div className="h-full rounded-full transition-all duration-700 ease-out" style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${color}99, ${color})` }} />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            };
-
             const puedeNavegar = permisos?.verReportes;
-            const irAReportesCentro = (centroId) => {
-              if (puedeNavegar) navigate('/reportes', { state: { tipo: 'inventario', centro: centroId } });
-            };
+
+            if (items.length === 0) {
+              return (
+                <ChartCard title={chartTitle} icon={chartIcon}>
+                  <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+                    <FaWarehouse className="text-4xl mb-3 opacity-50" />
+                    <p>No hay datos de inventario</p>
+                  </div>
+                </ChartCard>
+              );
+            }
+
+            const sorted = [...items].sort((a, b) => b.stock - a.stock).slice(0, 10);
+            const totalStock = sorted.reduce((s, p) => s + p.stock, 0);
+            const barData = sorted.map((item, i) => ({
+              name: item[labelKey]?.length > 18 ? item[labelKey].substring(0, 18) + '…' : item[labelKey],
+              fullName: item[labelKey],
+              stock: item.stock,
+              fill: COLORS_BAR[i % COLORS_BAR.length],
+              centro_id: item.centro_id,
+            }));
 
             return (
               <ChartCard 
@@ -1548,67 +1592,56 @@ const Dashboard = () => {
                   ) : null
                 }
               >
-                {esCentroUnico ? (
-                  renderBarItems(stockProducto, 'producto', 'producto_id', false)
-                ) : stockCentro.length > 0 ? (
-                  (() => {
-                    const sorted = [...stockCentro].sort((a, b) => b.stock - a.stock);
-                    const maxStock = sorted[0]?.stock || 1;
-                    const totalStock = sorted.reduce((s, p) => s + p.stock, 0);
-                    return (
-                      <div>
-                        <div className="grid grid-cols-3 gap-2 mb-4">
-                          <div className="dash-stat-mini dash-stat-primary">
-                            <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Centros</span>
-                            <p className="text-lg font-black text-gray-800 mt-0.5">{sorted.length}</p>
-                          </div>
-                          <div className="dash-stat-mini dash-stat-success">
-                            <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Stock total</span>
-                            <p className="text-lg font-black text-gray-800 mt-0.5">{totalStock.toLocaleString('es-MX')}</p>
-                          </div>
-                          <div className="dash-stat-mini dash-stat-info">
-                            <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Promedio</span>
-                            <p className="text-lg font-black text-gray-800 mt-0.5">{Math.round(totalStock / (sorted.length || 1)).toLocaleString('es-MX')}</p>
-                          </div>
-                        </div>
-                        <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 ${sorted.length > 4 ? 'max-h-[380px] overflow-y-auto pr-1 custom-scrollbar' : ''}`}>
-                          {sorted.map((item, index) => {
-                            const pct = Math.max((item.stock / maxStock) * 100, 2);
-                            const pctTotal = ((item.stock / totalStock) * 100).toFixed(1);
-                            const color = COLORS_BAR[index % COLORS_BAR.length];
-                            return (
-                              <div
-                                key={item.centro_id || item.centro}
-                                className={`rounded-xl border border-gray-100 p-3.5 transition-all hover:shadow-lg hover:border-gray-200 ${puedeNavegar ? 'cursor-pointer' : ''}`}
-                                style={{ borderLeft: `4px solid ${color}` }}
-                                onClick={() => puedeNavegar && irAReportesCentro(item.centro_id)}
-                              >
-                                <div className="flex items-center justify-between mb-1">
-                                  <p className="text-xs font-semibold text-gray-500 truncate flex-1" title={item.centro}>
-                                    {item.centro}
-                                  </p>
-                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md tabular-nums ml-2 flex-shrink-0" style={{ color, backgroundColor: `${color}15` }}>
-                                    {pctTotal}%
-                                  </span>
-                                </div>
-                                <p className="text-2xl font-black text-gray-900 tabular-nums leading-tight">{item.stock.toLocaleString('es-MX')}</p>
-                                <p className="text-[10px] text-gray-400 mb-2.5">unidades en stock</p>
-                                <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-                                  <div className="h-full rounded-full transition-all duration-700 ease-out" style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${color}99, ${color})` }} />
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })()
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-64 text-gray-400">
-                    <FaWarehouse className="text-4xl mb-3 opacity-50" />
-                    <p>No hay datos de inventario</p>
+                {/* Mini KPIs */}
+                <div className="grid grid-cols-3 gap-2 mb-4">
+                  <div className="dash-stat-mini dash-stat-primary">
+                    <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">{esCentroUnico ? 'Productos' : 'Centros'}</span>
+                    <p className="text-lg font-black text-gray-800 mt-0.5">{sorted.length}</p>
                   </div>
-                )}
+                  <div className="dash-stat-mini dash-stat-success">
+                    <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Stock total</span>
+                    <p className="text-lg font-black text-gray-800 mt-0.5">{totalStock.toLocaleString('es-MX')}</p>
+                  </div>
+                  <div className="dash-stat-mini dash-stat-info">
+                    <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Promedio</span>
+                    <p className="text-lg font-black text-gray-800 mt-0.5">{Math.round(totalStock / (sorted.length || 1)).toLocaleString('es-MX')}</p>
+                  </div>
+                </div>
+                {/* Recharts Horizontal BarChart */}
+                <ResponsiveContainer width="100%" height={Math.max(sorted.length * 38, 180)} minWidth={0} minHeight={0}>
+                  <BarChart data={barData} layout="vertical" margin={{ top: 0, right: 40, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" horizontal={false} />
+                    <XAxis type="number" tick={{ fill: '#9CA3AF', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} />
+                    <YAxis dataKey="name" type="category" tick={{ fill: '#6B7280', fontSize: 11, fontWeight: 500 }} axisLine={false} tickLine={false} width={130} />
+                    <Tooltip
+                      content={({ active, payload }) => {
+                        if (!active || !payload?.length) return null;
+                        const d = payload[0]?.payload;
+                        return (
+                          <div className="bg-white rounded-lg shadow-xl border border-gray-200 p-3 min-w-[140px]">
+                            <p className="text-xs font-bold text-gray-800 mb-1">{d?.fullName}</p>
+                            <p className="text-lg font-black text-gray-900">{d?.stock?.toLocaleString('es-MX')} <span className="text-xs font-normal text-gray-400">uds</span></p>
+                            <p className="text-[10px] text-gray-400">{totalStock > 0 ? ((d?.stock / totalStock) * 100).toFixed(1) : 0}% del total</p>
+                          </div>
+                        );
+                      }}
+                    />
+                    <Bar 
+                      dataKey="stock" 
+                      radius={[0, 6, 6, 0]}
+                      cursor={puedeNavegar && !esCentroUnico ? 'pointer' : 'default'}
+                      onClick={(data) => {
+                        if (puedeNavegar && !esCentroUnico && data?.centro_id) {
+                          navigate('/reportes', { state: { tipo: 'inventario', centro: data.centro_id } });
+                        }
+                      }}
+                    >
+                      {barData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.fill} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
               </ChartCard>
             );
           })()}
@@ -1781,10 +1814,10 @@ const Dashboard = () => {
             )}
           </ChartCard>
 
-          {/* Inventario por Centro — Vista barras horizontales */}
+          {/* Distribución de Inventario — Donut compacto */}
           <ChartCard 
-            title="Inventario por Centro" 
-            icon={FaWarehouse}
+            title="Distribución de Inventario" 
+            icon={FaChartBar}
             action={
               permisos?.verReportes ? (
                 <button
@@ -1792,7 +1825,7 @@ const Dashboard = () => {
                   className="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors hover:bg-gray-100"
                   style={{ color: 'var(--color-primary, #9F2241)' }}
                 >
-                  Ver todos →
+                  Ver reportes →
                 </button>
               ) : null
             }
@@ -1802,43 +1835,79 @@ const Dashboard = () => {
               const stockProducto = graficas.stock_por_producto || [];
               const items = stockCentro.length > 1 ? stockCentro : stockProducto;
               const labelKey = stockCentro.length > 1 ? 'centro' : 'producto';
+              const DIST_COLORS = ['#932043', '#0EA5E9', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316'];
               if (items.length === 0) return (
                 <div className="flex flex-col items-center justify-center h-48 text-gray-400">
-                  <FaWarehouse className="text-3xl mb-2 opacity-50" />
-                  <p className="text-sm">Sin datos de inventario</p>
+                  <FaChartBar className="text-3xl mb-2 opacity-50" />
+                  <p className="text-sm">Sin datos de distribución</p>
                 </div>
               );
-              const sorted = [...items].sort((a, b) => b.stock - a.stock);
-              const maxStock = sorted[0]?.stock || 1;
+              const sorted = [...items].sort((a, b) => b.stock - a.stock).slice(0, 8);
               const totalStock = sorted.reduce((s, p) => s + p.stock, 0);
+              const pieData = sorted.map((item, i) => ({
+                name: item[labelKey]?.length > 20 ? item[labelKey].substring(0, 20) + '…' : item[labelKey],
+                fullName: item[labelKey],
+                value: item.stock,
+                fill: DIST_COLORS[i % DIST_COLORS.length],
+                centro_id: item.centro_id,
+              }));
               return (
-                <div className={`space-y-3 ${sorted.length > 5 ? 'max-h-[420px] overflow-y-auto pr-1 custom-scrollbar' : ''}`}>
-                  {sorted.map((item, index) => {
-                    const pct = Math.max((item.stock / maxStock) * 100, 3);
-                    return (
-                      <div
-                        key={item.centro_id || item[labelKey]}
-                        className={`group ${permisos?.verReportes && stockCentro.length > 1 ? 'cursor-pointer' : ''}`}
-                        onClick={() => permisos?.verReportes && stockCentro.length > 1 && navigate('/reportes', { state: { tipo: 'inventario', centro: item.centro_id } })}
-                      >
-                        <div className="flex items-baseline justify-between mb-1">
-                          <span className="text-sm font-semibold text-gray-700 truncate flex-1 mr-3 group-hover:text-gray-900 transition-colors" title={item[labelKey]}>
-                            {item[labelKey]}
-                          </span>
-                          <div className="flex items-baseline gap-3 flex-shrink-0">
-                            <span className="text-lg font-black text-gray-900 tabular-nums">{item.stock.toLocaleString('es-MX')}</span>
-                            <span className="text-xs text-gray-400 tabular-nums">{totalStock.toLocaleString('es-MX')}</span>
-                          </div>
-                        </div>
-                        <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
-                          <div className="h-full rounded-full transition-all duration-700 ease-out" style={{ width: `${pct}%`, background: `linear-gradient(90deg, var(--color-primary, #932043)88, var(--color-primary, #932043))` }} />
-                        </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+                  <div className="relative flex justify-center" style={{ width: '100%', maxWidth: 200, margin: '0 auto' }}>
+                    <ResponsiveContainer width="100%" height={200} minWidth={0} minHeight={0}>
+                      <PieChart>
+                        <Pie
+                          data={pieData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={50}
+                          outerRadius={85}
+                          paddingAngle={2}
+                          dataKey="value"
+                          cornerRadius={4}
+                        >
+                          {pieData.map((entry, index) => (
+                            <Cell key={`dist-${index}`} fill={entry.fill} stroke="#fff" strokeWidth={2} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          content={({ active, payload }) => {
+                            if (!active || !payload?.length) return null;
+                            const d = payload[0]?.payload;
+                            return (
+                              <div className="bg-white rounded-lg shadow-xl border border-gray-200 p-3 min-w-[140px]">
+                                <p className="text-xs font-bold text-gray-800 mb-1">{d?.fullName}</p>
+                                <p className="text-lg font-black text-gray-900">{d?.value?.toLocaleString('es-MX')} <span className="text-xs font-normal text-gray-400">uds</span></p>
+                                <p className="text-[10px] text-gray-400">{totalStock > 0 ? ((d?.value / totalStock) * 100).toFixed(1) : 0}% del total</p>
+                              </div>
+                            );
+                          }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="text-center">
+                        <p className="text-2xl font-black text-gray-900">{totalStock.toLocaleString('es-MX')}</p>
+                        <p className="text-[9px] text-gray-400 font-semibold uppercase tracking-wider">Total Stock</p>
                       </div>
-                    );
-                  })}
-                  <div className="pt-2 mt-1 border-t border-gray-100 flex items-center justify-between text-[10px] text-gray-400">
-                    <span>Uso de compras</span>
-                    <span>Caducidad próxima</span>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    {pieData.map((item, idx) => {
+                      const pct = totalStock > 0 ? ((item.value / totalStock) * 100).toFixed(1) : 0;
+                      return (
+                        <div
+                          key={idx}
+                          className={`flex items-center gap-2 px-2 py-1.5 rounded-lg transition-colors hover:bg-gray-50 ${permisos?.verReportes && stockCentro.length > 1 ? 'cursor-pointer' : ''}`}
+                          onClick={() => permisos?.verReportes && stockCentro.length > 1 && item.centro_id && navigate('/reportes', { state: { tipo: 'inventario', centro: item.centro_id } })}
+                        >
+                          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: item.fill }} />
+                          <span className="text-[11px] font-medium text-gray-600 flex-1 truncate" title={item.fullName}>{item.name}</span>
+                          <span className="text-[11px] font-black text-gray-800 tabular-nums">{item.value.toLocaleString('es-MX')}</span>
+                          <span className="text-[9px] text-gray-400 tabular-nums w-10 text-right">{pct}%</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -1930,25 +1999,28 @@ const Dashboard = () => {
         </section>
       )}
 
-      {/* ========== USO DE REQUISICIONES — DONUT GRANDE ========== */}
+      {/* ========== USO DE REQUISICIONES — DONUT MODERNO ========== */}
       {puedeVerGraficasCompletas && graficas.requisiciones_por_estado.length > 0 && (
         <section>
           <ChartCard title="Uso de Requisiciones" icon={FaChartBar}>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
-              {/* Donut grande */}
-              <div className="flex flex-col items-center">
-                <div className="relative" style={{ width: 220, height: 220 }}>
-                  <ResponsiveContainer width={220} height={220} minWidth={0} minHeight={0}>
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
+              {/* Donut moderno con glow center */}
+              <div className="lg:col-span-2 flex flex-col items-center">
+                <div className="relative dash-donut-container" style={{ width: 200, height: 200 }}>
+                  <ResponsiveContainer width={200} height={200} minWidth={0} minHeight={0}>
                     <PieChart>
                       <Pie
                         data={graficas.requisiciones_por_estado}
                         cx="50%"
                         cy="50%"
-                        innerRadius={60}
-                        outerRadius={95}
+                        innerRadius={55}
+                        outerRadius={88}
                         paddingAngle={2}
                         dataKey="cantidad"
                         cornerRadius={4}
+                        animationBegin={0}
+                        animationDuration={1200}
+                        animationEasing="ease-out"
                       >
                         {graficas.requisiciones_por_estado.map((entry, index) => (
                           <Cell 
@@ -1965,12 +2037,13 @@ const Dashboard = () => {
                           const data = payload[0].payload;
                           const color = COLORES_ESTADO_REQUISICION[data.estado] || COLORES_ESTADO_REQUISICION.DEFAULT;
                           return (
-                            <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-2 min-w-[110px]">
-                              <div className="flex items-center gap-1.5 mb-0.5">
-                                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                            <div className="bg-white rounded-lg shadow-xl border border-gray-200 p-3 min-w-[130px]">
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
                                 <span className="font-bold text-gray-800 text-xs">{formatearEstado(data.estado)}</span>
                               </div>
-                              <p className="text-sm font-black text-gray-900">{data.cantidad} <span className="text-[10px] font-normal text-gray-400">/ {totalRequisiciones}</span></p>
+                              <p className="text-lg font-black text-gray-900">{data.cantidad} <span className="text-[10px] font-normal text-gray-400">/ {totalRequisiciones}</span></p>
+                              <p className="text-[10px] text-gray-400">{totalRequisiciones > 0 ? ((data.cantidad / totalRequisiciones) * 100).toFixed(1) : 0}%</p>
                             </div>
                           );
                         }}
@@ -1978,65 +2051,81 @@ const Dashboard = () => {
                     </PieChart>
                   </ResponsiveContainer>
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="text-center">
-                      <p className="text-3xl font-black text-gray-900">{totalRequisiciones}</p>
-                      <p className="text-xs text-gray-400 font-semibold">
-                        {graficas.requisiciones_resumen?.tasa_cumplimiento != null ? `${graficas.requisiciones_resumen.tasa_cumplimiento}%` : ''} Demanda
-                      </p>
+                    <div className="text-center dash-donut-center">
+                      <p className="text-3xl font-black text-gray-900 leading-none">{totalRequisiciones}</p>
+                      <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider mt-0.5">Total</p>
                     </div>
                   </div>
                 </div>
+                {/* Cumplimiento ring below donut */}
+                {graficas.requisiciones_resumen?.tasa_cumplimiento != null && (
+                  <div className="flex items-center gap-3 mt-3 px-4 py-2 rounded-xl bg-gray-50 border border-gray-100">
+                    <MicroRadial 
+                      value={graficas.requisiciones_resumen.tasa_cumplimiento} 
+                      max={100} 
+                      color="#10B981" 
+                      size={40}
+                    />
+                    <div>
+                      <p className="text-sm font-black text-emerald-700">{graficas.requisiciones_resumen.tasa_cumplimiento}%</p>
+                      <p className="text-[9px] text-gray-400 font-semibold">Tasa de Cumplimiento</p>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {/* Stats desglose */}
-              <div>
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-3">Referencia / Desglose</p>
-                <div className="grid grid-cols-3 gap-3 mb-4">
+              {/* Stats + leyenda modernizados */}
+              <div className="lg:col-span-3">
+                {/* Mini stat cards */}
+                <div className="grid grid-cols-3 gap-2 mb-4">
                   {(() => {
                     const completadas = graficas.requisiciones_resumen?.completadas || 0;
                     const enProceso = graficas.requisiciones_resumen?.en_proceso || 0;
                     const rechazadas = graficas.requisiciones_resumen?.rechazadas || 0;
                     return (
                       <>
-                        <div className="text-center p-3 rounded-xl bg-emerald-50 border border-emerald-100">
-                          <p className="text-2xl font-black text-emerald-700">{completadas}</p>
-                          <p className="text-[10px] text-emerald-600 font-semibold">Realizados</p>
+                        <div className="dash-stat-mini dash-stat-success text-center">
+                          <p className="text-xl font-black text-emerald-700">{completadas}</p>
+                          <p className="text-[9px] text-emerald-600 font-bold uppercase tracking-wider">Completadas</p>
                         </div>
-                        <div className="text-center p-3 rounded-xl bg-amber-50 border border-amber-100">
-                          <p className="text-2xl font-black text-amber-700">{enProceso}</p>
-                          <p className="text-[10px] text-amber-600 font-semibold">Formalizados</p>
+                        <div className="dash-stat-mini dash-stat-warning text-center">
+                          <p className="text-xl font-black text-amber-700">{enProceso}</p>
+                          <p className="text-[9px] text-amber-600 font-bold uppercase tracking-wider">En Proceso</p>
                         </div>
-                        <div className="text-center p-3 rounded-xl bg-red-50 border border-red-100">
-                          <p className="text-2xl font-black text-red-600">{rechazadas}</p>
-                          <p className="text-[10px] text-red-600 font-semibold">Parciales</p>
+                        <div className="dash-stat-mini dash-stat-danger text-center">
+                          <p className="text-xl font-black text-red-600">{rechazadas}</p>
+                          <p className="text-[9px] text-red-600 font-bold uppercase tracking-wider">Rechazadas</p>
                         </div>
                       </>
                     );
                   })()}
                 </div>
-                {/* Leyenda detallada */}
+
+                {/* Leyenda con barras de progreso */}
                 <div className="space-y-2">
                   {graficas.requisiciones_por_estado.map((item) => {
                     const color = COLORES_ESTADO_REQUISICION[item.estado] || COLORES_ESTADO_REQUISICION.DEFAULT;
-                    const pct = totalRequisiciones > 0 ? ((item.cantidad / totalRequisiciones) * 100).toFixed(0) : 0;
+                    const pct = totalRequisiciones > 0 ? ((item.cantidad / totalRequisiciones) * 100) : 0;
                     return (
-                      <div key={item.estado} className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
-                        <span className="text-xs text-gray-600 flex-1">{formatearEstado(item.estado)}</span>
-                        <span className="text-xs font-bold text-gray-800 tabular-nums">{item.cantidad}</span>
-                        <span className="text-[10px] text-gray-400 tabular-nums w-8 text-right">{pct}%</span>
+                      <div key={item.estado} className="group">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className="w-2 h-2 rounded-full flex-shrink-0 transition-transform group-hover:scale-125" style={{ backgroundColor: color }} />
+                          <span className="text-[11px] font-medium text-gray-600 flex-1">{formatearEstado(item.estado)}</span>
+                          <span className="text-[11px] font-black text-gray-800 tabular-nums">{item.cantidad}</span>
+                          <span className="text-[9px] text-gray-400 tabular-nums w-10 text-right">{pct.toFixed(0)}%</span>
+                        </div>
+                        <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden ml-4" style={{ width: 'calc(100% - 16px)' }}>
+                          <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.max(pct, 1)}%`, backgroundColor: color }} />
+                        </div>
                       </div>
                     );
                   })}
                 </div>
-                {graficas.requisiciones_resumen && (
+                {graficas.requisiciones_resumen?.dias_promedio_cumplimiento != null && (
                   <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2">
-                    <FaChartLine size={10} className="text-emerald-500" />
-                    <span className="text-xs font-medium text-gray-500">Cumplimiento</span>
-                    <div className="w-20 bg-gray-100 rounded-full h-2 overflow-hidden flex-shrink-0">
-                      <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${graficas.requisiciones_resumen.tasa_cumplimiento}%` }} />
-                    </div>
-                    <span className="text-sm font-black text-emerald-700">{graficas.requisiciones_resumen.tasa_cumplimiento}%</span>
+                    <FaClock size={10} className="text-blue-500" />
+                    <span className="text-[10px] font-medium text-gray-500">Tiempo promedio de cumplimiento:</span>
+                    <span className="text-sm font-black text-blue-700">{graficas.requisiciones_resumen.dias_promedio_cumplimiento} días</span>
                   </div>
                 )}
               </div>
@@ -2436,101 +2525,133 @@ const Dashboard = () => {
 
           {/* Caja Chica */}
           <section className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-            {/* Resumen Caja Chica */}
+            {/* Resumen Caja Chica — Modernizado */}
             {analytics.caja_chica && (
               <ChartCard title="Resumen Caja Chica" icon={FaMoneyBillWave}>
-                {/* KPIs principales */}
-                <div className="grid grid-cols-2 gap-2 mb-3">
-                  <div className="dash-money-card">
-                    <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider">Monto Total</span>
-                    <p className="text-xl font-black text-emerald-700 mt-0.5">
-                      <span className="text-sm">$</span>{(analytics.caja_chica.monto_total || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                {/* Header KPI con radial de utilización */}
+                <div className="flex items-center gap-4 mb-4 pb-4 border-b border-gray-100">
+                  <MicroRadial 
+                    value={analytics.caja_chica.compras_mes || 0}
+                    max={Math.max(analytics.caja_chica.total_compras || 1, 1)}
+                    color="#0F766E"
+                    size={56}
+                  />
+                  <div className="flex-1">
+                    <p className="text-2xl font-black text-gray-900">
+                      <span className="text-sm text-emerald-600">$</span>{(analytics.caja_chica.monto_total || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
                     </p>
-                    <div className="w-full bg-emerald-100 rounded-full h-1 mt-2">
-                      <div className="h-full rounded-full bg-emerald-500" style={{ width: '100%' }} />
-                    </div>
-                  </div>
-                  <div className="dash-money-card">
-                    <span className="text-[9px] font-bold text-teal-600 uppercase tracking-wider">Promedio/Compra</span>
-                    <p className="text-xl font-black text-teal-700 mt-0.5">
-                      <span className="text-sm">$</span>{(analytics.caja_chica.promedio_compra || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
-                    </p>
-                    <p className="text-[10px] text-gray-400 mt-1.5">{analytics.caja_chica.total_compras || 0} compras totales</p>
+                    <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">Monto acumulado total</p>
                   </div>
                 </div>
                 
-                {/* Stats del mes */}
-                <div className="grid grid-cols-2 gap-2 mb-3">
-                  <div className="dash-stat-mini dash-stat-info">
-                    <span className="text-[9px] font-bold text-blue-600 uppercase">Compras este mes</span>
-                    <p className="text-lg font-black text-blue-800 mt-0.5">{analytics.caja_chica.compras_mes || 0}</p>
+                {/* Stats en grid compacto */}
+                <div className="grid grid-cols-3 gap-2 mb-4">
+                  <div className="dash-stat-mini dash-stat-success text-center">
+                    <p className="text-lg font-black text-emerald-700">{analytics.caja_chica.total_compras || 0}</p>
+                    <p className="text-[8px] text-emerald-600 font-bold uppercase">Compras</p>
                   </div>
-                  <div className="dash-stat-mini dash-stat-success">
-                    <span className="text-[9px] font-bold text-emerald-600 uppercase">Monto del mes</span>
-                    <p className="text-base font-black text-emerald-800 mt-0.5"><span className="text-[10px]">$</span>{(analytics.caja_chica.monto_mes || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
+                  <div className="dash-stat-mini dash-stat-info text-center">
+                    <p className="text-lg font-black text-blue-700">{analytics.caja_chica.compras_mes || 0}</p>
+                    <p className="text-[8px] text-blue-600 font-bold uppercase">Este mes</p>
+                  </div>
+                  <div className="dash-stat-mini dash-stat-warning text-center">
+                    <p className="text-base font-black text-amber-700"><span className="text-[9px]">$</span>{(analytics.caja_chica.promedio_compra || 0).toLocaleString('es-MX', { minimumFractionDigits: 0 })}</p>
+                    <p className="text-[8px] text-amber-600 font-bold uppercase">Promedio</p>
                   </div>
                 </div>
 
-                {/* Por Estado */}
-                {analytics.caja_chica.por_estado?.length > 0 && (
-                  <div className="mb-4">
-                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
-                      <FaClipboardList className="text-emerald-400" size={10} />
-                      Por Estado
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {analytics.caja_chica.por_estado.map((item, idx) => (
-                        <span key={idx} className="text-[10px] font-bold px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-100">
-                          {item.estado}: <span className="text-sm">{item.cantidad}</span>
-                        </span>
-                      ))}
+                {/* Por Estado con stacked bar */}
+                {analytics.caja_chica.por_estado?.length > 0 && (() => {
+                  const totalEst = analytics.caja_chica.por_estado.reduce((s, i) => s + (i.cantidad || 0), 0) || 1;
+                  const CC_COLORS = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6'];
+                  return (
+                    <div className="mb-4">
+                      <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Distribución por Estado</p>
+                      <div className="w-full h-2.5 rounded-full overflow-hidden flex bg-gray-100 mb-2">
+                        {analytics.caja_chica.por_estado.map((item, idx) => {
+                          const pct = (item.cantidad / totalEst) * 100;
+                          if (pct < 0.5) return null;
+                          return (
+                            <div key={idx} className="h-full transition-all duration-700 first:rounded-l-full last:rounded-r-full"
+                              style={{ width: `${pct}%`, backgroundColor: CC_COLORS[idx % CC_COLORS.length] }}
+                              title={`${item.estado}: ${item.cantidad}`}
+                            />
+                          );
+                        })}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {analytics.caja_chica.por_estado.map((item, idx) => (
+                          <span key={idx} className="flex items-center gap-1 text-[9px] text-gray-500">
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: CC_COLORS[idx % CC_COLORS.length] }} />
+                            {item.estado}: <span className="font-bold text-gray-700">{item.cantidad}</span>
+                          </span>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
                 
-                {/* Top Compradores */}
+                {/* Top Compradores modernizado */}
                 {analytics.caja_chica.top_compradores?.length > 0 && (
                   <div>
-                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2.5 flex items-center gap-2">
-                      <FaUserTie className="text-emerald-400" size={10} />
-                      Principales Compradores
-                    </p>
-                    <div className="space-y-1.5 max-h-44 overflow-y-auto custom-scrollbar">
-                      {analytics.caja_chica.top_compradores.map((item, idx) => (
-                        <div key={idx} className="dash-list-row">
-                          <span className="dash-bar-rank text-[10px]" style={{ background: '#0F766E' }}>{idx + 1}</span>
-                          <span className="text-xs font-medium text-gray-600 truncate flex-1">{item.nombre}</span>
-                          <div className="text-right flex-shrink-0">
-                            <span className="text-xs font-bold text-emerald-600">${(item.monto_total || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
-                            <span className="text-[10px] text-gray-400 ml-1.5">{item.total_compras}c</span>
+                    <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">Top Compradores</p>
+                    <div className="space-y-1.5 max-h-36 overflow-y-auto custom-scrollbar">
+                      {analytics.caja_chica.top_compradores.map((item, idx) => {
+                        const maxMonto = analytics.caja_chica.top_compradores[0]?.monto_total || 1;
+                        const barPct = Math.max((item.monto_total / maxMonto) * 100, 5);
+                        return (
+                          <div key={idx} className="dash-list-row">
+                            <span className="dash-bar-rank text-[10px]" style={{ background: idx < 3 ? '#0F766E' : '#9CA3AF' }}>{idx + 1}</span>
+                            <div className="flex-1 min-w-0">
+                              <span className="text-[11px] font-medium text-gray-600 truncate block">{item.nombre}</span>
+                              <div className="w-full bg-gray-100 rounded-full h-1 mt-0.5 overflow-hidden">
+                                <div className="h-full rounded-full bg-emerald-500 transition-all duration-500" style={{ width: `${barPct}%` }} />
+                              </div>
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              <span className="text-[11px] font-bold text-emerald-600">${(item.monto_total || 0).toLocaleString('es-MX', { minimumFractionDigits: 0 })}</span>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
               </ChartCard>
             )}
 
-            {/* Accesos Rápidos — en la misma fila que Caja Chica */}
+            {/* Accesos Rápidos — Grid moderno */}
             {quickAccessItems.length > 0 && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-3 px-1">
+              <div className="dash-quick-access-wrapper">
+                <div className="flex items-center gap-3 px-1 mb-4">
                   <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, var(--color-primary, #9F2241), var(--color-primary-hover, #6B1839))' }}>
                     <FaArrowRight className="text-white" size={12} />
                   </div>
                   <div>
                     <h3 className="font-bold text-gray-800 text-sm">Accesos Rápidos</h3>
-                    <p className="text-[10px] text-gray-400">Navegación directa</p>
+                    <p className="text-[10px] text-gray-400">Navegación directa a módulos</p>
                   </div>
                 </div>
-                <div className="space-y-2.5">
+                <div className="grid grid-cols-2 gap-2.5">
                   {quickAccessItems.map((item, index) => (
-                    <QuickAccessCard key={index} {...item} />
+                    <button
+                      key={index}
+                      onClick={item.onClick}
+                      className="dash-quick-card group"
+                    >
+                      <div 
+                        className="w-10 h-10 rounded-xl flex items-center justify-center mb-2 transition-transform group-hover:scale-110"
+                        style={{ backgroundColor: `var(${item.colorVar}-light, rgba(159, 34, 65, 0.08))` }}
+                      >
+                        <item.icon className="text-sm" style={{ color: `var(${item.colorVar}, #9F2241)` }} />
+                      </div>
+                      <p className="text-xs font-bold text-gray-800 group-hover:text-gray-900">{item.title}</p>
+                      <p className="text-[9px] text-gray-400 leading-tight">{item.subtitle}</p>
+                    </button>
                   ))}
                 </div>
                 {lastUpdate && (
-                  <div className="dash-update-footer">
+                  <div className="dash-update-footer mt-4">
                     <FaClock className="text-gray-300" size={10} />
                     <span className="text-[10px] text-gray-400">
                       Actualizado: {lastUpdate.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
@@ -2547,55 +2668,66 @@ const Dashboard = () => {
       {!(puedeVerGraficasCompletas && analytics) && puedeVerGraficasBasicas && permisos?.verMovimientos && movimientos.length > 0 && (
         <section>
           <ChartCard 
-            title="Últimos Logs Críticos" 
+            title="Últimos Movimientos" 
             icon={FaExchangeAlt}
             action={
               <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{movimientos.length} registros</span>
                 <button onClick={handleRefresh} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors text-gray-400" title="Actualizar">
                   <FaSync size={11} className={refreshing ? 'animate-spin' : ''} />
                 </button>
               </div>
             }
           >
-            <div className="max-h-[320px] overflow-y-auto custom-scrollbar">
-              <table className="dash-logs-table">
-                <thead>
-                  <tr>
-                    <th>Tipo</th>
-                    <th>Responsable</th>
-                    <th>Descripción</th>
-                    <th className="text-center">Cant.</th>
-                    <th className="text-right">Fecha</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {movimientos.slice(0, 6).map((mov, index) => (
-                    <tr key={mov.id || index} className="cursor-pointer group" onClick={() => navigate('/movimientos', { state: { highlightId: mov.id } })}>
-                      <td>
-                        <span className={`inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${
-                          mov.tipo_movimiento === 'ENTRADA' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
-                        }`}>
-                          {mov.tipo_movimiento === 'ENTRADA' ? <FaArrowDown size={8} /> : <FaArrowUp size={8} />}
-                          {mov.tipo_movimiento || 'MOV'}
-                        </span>
-                      </td>
-                      <td><span className="text-xs font-medium text-gray-600">{mov.usuario || 'Sistema'}</span></td>
-                      <td><span className="text-xs text-gray-700 truncate block max-w-[180px]">{mov.producto__descripcion || 'Producto'}</span></td>
-                      <td className="text-center">
-                        <span className={`text-sm font-black tabular-nums ${mov.tipo_movimiento === 'ENTRADA' ? 'text-emerald-600' : 'text-red-600'}`}>
-                          {mov.tipo_movimiento === 'ENTRADA' ? '+' : '-'}{mov.cantidad}
-                        </span>
-                      </td>
-                      <td className="text-right">
-                        <span className="text-[11px] text-gray-500 whitespace-nowrap">
-                          {mov.fecha_movimiento ? new Date(mov.fecha_movimiento).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="dash-timeline max-h-[360px] overflow-y-auto custom-scrollbar">
+              {movimientos.slice(0, 8).map((mov, index) => {
+                const isEntrada = mov.tipo_movimiento === 'ENTRADA';
+                const isSalida = mov.tipo_movimiento === 'SALIDA';
+                const dotColor = isEntrada ? '#10B981' : isSalida ? '#EF4444' : '#6366F1';
+                return (
+                  <div
+                    key={mov.id || index}
+                    className="dash-timeline-item cursor-pointer group"
+                    style={{ '--timeline-color': dotColor }}
+                    onClick={() => permisos?.verMovimientos && navigate('/movimientos', { state: { highlightId: mov.id } })}
+                  >
+                    <div className="dash-timeline-dot" style={{ color: dotColor, backgroundColor: dotColor }} />
+                    <div className="dash-timeline-content">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <span className={`inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md ${
+                              isEntrada ? 'bg-emerald-50 text-emerald-700' : isSalida ? 'bg-red-50 text-red-700' : 'bg-indigo-50 text-indigo-700'
+                            }`}>
+                              {isEntrada ? <FaArrowDown size={7} /> : <FaArrowUp size={7} />}
+                              {mov.tipo_movimiento || 'MOV'}
+                            </span>
+                            <span className="text-[10px] text-gray-400">{mov.usuario || 'Sistema'}</span>
+                          </div>
+                          <p className="text-xs font-semibold text-gray-800 truncate">{mov.producto__descripcion || 'Producto'}</p>
+                        </div>
+                        <div className="flex flex-col items-end flex-shrink-0">
+                          <span className={`text-sm font-black tabular-nums ${isEntrada ? 'text-emerald-600' : isSalida ? 'text-red-600' : 'text-indigo-600'}`}>
+                            {isEntrada ? '+' : isSalida ? '-' : ''}{mov.cantidad}
+                          </span>
+                          <span className="text-[10px] text-gray-400 whitespace-nowrap mt-0.5">
+                            {mov.fecha_movimiento ? new Date(mov.fecha_movimiento).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }) : ''}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
+            <button
+              onClick={() => navigate('/movimientos')}
+              className="w-full mt-3 py-2 rounded-xl font-bold text-xs text-white transition-all hover:shadow-lg hover:opacity-90 flex items-center justify-center gap-2"
+              style={{ background: 'linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 100%)' }}
+            >
+              <FaExchangeAlt size={10} />
+              Ver todos los movimientos
+            </button>
           </ChartCard>
         </section>
       )}
