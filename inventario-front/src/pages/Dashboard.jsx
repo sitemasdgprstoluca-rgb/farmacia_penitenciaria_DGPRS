@@ -2016,8 +2016,8 @@ const Dashboard = () => {
                                       {i + 1}
                                     </span>
                                   </td>
-                                  <td className="px-2 py-1.5 min-w-0">
-                                    <p className="text-xs font-semibold text-gray-700 truncate" title={c.centro}>{c.centro}</p>
+                                  <td className="px-2 py-1.5">
+                                    <p className="text-xs font-semibold text-gray-700 break-words leading-tight" title={c.centro}>{c.centro}</p>
                                     <div className="w-full bg-gray-100 rounded-full h-1 mt-1 overflow-hidden">
                                       <div className="h-full rounded-full transition-all duration-700" style={{ width: `${barWidth}%`, background: 'linear-gradient(90deg, #932043aa, #932043)' }} />
                                     </div>
