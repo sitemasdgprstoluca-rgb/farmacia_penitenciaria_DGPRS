@@ -614,6 +614,63 @@ a:focus-visible {
   text-align: center;
 }
 
+/* --- Alert Card (Reference Style) --- */
+.dash-alert-card-ref {
+  background: white;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 12px;
+  padding: 14px 16px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  animation: dashFadeUp 0.3s ease-out both;
+}
+
+.dash-alert-card-ref:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+}
+
+.dash-alert-card-ref:nth-child(1) { animation-delay: 0.05s; }
+.dash-alert-card-ref:nth-child(2) { animation-delay: 0.1s; }
+.dash-alert-card-ref:nth-child(3) { animation-delay: 0.15s; }
+.dash-alert-card-ref:nth-child(4) { animation-delay: 0.2s; }
+
+/* --- Logs Table --- */
+.dash-logs-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.dash-logs-table thead th {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #9CA3AF;
+  padding: 6px 8px;
+  text-align: left;
+  background: #F9FAFB;
+  border-bottom: 1px solid #F3F4F6;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.dash-logs-table tbody tr {
+  transition: background 0.15s ease;
+}
+
+.dash-logs-table tbody tr:hover {
+  background: #FAFAFA;
+}
+
+.dash-logs-table tbody td {
+  font-size: 12px;
+  padding: 8px 8px;
+  border-bottom: 1px solid #F9FAFB;
+  vertical-align: middle;
+}
+
 /* --- Animations for new sections --- */
 @keyframes dashFadeUp {
   from { opacity: 0; transform: translateY(12px); }

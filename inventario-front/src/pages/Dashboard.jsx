@@ -22,8 +22,6 @@ import {
   FaArrowDown,
   FaChartLine,
   FaExchangeAlt,
-  FaChevronDown,
-  FaChevronUp,
   FaArrowRight,
   FaUser,
   FaCalendarAlt,
@@ -328,15 +326,18 @@ const KPICard = ({
               : 'transform 0.08s ease-out',
           }}
         >
-          {/* Franja superior Pantone */}
-          <div className="h-[2px]" style={{ background: colors.gradient }} />
-          
-          <div className="relative z-10 p-3 sm:p-4">
-            {/* Fila 1: Icono + Título + Trend badge */}
-            <div className="flex items-start justify-between mb-2">
+          {/* Header institucional con fondo coloreado */}
+          <div 
+            className="relative z-10 px-3 sm:px-4 pt-2.5 pb-2"
+            style={{ 
+              background: `linear-gradient(135deg, ${colors.light}, ${colors.lightHover})`,
+              borderBottom: `1px solid ${colors.solid}12`
+            }}
+          >
+            <div className="flex items-start justify-between">
               <div className="flex items-center gap-2">
                 <div 
-                  className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                  className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm"
                   style={{ background: colors.gradient }}
                 >
                   <Icon className="text-white text-xs" />
@@ -358,9 +359,12 @@ const KPICard = ({
                 </div>
               )}
             </div>
-            
-            {/* Fila 2: Número principal */}
-            <div className="mb-0.5">
+          </div>
+          
+          {/* Contenido principal */}
+          <div className="relative z-10 px-3 sm:px-4 py-2.5">
+            {/* Número principal */}
+            <div className="mb-1">
               {loading ? (
                 <div className="h-8 w-24 rounded skeleton-loader" />
               ) : (
@@ -374,7 +378,7 @@ const KPICard = ({
               )}
             </div>
             
-            {/* Fila 3: Métrica secundaria (opcional) */}
+            {/* Métrica secundaria */}
             {secondaryLabel && (
               <div className="flex items-center gap-1.5 mb-1">
                 <span className="text-[9px] text-gray-400">{secondaryLabel}</span>
@@ -382,29 +386,29 @@ const KPICard = ({
               </div>
             )}
             
-            {/* Sparkline mini-chart (opcional) */}
+            {/* Sparkline mini-chart */}
             {sparklinePath && (
               <div className="mt-1 kpi-sparkline-wrap">
                 <svg 
                   viewBox={`0 0 ${sparklinePath.W} ${sparklinePath.H}`} 
-                  className="w-full h-7 sm:h-8"
+                  className="w-full h-8 sm:h-9"
                   preserveAspectRatio="none"
                 >
                   <defs>
                     <linearGradient id={`spark-fill-${colorType}-${delay}`} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={colors.sparkStroke} stopOpacity="0.15" />
-                      <stop offset="100%" stopColor={colors.sparkStroke} stopOpacity="0" />
+                      <stop offset="0%" stopColor={colors.sparkStroke} stopOpacity="0.2" />
+                      <stop offset="100%" stopColor={colors.sparkStroke} stopOpacity="0.02" />
                     </linearGradient>
                   </defs>
                   <path d={sparklinePath.area} fill={`url(#spark-fill-${colorType}-${delay})`} />
-                  <path d={sparklinePath.line} fill="none" stroke={colors.sparkStroke} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d={sparklinePath.line} fill="none" stroke={colors.sparkStroke} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </div>
             )}
             
             {/* Footer: Action link */}
             {onClick && (
-              <div className="flex items-center justify-end mt-1.5 pt-1.5 border-t" style={{ borderColor: 'rgba(0,0,0,0.03)' }}>
+              <div className="flex items-center justify-end mt-1.5 pt-1.5 border-t" style={{ borderColor: 'rgba(0,0,0,0.04)' }}>
                 <div 
                   className="kpi-action-link flex items-center gap-1 text-[9px] font-semibold px-2 py-0.5 rounded-md"
                   style={{ color: colors.text, backgroundColor: colors.light }}
@@ -516,112 +520,6 @@ const StatusBadge = ({ status, count }) => {
     </div>
   );
 };
-
-/**
- * Tarjeta de movimiento reciente - Diseño moderno con colores del tema
- */
-const MovimientoCard = ({ mov, onClick, canNavigate }) => {
-  const isEntrada = mov.tipo_movimiento === 'ENTRADA';
-  
-  return (
-    <div 
-      onClick={onClick}
-      className={`
-        group bg-white rounded-xl border border-gray-100 p-4
-        transition-all duration-300 hover:shadow-lg
-        ${canNavigate ? 'cursor-pointer hover:border-gray-200' : ''}
-      `}
-      style={{ 
-        borderLeftWidth: '4px',
-        borderLeftColor: isEntrada 
-          ? 'var(--color-success, #10B981)' 
-          : 'var(--color-error, #EF4444)'
-      }}
-    >
-      <div className="flex items-start gap-4">
-        {/* Icono de tipo */}
-        <div 
-          className="flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center transform group-hover:scale-110 transition-transform duration-300"
-          style={{ 
-            backgroundColor: isEntrada 
-              ? 'var(--color-success-light, rgba(16, 185, 129, 0.1))' 
-              : 'var(--color-error-light, rgba(239, 68, 68, 0.1))'
-          }}
-        >
-          {isEntrada ? (
-            <FaArrowDown style={{ color: 'var(--color-success, #10B981)', fontSize: '1.25rem' }} />
-          ) : (
-            <FaArrowUp style={{ color: 'var(--color-error, #EF4444)', fontSize: '1.25rem' }} />
-          )}
-        </div>
-        
-        {/* Información principal */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2 mb-2">
-            <div>
-              <p className="font-bold text-gray-900 group-hover:text-gray-700 transition-colors">
-                {mov.producto__clave}
-              </p>
-              <p className="text-sm text-gray-500 truncate" title={mov.producto__descripcion}>
-                {mov.producto__descripcion}
-              </p>
-            </div>
-            <div className="text-right flex-shrink-0">
-              <p className="text-2xl font-black text-gray-900">
-                {mov.cantidad}
-              </p>
-              <p className="text-xs text-gray-400">unidades</p>
-            </div>
-          </div>
-          
-          {/* Flujo */}
-          <div className="flex items-center gap-2 text-xs text-gray-500 mb-2">
-            <span className="px-2 py-1 bg-gray-50 rounded-lg font-medium truncate max-w-[100px]" title={mov.origen}>
-              {mov.origen || 'Origen'}
-            </span>
-            <FaArrowRight className="text-gray-300 flex-shrink-0" />
-            <span className="px-2 py-1 bg-gray-50 rounded-lg font-medium truncate max-w-[100px]" title={mov.destino}>
-              {mov.destino || 'Destino'}
-            </span>
-          </div>
-          
-          {/* Metadata */}
-          <div className="flex items-center gap-4 text-xs text-gray-400">
-            <span className="flex items-center gap-1">
-              <FaClock size={10} />
-              {new Date(mov.fecha_movimiento).toLocaleString('es-MX', {
-                day: '2-digit',
-                month: 'short',
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
-            </span>
-            {mov.lote__codigo_lote && mov.lote__codigo_lote !== 'N/A' && (
-              <span className="flex items-center gap-1">
-                <FaBoxes size={10} />
-                {mov.lote__codigo_lote}
-              </span>
-            )}
-            {mov.usuario && (
-              <span className="flex items-center gap-1">
-                <FaUser size={10} />
-                {mov.usuario}
-              </span>
-            )}
-          </div>
-        </div>
-        
-        {/* Indicador de navegación */}
-        {canNavigate && (
-          <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity self-center">
-            <FaArrowRight className="text-gray-300" />
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
 /**
  * Mini card de acceso rápido - Usa CSS variables del tema
  */
@@ -725,7 +623,6 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
-  const [movimientosExpanded, setMovimientosExpanded] = useState(true);
   // Analytics avanzados
   const [analytics, setAnalytics] = useState(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
@@ -1337,81 +1234,110 @@ const Dashboard = () => {
             ))}
         </div>
 
-        {/* Fila secundaria de analytics - Solo Admin/Farmacia */}
+        {/* Fila de Alertas del Sistema - Estilo referencia */}
         {puedeVerGraficasCompletas && analytics && (
           <>
-            <div className="flex items-center gap-2 mt-4 sm:mt-5 mb-3 sm:mb-3">
+            <div className="flex items-center gap-2 mt-4 sm:mt-5 mb-3">
               <div className="kpi-section-dot" style={{ background: 'linear-gradient(135deg, #9B7E4C, #C9A876)' }} />
               <h2 
                 className="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-[0.15em]"
                 style={{ color: '#9B7E4C' }}
               >
-                Análisis avanzado
+                Alertas del sistema
               </h2>
               <div className="h-px flex-1 bg-gradient-to-r from-gray-200 to-transparent" />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-              {/* Requisiciones totales */}
-              {permisos?.verRequisiciones && (
-                <KPICard
-                  title="Requisiciones"
-                  value={totalRequisiciones}
-                  subtext="Total activas en sistema"
-                  icon={FaClipboardList}
-                  colorType="gold"
-                  delay={400}
-                  loading={refreshing}
-                  onClick={() => navigate('/requisiciones')}
-                  secondaryLabel="Estados:"
-                  secondaryValue={`${graficas.requisiciones_por_estado?.length || 0} diferentes`}
-                />
-              )}
-              {/* Caducidades - alerta */}
-              {analytics.caducidades && (
-                <KPICard
-                  title="Alertas Caducidad"
-                  value={(analytics.caducidades.vencidos || 0) + (analytics.caducidades.vencen_30_dias || 0)}
-                  subtext="Lotes vencidos + próximos 30 días"
-                  icon={FaExclamationTriangle}
-                  colorType={analytics.caducidades.vencidos > 0 ? 'danger' : 'warning'}
-                  delay={500}
-                  loading={analyticsLoading}
-                  secondaryLabel={analytics.caducidades.vencidos > 0 ? '🔴 Vencidos:' : '90 días:'}
-                  secondaryValue={analytics.caducidades.vencidos > 0 
-                    ? String(analytics.caducidades.vencidos) 
-                    : String(analytics.caducidades.vencen_90_dias || 0)}
-                />
-              )}
-              {/* Donaciones */}
-              {analytics.donaciones && permisos?.verDonaciones && (
-                <KPICard
-                  title="Donaciones"
-                  value={analytics.donaciones.total_donaciones || 0}
-                  subtext={`${(analytics.donaciones.total_unidades || 0).toLocaleString('es-MX')} unidades donadas`}
-                  icon={FaHandHoldingHeart}
-                  colorType="info"
-                  delay={600}
-                  loading={analyticsLoading}
-                  onClick={() => navigate('/donaciones')}
-                  secondaryLabel="Este mes:"
-                  secondaryValue={String(analytics.donaciones.donaciones_mes || 0)}
-                />
-              )}
-              {/* Caja Chica */}
-              {analytics.caja_chica && (
-                <KPICard
-                  title="Caja Chica"
-                  value={Math.round(analytics.caja_chica.monto_total || 0)}
-                  subtext={`${analytics.caja_chica.total_compras || 0} compras realizadas`}
-                  icon={FaMoneyBillWave}
-                  colorType="success"
-                  delay={700}
-                  loading={analyticsLoading}
-                  prefix="$"
-                  secondaryLabel="Promedio:"
-                  secondaryValue={`$${(analytics.caja_chica.promedio_compra || 0).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
-                />
-              )}
+              {/* Alertas de Inventario */}
+              <div className="dash-alert-card-ref">
+                <div className="flex items-center gap-2 mb-1">
+                  <FaBox className="text-sm" style={{ color: '#932043' }} />
+                  <div>
+                    <h4 className="text-sm font-bold text-gray-700">Alertas de Inventario</h4>
+                    <p className="text-[9px] text-gray-400">Notificaciones activas</p>
+                  </div>
+                </div>
+                <p className="text-3xl font-black text-gray-900 my-1">
+                  {(analytics.caducidades?.vencidos || 0) + (analytics.caducidades?.vencen_30_dias || 0) + (analytics.caducidades?.vencen_15_dias || 0)}
+                </p>
+                <div className="flex items-center gap-3 mt-2">
+                  <span className="flex items-center gap-1 text-[10px]">
+                    <span className="w-2 h-2 rounded-full bg-red-500" />
+                    <span className="text-gray-500">{analytics.caducidades?.vencidos || 0}</span>
+                  </span>
+                  <div className="flex-1 bg-emerald-100 rounded-full h-1.5 overflow-hidden">
+                    <div className="h-full bg-emerald-500 rounded-full transition-all duration-700" style={{ width: `${Math.min(100, ((analytics.caducidades?.vencen_90_dias || 0) / Math.max(1, (analytics.caducidades?.vencidos || 0) + (analytics.caducidades?.vencen_30_dias || 0) + (analytics.caducidades?.vencen_90_dias || 0))) * 100)}%` }} />
+                  </div>
+                  <span className="text-[10px] text-gray-400">{analytics.caducidades?.vencen_90_dias || 0} preventivas</span>
+                </div>
+              </div>
+
+              {/* Alertas de Lotes */}
+              <div className="dash-alert-card-ref">
+                <div className="flex items-center gap-2 mb-1">
+                  <FaWarehouse className="text-sm" style={{ color: '#0F766E' }} />
+                  <div>
+                    <h4 className="text-sm font-bold text-gray-700">Alertas de Lotes</h4>
+                    <p className="text-[9px] text-gray-400">Lotes cercanos a vencer</p>
+                  </div>
+                </div>
+                <p className="text-3xl font-black text-gray-900 my-1">
+                  {(analytics.caducidades?.vencen_15_dias || 0) + (analytics.caducidades?.vencen_30_dias || 0)}
+                </p>
+                <div className="flex items-center gap-3 mt-2">
+                  <span className="flex items-center gap-1 text-[10px]">
+                    <span className="w-2 h-2 rounded-full bg-amber-500" />
+                    <span className="text-gray-500">{analytics.caducidades?.vencen_15_dias || 0}</span>
+                  </span>
+                  <div className="flex-1 bg-amber-100 rounded-full h-1.5 overflow-hidden">
+                    <div className="h-full bg-amber-500 rounded-full transition-all duration-700" style={{ width: `${Math.min(100, ((analytics.caducidades?.vencen_15_dias || 0) / Math.max(1, (analytics.caducidades?.vencen_15_dias || 0) + (analytics.caducidades?.vencen_30_dias || 0))) * 100)}%` }} />
+                  </div>
+                  <span className="text-[10px] text-gray-400">{analytics.caducidades?.vencen_30_dias || 0} en 30d</span>
+                </div>
+              </div>
+
+              {/* Alertas de Caducidad */}
+              <div className="dash-alert-card-ref">
+                <div className="flex items-center gap-2 mb-1">
+                  <FaExclamationTriangle className="text-sm" style={{ color: '#DC2626' }} />
+                  <div>
+                    <h4 className="text-sm font-bold text-gray-700">Alertas de Caducidad</h4>
+                    <p className="text-[9px] text-gray-400">Productos vencidos o próximos</p>
+                  </div>
+                </div>
+                <p className="text-3xl font-black text-gray-900 my-1">{analytics.caducidades?.vencidos || 0}</p>
+                <div className="flex items-center gap-3 mt-2">
+                  <span className="flex items-center gap-1 text-[10px]">
+                    <span className="w-2 h-2 rounded-full bg-red-500" />
+                    <span className="text-gray-500">{analytics.caducidades?.vencidos || 0} vencidos</span>
+                  </span>
+                  <div className="flex-1 bg-red-100 rounded-full h-1.5 overflow-hidden">
+                    <div className="h-full bg-red-500 rounded-full transition-all duration-700" style={{ width: `${analytics.caducidades?.vencidos > 0 ? 100 : 0}%` }} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Alertas de Donaciones */}
+              <div className="dash-alert-card-ref">
+                <div className="flex items-center gap-2 mb-1">
+                  <FaHandHoldingHeart className="text-sm" style={{ color: '#1E40AF' }} />
+                  <div>
+                    <h4 className="text-sm font-bold text-gray-700">Alertas de Donaciones</h4>
+                    <p className="text-[9px] text-gray-400">Donaciones recibidas este mes</p>
+                  </div>
+                </div>
+                <p className="text-3xl font-black text-gray-900 my-1">{analytics.donaciones?.donaciones_mes || 0}</p>
+                <div className="flex items-center gap-3 mt-2">
+                  <span className="flex items-center gap-1 text-[10px]">
+                    <span className="w-2 h-2 rounded-full bg-blue-500" />
+                    <span className="text-gray-500">{analytics.donaciones?.total_donaciones || 0} total</span>
+                  </span>
+                  <div className="flex-1 bg-blue-100 rounded-full h-1.5 overflow-hidden">
+                    <div className="h-full bg-blue-500 rounded-full transition-all duration-700" style={{ width: `${Math.min(100, ((analytics.donaciones?.donaciones_mes || 0) / Math.max(1, analytics.donaciones?.total_donaciones || 1)) * 100)}%` }} />
+                  </div>
+                  <span className="text-[10px] text-gray-400">{analytics.donaciones?.total_unidades || 0} uds</span>
+                </div>
+              </div>
             </div>
           </>
         )}
@@ -1420,10 +1346,28 @@ const Dashboard = () => {
       {/* ========== GRÁFICAS PRINCIPALES ========== */}
       {puedeVerGraficasBasicas && (
         <section className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-          <ChartCard title="Consumo Mensual (Últimos 6 meses)" icon={FaChartLine} expandable>
+          <ChartCard 
+            title="Consumo Mensual (Últimos 6 meses)" 
+            icon={FaChartLine} 
+            expandable
+            action={
+              <div className="flex items-center gap-2">
+                {(() => {
+                  const totalE = graficas.consumo_mensual.reduce((s, m) => s + (m.entradas || 0), 0);
+                  const totalS = graficas.consumo_mensual.reduce((s, m) => s + (m.salidas || 0), 0);
+                  return (
+                    <>
+                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">↓ {totalE.toLocaleString('es-MX')}</span>
+                      <span className="text-[10px] font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded-md">↑ {totalS.toLocaleString('es-MX')}</span>
+                    </>
+                  );
+                })()}
+              </div>
+            }
+          >
             {graficas.consumo_mensual.length > 0 ? (
               <>
-                {/* Mini KPIs del período */}
+                {/* Resumen compacto del período */}
                 {(() => {
                   const totalEntradas = graficas.consumo_mensual.reduce((s, m) => s + (m.entradas || 0), 0);
                   const totalSalidas = graficas.consumo_mensual.reduce((s, m) => s + (m.salidas || 0), 0);
@@ -1432,26 +1376,22 @@ const Dashboard = () => {
                   const mesAnterior = graficas.consumo_mensual[graficas.consumo_mensual.length - 2];
                   const tendencia = mesAnterior?.salidas ? (((mesActual?.salidas || 0) - mesAnterior.salidas) / mesAnterior.salidas * 100).toFixed(0) : 0;
                   return (
-                    <div className="grid grid-cols-3 gap-2 mb-3">
-                      <div className="dash-stat-mini dash-stat-success">
+                    <div className="flex items-center gap-3 mb-3 flex-wrap">
+                      <div className="dash-stat-mini dash-stat-success flex-1 min-w-[100px]">
                         <div className="flex items-center gap-1 mb-0.5">
                           <FaArrowDown className="text-emerald-500" size={9} />
                           <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider">Entradas</span>
                         </div>
                         <p className="text-lg font-black text-emerald-700 tabular-nums">{totalEntradas.toLocaleString('es-MX')}</p>
-                        <p className="text-[10px] text-emerald-500 mt-0.5">6 meses</p>
                       </div>
-                      <div className="dash-stat-mini dash-stat-danger">
+                      <div className="dash-stat-mini dash-stat-danger flex-1 min-w-[100px]">
                         <div className="flex items-center gap-1 mb-0.5">
                           <FaArrowUp className="text-red-500" size={9} />
                           <span className="text-[9px] font-bold text-red-600 uppercase tracking-wider">Salidas</span>
                         </div>
                         <p className="text-lg font-black text-red-700 tabular-nums">{totalSalidas.toLocaleString('es-MX')}</p>
-                        <p className="text-[10px] text-red-500 mt-0.5">
-                          {Number(tendencia) > 0 ? `↑${tendencia}%` : Number(tendencia) < 0 ? `↓${Math.abs(Number(tendencia))}%` : '—'} vs anterior
-                        </p>
                       </div>
-                      <div className={`dash-stat-mini ${balance >= 0 ? 'dash-stat-info' : 'dash-stat-warning'}`}>
+                      <div className={`dash-stat-mini ${balance >= 0 ? 'dash-stat-info' : 'dash-stat-warning'} flex-1 min-w-[100px]`}>
                         <div className="flex items-center gap-1 mb-0.5">
                           <FaChartBar className={balance >= 0 ? 'text-blue-500' : 'text-amber-500'} size={9} />
                           <span className={`text-[9px] font-bold uppercase tracking-wider ${balance >= 0 ? 'text-blue-600' : 'text-amber-600'}`}>Balance</span>
@@ -1459,7 +1399,6 @@ const Dashboard = () => {
                         <p className={`text-lg font-black tabular-nums ${balance >= 0 ? 'text-blue-700' : 'text-amber-700'}`}>
                           {balance >= 0 ? '+' : ''}{balance.toLocaleString('es-MX')}
                         </p>
-                        <p className={`text-[10px] mt-0.5 ${balance >= 0 ? 'text-blue-500' : 'text-amber-500'}`}>{balance >= 0 ? 'Superávit' : 'Déficit'}</p>
                       </div>
                     </div>
                   );
@@ -1588,7 +1527,22 @@ const Dashboard = () => {
             };
 
             return (
-              <ChartCard title={chartTitle} icon={chartIcon} expandable>
+              <ChartCard 
+                title={chartTitle} 
+                icon={chartIcon} 
+                expandable
+                action={
+                  puedeNavegar && !esCentroUnico ? (
+                    <button
+                      onClick={() => navigate('/reportes', { state: { tipo: 'inventario' } })}
+                      className="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors hover:bg-gray-100"
+                      style={{ color: 'var(--color-primary, #9F2241)' }}
+                    >
+                      Ver todos →
+                    </button>
+                  ) : null
+                }
+              >
                 {esCentroUnico ? (
                   renderBarItems(stockProducto, 'producto', 'producto_id', false)
                 ) : stockCentro.length > 0 ? (
@@ -1605,11 +1559,11 @@ const Dashboard = () => {
         </section>
       )}
 
-      {/* ========== REQUISICIONES — PANEL COMPACTO ACUMULATIVO ========== */}
+      {/* ========== REQUISICIONES — PANEL ACUMULATIVO ========== */}
       {puedeVerGraficasCompletas && graficas.requisiciones_por_estado.length > 0 && (
         <section>
           <ChartCard 
-            title="Requisiciones — Panel Acumulativo" 
+            title="Requisiciones — Turno Automatizado" 
             icon={FaClipboardList}
             action={
               <button
@@ -1621,47 +1575,44 @@ const Dashboard = () => {
               </button>
             }
           >
-            {/* Fila 1: KPIs + Tendencia mensual */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-3">
-              {/* KPIs de resumen */}
-              {graficas.requisiciones_resumen && (
-                <div className="grid grid-cols-2 gap-1.5 content-start">
-                  {[
-                    { label: 'Total', value: graficas.requisiciones_resumen.total, color: '#9F2241' },
-                    { label: 'Completadas', value: graficas.requisiciones_resumen.completadas, color: '#10B981', sub: `${graficas.requisiciones_resumen.tasa_cumplimiento}%` },
-                    { label: 'En Proceso', value: graficas.requisiciones_resumen.en_proceso, color: '#F59E0B' },
-                    { label: 'Rechazadas', value: graficas.requisiciones_resumen.rechazadas, color: '#EF4444', sub: `${graficas.requisiciones_resumen.tasa_rechazo}%` },
-                  ].map((k, i) => (
-                    <div key={i} className="bg-gray-50 rounded-lg px-2.5 py-2 border border-gray-100">
-                      <span className="text-[10px] text-gray-400 block leading-tight">{k.label}</span>
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-xl font-black leading-tight" style={{ color: k.color }}>{k.value}</span>
-                        {k.sub && <span className="text-[9px] font-bold text-gray-400">{k.sub}</span>}
-                      </div>
-                    </div>
-                  ))}
-                  {/* Mini métricas debajo de KPIs */}
-                  {graficas.requisiciones_resumen.dias_promedio_cumplimiento != null && (
-                    <div className="col-span-2 flex items-center gap-3 bg-blue-50/60 rounded-lg px-2.5 py-1.5 border border-blue-100">
-                      <div className="flex items-center gap-1.5">
-                        <FaClock size={9} className="text-blue-500" />
-                        <span className="text-[10px] text-blue-600">Promedio:</span>
-                        <span className="text-[10px] font-black text-blue-800">{graficas.requisiciones_resumen.dias_promedio_cumplimiento} días</span>
-                      </div>
-                      {graficas.requisiciones_resumen.urgentes > 0 && (
-                        <>
-                          <span className="text-gray-300">|</span>
-                          <div className="flex items-center gap-1">
-                            <FaExclamationTriangle size={9} className="text-orange-500" />
-                            <span className="text-[10px] font-black text-orange-700">{graficas.requisiciones_resumen.urgentes} urgentes</span>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
+            {/* Fila superior: Badges de resumen en línea */}
+            {graficas.requisiciones_resumen && (
+              <div className="flex items-center flex-wrap gap-2 mb-4 pb-3 border-b border-gray-100">
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg" style={{ background: 'rgba(159, 34, 65, 0.06)' }}>
+                  <span className="text-lg font-black" style={{ color: '#9F2241' }}>{graficas.requisiciones_resumen.total}</span>
+                  <span className="text-xs text-gray-500">Total</span>
                 </div>
-              )}
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50">
+                  <span className="text-lg font-black text-emerald-700">{graficas.requisiciones_resumen.completadas}</span>
+                  <span className="text-xs text-gray-500">Completadas</span>
+                </div>
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50">
+                  <span className="text-lg font-black text-amber-700">{graficas.requisiciones_resumen.en_proceso}</span>
+                  <span className="text-xs text-gray-500">Procesando</span>
+                </div>
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-50">
+                  <span className="text-lg font-black text-red-600">{graficas.requisiciones_resumen.rechazadas}</span>
+                  <span className="text-xs text-gray-500">Rechazadas</span>
+                </div>
+                {graficas.requisiciones_resumen.urgentes > 0 && (
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-50">
+                    <FaExclamationTriangle size={10} className="text-orange-500" />
+                    <span className="text-lg font-black text-orange-700">{graficas.requisiciones_resumen.urgentes}</span>
+                    <span className="text-xs text-gray-500">Urgentes</span>
+                  </div>
+                )}
+                {graficas.requisiciones_resumen.dias_promedio_cumplimiento != null && (
+                  <div className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50">
+                    <FaClock size={10} className="text-blue-500" />
+                    <span className="text-xs font-bold text-blue-700">{graficas.requisiciones_resumen.dias_promedio_cumplimiento}d</span>
+                    <span className="text-[10px] text-gray-400">promedio</span>
+                  </div>
+                )}
+              </div>
+            )}
 
+            {/* Gráficas: Tendencia + Donut en grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               {/* Tendencia mensual — ocupa 2 cols */}
               <div className="lg:col-span-2 min-w-0">
                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Tendencia Mensual</p>
@@ -1703,20 +1654,19 @@ const Dashboard = () => {
                   ))}
                 </div>
               </div>
-            </div>
 
-            {/* Fila 2: Donut + Leyenda + Cumplimiento */}
-            <div className="flex flex-wrap items-center justify-center gap-4">
-              {/* Donut compacto */}
-              <div className="relative" style={{ width: 140, height: 140 }}>
-                <ResponsiveContainer width={140} height={140} minWidth={0} minHeight={0}>
-                  <PieChart>
-                    <Pie
-                      data={graficas.requisiciones_por_estado}
+              {/* Donut + Leyenda + Cumplimiento */}
+              <div className="flex flex-col items-center gap-3">
+                {/* Donut compacto */}
+                <div className="relative" style={{ width: 160, height: 160 }}>
+                  <ResponsiveContainer width={160} height={160} minWidth={0} minHeight={0}>
+                    <PieChart>
+                      <Pie
+                        data={graficas.requisiciones_por_estado}
                       cx="50%"
                       cy="50%"
-                      innerRadius={38}
-                      outerRadius={60}
+                      innerRadius={44}
+                      outerRadius={68}
                       paddingAngle={2}
                       dataKey="cantidad"
                       cornerRadius={3}
@@ -1756,7 +1706,7 @@ const Dashboard = () => {
                 </div>
               </div>
               {/* Leyenda + Cumplimiento */}
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-2 mt-2">
                 <div className="flex flex-wrap gap-x-3 gap-y-0.5">
                   {graficas.requisiciones_por_estado.map((item) => (
                     <div key={item.estado} className="flex items-center gap-1">
@@ -1769,12 +1719,13 @@ const Dashboard = () => {
                   <div className="bg-emerald-50/70 rounded-lg px-3 py-1.5 border border-emerald-100 flex items-center gap-2">
                     <FaChartLine size={9} className="text-emerald-500" />
                     <span className="text-[9px] font-medium text-emerald-600">Cumplimiento</span>
-                    <div className="w-16 bg-emerald-100 rounded-full h-1 overflow-hidden">
+                    <div className="w-16 bg-emerald-100 rounded-full h-1.5 overflow-hidden">
                       <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${graficas.requisiciones_resumen.tasa_cumplimiento}%` }} />
                     </div>
                     <span className="text-sm font-black text-emerald-800">{graficas.requisiciones_resumen.tasa_cumplimiento}%</span>
                   </div>
                 )}
+              </div>
               </div>
             </div>
           </ChartCard>
@@ -2161,13 +2112,13 @@ const Dashboard = () => {
         </>
       )}
 
-      {/* ========== SECCIÓN INFERIOR: MOVIMIENTOS + ACCESOS RÁPIDOS ========== */}
+      {/* ========== SECCIÓN INFERIOR: LOGS + ACCESOS RÁPIDOS ========== */}
       <section className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        {/* Últimos Movimientos - Timeline moderno */}
+        {/* Últimos Logs Críticos - Tabla moderna */}
         {puedeVerGraficasBasicas && permisos?.verMovimientos && movimientos.length > 0 && (
           <div className="xl:col-span-2">
             <ChartCard 
-              title="Últimos Movimientos" 
+              title="Últimos Logs Críticos" 
               icon={FaExchangeAlt}
               action={
                 <div className="flex items-center gap-2">
@@ -2183,91 +2134,83 @@ const Dashboard = () => {
                     {mostrarTodos ? 'Menos' : 'Todos'}
                   </button>
                   <button
-                    onClick={() => setMovimientosExpanded(!movimientosExpanded)}
+                    onClick={handleRefresh}
                     className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors text-gray-400"
+                    title="Actualizar"
                   >
-                    {movimientosExpanded ? <FaChevronUp size={12} /> : <FaChevronDown size={12} />}
+                    <FaSync size={11} className={refreshing ? 'animate-spin' : ''} />
                   </button>
                 </div>
               }
             >
-              {movimientosExpanded ? (
-                <div className="dash-timeline">
-                  <div className="space-y-0 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
-                    {(mostrarTodos ? movimientos : movimientos.slice(0, 5)).map((mov, index) => (
-                      <div 
+              <div className="max-h-[420px] overflow-y-auto custom-scrollbar">
+                <table className="dash-logs-table">
+                  <thead>
+                    <tr>
+                      <th>Tipo</th>
+                      <th>Responsable</th>
+                      <th>Descripción</th>
+                      <th className="text-center">Cant.</th>
+                      <th className="text-right">Fecha</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(mostrarTodos ? movimientos : movimientos.slice(0, 8)).map((mov, index) => (
+                      <tr 
                         key={mov.id || index}
-                        className="dash-timeline-item group cursor-pointer"
+                        className="cursor-pointer group"
                         onClick={() => permisos?.verMovimientos && navigate('/movimientos', { state: { highlightId: mov.id } })}
                       >
-                        <div className="dash-timeline-dot" style={{
-                          background: mov.tipo_movimiento === 'ENTRADA' ? '#10B981' : mov.tipo_movimiento === 'SALIDA' ? '#EF4444' : '#6366F1'
-                        }} />
-                        <div className="dash-timeline-content">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center flex-wrap gap-1.5 mb-1">
-                                <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${
-                                  mov.tipo_movimiento === 'ENTRADA' ? 'bg-emerald-50 text-emerald-700' : 
-                                  mov.tipo_movimiento === 'SALIDA' ? 'bg-red-50 text-red-700' : 'bg-indigo-50 text-indigo-700'
-                                }`}>{mov.tipo_movimiento || 'MOV'}</span>
-                                {mov.lote__codigo_lote && (
-                                  <span className="text-[10px] font-mono text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded">Lote: {mov.lote__codigo_lote}</span>
-                                )}
-                              </div>
-                              <p className="text-sm font-bold text-gray-800 truncate group-hover:text-gray-900 transition-colors" title={mov.producto__descripcion}>
-                                {mov.producto__clave && <span className="text-xs font-mono text-gray-400 mr-1.5">{mov.producto__clave}</span>}
-                                {mov.producto__descripcion || 'Producto'}
-                              </p>
-                              <div className="flex items-center flex-wrap gap-x-3 gap-y-0.5 mt-1">
-                                {mov.origen && (
-                                  <span className="text-[10px] text-gray-400"><span className="font-semibold text-gray-500">De:</span> {mov.origen}</span>
-                                )}
-                                {mov.destino && (
-                                  <span className="text-[10px] text-gray-400"><span className="font-semibold text-gray-500">A:</span> {mov.destino}</span>
-                                )}
-                                {mov.usuario && mov.usuario !== 'Sistema' && (
-                                  <span className="text-[10px] text-gray-400 flex items-center gap-0.5"><FaUser size={8} className="text-gray-300" />{mov.usuario}</span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="text-right flex-shrink-0">
-                              <p className={`text-lg font-black tabular-nums ${
-                                mov.tipo_movimiento === 'ENTRADA' ? 'text-emerald-600' : mov.tipo_movimiento === 'SALIDA' ? 'text-red-600' : 'text-indigo-600'
-                              }`}>
-                                {mov.tipo_movimiento === 'ENTRADA' ? '+' : mov.tipo_movimiento === 'SALIDA' ? '-' : ''}{mov.cantidad}
-                              </p>
-                              <p className="text-[10px] text-gray-400 mt-0.5">{mov.fecha_movimiento ? new Date(mov.fecha_movimiento).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}</p>
-                              {mov.requisicion_folio && (
-                                <p className="text-[9px] font-mono text-blue-400 mt-0.5">Req: {mov.requisicion_folio}</p>
+                        <td>
+                          <span className={`inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                            mov.tipo_movimiento === 'ENTRADA' ? 'bg-emerald-50 text-emerald-700' : 
+                            mov.tipo_movimiento === 'SALIDA' ? 'bg-red-50 text-red-700' : 'bg-indigo-50 text-indigo-700'
+                          }`}>
+                            {mov.tipo_movimiento === 'ENTRADA' ? <FaArrowDown size={8} /> : <FaArrowUp size={8} />}
+                            {mov.tipo_movimiento || 'MOV'}
+                          </span>
+                        </td>
+                        <td>
+                          <span className="text-xs font-medium text-gray-600">{mov.usuario || 'Sistema'}</span>
+                        </td>
+                        <td>
+                          <div className="max-w-[200px]">
+                            <p className="text-xs font-semibold text-gray-800 truncate group-hover:text-gray-900" title={mov.producto__descripcion}>
+                              {mov.producto__descripcion || 'Producto'}
+                            </p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              {mov.producto__clave && <span className="text-[10px] font-mono text-gray-400">{mov.producto__clave}</span>}
+                              {mov.lote__codigo_lote && mov.lote__codigo_lote !== 'N/A' && (
+                                <span className="text-[10px] text-gray-400">Lote: {mov.lote__codigo_lote}</span>
                               )}
                             </div>
                           </div>
-                        </div>
-                      </div>
+                        </td>
+                        <td className="text-center">
+                          <span className={`text-sm font-black tabular-nums ${
+                            mov.tipo_movimiento === 'ENTRADA' ? 'text-emerald-600' : mov.tipo_movimiento === 'SALIDA' ? 'text-red-600' : 'text-indigo-600'
+                          }`}>
+                            {mov.tipo_movimiento === 'ENTRADA' ? '+' : mov.tipo_movimiento === 'SALIDA' ? '-' : ''}{mov.cantidad}
+                          </span>
+                        </td>
+                        <td className="text-right">
+                          <span className="text-[11px] text-gray-500 whitespace-nowrap">
+                            {mov.fecha_movimiento ? new Date(mov.fecha_movimiento).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}
+                          </span>
+                        </td>
+                      </tr>
                     ))}
-                  </div>
-                  
-                  <button
-                    onClick={() => navigate('/movimientos')}
-                    className="w-full mt-4 py-3 rounded-xl font-bold text-sm text-white transition-all hover:shadow-lg hover:opacity-90 flex items-center justify-center gap-2"
-                    style={{ background: 'linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 100%)' }}
-                  >
-                    <FaExchangeAlt size={12} />
-                    Ver todos los movimientos
-                  </button>
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <button
-                    onClick={() => setMovimientosExpanded(true)}
-                    className="text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-2 mx-auto text-sm"
-                  >
-                    <FaChevronDown />
-                    Expandir ({movimientos.length} movimientos)
-                  </button>
-                </div>
-              )}
+                  </tbody>
+                </table>
+              </div>
+              <button
+                onClick={() => navigate('/movimientos')}
+                className="w-full mt-4 py-2.5 rounded-xl font-bold text-sm text-white transition-all hover:shadow-lg hover:opacity-90 flex items-center justify-center gap-2"
+                style={{ background: 'linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 100%)' }}
+              >
+                <FaExchangeAlt size={12} />
+                Ver todos los movimientos
+              </button>
             </ChartCard>
           </div>
         )}
