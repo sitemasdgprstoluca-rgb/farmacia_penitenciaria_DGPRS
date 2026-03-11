@@ -197,7 +197,7 @@ const RolBadge = ({ rol }) => {
   
   return (
     <div 
-      className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide"
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide w-fit"
       style={{ color: config.color, backgroundColor: config.bg }}
     >
       <Icon size={9} />
