@@ -1751,7 +1751,7 @@ const Dashboard = () => {
 
               {/* Tendencia mensual */}
               <div className="bg-gray-50/60 rounded-xl p-4 border border-gray-100">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Tendencia Mensual (6 meses)</p>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Tendencia Mensual</p>
                 {graficas.requisiciones_por_mes.length > 0 ? (
                   <ResponsiveContainer width="100%" height={220}>
                     <BarChart data={graficas.requisiciones_por_mes} barGap={2}>

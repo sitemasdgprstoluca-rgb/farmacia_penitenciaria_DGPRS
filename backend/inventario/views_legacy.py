@@ -8674,16 +8674,21 @@ def dashboard_graficas(request):
         # 4. REQUISICIONES MÉTRICAS ACUMULATIVAS
         # =========================================
         from django.db.models import Avg
-        from django.db.models.functions import TruncMonth
+        from django.db.models.functions import TruncMonth, Coalesce as CoalesceFunc
         
         ahora = timezone.now()
-        hace_6_meses = ahora - timedelta(days=180)
         
-        # Tendencia mensual (últimos 6 meses)
+        # Tendencia mensual — usar fecha_solicitud o created_at como fallback
+        # Primero intentar últimos 12 meses, si no hay datos, mostrar todo
+        fecha_campo = Coalesce(F('fecha_solicitud'), F('created_at'))
+        hace_12_meses = ahora - timedelta(days=365)
+        
         req_mensual_qs = requisiciones_qs.filter(
-            fecha_solicitud__gte=hace_6_meses
+            Q(fecha_solicitud__gte=hace_12_meses) | Q(fecha_solicitud__isnull=True, created_at__gte=hace_12_meses)
         ).annotate(
-            mes=TruncMonth('fecha_solicitud')
+            fecha_ref=Coalesce(F('fecha_solicitud'), F('created_at'))
+        ).annotate(
+            mes=TruncMonth('fecha_ref')
         ).values('mes').annotate(
             total=Count('id'),
             completadas=Count('id', filter=Q(estado__in=['surtida', 'entregada', 'parcial'])),
@@ -8692,14 +8697,37 @@ def dashboard_graficas(request):
         
         requisiciones_por_mes = []
         for item in req_mensual_qs:
-            requisiciones_por_mes.append({
-                'mes': item['mes'].strftime('%b %Y'),
-                'mes_corto': item['mes'].strftime('%b'),
-                'total': item['total'],
-                'completadas': item['completadas'],
-                'rechazadas': item['rechazadas'],
-                'pendientes': item['total'] - item['completadas'] - item['rechazadas'],
-            })
+            if item['mes']:
+                requisiciones_por_mes.append({
+                    'mes': item['mes'].strftime('%b %Y'),
+                    'mes_corto': item['mes'].strftime('%b'),
+                    'total': item['total'],
+                    'completadas': item['completadas'],
+                    'rechazadas': item['rechazadas'],
+                    'pendientes': item['total'] - item['completadas'] - item['rechazadas'],
+                })
+        
+        # Si no hay datos recientes, mostrar todo el historial
+        if not requisiciones_por_mes and requisiciones_qs.exists():
+            req_all_qs = requisiciones_qs.annotate(
+                fecha_ref=Coalesce(F('fecha_solicitud'), F('created_at'))
+            ).annotate(
+                mes=TruncMonth('fecha_ref')
+            ).values('mes').annotate(
+                total=Count('id'),
+                completadas=Count('id', filter=Q(estado__in=['surtida', 'entregada', 'parcial'])),
+                rechazadas=Count('id', filter=Q(estado__in=['rechazada', 'devuelta', 'cancelada'])),
+            ).order_by('mes')
+            for item in req_all_qs:
+                if item['mes']:
+                    requisiciones_por_mes.append({
+                        'mes': item['mes'].strftime('%b %Y'),
+                        'mes_corto': item['mes'].strftime('%b'),
+                        'total': item['total'],
+                        'completadas': item['completadas'],
+                        'rechazadas': item['rechazadas'],
+                        'pendientes': item['total'] - item['completadas'] - item['rechazadas'],
+                    })
         
         # Resumen acumulativo
         total_req = requisiciones_qs.count()
