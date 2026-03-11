@@ -2133,7 +2133,7 @@ const Productos = () => {
               onChange={(e) => handleFilterChange('unidad', e.target.value)}
               className="cc-filter-select"
             >
-              <option value="">Nivel ▾</option>
+              <option value="">Unidad ▾</option>
               {UNIDADES.map((unidad) => (
                 <option key={unidad} value={unidad}>
                   {unidad}

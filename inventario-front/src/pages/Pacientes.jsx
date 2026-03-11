@@ -490,6 +490,48 @@ const Pacientes = () => {
         title="Catálogo de PPL"
         subtitle="Gestión de Personas Privadas de la Libertad"
         icon={FaUserInjured}
+        filters={
+          <>
+            <button
+              type="button"
+              onClick={() => setShowFilters(!showFilters)}
+              aria-expanded={showFilters}
+              className="cc-filter-toggle"
+            >
+              <FaFilter className="text-[10px]" style={{ color: 'var(--color-primary)' }} />
+              <span>Filtros</span>
+              <FaChevronDown className={`text-[10px] transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+            </button>
+
+            <select
+              value={activoFiltro}
+              onChange={(e) => {
+                setActivoFiltro(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="cc-filter-select"
+            >
+              <option value="">Estado ▾</option>
+              <option value="true">Activos</option>
+              <option value="false">Inactivos</option>
+            </select>
+
+            <select
+              value={sexoFiltro}
+              onChange={(e) => {
+                setSexoFiltro(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="cc-filter-select"
+            >
+              {SEXO_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.value === '' ? 'Sexo ▾' : opt.label}
+                </option>
+              ))}
+            </select>
+          </>
+        }
       />
 
       {/* Barra de acciones */}
@@ -512,17 +554,6 @@ const Pacientes = () => {
 
           {/* Botones de acción */}
           <div className="flex gap-2 flex-wrap">
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
-                showFilters ? 'bg-guinda text-white border-guinda' : 'bg-white text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              <FaFilter />
-              Filtros
-              <FaChevronDown className={`transform transition-transform ${showFilters ? 'rotate-180' : ''}`} />
-            </button>
-            
             {puedeExportar && (
               <button
                 onClick={handleExportExcel}
@@ -580,21 +611,23 @@ const Pacientes = () => {
             </div>
           </div>
         )}
+      </div>
 
-        {/* Panel de filtros */}
-        {showFilters && (
-          <div className="mt-4 pt-4 border-t grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* Panel de filtros expandido */}
+      {showFilters && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
             {/* Centro - solo visible para Farmacia */}
             {esUsuarioFarmacia && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Centro</label>
+                <label className="cc-filter-label">Centro</label>
                 <select
                   value={centroFiltro}
                   onChange={(e) => {
                     setCentroFiltro(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-guinda"
+                  className="cc-filter-select-full"
                 >
                   <option value="">Todos los centros</option>
                   {centros.map(centro => (
@@ -605,14 +638,14 @@ const Pacientes = () => {
             )}
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Sexo</label>
+              <label className="cc-filter-label">Sexo</label>
               <select
                 value={sexoFiltro}
                 onChange={(e) => {
                   setSexoFiltro(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-guinda"
+                className="cc-filter-select-full"
               >
                 {SEXO_OPTIONS.map(opt => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -621,23 +654,38 @@ const Pacientes = () => {
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
+              <label className="cc-filter-label">Estado</label>
               <select
                 value={activoFiltro}
                 onChange={(e) => {
                   setActivoFiltro(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-guinda"
+                className="cc-filter-select-full"
               >
                 <option value="">Todos</option>
                 <option value="true">Activos</option>
                 <option value="false">Inactivos</option>
               </select>
             </div>
+
+            <div className="flex items-end">
+              <button
+                onClick={() => {
+                  setCentroFiltro('');
+                  setSexoFiltro('');
+                  setActivoFiltro('');
+                  setSearchTerm('');
+                  setCurrentPage(1);
+                }}
+                className="cc-btn cc-btn-ghost text-xs"
+              >
+                Limpiar
+              </button>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Tabla de pacientes */}
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">

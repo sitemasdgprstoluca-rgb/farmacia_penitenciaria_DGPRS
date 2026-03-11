@@ -498,76 +498,69 @@ const Centros = () => {
         subtitle={`Total: ${totalCentros} centros registrados | Página ${currentPage} de ${totalPages}`}
         badge={filtrosActivos ? `${filtrosActivos} filtros activos` : null}
         actions={headerActions}
+        filters={
+          <>
+            <button
+              type="button"
+              onClick={() => setShowFiltersMenu(!showFiltersMenu)}
+              aria-expanded={showFiltersMenu}
+              className="cc-filter-toggle"
+            >
+              <FaFilter className="text-[10px]" style={{ color: 'var(--color-primary)' }} />
+              <span>Filtros</span>
+              <FaChevronDown className={`text-[10px] transition-transform ${showFiltersMenu ? 'rotate-180' : ''}`} />
+            </button>
+
+            <select
+              value={filtroEstado}
+              onChange={(e) => setFiltroEstado(e.target.value)}
+              className="cc-filter-select"
+            >
+              <option value="">Estado ▾</option>
+              <option value="activo">Activo</option>
+              <option value="inactivo">Inactivo</option>
+            </select>
+          </>
+        }
       />
 
-      {/* Botón toggle filtros */}
-      <div className="mb-4 flex justify-end">
-        <button
-          type="button"
-          onClick={() => setShowFiltersMenu(!showFiltersMenu)}
-          aria-expanded={showFiltersMenu}
-          aria-haspopup="true"
-          className="flex items-center gap-2 rounded-full border border-gray-200 bg-white/90 px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-white"
-        >
-          <FaFilter className="text-theme-primary" />
-          {showFiltersMenu ? 'Ocultar filtros' : 'Mostrar filtros'}
-          <FaChevronDown className={`transition ${showFiltersMenu ? 'rotate-180' : ''}`} />
-        </button>
-      </div>
-
-      {/* Panel de filtros colapsable */}
+      {/* Panel de filtros expandido */}
       {showFiltersMenu && (
-        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
-          <div
-            className="flex items-center gap-3 px-5 py-3 border-b-[3px] border-theme-primary bg-gray-50"
-          >
-            <div className="bg-white p-2 rounded-lg">
-              <FaFilter className="text-theme-primary" />
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
+            <div className="lg:col-span-2">
+              <label className="cc-filter-label">Búsqueda</label>
+              <div className="cc-filter-input-wrap">
+                <FaSearch className="text-gray-400 text-xs" />
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full bg-transparent text-sm focus:outline-none"
+                  placeholder="Buscar por nombre, dirección, email o teléfono..."
+                />
+              </div>
             </div>
             <div>
-              <p className="text-sm font-semibold text-theme-primary-hover">Filtros avanzados</p>
-              <p className="text-xs text-gray-500">Aplique criterios sin ocupar espacio en pantalla</p>
+              <label className="cc-filter-label">Estado</label>
+              <select
+                value={filtroEstado}
+                onChange={(e) => setFiltroEstado(e.target.value)}
+                className="cc-filter-select-full"
+              >
+                <option value="">Todos los estados</option>
+                <option value="activo">Activo</option>
+                <option value="inactivo">Inactivo</option>
+              </select>
             </div>
-          </div>
-
-          <div className="space-y-3 px-5 py-3">
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
-              <div className="lg:col-span-2">
-                <label className="text-xs font-semibold text-theme-primary-hover">Búsqueda</label>
-                <div
-                  className="mt-1 flex items-center rounded-lg border px-3 py-2 focus-within:ring-2 border-theme-primary"
-                >
-                  <FaSearch className="mr-2 text-gray-400" />
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full border-none bg-transparent text-sm focus:outline-none"
-                    placeholder="Buscar por nombre, dirección, email o teléfono..."
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-theme-primary-hover">Estado</label>
-                <select
-                  value={filtroEstado}
-                  onChange={(e) => setFiltroEstado(e.target.value)}
-                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
-                >
-                  <option value="">Todos los estados</option>
-                  <option value="activo">Activo</option>
-                  <option value="inactivo">Inactivo</option>
-                </select>
-              </div>
-              <div className="flex items-end">
-                <button
-                  type="button"
-                  onClick={limpiarFiltros}
-                  className="w-full rounded-lg border px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50"
-                >
-                  Limpiar
-                </button>
-              </div>
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={limpiarFiltros}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-500 hover:bg-gray-50 transition"
+              >
+                Limpiar
+              </button>
             </div>
           </div>
         </div>

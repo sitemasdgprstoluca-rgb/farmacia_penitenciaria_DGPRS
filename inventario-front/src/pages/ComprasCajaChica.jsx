@@ -56,6 +56,7 @@ import {
   FaTruck,
   FaCheckCircle,
   FaWarehouse,
+  FaChevronDown,
 } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import Pagination from '../components/Pagination';
@@ -1159,6 +1160,32 @@ const ComprasCajaChica = () => {
           : "Gestión de compras con recursos propios del centro"
         }
         icon={FaMoneyBillWave}
+        filters={
+          <>
+            <button
+              type="button"
+              onClick={() => setShowFilters(!showFilters)}
+              aria-expanded={showFilters}
+              className="cc-filter-toggle"
+            >
+              <FaFilter className="text-[10px]" style={{ color: 'var(--color-primary)' }} />
+              <span>Filtros</span>
+              <FaChevronDown className={`text-[10px] transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+            </button>
+
+            <select
+              value={estadoFiltro}
+              onChange={(e) => setEstadoFiltro(e.target.value)}
+              className="cc-filter-select"
+            >
+              {ESTADOS_COMPRA.map(estado => (
+                <option key={estado.value} value={estado.value}>
+                  {estado.value === '' ? 'Estado ▾' : estado.label}
+                </option>
+              ))}
+            </select>
+          </>
+        }
       />
 
       {/* Banner informativo para farmacia */}
@@ -1202,7 +1229,7 @@ const ComprasCajaChica = () => {
         </div>
       )}
 
-      {/* Barra de acciones y filtros */}
+      {/* Barra de acciones */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 md:p-4">
         {/* Búsqueda y botones */}
         <div className="flex flex-col sm:flex-row gap-3 justify-between items-stretch sm:items-center">
@@ -1218,16 +1245,6 @@ const ComprasCajaChica = () => {
           </div>
           
           <div className="flex gap-2 flex-shrink-0">
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className={`px-3 py-2 rounded-lg flex items-center gap-2 text-sm transition-colors ${
-                showFilters ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              <FaFilter className="text-xs" />
-              <span className="hidden sm:inline">Filtros</span>
-            </button>
-            
             {puedeCrear && (
               <button
                 onClick={handleNew}
@@ -1239,77 +1256,76 @@ const ComprasCajaChica = () => {
             )}
           </div>
         </div>
+      </div>
 
-        {/* Panel de filtros colapsable */}
-        {showFilters && (
-          <div className="mt-4 pt-4 border-t border-gray-200">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              {/* Centro (solo para farmacia) */}
-              {esUsuarioFarmacia && (
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Centro</label>
-                  <select
-                    value={centroFiltro}
-                    onChange={(e) => setCentroFiltro(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-green-500"
-                  >
-                    <option value="">Todos los centros</option>
-                    {centros.map(centro => (
-                      <option key={centro.id} value={centro.id}>{centro.nombre}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              
-              {/* Estado */}
+      {/* Panel de filtros expandido */}
+      {showFilters && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            {/* Centro (solo para farmacia) */}
+            {esUsuarioFarmacia && (
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Estado</label>
+                <label className="cc-filter-label">Centro</label>
                 <select
-                  value={estadoFiltro}
-                  onChange={(e) => setEstadoFiltro(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-green-500"
+                  value={centroFiltro}
+                  onChange={(e) => setCentroFiltro(e.target.value)}
+                  className="cc-filter-select-full"
                 >
-                  {ESTADOS_COMPRA.map(estado => (
-                    <option key={estado.value} value={estado.value}>{estado.label}</option>
+                  <option value="">Todos los centros</option>
+                  {centros.map(centro => (
+                    <option key={centro.id} value={centro.id}>{centro.nombre}</option>
                   ))}
                 </select>
               </div>
-              
-              {/* Fecha desde */}
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Desde</label>
-                <input
-                  type="date"
-                  value={fechaDesde}
-                  onChange={(e) => setFechaDesde(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-green-500"
-                />
-              </div>
-              
-              {/* Fecha hasta */}
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Hasta</label>
-                <input
-                  type="date"
-                  value={fechaHasta}
-                  onChange={(e) => setFechaHasta(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-green-500"
-                />
-              </div>
+            )}
+            
+            {/* Estado */}
+            <div>
+              <label className="cc-filter-label">Estado</label>
+              <select
+                value={estadoFiltro}
+                onChange={(e) => setEstadoFiltro(e.target.value)}
+                className="cc-filter-select-full"
+              >
+                {ESTADOS_COMPRA.map(estado => (
+                  <option key={estado.value} value={estado.value}>{estado.label}</option>
+                ))}
+              </select>
             </div>
             
-            <div className="flex justify-end mt-3">
+            {/* Fecha desde */}
+            <div>
+              <label className="cc-filter-label">Desde</label>
+              <input
+                type="date"
+                value={fechaDesde}
+                onChange={(e) => setFechaDesde(e.target.value)}
+                className="cc-filter-select-full"
+              />
+            </div>
+            
+            {/* Fecha hasta */}
+            <div>
+              <label className="cc-filter-label">Hasta</label>
+              <input
+                type="date"
+                value={fechaHasta}
+                onChange={(e) => setFechaHasta(e.target.value)}
+                className="cc-filter-select-full"
+              />
+            </div>
+
+            <div className="flex items-end">
               <button
                 onClick={handleClearFilters}
-                className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 flex items-center gap-2"
+                className="cc-btn cc-btn-ghost text-xs"
               >
-                <FaTimes className="text-xs" />
                 Limpiar
               </button>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Tabla de compras */}
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">

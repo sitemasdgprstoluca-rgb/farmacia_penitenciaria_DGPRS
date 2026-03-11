@@ -829,6 +829,50 @@ const Dispensaciones = () => {
         title="Dispensación a Pacientes"
         subtitle="Formato C - Gestión de entrega de medicamentos a internos"
         icon={FaPills}
+        filters={
+          <>
+            <button
+              type="button"
+              onClick={() => setShowFilters(!showFilters)}
+              aria-expanded={showFilters}
+              className="cc-filter-toggle"
+            >
+              <FaFilter className="text-[10px]" style={{ color: 'var(--color-primary)' }} />
+              <span>Filtros</span>
+              <FaChevronDown className={`text-[10px] transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+            </button>
+
+            <select
+              value={estadoFiltro}
+              onChange={(e) => {
+                setEstadoFiltro(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="cc-filter-select"
+            >
+              {ESTADOS_DISPENSACION.map(opt => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.value === '' ? 'Estado ▾' : opt.label}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={tipoFiltro}
+              onChange={(e) => {
+                setTipoFiltro(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="cc-filter-select"
+            >
+              {TIPOS_DISPENSACION.map(opt => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.value === '' ? 'Tipo ▾' : opt.label}
+                </option>
+              ))}
+            </select>
+          </>
+        }
       />
 
       {/* Barra de acciones */}
@@ -851,17 +895,6 @@ const Dispensaciones = () => {
 
           {/* Botones */}
           <div className="flex gap-2 flex-wrap">
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
-                showFilters ? 'bg-guinda text-white border-guinda' : 'bg-white text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              <FaFilter />
-              Filtros
-              <FaChevronDown className={`transform transition-transform ${showFilters ? 'rotate-180' : ''}`} />
-            </button>
-            
             {puedeCrear && (
               <button
                 onClick={() => handleOpenModal()}
@@ -905,21 +938,23 @@ const Dispensaciones = () => {
             </span>
           </div>
         )}
+      </div>
 
-        {/* Panel de filtros */}
-        {showFilters && (
-          <div className="mt-4 pt-4 border-t grid grid-cols-1 sm:grid-cols-4 gap-4">
+      {/* Panel de filtros expandido */}
+      {showFilters && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
             {/* Centro - solo visible para Farmacia/Admin */}
             {esSoloAuditoria && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Centro</label>
+                <label className="cc-filter-label">Centro</label>
                 <select
                   value={centroFiltro}
                   onChange={(e) => {
                     setCentroFiltro(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-guinda"
+                  className="cc-filter-select-full"
                 >
                   <option value="">Todos los centros</option>
                   {centros.map(centro => (
@@ -930,14 +965,14 @@ const Dispensaciones = () => {
             )}
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
+              <label className="cc-filter-label">Estado</label>
               <select
                 value={estadoFiltro}
                 onChange={(e) => {
                   setEstadoFiltro(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-guinda"
+                className="cc-filter-select-full"
               >
                 {ESTADOS_DISPENSACION.map(opt => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -946,14 +981,14 @@ const Dispensaciones = () => {
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
+              <label className="cc-filter-label">Tipo</label>
               <select
                 value={tipoFiltro}
                 onChange={(e) => {
                   setTipoFiltro(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-guinda"
+                className="cc-filter-select-full"
               >
                 {TIPOS_DISPENSACION.map(opt => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -962,7 +997,7 @@ const Dispensaciones = () => {
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Desde</label>
+              <label className="cc-filter-label">Desde</label>
               <input
                 type="date"
                 value={fechaInicio}
@@ -970,12 +1005,12 @@ const Dispensaciones = () => {
                   setFechaInicio(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-guinda"
+                className="cc-filter-select-full"
               />
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Hasta</label>
+              <label className="cc-filter-label">Hasta</label>
               <input
                 type="date"
                 value={fechaFin}
@@ -983,12 +1018,29 @@ const Dispensaciones = () => {
                   setFechaFin(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-guinda"
+                className="cc-filter-select-full"
               />
             </div>
+
+            <div className="flex items-end">
+              <button
+                onClick={() => {
+                  setCentroFiltro('');
+                  setEstadoFiltro('');
+                  setTipoFiltro('');
+                  setFechaInicio('');
+                  setFechaFin('');
+                  setSearchTerm('');
+                  setCurrentPage(1);
+                }}
+                className="cc-btn cc-btn-ghost text-xs"
+              >
+                Limpiar
+              </button>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Tabla de dispensaciones */}
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">

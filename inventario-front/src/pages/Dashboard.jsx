@@ -1709,7 +1709,7 @@ const Dashboard = () => {
             <div className="flex flex-wrap items-center justify-center gap-4">
               {/* Donut compacto */}
               <div className="relative" style={{ width: 140, height: 140 }}>
-                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                <ResponsiveContainer width={140} height={140} minWidth={0} minHeight={0}>
                   <PieChart>
                     <Pie
                       data={graficas.requisiciones_por_estado}

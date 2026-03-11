@@ -1782,9 +1782,64 @@ const Requisiciones = () => {
         subtitle={`Total: ${totalRequisiciones} | Página ${currentPage} de ${totalPages} | Rol: ${getRolPrincipal()}`}
         badge={filtrosActivos ? `${filtrosActivos} filtros activos` : null}
         actions={headerActions}
+        filters={
+          <>
+            <button
+              type="button"
+              onClick={() => setShowFiltersMenu(!showFiltersMenu)}
+              aria-expanded={showFiltersMenu}
+              className="cc-filter-toggle"
+            >
+              <FaFilter className="text-[10px]" style={{ color: 'var(--color-primary)' }} />
+              <span>Filtros</span>
+              <FaChevronDown className={`text-[10px] transition-transform ${showFiltersMenu ? 'rotate-180' : ''}`} />
+            </button>
+
+            <select
+              value={filtroEstado}
+              onChange={(e) => setFiltroEstado(e.target.value)}
+              className="cc-filter-select"
+            >
+              <option value="">Estado ▾</option>
+              <optgroup label="En Centro">
+                <option value="borrador">Borrador</option>
+                <option value="pendiente_admin">Pend. Admin</option>
+                <option value="pendiente_director">Pend. Director</option>
+                <option value="devuelta">Devuelta</option>
+              </optgroup>
+              <optgroup label="En Farmacia">
+                <option value="enviada">Enviada</option>
+                <option value="en_revision">En Revisión</option>
+                <option value="autorizada">Autorizada</option>
+                <option value="en_surtido">En Surtido</option>
+                <option value="parcial">Parcial</option>
+                <option value="surtida">Surtida</option>
+              </optgroup>
+              <optgroup label="Finalizados">
+                <option value="entregada">Entregada</option>
+                <option value="rechazada">Rechazada</option>
+                <option value="cancelada">Cancelada</option>
+                <option value="vencida">Vencida</option>
+              </optgroup>
+            </select>
+
+            {(permisos.isFarmaciaAdmin || permisos.isAdmin) && (
+              <select
+                value={filtroCentro}
+                onChange={(e) => setFiltroCentro(e.target.value)}
+                className="cc-filter-select"
+              >
+                <option value="">Centro ▾</option>
+                {centros.map((c) => (
+                  <option key={c.id} value={c.id}>{c.nombre}</option>
+                ))}
+              </select>
+            )}
+          </>
+        }
       />
 
-      {/* Tabs de estado y botón de filtros */}
+      {/* Tabs de estado */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-3">
           {/* ISS-002 FIX (audit27): Filtrar tabs ocultos (legacy) */}
@@ -1802,159 +1857,128 @@ const Requisiciones = () => {
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          onClick={() => setShowFiltersMenu(!showFiltersMenu)}
-          aria-expanded={showFiltersMenu}
-          className="flex items-center gap-2 rounded-full border border-gray-200 bg-white/90 px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-white"
-        >
-          <FaFilter className="text-theme-primary" />
-          {showFiltersMenu ? 'Ocultar filtros' : 'Mostrar filtros'}
-          <FaChevronDown className={`transition ${showFiltersMenu ? 'rotate-180' : ''}`} />
-        </button>
       </div>
 
-      {/* Panel de filtros colapsable */}
+      {/* Panel de filtros expandido */}
       {showFiltersMenu && (
-        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
-          <div
-            className="flex items-center gap-3 px-5 py-3 border-b-[3px] border-theme-primary bg-gray-50"
-          >
-            <div className="bg-white p-2 rounded-lg">
-              <FaFilter className="text-theme-primary" />
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-6">
+            <div>
+              <label className="cc-filter-label">Búsqueda</label>
+              <div className="cc-filter-input-wrap">
+                <FaSearch className="text-gray-400 text-xs" />
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full bg-transparent text-sm focus:outline-none"
+                  placeholder="Buscar por folio..."
+                />
+              </div>
             </div>
             <div>
-              <p className="text-sm font-semibold text-theme-primary-hover">Filtros avanzados</p>
-              <p className="text-xs text-gray-500">Aplique criterios sin ocupar espacio en pantalla</p>
+              <label className="cc-filter-label">Estado</label>
+              <select
+                value={filtroEstado}
+                onChange={(e) => setFiltroEstado(e.target.value)}
+                className="cc-filter-select-full"
+              >
+                <option value="">Todos los estados</option>
+                <optgroup label="En Centro">
+                  <option value="borrador">Borrador</option>
+                  <option value="pendiente_admin">Pendiente Admin</option>
+                  <option value="pendiente_director">Pendiente Director</option>
+                  <option value="devuelta">Devuelta</option>
+                </optgroup>
+                <optgroup label="En Farmacia">
+                  <option value="enviada">Enviada</option>
+                  <option value="en_revision">En Revisión</option>
+                  <option value="autorizada">Autorizada</option>
+                  <option value="en_surtido">En Surtido</option>
+                  <option value="parcial">Parcialmente Surtida</option>
+                  <option value="surtida">Surtida</option>
+                </optgroup>
+                <optgroup label="Finalizados">
+                  <option value="entregada">Entregada</option>
+                  <option value="rechazada">Rechazada</option>
+                  <option value="cancelada">Cancelada</option>
+                  <option value="vencida">Vencida</option>
+                </optgroup>
+              </select>
             </div>
-          </div>
-
-          <div className="space-y-3 px-5 py-3">
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+            {(permisos.isFarmaciaAdmin || permisos.isAdmin) && (
               <div>
-                <label className="text-xs font-semibold text-theme-primary-hover">Búsqueda</label>
-                <div
-                  className="mt-1 flex items-center rounded-lg border px-3 py-2 focus-within:ring-2 border-theme-primary"
-                >
-                  <FaSearch className="mr-2 text-gray-400" />
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full border-none bg-transparent text-sm focus:outline-none"
-                    placeholder="Buscar por folio..."
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-theme-primary-hover">Estado</label>
+                <label className="cc-filter-label">Centro</label>
                 <select
-                  value={filtroEstado}
-                  onChange={(e) => setFiltroEstado(e.target.value)}
-                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
+                  value={filtroCentro}
+                  onChange={(e) => setFiltroCentro(e.target.value)}
+                  className="cc-filter-select-full"
                 >
-                  {/* ISS-DB-002: Estados alineados con BD Supabase + FLUJO V2 */}
-                  <option value="">Todos los estados</option>
-                  <optgroup label="En Centro">
-                    <option value="borrador">Borrador</option>
-                    <option value="pendiente_admin">Pendiente Admin</option>
-                    <option value="pendiente_director">Pendiente Director</option>
-                    <option value="devuelta">Devuelta</option>
-                  </optgroup>
-                  <optgroup label="En Farmacia">
-                    <option value="enviada">Enviada</option>
-                    <option value="en_revision">En Revisión</option>
-                    <option value="autorizada">Autorizada</option>
-                    <option value="en_surtido">En Surtido</option>
-                    <option value="parcial">Parcialmente Surtida</option>
-                    <option value="surtida">Surtida</option>
-                  </optgroup>
-                  <optgroup label="Finalizados">
-                    <option value="entregada">Entregada</option>
-                    <option value="rechazada">Rechazada</option>
-                    <option value="cancelada">Cancelada</option>
-                    <option value="vencida">Vencida</option>
-                  </optgroup>
+                  <option value="">Todos los centros</option>
+                  {centros.map((c) => (
+                    <option key={c.id} value={c.id}>{c.nombre}</option>
+                  ))}
                 </select>
               </div>
-              {/* Solo mostrar filtro de centro para farmacia/admin */}
-              {(permisos.isFarmaciaAdmin || permisos.isAdmin) && (
-                <div>
-                  <label className="text-xs font-semibold text-theme-primary-hover">Centro</label>
-                  <select
-                    value={filtroCentro}
-                    onChange={(e) => setFiltroCentro(e.target.value)}
-                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
-                  >
-                    <option value="">Todos los centros</option>
-                    {centros.map((c) => (
-                      <option key={c.id} value={c.id}>{c.nombre}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              <div>
-                <label className="text-xs font-semibold text-theme-primary-hover">Fecha desde</label>
-                <input
-                  type="date"
-                  value={filtroFechaDesde}
-                  onChange={(e) => {
-                    const desde = e.target.value;
-                    if (desde && filtroFechaHasta && desde > filtroFechaHasta) {
-                      setFechaError('La fecha "desde" no puede ser posterior a "hasta"');
-                      return;
-                    }
-                    setFechaError('');
-                    setFiltroFechaDesde(desde);
-                  }}
-                  max={filtroFechaHasta || undefined}
-                  className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${fechaError ? 'border-red-400' : 'border-theme-primary'}`}
-                />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-theme-primary-hover">Fecha hasta</label>
-                <input
-                  type="date"
-                  value={filtroFechaHasta}
-                  onChange={(e) => {
-                    const hasta = e.target.value;
-                    if (filtroFechaDesde && hasta && filtroFechaDesde > hasta) {
-                      setFechaError('La fecha "hasta" no puede ser anterior a "desde"');
-                      return;
-                    }
-                    setFechaError('');
-                    setFiltroFechaHasta(hasta);
-                  }}
-                  min={filtroFechaDesde || undefined}
-                  className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${fechaError ? 'border-red-400' : 'border-theme-primary'}`}
-                />
-              </div>
+            )}
+            <div>
+              <label className="cc-filter-label">Fecha desde</label>
+              <input
+                type="date"
+                value={filtroFechaDesde}
+                onChange={(e) => {
+                  const desde = e.target.value;
+                  if (desde && filtroFechaHasta && desde > filtroFechaHasta) {
+                    setFechaError('La fecha "desde" no puede ser posterior a "hasta"');
+                    return;
+                  }
+                  setFechaError('');
+                  setFiltroFechaDesde(desde);
+                }}
+                max={filtroFechaHasta || undefined}
+                className={`cc-filter-select-full ${fechaError ? '!border-red-400' : ''}`}
+              />
             </div>
-            {fechaError && (
-              <span className="text-xs text-red-500">{fechaError}</span>
-            )}
-            {/* Botón limpiar filtros */}
-            {(searchTerm || filtroEstado || (esAdminOFarmacia && filtroCentro) || filtroFechaDesde || filtroFechaHasta || (grupoEstado && grupoEstado !== 'todas')) && (
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearchTerm('');
-                    setFiltroEstado('');
-                    if (esAdminOFarmacia) {
-                      setFiltroCentro('');
-                    }
-                    setFiltroFechaDesde('');
-                    setFiltroFechaHasta('');
-                    setFechaError('');
-                    setGrupoEstado('todas');
-                  }}
-                  className="rounded-lg border px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50"
-                >
-                  Limpiar filtros
-                </button>
-              </div>
-            )}
+            <div>
+              <label className="cc-filter-label">Fecha hasta</label>
+              <input
+                type="date"
+                value={filtroFechaHasta}
+                onChange={(e) => {
+                  const hasta = e.target.value;
+                  if (filtroFechaDesde && hasta && filtroFechaDesde > hasta) {
+                    setFechaError('La fecha "hasta" no puede ser anterior a "desde"');
+                    return;
+                  }
+                  setFechaError('');
+                  setFiltroFechaHasta(hasta);
+                }}
+                min={filtroFechaDesde || undefined}
+                className={`cc-filter-select-full ${fechaError ? '!border-red-400' : ''}`}
+              />
+            </div>
+            <div className="flex flex-col justify-between">
+              {fechaError && (
+                <span className="text-xs text-red-500">{fechaError}</span>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchTerm('');
+                  setFiltroEstado('');
+                  if (esAdminOFarmacia) {
+                    setFiltroCentro('');
+                  }
+                  setFiltroFechaDesde('');
+                  setFiltroFechaHasta('');
+                  setFechaError('');
+                  setGrupoEstado('todas');
+                }}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-500 hover:bg-gray-50 transition"
+              >
+                Limpiar
+              </button>
+            </div>
           </div>
         </div>
       )}

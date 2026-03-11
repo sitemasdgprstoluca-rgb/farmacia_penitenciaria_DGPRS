@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { usuariosAPI, centrosAPI } from '../services/api';
 import { toast } from 'react-hot-toast';
-import { FaPlus, FaEdit, FaTrash, FaKey, FaUsers, FaTimes, FaDownload, FaFileUpload, FaSearch, FaFilter, FaShieldAlt, FaSpinner, FaToggleOn, FaToggleOff, FaEye, FaEyeSlash } from 'react-icons/fa';
+import { FaPlus, FaEdit, FaTrash, FaKey, FaUsers, FaTimes, FaDownload, FaFileUpload, FaSearch, FaFilter, FaChevronDown, FaShieldAlt, FaSpinner, FaToggleOn, FaToggleOff, FaEye, FaEyeSlash } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import { COLORS } from '../constants/theme';
 import { usePermissions } from '../hooks/usePermissions';
@@ -129,6 +129,9 @@ function Usuarios() {
   const [filterRol, setFilterRol] = useState('');
   const [filterEstado, setFilterEstado] = useState('');
   const [filterCentro, setFilterCentro] = useState('');
+  const [showFiltersMenu, setShowFiltersMenu] = useState(false);
+  
+  const filtrosActivos = [searchTerm, filterRol, filterEstado, filterCentro].filter(Boolean).length;
   
   const [formData, setFormData] = useState({
     username: '',
@@ -923,29 +926,27 @@ function Usuarios() {
         icon={FaUsers}
         title="Gestión de Usuarios"
         subtitle={`Total: ${totalUsuarios} usuarios | Página ${currentPage} de ${totalPages}`}
+        badge={filtrosActivos ? `${filtrosActivos} filtros activos` : null}
         actions={headerActions}
-      />
+        filters={
+          <>
+            <button
+              type="button"
+              onClick={() => setShowFiltersMenu(!showFiltersMenu)}
+              aria-expanded={showFiltersMenu}
+              className="cc-filter-toggle"
+            >
+              <FaFilter className="text-[10px]" style={{ color: 'var(--color-primary)' }} />
+              <span>Filtros</span>
+              <FaChevronDown className={`text-[10px] transition-transform ${showFiltersMenu ? 'rotate-180' : ''}`} />
+            </button>
 
-      {/* Filtros */}
-      <div className="bg-white rounded-lg shadow p-4">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          <div className="relative">
-            <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar usuario, email, nombre..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent focus:ring-theme-primary"
-            />
-          </div>
-          <div>
             <select
               value={filterRol}
               onChange={(e) => setFilterRol(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
+              className="cc-filter-select"
             >
-              <option value="">Todos los roles</option>
+              <option value="">Rol ▾</option>
               <optgroup label="Farmacia Central">
                 {ROLES.filter(r => r.grupo === 'farmacia').map(rol => (
                   <option key={rol.value} value={rol.value}>{rol.label}</option>
@@ -956,7 +957,6 @@ function Usuarios() {
                   <option key={rol.value} value={rol.value}>{rol.label}</option>
                 ))}
               </optgroup>
-              {/* Solo mostrar legacy si hay usuarios con esos roles */}
               {esSuperusuario && (
                 <optgroup label="Legacy">
                   {ROLES.filter(r => r.grupo === 'legacy').map(rol => (
@@ -965,53 +965,111 @@ function Usuarios() {
                 </optgroup>
               )}
             </select>
-          </div>
-          <div>
-            <select
-              value={esAdminOFarmacia ? filterCentro : (user?.centro?.id?.toString() || '')}
-              onChange={(e) => esAdminOFarmacia && setFilterCentro(e.target.value)}
-              disabled={!esAdminOFarmacia}
-              className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent ${
-                !esAdminOFarmacia ? 'bg-gray-100 cursor-not-allowed' : ''
-              }`}
-              title={!esAdminOFarmacia ? 'Solo puedes ver usuarios de tu centro' : ''}
-            >
-              {esAdminOFarmacia ? (
-                <>
-                  <option value="">Todos los centros</option>
-                  {centros.map(centro => (
-                    <option key={centro.id} value={centro.id}>{centro.nombre}</option>
-                  ))}
-                </>
-              ) : (
-                <option value={user?.centro?.id || ''}>
-                  {centros.find(c => c.id === user?.centro?.id)?.nombre || 'Tu centro'}
-                </option>
-              )}
-            </select>
-          </div>
-          <div>
+
             <select
               value={filterEstado}
               onChange={(e) => setFilterEstado(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
+              className="cc-filter-select"
             >
-              <option value="">Todos los estados</option>
+              <option value="">Estado ▾</option>
               <option value="activo">Activos</option>
               <option value="inactivo">Inactivos</option>
             </select>
-          </div>
-          <div>
-            <button
-              type="button"
-              onClick={limpiarFiltros}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 font-semibold transition"
-            >
-              <FaFilter className="inline mr-2" /> Limpiar
-            </button>
+          </>
+        }
+      />
+
+      {/* Panel de filtros expandido */}
+      {showFiltersMenu && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-5">
+            <div className="lg:col-span-1">
+              <label className="cc-filter-label">Búsqueda</label>
+              <div className="cc-filter-input-wrap">
+                <FaSearch className="text-gray-400 text-xs" />
+                <input
+                  type="text"
+                  placeholder="Buscar usuario, email, nombre..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full bg-transparent text-sm focus:outline-none"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="cc-filter-label">Rol</label>
+              <select
+                value={filterRol}
+                onChange={(e) => setFilterRol(e.target.value)}
+                className="cc-filter-select-full"
+              >
+                <option value="">Todos los roles</option>
+                <optgroup label="Farmacia Central">
+                  {ROLES.filter(r => r.grupo === 'farmacia').map(rol => (
+                    <option key={rol.value} value={rol.value}>{rol.label}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="Centro Penitenciario">
+                  {ROLES.filter(r => r.grupo === 'centro').map(rol => (
+                    <option key={rol.value} value={rol.value}>{rol.label}</option>
+                  ))}
+                </optgroup>
+                {esSuperusuario && (
+                  <optgroup label="Legacy">
+                    {ROLES.filter(r => r.grupo === 'legacy').map(rol => (
+                      <option key={rol.value} value={rol.value}>{rol.label}</option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+            </div>
+            <div>
+              <label className="cc-filter-label">Centro</label>
+              <select
+                value={esAdminOFarmacia ? filterCentro : (user?.centro?.id?.toString() || '')}
+                onChange={(e) => esAdminOFarmacia && setFilterCentro(e.target.value)}
+                disabled={!esAdminOFarmacia}
+                className={`cc-filter-select-full ${!esAdminOFarmacia ? 'opacity-50 cursor-not-allowed' : ''}`}
+                title={!esAdminOFarmacia ? 'Solo puedes ver usuarios de tu centro' : ''}
+              >
+                {esAdminOFarmacia ? (
+                  <>
+                    <option value="">Todos los centros</option>
+                    {centros.map(centro => (
+                      <option key={centro.id} value={centro.id}>{centro.nombre}</option>
+                    ))}
+                  </>
+                ) : (
+                  <option value={user?.centro?.id || ''}>
+                    {centros.find(c => c.id === user?.centro?.id)?.nombre || 'Tu centro'}
+                  </option>
+                )}
+              </select>
+            </div>
+            <div>
+              <label className="cc-filter-label">Estado</label>
+              <select
+                value={filterEstado}
+                onChange={(e) => setFilterEstado(e.target.value)}
+                className="cc-filter-select-full"
+              >
+                <option value="">Todos</option>
+                <option value="activo">Activos</option>
+                <option value="inactivo">Inactivos</option>
+              </select>
+            </div>
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={limpiarFiltros}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-500 hover:bg-gray-50 transition"
+              >
+                Limpiar
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {loading ? (
         <UsuariosSkeleton />

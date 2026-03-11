@@ -1655,6 +1655,50 @@ const Movimientos = () => {
             </button>
           </div>
         }
+        filters={
+          !esMedico ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setShowFiltersMenu(!showFiltersMenu)}
+                aria-expanded={showFiltersMenu}
+                className="cc-filter-toggle"
+              >
+                <FaFilter className="text-[10px]" style={{ color: 'var(--color-primary)' }} />
+                <span>Filtros</span>
+                <FaChevronDown className={`text-[10px] transition-transform ${showFiltersMenu ? 'rotate-180' : ''}`} />
+              </button>
+
+              <select
+                value={filtros.tipo}
+                onChange={(e) => handleFiltro("tipo", e.target.value)}
+                className="cc-filter-select"
+              >
+                <option value="">Tipo ▾</option>
+                <option value="entrada">Entrada</option>
+                <option value="salida">Salida</option>
+                <option value="ajuste">Ajuste</option>
+              </select>
+
+              {(filtros.tipo === "" || filtros.tipo === "salida") && (
+                <select
+                  value={filtros.subtipo_salida}
+                  onChange={(e) => handleFiltro("subtipo_salida", e.target.value)}
+                  className="cc-filter-select"
+                >
+                  <option value="">Subtipo ▾</option>
+                  <option value="receta">Receta</option>
+                  <option value="consumo_interno">Consumo</option>
+                  <option value="transferencia">Transferencia</option>
+                  <option value="merma">Merma</option>
+                  <option value="caducidad">Caducidad</option>
+                  <option value="donacion">Donación</option>
+                  <option value="devolucion">Devolución</option>
+                </select>
+              )}
+            </>
+          ) : undefined
+        }
       />
 
       {/* 🏷️ Banner para usuarios CENTRO */}
@@ -2195,15 +2239,6 @@ const Movimientos = () => {
                       ⚠ Filtros sin aplicar
                     </span>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => setShowFiltersMenu(!showFiltersMenu)}
-                    className="flex items-center gap-2 rounded-full border border-gray-200 bg-white/90 px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-white"
-                  >
-                    <FaFilter className="text-theme-primary" />
-                    {showFiltersMenu ? 'Ocultar filtros' : 'Mostrar filtros'}
-                    <FaChevronDown className={`transition ${showFiltersMenu ? 'rotate-180' : ''}`} />
-                  </button>
                   <button
                     onClick={cargarMovimientos}
                     className="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50 px-3 py-2"

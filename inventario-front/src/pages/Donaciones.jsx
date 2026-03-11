@@ -1650,6 +1650,52 @@ const Donaciones = () => {
         title="Donaciones"
         subtitle="Gestión completa del almacén de donaciones"
         icon={FaGift}
+        filters={activeTab === 'donaciones' ? (
+          <>
+            <button
+              type="button"
+              onClick={() => setShowFiltersMenu(!showFiltersMenu)}
+              aria-expanded={showFiltersMenu}
+              className="cc-filter-toggle"
+            >
+              <FaFilter className="text-[10px]" style={{ color: 'var(--color-primary)' }} />
+              <span>Filtros{filtrosActivos > 0 ? ` (${filtrosActivos})` : ''}</span>
+              <FaChevronDown className={`text-[10px] transition-transform ${showFiltersMenu ? 'rotate-180' : ''}`} />
+            </button>
+
+            <select
+              value={filtroEstado}
+              onChange={(e) => {
+                setFiltroEstado(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="cc-filter-select"
+            >
+              <option value="">Estado ▾</option>
+              {Object.entries(ESTADOS_DONACION).map(([key, val]) => (
+                <option key={key} value={key}>
+                  {val.label}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={filtroTipoDonante}
+              onChange={(e) => {
+                setFiltroTipoDonante(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="cc-filter-select"
+            >
+              <option value="">Donante ▾</option>
+              {TIPOS_DONANTE.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </>
+        ) : undefined}
       />
 
       {/* Tabs de navegación */}
@@ -1745,25 +1791,6 @@ const Donaciones = () => {
 
               {/* Acciones */}
               <div className="flex gap-2 flex-wrap">
-                {/* Toggle filtros */}
-                <button
-                  onClick={() => setShowFiltersMenu(!showFiltersMenu)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
-                    filtrosActivos > 0
-                      ? 'bg-primary/10 border-primary text-primary'
-                      : 'bg-white hover:bg-gray-50'
-                  }`}
-                >
-                  <FaFilter />
-                  Filtros
-                  {filtrosActivos > 0 && (
-                    <span className="bg-primary text-white text-xs px-2 py-0.5 rounded-full">
-                      {filtrosActivos}
-                    </span>
-                  )}
-                  <FaChevronDown className={`transition-transform ${showFiltersMenu ? 'rotate-180' : ''}`} />
-                </button>
-
                 {/* Botón Exportar Excel */}
                 <button
                   onClick={handleExportarDonaciones}
@@ -1810,7 +1837,7 @@ const Donaciones = () => {
                   </>
                 )}
 
-                {/* Procesar Todas las Pendientes - Botón separado para mayor visibilidad */}
+                {/* Procesar Todas las Pendientes */}
                 {puede.procesar && (() => {
                   const pendientes = donaciones.filter(d => ['pendiente', 'recibida'].includes(d.estado)).length;
                   if (pendientes === 0) return null;
@@ -1843,19 +1870,21 @@ const Donaciones = () => {
             )}
           </div>
         </div>
+      </div>
 
-        {/* Panel de filtros colapsable */}
-        {showFiltersMenu && (
-          <div className="mt-4 pt-4 border-t grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Panel de filtros expandido */}
+      {showFiltersMenu && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
+              <label className="cc-filter-label">Estado</label>
               <select
                 value={filtroEstado}
                 onChange={(e) => {
                   setFiltroEstado(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
+                className="cc-filter-select-full"
               >
                 <option value="">Todos los estados</option>
                 {Object.entries(ESTADOS_DONACION).map(([key, val]) => (
@@ -1867,14 +1896,14 @@ const Donaciones = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Donante</label>
+              <label className="cc-filter-label">Tipo de Donante</label>
               <select
                 value={filtroTipoDonante}
                 onChange={(e) => {
                   setFiltroTipoDonante(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
+                className="cc-filter-select-full"
               >
                 <option value="">Todos los tipos</option>
                 {TIPOS_DONANTE.map((t) => (
@@ -1885,44 +1914,45 @@ const Donaciones = () => {
               </select>
             </div>
 
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Desde</label>
-                <input
-                  type="date"
-                  value={filtroFechaDesde}
-                  onChange={(e) => {
-                    setFiltroFechaDesde(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
-                />
-              </div>
-              <div className="flex-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Hasta</label>
-                <input
-                  type="date"
-                  value={filtroFechaHasta}
-                  onChange={(e) => {
-                    setFiltroFechaHasta(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
-                />
-              </div>
+            <div>
+              <label className="cc-filter-label">Desde</label>
+              <input
+                type="date"
+                value={filtroFechaDesde}
+                onChange={(e) => {
+                  setFiltroFechaDesde(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="cc-filter-select-full"
+              />
+            </div>
+
+            <div>
+              <label className="cc-filter-label">Hasta</label>
+              <input
+                type="date"
+                value={filtroFechaHasta}
+                onChange={(e) => {
+                  setFiltroFechaHasta(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="cc-filter-select-full"
+              />
             </div>
 
             {filtrosActivos > 0 && (
-              <button
-                onClick={limpiarFiltros}
-                className="text-sm text-gray-600 hover:text-primary flex items-center gap-1"
-              >
-                <FaTimes /> Limpiar filtros
-              </button>
+              <div className="flex items-end">
+                <button
+                  onClick={limpiarFiltros}
+                  className="cc-btn cc-btn-ghost text-xs"
+                >
+                  Limpiar
+                </button>
+              </div>
             )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Tabla de donaciones */}
       <div className="bg-white rounded-xl shadow-sm border overflow-hidden">

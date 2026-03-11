@@ -33,6 +33,7 @@ import {
   FaCalendarAlt,
   FaFileExcel,
   FaDownload,
+  FaChevronDown,
 } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import Pagination from '../components/Pagination';
@@ -389,6 +390,20 @@ const InventarioCajaChica = () => {
           : "Inventario de productos comprados con recursos propios"
         }
         icon={FaWarehouse}
+        filters={
+          <>
+            <button
+              type="button"
+              onClick={() => setShowFilters(!showFilters)}
+              aria-expanded={showFilters}
+              className="cc-filter-toggle"
+            >
+              <FaFilter className="text-[10px]" style={{ color: 'var(--color-primary)' }} />
+              <span>Filtros</span>
+              <FaChevronDown className={`text-[10px] transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+            </button>
+          </>
+        }
       />
 
       {/* Banner informativo para auditoría */}
@@ -432,7 +447,7 @@ const InventarioCajaChica = () => {
         </div>
       )}
 
-      {/* Barra de acciones y filtros */}
+      {/* Barra de acciones */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4">
         <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
           {/* Búsqueda */}
@@ -457,65 +472,55 @@ const InventarioCajaChica = () => {
               <FaFileExcel />
               Exportar
             </button>
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${
-                showFilters ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              <FaFilter />
-              Filtros
-            </button>
           </div>
         </div>
+      </div>
 
-        {/* Panel de filtros */}
-        {showFilters && (
-          <div className="mt-4 pt-4 border-t">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Centro (solo para farmacia) */}
-              {esUsuarioFarmacia && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Centro</label>
-                  <select
-                    value={centroFiltro}
-                    onChange={(e) => setCentroFiltro(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500"
-                  >
-                    <option value="">Todos los centros</option>
-                    {centros.map(centro => (
-                      <option key={centro.id} value={centro.id}>{centro.nombre}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              
-              {/* Solo con stock */}
-              <div className="flex items-center">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={conStock}
-                    onChange={(e) => setConStock(e.target.checked)}
-                    className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
-                  />
-                  <span className="text-sm text-gray-700">Solo con stock disponible</span>
-                </label>
+      {/* Panel de filtros expandido */}
+      {showFilters && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* Centro (solo para farmacia) */}
+            {esUsuarioFarmacia && (
+              <div>
+                <label className="cc-filter-label">Centro</label>
+                <select
+                  value={centroFiltro}
+                  onChange={(e) => setCentroFiltro(e.target.value)}
+                  className="cc-filter-select-full"
+                >
+                  <option value="">Todos los centros</option>
+                  {centros.map(centro => (
+                    <option key={centro.id} value={centro.id}>{centro.nombre}</option>
+                  ))}
+                </select>
               </div>
-            </div>
+            )}
             
-            <div className="flex justify-end mt-4">
+            {/* Solo con stock */}
+            <div className="flex items-center">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={conStock}
+                  onChange={(e) => setConStock(e.target.checked)}
+                  className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                />
+                <span className="text-sm text-gray-700">Solo con stock disponible</span>
+              </label>
+            </div>
+
+            <div className="flex items-end">
               <button
                 onClick={handleClearFilters}
-                className="px-4 py-2 text-gray-600 hover:text-gray-800 flex items-center gap-2"
+                className="cc-btn cc-btn-ghost text-xs"
               >
-                <FaTimes />
-                Limpiar filtros
+                Limpiar
               </button>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Tabla de inventario */}
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
