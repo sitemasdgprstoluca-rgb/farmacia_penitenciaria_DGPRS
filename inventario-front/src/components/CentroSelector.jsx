@@ -94,7 +94,7 @@ const CentroSelector = ({ onCentroChange, selectedValue = '', className = '' }) 
         }}
       >
         <option value="central">
-          🏥 Farmacia Central
+          Farmacia Central
         </option>
         <option value="todos">
           🌐 Todos los centros

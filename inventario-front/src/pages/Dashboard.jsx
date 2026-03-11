@@ -1410,7 +1410,7 @@ const Dashboard = () => {
                   colorType={analytics.caducidades.vencidos > 0 ? 'danger' : 'warning'}
                   delay={500}
                   loading={analyticsLoading}
-                  secondaryLabel={analytics.caducidades.vencidos > 0 ? '🔴 Vencidos:' : '90 días:'}
+                  secondaryLabel={analytics.caducidades.vencidos > 0 ? 'Vencidos:' : '90 días:'}
                   secondaryValue={analytics.caducidades.vencidos > 0 
                     ? String(analytics.caducidades.vencidos) 
                     : String(analytics.caducidades.vencen_90_dias || 0)}
