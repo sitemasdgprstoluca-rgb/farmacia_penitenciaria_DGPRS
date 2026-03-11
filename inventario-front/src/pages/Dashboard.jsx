@@ -1409,7 +1409,9 @@ const Dashboard = () => {
           {/* Consumo Mensual — Premium Layout */}
           {(() => {
             const MES_ES = { Jan: 'Ene', Feb: 'Feb', Mar: 'Mar', Apr: 'Abr', May: 'May', Jun: 'Jun', Jul: 'Jul', Aug: 'Ago', Sep: 'Sep', Oct: 'Oct', Nov: 'Nov', Dec: 'Dic' };
+            const MES_FULL = { Jan: 'Enero', Feb: 'Febrero', Mar: 'Marzo', Apr: 'Abril', May: 'Mayo', Jun: 'Junio', Jul: 'Julio', Aug: 'Agosto', Sep: 'Septiembre', Oct: 'Octubre', Nov: 'Noviembre', Dec: 'Diciembre' };
             const mesES = (m) => MES_ES[m] || m;
+            const mesFull = (m) => MES_FULL[m] || m;
             const totalEntradas = graficas.consumo_mensual.reduce((s, m) => s + (m.entradas || 0), 0);
             const totalSalidas = graficas.consumo_mensual.reduce((s, m) => s + (m.salidas || 0), 0);
             const balance = totalEntradas - totalSalidas;
@@ -1477,21 +1479,24 @@ const Dashboard = () => {
                       const consumoProd = graficas.consumo_por_producto || [];
                       const PROD_COLORS = ['#932043', '#0EA5E9', '#10B981', '#F59E0B', '#8B5CF6'];
                       
-                      // Tooltip que solo muestra líneas con valor > 0
+                      // Tooltip compacto — muestra solo la línea más cercana al cursor
                       const ConsumoTooltip = ({ active, payload, label }) => {
                         if (!active || !payload?.length) return null;
-                        const withData = payload.filter(p => p.value > 0);
-                        if (withData.length === 0) return null;
+                        // Encontrar la entrada con mayor valor (más visible/relevante)
+                        const sorted = [...payload].filter(p => p.value > 0).sort((a, b) => b.value - a.value);
+                        if (sorted.length === 0) return null;
+                        const top = sorted[0];
                         return (
-                          <div className="rounded-xl shadow-2xl border bg-white/98 p-3.5 min-w-[160px]" style={{ backdropFilter: 'blur(8px)', borderColor: 'rgba(147, 32, 67, 0.1)' }}>
-                            <p className="text-sm font-extrabold text-gray-800 mb-2 pb-1.5 border-b border-gray-100">{mesES(label) || label}</p>
-                            {withData.map((entry, index) => (
-                              <div key={index} className="flex items-center justify-between gap-4 py-0.5">
-                                <span className="flex items-center gap-2 text-xs text-gray-600">
-                                  <span className="w-2.5 h-2.5 rounded-full shadow-sm" style={{ backgroundColor: entry.color }} />
-                                  {entry.name}
-                                </span>
-                                <span className="text-xs font-black text-gray-900 tabular-nums">{entry.value?.toLocaleString('es-MX')}</span>
+                          <div className="rounded-xl shadow-2xl border bg-white p-3 min-w-[120px]" style={{ borderColor: 'rgba(0,0,0,0.08)' }}>
+                            <p className="text-sm font-extrabold text-gray-900 mb-1">{mesFull(label)}</p>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-semibold text-gray-500">{top.name}</span>
+                              <span className="text-base font-black text-gray-900 tabular-nums">{top.value?.toLocaleString('es-MX')}</span>
+                            </div>
+                            {sorted.length > 1 && sorted.slice(1).map((entry, i) => (
+                              <div key={i} className="flex items-center gap-2 mt-0.5">
+                                <span className="text-[10px] text-gray-400">{entry.name}</span>
+                                <span className="text-xs font-bold text-gray-600 tabular-nums">{entry.value?.toLocaleString('es-MX')}</span>
                               </div>
                             ))}
                           </div>
@@ -1518,11 +1523,14 @@ const Dashboard = () => {
                                   tickLine={false} 
                                 />
                                 <YAxis tick={{ fill: '#9CA3AF', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} />
-                                <Tooltip content={<ConsumoTooltip />} />
+                                <Tooltip 
+                                  content={<ConsumoTooltip />} 
+                                  cursor={{ stroke: '#D1D5DB', strokeWidth: 1, strokeDasharray: '4 4' }}
+                                />
                                 {consumoProd.map((prod, idx) => (
                                   <Line
                                     key={prod.clave}
-                                    type="monotone"
+                                    type="natural"
                                     dataKey={prod.nombre}
                                     stroke={PROD_COLORS[idx % PROD_COLORS.length]}
                                     strokeWidth={2.5}
@@ -1562,10 +1570,10 @@ const Dashboard = () => {
                             <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
                             <XAxis dataKey="mes" tickFormatter={mesES} tick={{ fill: '#6B7280', fontSize: 12, fontWeight: 600 }} axisLine={false} tickLine={false} />
                             <YAxis tick={{ fill: '#9CA3AF', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} />
-                            <Tooltip content={<ConsumoTooltip />} />
+                            <Tooltip content={<ConsumoTooltip />} cursor={{ stroke: '#D1D5DB', strokeWidth: 1, strokeDasharray: '4 4' }} />
                             <Legend iconType="circle" wrapperStyle={{ paddingTop: '12px', fontSize: '12px' }} />
-                            <Area type="monotone" dataKey="entradas" stroke="#10B981" strokeWidth={2.5} fill="url(#colorEntradas)" name="Entradas" dot={{ fill: '#10B981', strokeWidth: 2, r: 4, stroke: '#fff' }} activeDot={{ r: 7, stroke: '#fff', strokeWidth: 2.5, fill: '#10B981' }} />
-                            <Area type="monotone" dataKey="salidas" stroke="#EF4444" strokeWidth={2.5} fill="url(#colorSalidas)" name="Salidas" dot={{ fill: '#EF4444', strokeWidth: 2, r: 4, stroke: '#fff' }} activeDot={{ r: 7, stroke: '#fff', strokeWidth: 2.5, fill: '#EF4444' }} />
+                            <Area type="natural" dataKey="entradas" stroke="#10B981" strokeWidth={2.5} fill="url(#colorEntradas)" name="Entradas" dot={{ fill: '#10B981', strokeWidth: 2, r: 4, stroke: '#fff' }} activeDot={{ r: 7, stroke: '#fff', strokeWidth: 2.5, fill: '#10B981' }} />
+                            <Area type="natural" dataKey="salidas" stroke="#EF4444" strokeWidth={2.5} fill="url(#colorSalidas)" name="Salidas" dot={{ fill: '#EF4444', strokeWidth: 2, r: 4, stroke: '#fff' }} activeDot={{ r: 7, stroke: '#fff', strokeWidth: 2.5, fill: '#EF4444' }} />
                           </AreaChart>
                         </ResponsiveContainer>
                       );
