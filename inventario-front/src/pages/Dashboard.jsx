@@ -49,7 +49,7 @@ import {
 import { 
   AreaChart, Area, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  Legend, BarChart, Bar
+  Legend, BarChart, Bar, LineChart, Line
 } from 'recharts';
 import { usePermissions } from '../hooks/usePermissions';
 import PageHeader from '../components/PageHeader';
@@ -614,6 +614,7 @@ const Dashboard = () => {
   const [mostrarTodos, setMostrarTodos] = useState(false);
   const [graficas, setGraficas] = useState({
     consumo_mensual: [],
+    consumo_por_producto: [],
     stock_por_centro: [],
     stock_por_producto: [],
     requisiciones_por_estado: [],
@@ -686,6 +687,7 @@ const Dashboard = () => {
         if (!isMountedRef.current) return;
         setGraficas({
           consumo_mensual: graficasResponse.data.consumo_mensual || [],
+          consumo_por_producto: graficasResponse.data.consumo_por_producto || [],
           stock_por_centro: graficasResponse.data.stock_por_centro || [],
           stock_por_producto: graficasResponse.data.stock_por_producto || [],
           requisiciones_por_estado: graficasResponse.data.requisiciones_por_estado || [],
@@ -697,6 +699,7 @@ const Dashboard = () => {
         if (isMountedRef.current) {
           setGraficas({
             consumo_mensual: [],
+            consumo_por_producto: [],
             stock_por_centro: [],
             stock_por_producto: [],
             requisiciones_por_estado: [],
@@ -718,7 +721,7 @@ const Dashboard = () => {
       }
       setKpis({ total_productos: 0, stock_total: 0, lotes_activos: 0, movimientos_mes: 0 });
       setMovimientos([]);
-      setGraficas({ consumo_mensual: [], stock_por_centro: [], stock_por_producto: [], requisiciones_por_estado: [], requisiciones_por_mes: [], requisiciones_resumen: null });
+      setGraficas({ consumo_mensual: [], consumo_por_producto: [], stock_por_centro: [], stock_por_producto: [], requisiciones_por_estado: [], requisiciones_por_mes: [], requisiciones_resumen: null });
     } finally {
       if (isMountedRef.current) {
         setLoading(false);
@@ -1353,50 +1356,75 @@ const Dashboard = () => {
                     </div>
                   );
                 })()}
-                <ResponsiveContainer width="100%" height={280} minWidth={0} minHeight={0}>
-                  <AreaChart data={graficas.consumo_mensual}>
-                    <defs>
-                      <linearGradient id="colorEntradas" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10B981" stopOpacity={0.25}/>
-                        <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
-                      </linearGradient>
-                      <linearGradient id="colorSalidas" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#EF4444" stopOpacity={0.25}/>
-                        <stop offset="95%" stopColor="#EF4444" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
-                    <XAxis 
-                      dataKey="mes" 
-                      tick={{ fill: '#9CA3AF', fontSize: 11, fontWeight: 500 }}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <YAxis 
-                      tick={{ fill: '#9CA3AF', fontSize: 11 }}
-                      axisLine={false}
-                      tickLine={false}
-                      tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}
-                    />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Legend 
-                      iconType="circle"
-                      wrapperStyle={{ paddingTop: '12px', fontSize: '12px' }}
-                    />
-                    <Area 
-                      type="monotone" dataKey="entradas" 
-                      stroke="#10B981" strokeWidth={2.5} fill="url(#colorEntradas)" name="Entradas"
-                      dot={{ fill: '#10B981', strokeWidth: 2, r: 3.5, stroke: '#fff' }}
-                      activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2, fill: '#10B981' }}
-                    />
-                    <Area 
-                      type="monotone" dataKey="salidas" 
-                      stroke="#EF4444" strokeWidth={2.5} fill="url(#colorSalidas)" name="Salidas"
-                      dot={{ fill: '#EF4444', strokeWidth: 2, r: 3.5, stroke: '#fff' }}
-                      activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2, fill: '#EF4444' }}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
+                {/* Gráfica Multi-línea de consumo por producto */}
+                {(() => {
+                  const consumoProd = graficas.consumo_por_producto || [];
+                  const PROD_COLORS = ['#932043', '#0EA5E9', '#10B981', '#F59E0B', '#8B5CF6'];
+                  if (consumoProd.length > 0) {
+                    const meses = graficas.consumo_mensual.map(m => m.mes);
+                    const multiLineData = meses.map((mes, i) => {
+                      const row = { mes };
+                      consumoProd.forEach(p => { row[p.nombre] = p.data?.[i] || 0; });
+                      return row;
+                    });
+                    return (
+                      <>
+                        <ResponsiveContainer width="100%" height={280} minWidth={0} minHeight={0}>
+                          <LineChart data={multiLineData} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
+                            <XAxis dataKey="mes" tick={{ fill: '#9CA3AF', fontSize: 11, fontWeight: 500 }} axisLine={false} tickLine={false} />
+                            <YAxis tick={{ fill: '#9CA3AF', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} />
+                            <Tooltip content={<CustomTooltip />} />
+                            {consumoProd.map((prod, idx) => (
+                              <Line
+                                key={prod.clave}
+                                type="monotone"
+                                dataKey={prod.nombre}
+                                stroke={PROD_COLORS[idx % PROD_COLORS.length]}
+                                strokeWidth={2.5}
+                                dot={{ fill: PROD_COLORS[idx % PROD_COLORS.length], strokeWidth: 2, r: 3.5, stroke: '#fff' }}
+                                activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2, fill: PROD_COLORS[idx % PROD_COLORS.length] }}
+                                name={prod.nombre}
+                              />
+                            ))}
+                          </LineChart>
+                        </ResponsiveContainer>
+                        <div className="flex flex-wrap justify-center gap-3 mt-2">
+                          {consumoProd.map((prod, idx) => (
+                            <div key={prod.clave} className="flex items-center gap-1.5">
+                              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: PROD_COLORS[idx % PROD_COLORS.length] }} />
+                              <span className="text-[10px] font-medium text-gray-500">{prod.nombre}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    );
+                  }
+                  // Fallback: Entradas/Salidas AreaChart
+                  return (
+                    <ResponsiveContainer width="100%" height={280} minWidth={0} minHeight={0}>
+                      <AreaChart data={graficas.consumo_mensual}>
+                        <defs>
+                          <linearGradient id="colorEntradas" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#10B981" stopOpacity={0.25}/>
+                            <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
+                          </linearGradient>
+                          <linearGradient id="colorSalidas" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#EF4444" stopOpacity={0.25}/>
+                            <stop offset="95%" stopColor="#EF4444" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
+                        <XAxis dataKey="mes" tick={{ fill: '#9CA3AF', fontSize: 11, fontWeight: 500 }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fill: '#9CA3AF', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Legend iconType="circle" wrapperStyle={{ paddingTop: '12px', fontSize: '12px' }} />
+                        <Area type="monotone" dataKey="entradas" stroke="#10B981" strokeWidth={2.5} fill="url(#colorEntradas)" name="Entradas" dot={{ fill: '#10B981', strokeWidth: 2, r: 3.5, stroke: '#fff' }} activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2, fill: '#10B981' }} />
+                        <Area type="monotone" dataKey="salidas" stroke="#EF4444" strokeWidth={2.5} fill="url(#colorSalidas)" name="Salidas" dot={{ fill: '#EF4444', strokeWidth: 2, r: 3.5, stroke: '#fff' }} activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2, fill: '#EF4444' }} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  );
+                })()}
               </>
             ) : (
               <div className="flex flex-col items-center justify-center h-64 text-gray-400">
@@ -1496,7 +1524,58 @@ const Dashboard = () => {
                 {esCentroUnico ? (
                   renderBarItems(stockProducto, 'producto', 'producto_id', false)
                 ) : stockCentro.length > 0 ? (
-                  renderBarItems(stockCentro, 'centro', 'centro_id', puedeNavegar, irAReportesCentro)
+                  (() => {
+                    const sorted = [...stockCentro].sort((a, b) => b.stock - a.stock);
+                    const maxStock = sorted[0]?.stock || 1;
+                    const totalStock = sorted.reduce((s, p) => s + p.stock, 0);
+                    return (
+                      <div>
+                        <div className="grid grid-cols-3 gap-2 mb-4">
+                          <div className="dash-stat-mini dash-stat-primary">
+                            <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Centros</span>
+                            <p className="text-lg font-black text-gray-800 mt-0.5">{sorted.length}</p>
+                          </div>
+                          <div className="dash-stat-mini dash-stat-success">
+                            <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Stock total</span>
+                            <p className="text-lg font-black text-gray-800 mt-0.5">{totalStock.toLocaleString('es-MX')}</p>
+                          </div>
+                          <div className="dash-stat-mini dash-stat-info">
+                            <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Promedio</span>
+                            <p className="text-lg font-black text-gray-800 mt-0.5">{Math.round(totalStock / (sorted.length || 1)).toLocaleString('es-MX')}</p>
+                          </div>
+                        </div>
+                        <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 ${sorted.length > 4 ? 'max-h-[380px] overflow-y-auto pr-1 custom-scrollbar' : ''}`}>
+                          {sorted.map((item, index) => {
+                            const pct = Math.max((item.stock / maxStock) * 100, 2);
+                            const pctTotal = ((item.stock / totalStock) * 100).toFixed(1);
+                            const color = COLORS_BAR[index % COLORS_BAR.length];
+                            return (
+                              <div
+                                key={item.centro_id || item.centro}
+                                className={`rounded-xl border border-gray-100 p-3.5 transition-all hover:shadow-lg hover:border-gray-200 ${puedeNavegar ? 'cursor-pointer' : ''}`}
+                                style={{ borderLeft: `4px solid ${color}` }}
+                                onClick={() => puedeNavegar && irAReportesCentro(item.centro_id)}
+                              >
+                                <div className="flex items-center justify-between mb-1">
+                                  <p className="text-xs font-semibold text-gray-500 truncate flex-1" title={item.centro}>
+                                    {item.centro}
+                                  </p>
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md tabular-nums ml-2 flex-shrink-0" style={{ color, backgroundColor: `${color}15` }}>
+                                    {pctTotal}%
+                                  </span>
+                                </div>
+                                <p className="text-2xl font-black text-gray-900 tabular-nums leading-tight">{item.stock.toLocaleString('es-MX')}</p>
+                                <p className="text-[10px] text-gray-400 mb-2.5">unidades en stock</p>
+                                <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                                  <div className="h-full rounded-full transition-all duration-700 ease-out" style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${color}99, ${color})` }} />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()
                 ) : (
                   <div className="flex flex-col items-center justify-center h-64 text-gray-400">
                     <FaWarehouse className="text-4xl mb-3 opacity-50" />

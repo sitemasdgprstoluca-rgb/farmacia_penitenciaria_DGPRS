@@ -8564,6 +8564,54 @@ def dashboard_graficas(request):
             })
         
         # =========================================
+        # 1b. CONSUMO POR PRODUCTO (top 5, últimos 6 meses)
+        # Para gráfica multi-línea estilo referencia
+        # =========================================
+        consumo_por_producto = []
+        try:
+            # Top 5 productos con más movimientos de salida en los últimos 6 meses
+            fecha_6_meses = (hoy - relativedelta(months=6)).replace(day=1)
+            mov_base = Movimiento.objects.filter(
+                fecha__date__gte=fecha_6_meses,
+                tipo__in=['salida', 'ajuste_negativo', 'merma', 'caducidad', 'transferencia']
+            ).exclude(motivo__icontains='[PENDIENTE]')
+            if filtrar_por_centro and user_centro:
+                mov_base = mov_base.filter(
+                    Q(lote__centro=user_centro) | Q(centro_origen=user_centro)
+                )
+            top_prods = (
+                mov_base
+                .values('producto__id', 'producto__clave', 'producto__nombre')
+                .annotate(total=Coalesce(Sum('cantidad'), 0, output_field=IntegerField()))
+                .order_by('-total')[:5]
+            )
+            for prod in top_prods:
+                serie = []
+                for i in range(6):
+                    fecha_mes = hoy - relativedelta(months=5-i)
+                    mes_inicio = fecha_mes.replace(day=1)
+                    if fecha_mes.month == 12:
+                        mes_fin = fecha_mes.replace(year=fecha_mes.year + 1, month=1, day=1)
+                    else:
+                        mes_fin = fecha_mes.replace(month=fecha_mes.month + 1, day=1)
+                    cant = Movimiento.objects.filter(
+                        producto__id=prod['producto__id'],
+                        fecha__date__gte=mes_inicio,
+                        fecha__date__lt=mes_fin,
+                        tipo__in=['salida', 'ajuste_negativo', 'merma', 'caducidad', 'transferencia']
+                    ).exclude(motivo__icontains='[PENDIENTE]').aggregate(
+                        total=Coalesce(Sum('cantidad'), 0, output_field=IntegerField())
+                    )['total']
+                    serie.append(max(0, abs(cant)))
+                consumo_por_producto.append({
+                    'clave': prod['producto__clave'] or '',
+                    'nombre': (prod['producto__nombre'] or '')[:30],
+                    'data': serie,
+                })
+        except Exception:
+            consumo_por_producto = []
+        
+        # =========================================
         # 2. STOCK POR CENTRO (TODOS LOS CENTROS CON STOCK > 0)
         # =========================================
         stock_por_centro = []
@@ -8791,6 +8839,7 @@ def dashboard_graficas(request):
         # ISS-005: Preparar respuesta y guardar en caché
         response_data = {
             'consumo_mensual': consumo_mensual,
+            'consumo_por_producto': consumo_por_producto,
             'stock_por_centro': stock_por_centro,
             'stock_por_producto': stock_por_producto,
             'requisiciones_por_estado': requisiciones_por_estado,
@@ -8809,6 +8858,7 @@ def dashboard_graficas(request):
         logger.exception('Error en dashboard_graficas')
         return Response({
             'consumo_mensual': [],
+            'consumo_por_producto': [],
             'stock_por_centro': [],
             'stock_por_producto': [],
             'requisiciones_por_estado': [],
