@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { trazabilidadAPI, centrosAPI, productosAPI, descargarArchivo, abrirPdfEnNavegador } from '../services/api';
 import { toast } from 'react-hot-toast';
-import { FaSearch, FaBox, FaWarehouse, FaHistory, FaExclamationTriangle, FaFilePdf, FaFileExcel, FaBuilding, FaSpinner, FaInfoCircle, FaTimes, FaGlobe, FaCalendarAlt, FaFilter, FaClipboardList } from 'react-icons/fa';
+import { FaSearch, FaBox, FaWarehouse, FaHistory, FaExclamationTriangle, FaFilePdf, FaFileExcel, FaBuilding, FaSpinner, FaInfoCircle, FaTimes, FaGlobe, FaCalendarAlt, FaFilter, FaClipboardList, FaChevronDown, FaArrowDown, FaArrowUp } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import { usePermissions } from '../hooks/usePermissions';
 
@@ -710,15 +710,18 @@ const Trazabilidad = () => {
     };
 
     return (
-      <div className="bg-white p-4 rounded-lg shadow">
-        <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-          <FaExclamationTriangle className="text-amber-500" /> Alertas
+      <div className="bg-white rounded-2xl shadow-lg border border-amber-200/50 p-5">
+        <h3 className="text-sm font-bold mb-3 flex items-center gap-2 text-amber-700">
+          <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center">
+            <FaExclamationTriangle className="text-amber-500 text-xs" />
+          </div>
+          Alertas
         </h3>
         <div className="flex flex-wrap gap-2">
           {resultados.alertas.map((alerta, index) => (
             <span
               key={`${alerta.tipo || 'alerta'}-${index}`}
-              className={`px-3 py-1 rounded-full text-xs ${badgeClass(alerta.nivel)}`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${badgeClass(alerta.nivel)}`}
             >
               {alerta.mensaje || alerta.tipo}
             </span>
@@ -730,37 +733,35 @@ const Trazabilidad = () => {
 
   const renderInfoProducto = () => (
     <div className="grid gap-4 md:grid-cols-4">
-      <div>
-        <p className="text-xs text-gray-500">Clave</p>
-        <p className="font-semibold">{resultados.codigo}</p>
+      <div className="bg-gray-50 rounded-xl p-3">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Clave</p>
+        <p className="font-bold text-gray-800">{resultados.codigo}</p>
       </div>
-      <div className="md:col-span-2">
-        <p className="text-xs text-gray-500">Nombre / Descripción</p>
-        <p className="font-semibold">{resultados.nombre || resultados.descripcion}</p>
+      <div className="md:col-span-2 bg-gray-50 rounded-xl p-3">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Nombre / Descripción</p>
+        <p className="font-bold text-gray-800">{resultados.nombre || resultados.descripcion}</p>
       </div>
-      <div>
-        <p className="text-xs text-gray-500">Unidad</p>
-        <p className="font-semibold">{resultados.unidad_medida || 'PIEZA'}</p>
+      <div className="bg-gray-50 rounded-xl p-3">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Unidad</p>
+        <p className="font-bold text-gray-800">{resultados.unidad_medida || 'PIEZA'}</p>
       </div>
-      {/* Presentación - forma farmacéutica */}
       {resultados.presentacion && (
-        <div className="md:col-span-2">
-          <p className="text-xs text-gray-500">Presentación</p>
-          <p className="font-semibold">{resultados.presentacion}</p>
+        <div className="md:col-span-2 bg-gray-50 rounded-xl p-3">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Presentación</p>
+          <p className="font-bold text-gray-800">{resultados.presentacion}</p>
         </div>
       )}
-      {/* Precio unitario */}
       {resultados.precio_unitario > 0 && (
-        <div>
-          <p className="text-xs text-gray-500">Precio Unitario</p>
-          <p className="font-semibold text-green-600">${parseFloat(resultados.precio_unitario).toFixed(2)}</p>
+        <div className="bg-green-50 rounded-xl p-3 border border-green-200/40">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-green-600 mb-1">Precio Unitario</p>
+          <p className="font-bold text-green-700">${parseFloat(resultados.precio_unitario).toFixed(2)}</p>
         </div>
       )}
-      <div>
-        <p className="text-xs text-gray-500">Inventario actual</p>
-        <p className="text-2xl font-bold text-violet-600">{resultados.stock_actual ?? 0}</p>
+      <div className="bg-gradient-to-br from-[var(--color-primary)]/5 to-[var(--color-primary)]/10 rounded-xl p-3 border border-[var(--color-primary)]/15">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-primary)] mb-1">Inventario actual</p>
+        <p className="text-2xl font-black text-[var(--color-primary)]">{resultados.stock_actual ?? 0}</p>
         {resultados.stock_minimo != null && (
-          <p className="text-xs text-gray-500 mt-1">Inv. Mínimo: {resultados.stock_minimo}</p>
+          <p className="text-[10px] text-gray-500 mt-1 font-medium">Inv. Mínimo: {resultados.stock_minimo}</p>
         )}
       </div>
     </div>
@@ -768,50 +769,49 @@ const Trazabilidad = () => {
 
   const renderInfoLote = () => (
     <div className="grid gap-4 md:grid-cols-4">
-      <div>
-        <p className="text-xs text-gray-500">Número de Lote</p>
-        <p className="font-semibold">{resultados.numero_lote}</p>
+      <div className="bg-gray-50 rounded-xl p-3">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Número de Lote</p>
+        <p className="font-bold text-gray-800">{resultados.numero_lote}</p>
       </div>
-      <div className="md:col-span-2">
-        <p className="text-xs text-gray-500">Producto</p>
-        <p className="font-semibold">
+      <div className="md:col-span-2 bg-gray-50 rounded-xl p-3">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Producto</p>
+        <p className="font-bold text-gray-800">
           {resultados.producto?.codigo} - {resultados.producto?.nombre}
         </p>
         {resultados.producto?.presentacion && (
           <p className="text-xs text-gray-500 mt-1">Presentación: {resultados.producto.presentacion}</p>
         )}
       </div>
-      <div>
-        <p className="text-xs text-gray-500">Caducidad</p>
-        <p className="font-semibold">
+      <div className="bg-gray-50 rounded-xl p-3">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Caducidad</p>
+        <p className="font-bold text-gray-800">
           {resultados.fecha_caducidad ? new Date(resultados.fecha_caducidad).toLocaleDateString() : '-'}
         </p>
       </div>
-      <div>
-        <p className="text-xs text-gray-500">Cantidad actual</p>
-        <p className="text-2xl font-bold text-violet-600">{resultados.cantidad_actual}</p>
+      <div className="bg-gradient-to-br from-[var(--color-primary)]/5 to-[var(--color-primary)]/10 rounded-xl p-3 border border-[var(--color-primary)]/15">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-primary)] mb-1">Cantidad actual</p>
+        <p className="text-2xl font-black text-[var(--color-primary)]">{resultados.cantidad_actual}</p>
       </div>
-      <div>
-        <p className="text-xs text-gray-500">Cantidad inicial</p>
-        <p className="font-semibold">{resultados.cantidad_inicial}</p>
+      <div className="bg-gray-50 rounded-xl p-3">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Cantidad inicial</p>
+        <p className="font-bold text-gray-800">{resultados.cantidad_inicial}</p>
       </div>
-      <div>
-        <p className="text-xs text-gray-500">Estado</p>
-        <p className="font-semibold">{resultados.estado || '-'}</p>
+      <div className="bg-gray-50 rounded-xl p-3">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Estado</p>
+        <p className="font-bold text-gray-800">{resultados.estado || '-'}</p>
       </div>
-      <div>
-        <p className="text-xs text-gray-500">Centro</p>
-        <p className="font-semibold">{resultados.centro || 'Farmacia Central'}</p>
+      <div className="bg-gray-50 rounded-xl p-3">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Centro</p>
+        <p className="font-bold text-gray-800">{resultados.centro || 'Farmacia Central'}</p>
       </div>
-      <div>
-        <p className="text-xs text-gray-500">Marca</p>
-        <p className="font-semibold">{resultados.marca || '-'}</p>
+      <div className="bg-gray-50 rounded-xl p-3">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Marca</p>
+        <p className="font-bold text-gray-800">{resultados.marca || '-'}</p>
       </div>
-      {/* Campos de trazabilidad de contratos - Solo visible para ADMIN y FARMACIA */}
       {puedeVerContrato && (
-        <div>
-          <p className="text-xs text-gray-500">Número de Contrato</p>
-          <p className="font-semibold text-blue-600">{resultados.numero_contrato || '-'}</p>
+        <div className="bg-blue-50 rounded-xl p-3 border border-blue-200/40">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600 mb-1">Número de Contrato</p>
+          <p className="font-bold text-blue-700">{resultados.numero_contrato || '-'}</p>
         </div>
       )}
     </div>
@@ -853,36 +853,49 @@ const Trazabilidad = () => {
 
       {/* ISS-FIX: Banner para usuarios CENTRO indicando filtro automático */}
       {esCentroUser && centroUsuarioNombre && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-3">
-          <div className="bg-blue-100 p-2 rounded-lg">
-            <FaInfoCircle className="text-blue-600" />
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200/60 rounded-xl p-4 flex items-center gap-3 shadow-sm">
+          <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
+            <FaBuilding className="text-blue-600" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-blue-800">
+            <p className="text-sm font-bold text-blue-800">
               Trazabilidad de: {centroUsuarioNombre}
             </p>
-            <p className="text-xs text-blue-600">
+            <p className="text-xs text-blue-600/70">
               Los resultados se filtran automáticamente por tu centro asignado.
             </p>
           </div>
         </div>
       )}
 
-      <div className="bg-white p-6 rounded-lg shadow">
-        <form onSubmit={handleBuscar} className="space-y-4">
+      <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+        {/* Header del panel de búsqueda */}
+        <div className="bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary-hover)] px-6 py-4 text-white">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-white/15 backdrop-blur-sm flex items-center justify-center">
+              <FaSearch className="text-lg" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold tracking-wide">Consulta de Trazabilidad</h2>
+              <p className="text-xs text-white/70">Busca por clave, nombre de producto o número de lote</p>
+            </div>
+          </div>
+        </div>
+
+        <form onSubmit={handleBuscar} className="p-6 space-y-5">
           
           {/* Fila 1: Campos de entrada (Buscador y Centro) */}
           <div className="grid gap-4 md:grid-cols-3 items-end">
             
-            {/* Buscador unificado - Ocupa 2/3 o todo si no hay filtro centro */}
+            {/* Buscador unificado */}
             <div className={`${esAdminOFarmacia ? 'md:col-span-2' : 'md:col-span-3'} relative`}>
-              <label className="block text-sm font-medium mb-2">
+              <label className="label-elevated">
                 Buscar por lote, producto o clave
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                   {loadingSugerencias ? (
-                    <FaSpinner className="animate-spin text-gray-400" />
+                    <FaSpinner className="animate-spin text-[var(--color-primary)]" />
                   ) : (
                     <FaSearch className="text-gray-400" />
                   )}
@@ -895,7 +908,7 @@ const Trazabilidad = () => {
                   onKeyDown={handleKeyDown}
                   onFocus={() => terminoBusqueda.length >= 2 && setMostrarSugerencias(true)}
                   placeholder="Ej: L-2024-001, MED-001, Paracetamol..."
-                  className="w-full pl-10 pr-10 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="input-elevated !pl-10 !pr-10"
                   disabled={loading}
                   autoComplete="off"
                 />
@@ -907,37 +920,42 @@ const Trazabilidad = () => {
                       setSugerencias([]);
                       setMostrarSugerencias(false);
                     }}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-400 hover:text-[var(--color-primary)] transition-colors"
                   >
                     <FaTimes />
                   </button>
                 )}
               </div>
               
-              {/* Lista de sugerencias */}
+              {/* Lista de sugerencias - elevated */}
               {mostrarSugerencias && sugerencias.length > 0 && (
                 <div
                   ref={sugerenciasRef}
-                  className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-auto"
+                  className="absolute z-50 w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-xl max-h-60 overflow-auto"
+                  style={{ boxShadow: '0 10px 40px rgba(147,32,67,0.12)' }}
                 >
                   {sugerencias.map((sug, idx) => (
                     <button
                       key={`${sug.tipo}-${sug.id}`}
                       type="button"
                       onClick={() => seleccionarSugerencia(sug)}
-                      className={`w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-3 ${
-                        idx === indiceSugerencia ? 'bg-blue-50' : ''
+                      className={`w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-3 transition-colors border-b border-gray-50 last:border-0 ${
+                        idx === indiceSugerencia ? 'bg-[var(--color-primary)]/5' : ''
                       }`}
                     >
-                      <span className="text-lg">{sug.tipo === 'producto' ? '📦' : '🏷️'}</span>
+                      <span className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm ${
+                        sug.tipo === 'producto' ? 'bg-blue-100 text-blue-600' : 'bg-purple-100 text-purple-600'
+                      }`}>
+                        {sug.tipo === 'producto' ? '📦' : '🏷️'}
+                      </span>
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">{sug.display?.replace(/^[📦🏷️]\s*/, '') || sug.identificador}</p>
+                        <p className="font-semibold text-sm truncate text-gray-800">{sug.display?.replace(/^[📦🏷️]\s*/, '') || sug.identificador}</p>
                         {sug.secundario && (
                           <p className="text-xs text-gray-500 truncate">{sug.secundario}</p>
                         )}
                       </div>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${
-                        sug.tipo === 'producto' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
+                      <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg ${
+                        sug.tipo === 'producto' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'
                       }`}>
                         {sug.tipo === 'producto' ? 'Producto' : 'Lote'}
                       </span>
@@ -947,7 +965,7 @@ const Trazabilidad = () => {
               )}
               
               {mostrarSugerencias && terminoBusqueda.length >= 2 && sugerencias.length === 0 && !loadingSugerencias && (
-                <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg p-3 text-center text-gray-500 text-sm">
+                <div className="absolute z-50 w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-xl p-4 text-center text-gray-500 text-sm">
                   No se encontraron coincidencias
                 </div>
               )}
@@ -956,15 +974,15 @@ const Trazabilidad = () => {
             {/* Selector de centro (solo para admin/farmacia) */}
             {esAdminOFarmacia && (
               <div className="md:col-span-1">
-                <label className="block text-sm font-medium mb-2">
-                  <FaFilter className="inline mr-1 text-purple-500" />
-                  Centro para reportes
-                  <span className="ml-1 text-xs text-gray-400 font-normal">(afecta "Ver Movimientos")</span>
+                <label className="label-elevated flex items-center gap-1.5">
+                  <FaBuilding className="text-[var(--color-primary)]" />
+                  Centro
+                  <span className="text-[10px] text-gray-400 font-normal lowercase">(para reportes)</span>
                 </label>
                 <select
                   value={centroFiltro}
                   onChange={(e) => setCentroFiltro(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 border-purple-200"
+                  className="input-elevated"
                   disabled={loading}
                 >
                   <option value="">🏥 Farmacia Central (por defecto)</option>
@@ -981,12 +999,12 @@ const Trazabilidad = () => {
             )}
           </div>
 
-          {/* Fila 2: Botones de Acción (Centrados en su propia fila) */}
-          <div className="flex items-center justify-center gap-4 py-2 border-b border-gray-100 pb-4">
+          {/* Fila 2: Botones de Acción */}
+          <div className="flex items-center justify-center gap-3 py-3 border-b border-gray-100 pb-5">
               <button
                 type="submit"
                 disabled={loading || !terminoBusqueda.trim()}
-                className="bg-blue-600 text-white px-8 py-2.5 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all shadow-sm min-w-[220px]"
+                className="btn-elevated-primary flex items-center justify-center gap-2 min-w-[220px] !px-8 !py-2.5"
                 title="Buscar trazabilidad de un producto o lote específico"
               >
                 {loading && !modoGlobal ? (
@@ -1005,55 +1023,59 @@ const Trazabilidad = () => {
                 type="button"
                 onClick={limpiarBusqueda}
                 disabled={loading || exportingPdf || exportingExcel}
-                className="px-6 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all min-w-[120px] shadow-sm"
+                className="btn-elevated-cancel min-w-[120px] !px-6 !py-2.5"
               >
                 Limpiar
               </button>
           </div>
 
           {/* Fila 3: Filtros de Fecha y Tipo */}
-          <div className="bg-gradient-to-r from-gray-50 to-blue-50 p-4 rounded-xl border border-gray-200">
-            <div className="flex flex-wrap items-end gap-4 justify-center">
+          <div className="section-elevated !p-5">
+            <div className="section-elevated-title flex items-center gap-2">
+              <FaFilter className="text-[var(--color-primary)]" />
+              Filtros avanzados
+            </div>
+            <div className="flex flex-wrap items-end gap-4 justify-center mt-3">
               {/* Fecha inicio */}
-              <div className="min-w-[140px]">
-                <label className="block text-xs font-semibold mb-1.5 text-gray-600">
-                  <FaCalendarAlt className="inline mr-1 text-blue-500" />
+              <div className="min-w-[160px]">
+                <label className="label-elevated flex items-center gap-1">
+                  <FaCalendarAlt className="text-[var(--color-primary)] text-[10px]" />
                   Fecha inicio
                 </label>
                 <input
                   type="date"
                   value={fechaInicio}
                   onChange={(e) => setFechaInicio(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+                  className="input-elevated"
                   disabled={loading}
                 />
               </div>
               
               {/* Fecha fin */}
-              <div className="min-w-[140px]">
-                <label className="block text-xs font-semibold mb-1.5 text-gray-600">
-                  <FaCalendarAlt className="inline mr-1 text-blue-500" />
+              <div className="min-w-[160px]">
+                <label className="label-elevated flex items-center gap-1">
+                  <FaCalendarAlt className="text-[var(--color-primary)] text-[10px]" />
                   Fecha fin
                 </label>
                 <input
                   type="date"
                   value={fechaFin}
                   onChange={(e) => setFechaFin(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+                  className="input-elevated"
                   disabled={loading}
                 />
               </div>
               
               {/* Tipo movimiento */}
-              <div className="min-w-[140px]">
-                <label className="block text-xs font-semibold mb-1.5 text-gray-600">
-                  <FaFilter className="inline mr-1 text-purple-500" />
+              <div className="min-w-[160px]">
+                <label className="label-elevated flex items-center gap-1">
+                  <FaFilter className="text-[var(--color-primary)] text-[10px]" />
                   Tipo movimiento
                 </label>
                 <select
                   value={tipoMovimiento}
                   onChange={(e) => setTipoMovimiento(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+                  className="input-elevated"
                   disabled={loading}
                 >
                   <option value="">Todos</option>
@@ -1062,14 +1084,15 @@ const Trazabilidad = () => {
                 </select>
               </div>
               
-              {/* Botón Reporte Global - ISS-UX: Mejor etiquetado y tooltip */}
+              {/* Botón Reporte Global */}
               {esAdminOFarmacia && (
-                <div className="flex flex-col items-center gap-1">
+                <div className="flex flex-col items-center gap-1.5">
                   <button
                     type="button"
                     onClick={buscarGlobal}
                     disabled={loading}
-                    className="bg-gradient-to-r from-purple-600 to-purple-700 text-white px-5 py-2 rounded-lg hover:from-purple-700 hover:to-purple-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg"
+                    className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm text-white transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+                    style={{ background: 'linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%)' }}
                     title="Ver todos los movimientos del sistema (filtrados por centro/fechas seleccionadas)"
                   >
                     {loading && modoGlobal ? (
@@ -1084,8 +1107,7 @@ const Trazabilidad = () => {
                       </>
                     )}
                   </button>
-                  {/* Indicador del centro seleccionado */}
-                  <span className="text-[10px] text-purple-600 font-medium">
+                  <span className="text-[10px] text-[var(--color-primary)] font-medium">
                     {centroFiltro === 'todos' 
                       ? '🌐 Todos los centros' 
                       : centroFiltro 
@@ -1098,11 +1120,11 @@ const Trazabilidad = () => {
             
             {/* Indicador de filtros activos */}
             {(fechaInicio || fechaFin || tipoMovimiento) && (
-              <div className="mt-3 pt-3 border-t border-gray-200 flex items-center justify-center">
+              <div className="mt-4 pt-3 border-t border-gray-200 flex items-center justify-center">
                 <div className="flex items-center gap-4">
-                  <p className="text-xs text-blue-600 font-medium flex items-center gap-1">
-                    <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
-                    Filtros activos - se aplicarán a búsquedas y exportaciones
+                  <p className="text-xs text-[var(--color-primary)] font-semibold flex items-center gap-1.5">
+                    <span className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-pulse"></span>
+                    Filtros activos — se aplicarán a búsquedas y exportaciones
                   </p>
                   <button
                     type="button"
@@ -1111,7 +1133,7 @@ const Trazabilidad = () => {
                       setFechaFin('');
                       setTipoMovimiento('');
                     }}
-                    className="text-xs text-gray-500 hover:text-red-600 flex items-center gap-1 border-l pl-4 border-gray-300"
+                    className="text-xs text-gray-500 hover:text-red-600 flex items-center gap-1 border-l pl-4 border-gray-300 transition-colors"
                   >
                     <FaTimes className="text-[10px]" /> Limpiar filtros
                   </button>
@@ -1122,12 +1144,12 @@ const Trazabilidad = () => {
 
           {/* Botón Control de Inventarios */}
           {esAdminOFarmacia && (
-            <div className="flex flex-col items-center gap-2 py-2">
+            <div className="flex flex-col items-center gap-2 pt-1">
               <button
                 type="button"
                 onClick={handleExportarControlInventarios}
                 disabled={exportingControl || loading}
-                className="flex items-center gap-2 px-6 py-2.5 rounded-lg font-semibold text-white transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 shadow-md min-w-[300px] justify-center"
+                className="flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm text-white transition-all hover:shadow-lg hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none shadow-md min-w-[300px] justify-center"
                 style={{ background: 'linear-gradient(135deg, #047857 0%, #065f46 100%)' }}
                 title="Exportar Control de Inventarios del Almacén Central (Formato Licitación)"
               >
@@ -1139,57 +1161,57 @@ const Trazabilidad = () => {
                 ) : (
                   <>
                     <FaClipboardList />
-                    📊 Exportar Control de Inventarios (Formato Licitación)
+                    📊 Exportar Control de Inventarios
                   </>
                 )}
               </button>
-              <span className="text-xs text-gray-500 text-center">
-                Genera el Excel con el formato oficial de &quot;Control de Inventarios del Almacén Central de Medicamentos&quot;
+              <span className="text-[10px] text-gray-400 text-center">
+                Formato oficial &quot;Control de Inventarios del Almacén Central de Medicamentos&quot;
               </span>
             </div>
           )}
 
           {/* Indicador de tipo detectado */}
           {resultados && tipoBusqueda && !modoGlobal && (
-            <div className="text-xs text-gray-500 flex items-center gap-2 flex-wrap">
-              <span className={`px-2 py-0.5 rounded-full ${
+            <div className="text-xs text-gray-500 flex items-center gap-2 flex-wrap bg-gray-50 rounded-xl px-4 py-2.5">
+              <span className={`px-2.5 py-1 rounded-lg font-bold text-[10px] uppercase tracking-wider ${
                 tipoBusqueda === 'producto' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
               }`}>
                 {tipoBusqueda === 'producto' ? '📦 Producto' : '🏷️ Lote'}
               </span>
-              <span>Resultados para: <strong>{identificadorResultados}</strong></span>
+              <span>Resultados para: <strong className="text-gray-700">{identificadorResultados}</strong></span>
               {(fechaInicio || fechaFin) && (
-                <span className="text-blue-600">
+                <span className="text-[var(--color-primary)]">
                   | Período: {fechaInicio || '---'} a {fechaFin || 'hoy'}
                 </span>
               )}
               {tipoMovimiento && (
-                <span className="text-blue-600">
+                <span className="text-[var(--color-primary)]">
                   | Tipo: {tipoMovimiento}
                 </span>
               )}
             </div>
           )}
           
-          {/* Indicador de modo global - Muestra claramente qué centro se está viendo */}
+          {/* Indicador de modo global */}
           {modoGlobal && resultadosGlobal && (
-            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 flex items-center justify-between">
+            <div className="bg-[var(--color-primary)]/5 border border-[var(--color-primary)]/20 rounded-xl p-4 flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-3">
-                <span className="px-3 py-1 rounded-full bg-purple-100 text-purple-700 font-semibold text-sm">
+                <span className="px-3 py-1.5 rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-bold text-sm">
                   {centroFiltro === 'todos' ? '🌐 Todos los Centros' : 
                    centroFiltro ? `🏢 Centro: ${centros.find(c => c.id.toString() === centroFiltro)?.nombre || centroFiltro}` : 
                    '🏥 Farmacia Central'}
                 </span>
-                <span className="text-sm text-purple-700">
+                <span className="text-sm text-gray-700">
                   <strong>{resultadosGlobal.total_movimientos}</strong> movimientos encontrados
                 </span>
                 {(fechaInicio || fechaFin) && (
-                  <span className="text-sm text-purple-600">
+                  <span className="text-sm text-gray-500">
                     | {fechaInicio || '---'} a {fechaFin || 'hoy'}
                   </span>
                 )}
               </div>
-              <span className="text-xs text-purple-500 bg-purple-100 px-2 py-1 rounded">
+              <span className="text-[10px] text-[var(--color-primary)] bg-[var(--color-primary)]/10 px-3 py-1.5 rounded-lg font-medium">
                 {centroFiltro === 'todos' ? 'Datos combinados de todos los centros' : 
                  centroFiltro ? 'Solo datos de este centro' : 
                  'Solo datos de Farmacia Central'}
@@ -1201,25 +1223,28 @@ const Trazabilidad = () => {
 
       {/* Estado de carga */}
       {loading && (
-        <div className="text-center py-8 bg-white rounded-lg shadow">
+        <div className="text-center py-12 bg-white rounded-2xl shadow-lg border border-gray-100">
           <div className="animate-spin rounded-full h-10 w-10 border-4 border-t-transparent mx-auto spinner-institucional" />
-          <p className="mt-3 text-gray-600">Buscando información...</p>
+          <p className="mt-4 text-gray-600 font-medium">Buscando información...</p>
+          <p className="text-xs text-gray-400 mt-1">Consultando movimientos del sistema</p>
         </div>
       )}
 
       {/* Estado vacío */}
       {!loading && !resultados && !modoGlobal && (
-        <div className="text-center py-8 bg-white rounded-lg shadow">
-          <FaSearch className="text-4xl text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-500">
+        <div className="text-center py-14 bg-white rounded-2xl shadow-lg border border-gray-100">
+          <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-4">
+            <FaSearch className="text-2xl text-gray-400" />
+          </div>
+          <p className="text-gray-600 font-medium">
             Ingresa la clave de un producto, número de lote o nombre y presiona &quot;Buscar&quot;
           </p>
           <p className="text-xs text-gray-400 mt-2">
             El sistema detectará automáticamente si buscas un producto o un lote
           </p>
           {esAdminOFarmacia && (
-            <p className="text-xs text-purple-500 mt-2">
-              También puedes usar &quot;Reporte Global&quot; en los filtros avanzados para ver todos los movimientos
+            <p className="text-xs text-[var(--color-primary)] mt-3 font-medium">
+              También puedes usar &quot;Ver Movimientos&quot; en los filtros avanzados para ver todo los movimientos
             </p>
           )}
         </div>
@@ -1229,28 +1254,26 @@ const Trazabilidad = () => {
       {!loading && modoGlobal && resultadosGlobal && (
         <div className="space-y-6">
           {/* Header con estadísticas y exportación */}
-          <div className="bg-white p-6 rounded-lg shadow">
-            <div className="flex items-center justify-between mb-4">
+          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+            {/* Header del panel */}
+            <div className="bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary-hover)] px-6 py-4 text-white flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-3">
-                <div className={`p-3 rounded-lg ${
-                  centroFiltro === 'todos' ? 'bg-indigo-100' : 
-                  centroFiltro ? 'bg-blue-100' : 'bg-purple-100'
-                }`}>
+                <div className="w-10 h-10 rounded-xl bg-white/15 backdrop-blur-sm flex items-center justify-center">
                   {centroFiltro === 'todos' ? (
-                    <FaGlobe className="text-indigo-600 text-2xl" />
+                    <FaGlobe className="text-lg" />
                   ) : centroFiltro ? (
-                    <FaBuilding className="text-blue-600 text-2xl" />
+                    <FaBuilding className="text-lg" />
                   ) : (
-                    <FaWarehouse className="text-purple-600 text-2xl" />
+                    <FaWarehouse className="text-lg" />
                   )}
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold">
-                    {centroFiltro === 'todos' ? 'Trazabilidad - Todos los Centros' : 
-                     centroFiltro ? `Trazabilidad - ${centros.find(c => c.id.toString() === centroFiltro)?.nombre || 'Centro'}` : 
-                     'Trazabilidad - Farmacia Central'}
+                  <h2 className="text-base font-bold tracking-wide">
+                    {centroFiltro === 'todos' ? 'Trazabilidad — Todos los Centros' : 
+                     centroFiltro ? `Trazabilidad — ${centros.find(c => c.id.toString() === centroFiltro)?.nombre || 'Centro'}` : 
+                     'Trazabilidad — Farmacia Central'}
                   </h2>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-xs text-white/70">
                     {centroFiltro === 'todos' 
                       ? 'Movimientos combinados de todos los centros del sistema' 
                       : centroFiltro 
@@ -1265,85 +1288,73 @@ const Trazabilidad = () => {
                 <button
                   onClick={handleExportarExcel}
                   disabled={exportingExcel}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-white transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-                  style={{ background: 'linear-gradient(135deg, #059669 0%, #047857 100%)' }}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm text-white transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 bg-white/15 backdrop-blur-sm hover:bg-white/25"
                   title="Exportar a Excel"
                 >
                   {exportingExcel ? (
-                    <>
-                      <FaSpinner className="animate-spin" />
-                      Generando...
-                    </>
+                    <><FaSpinner className="animate-spin" /> Generando...</>
                   ) : (
-                    <>
-                      <FaFileExcel />
-                      Excel
-                    </>
+                    <><FaFileExcel /> Excel</>
                   )}
                 </button>
                 <button
                   onClick={handleExportarPdf}
                   disabled={exportingPdf}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-white transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-                  style={{ background: 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)' }}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm text-white transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 bg-white/15 backdrop-blur-sm hover:bg-white/25"
                   title="Exportar a PDF"
                 >
                   {exportingPdf ? (
-                    <>
-                      <FaSpinner className="animate-spin" />
-                      Generando...
-                    </>
+                    <><FaSpinner className="animate-spin" /> Generando...</>
                   ) : (
-                    <>
-                      <FaFilePdf />
-                      PDF
-                    </>
+                    <><FaFilePdf /> PDF</>
                   )}
                 </button>
               </div>
             </div>
             
             {/* Estadísticas */}
-            <div className="grid gap-4 md:grid-cols-5">
-              <div className="bg-blue-50 p-3 rounded-lg text-center">
-                <p className="text-xs text-blue-600">Total Movimientos</p>
-                <p className="text-2xl font-bold text-blue-700">{resultadosGlobal.total_movimientos}</p>
+            <div className="grid gap-4 md:grid-cols-5 p-6">
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 p-4 rounded-xl border border-blue-200/40 text-center">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600 mb-1">Total Movimientos</p>
+                <p className="text-2xl font-black text-blue-700">{resultadosGlobal.total_movimientos}</p>
               </div>
-              <div className="bg-green-50 p-3 rounded-lg text-center">
-                <p className="text-xs text-green-600">Entradas</p>
-                <p className="text-2xl font-bold text-green-700">{resultadosGlobal.estadisticas?.total_entradas || 0}</p>
+              <div className="bg-gradient-to-br from-green-50 to-green-100/50 p-4 rounded-xl border border-green-200/40 text-center">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-green-600 mb-1">Entradas</p>
+                <p className="text-2xl font-black text-green-700">{resultadosGlobal.estadisticas?.total_entradas || 0}</p>
               </div>
-              <div className="bg-orange-50 p-3 rounded-lg text-center">
-                <p className="text-xs text-orange-600">Salidas</p>
-                <p className="text-2xl font-bold text-orange-700">{resultadosGlobal.estadisticas?.total_salidas || 0}</p>
+              <div className="bg-gradient-to-br from-orange-50 to-orange-100/50 p-4 rounded-xl border border-orange-200/40 text-center">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-orange-600 mb-1">Salidas</p>
+                <p className="text-2xl font-black text-orange-700">{resultadosGlobal.estadisticas?.total_salidas || 0}</p>
               </div>
-              <div className="bg-gray-50 p-3 rounded-lg text-center">
-                <p className="text-xs text-gray-600">Lotes únicos</p>
-                <p className="text-2xl font-bold text-gray-700">{resultadosGlobal.estadisticas?.lotes_unicos || 0}</p>
+              <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 p-4 rounded-xl border border-gray-200/40 text-center">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-1">Lotes únicos</p>
+                <p className="text-2xl font-black text-gray-700">{resultadosGlobal.estadisticas?.lotes_unicos || 0}</p>
               </div>
-              <div className="bg-purple-50 p-3 rounded-lg text-center">
-                <p className="text-xs text-purple-600">Productos únicos</p>
-                <p className="text-2xl font-bold text-purple-700">{resultadosGlobal.estadisticas?.productos_unicos || 0}</p>
+              <div className="bg-gradient-to-br from-[var(--color-primary)]/5 to-[var(--color-primary)]/10 p-4 rounded-xl border border-[var(--color-primary)]/15 text-center">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-primary)] mb-1">Productos únicos</p>
+                <p className="text-2xl font-black text-[var(--color-primary)]">{resultadosGlobal.estadisticas?.productos_unicos || 0}</p>
               </div>
             </div>
           </div>
 
           {/* Tabla de movimientos globales */}
           {resultadosGlobal.movimientos?.length > 0 && (
-            <div className="bg-white p-6 rounded-lg shadow">
-              <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                <FaHistory /> Movimientos
-                <span className="text-sm font-normal text-gray-500">
-                  (mostrando {Math.min(resultadosGlobal.movimientos.length, 500)} de {resultadosGlobal.total_movimientos})
-                </span>
-              </h3>
+            <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                <h3 className="text-base font-bold flex items-center gap-2 text-gray-800">
+                  <FaHistory className="text-[var(--color-primary)]" /> Movimientos
+                  <span className="text-xs font-normal text-gray-400 bg-gray-100 px-2.5 py-1 rounded-lg">
+                    {Math.min(resultadosGlobal.movimientos.length, 500)} de {resultadosGlobal.total_movimientos}
+                  </span>
+                </h3>
+              </div>
               
               {/* Vista móvil: tarjetas */}
-              <div className="lg:hidden space-y-3">
+              <div className="lg:hidden space-y-3 p-4">
                 {resultadosGlobal.movimientos.slice(0, 50).map((mov, idx) => (
-                  <div key={mov.id || idx} className="p-3 border border-gray-200 rounded-lg">
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                  <div key={mov.id || idx} className="p-4 border border-gray-200/60 rounded-xl bg-gradient-to-br from-white to-gray-50/50 hover:shadow-md transition-shadow">
+                    <div className="flex items-start justify-between gap-2 mb-2.5">
+                      <span className={`px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider ${
                         mov.tipo === 'entrada' ? 'bg-green-100 text-green-700' :
                         mov.tipo === 'salida' ? 'bg-red-100 text-red-700' :
                         mov.tipo === 'ajuste' ? 'bg-yellow-100 text-yellow-700' :
@@ -1351,19 +1362,19 @@ const Trazabilidad = () => {
                       }`}>
                         {mov.tipo}
                       </span>
-                      <span className="text-xs text-gray-500">{mov.fecha_str || '-'}</span>
+                      <span className="text-[10px] text-gray-500 font-medium">{mov.fecha_str || '-'}</span>
                     </div>
-                    <div className="text-sm font-medium text-gray-900 truncate">{mov.producto_nombre || mov.producto || '-'}</div>
-                    <div className="grid grid-cols-2 gap-1 text-xs text-gray-600 mt-1">
-                      <div>Lote: {mov.numero_lote || '-'}</div>
-                      <div className="font-semibold">Cant: {mov.cantidad || 0}</div>
-                      <div>Centro: {mov.centro_nombre || '-'}</div>
-                      <div>Usuario: {mov.usuario_nombre || '-'}</div>
+                    <div className="text-sm font-bold text-gray-900 truncate">{mov.producto_nombre || mov.producto || '-'}</div>
+                    <div className="grid grid-cols-2 gap-1.5 text-xs text-gray-600 mt-2">
+                      <div>Lote: <span className="font-medium text-gray-800">{mov.numero_lote || '-'}</span></div>
+                      <div>Cant: <span className="font-bold text-gray-800">{mov.cantidad || 0}</span></div>
+                      <div>Centro: <span className="font-medium">{mov.centro_nombre || '-'}</span></div>
+                      <div>Usuario: <span className="font-medium">{mov.usuario_nombre || '-'}</span></div>
                     </div>
                   </div>
                 ))}
                 {resultadosGlobal.movimientos.length > 50 && (
-                  <p className="text-xs text-gray-500 text-center py-2">
+                  <p className="text-[10px] text-gray-400 text-center py-3 font-medium">
                     Mostrando 50 de {resultadosGlobal.movimientos.length}. Usa escritorio para ver más.
                   </p>
                 )}
@@ -1374,24 +1385,24 @@ const Trazabilidad = () => {
                 <table className="w-full min-w-[700px] divide-y divide-gray-200 text-sm">
                   <thead className="thead-soft sticky top-0 z-10">
                     <tr>
-                      <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Fecha</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Tipo</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Producto</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Lote</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Cantidad</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Centro</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Usuario</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">No. Expediente</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Observaciones</th>
+                      <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-white whitespace-nowrap">Fecha</th>
+                      <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-white whitespace-nowrap">Tipo</th>
+                      <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-white whitespace-nowrap">Producto</th>
+                      <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-white whitespace-nowrap">Lote</th>
+                      <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-white whitespace-nowrap">Cantidad</th>
+                      <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-white whitespace-nowrap">Centro</th>
+                      <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-white whitespace-nowrap">Usuario</th>
+                      <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-white whitespace-nowrap">No. Expediente</th>
+                      <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-white whitespace-nowrap">Observaciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {resultadosGlobal.movimientos.slice(0, 100).map((mov, idx) => (
-                      <tr key={mov.id || idx} className="hover:bg-gray-50">
-                        <td className="px-3 py-2 text-xs">{mov.fecha_str || '-'}</td>
-                        <td className="px-3 py-2">
+                      <tr key={mov.id || idx} className="hover:bg-gray-50/80 transition-colors">
+                        <td className="px-3 py-2.5 text-xs text-gray-600">{mov.fecha_str || '-'}</td>
+                        <td className="px-3 py-2.5">
                           <span
-                            className={`px-2 py-1 text-xs rounded-full ${
+                            className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg ${
                               mov.tipo === 'ENTRADA'
                                 ? 'bg-blue-100 text-blue-700'
                                 : mov.tipo === 'AJUSTE'
@@ -1405,17 +1416,17 @@ const Trazabilidad = () => {
                             )}
                           </span>
                         </td>
-                        <td className="px-3 py-2">
-                          <span className="font-medium text-xs">{mov.producto_clave}</span>
+                        <td className="px-3 py-2.5">
+                          <span className="font-bold text-xs text-gray-800">{mov.producto_clave}</span>
                           <br />
                           <span className="text-xs text-gray-500">{mov.producto_nombre?.slice(0, 25)}</span>
                         </td>
-                        <td className="px-3 py-2 font-mono text-xs">{mov.lote}</td>
-                        <td className="px-3 py-2 font-semibold text-xs">{mov.cantidad}</td>
-                        <td className="px-3 py-2 text-xs">{mov.centro?.slice(0, 20)}</td>
-                        <td className="px-3 py-2 text-xs">{mov.usuario?.slice(0, 15)}</td>
-                        <td className="px-3 py-2 text-xs font-medium text-blue-700">{mov.numero_expediente || '-'}</td>
-                        <td className="px-3 py-2 text-xs text-gray-600 max-w-[150px] truncate" title={mov.observaciones}>
+                        <td className="px-3 py-2.5 font-mono text-xs text-gray-700">{mov.lote}</td>
+                        <td className="px-3 py-2.5 font-bold text-xs text-gray-800">{mov.cantidad}</td>
+                        <td className="px-3 py-2.5 text-xs text-gray-600">{mov.centro?.slice(0, 20)}</td>
+                        <td className="px-3 py-2.5 text-xs text-gray-600">{mov.usuario?.slice(0, 15)}</td>
+                        <td className="px-3 py-2.5 text-xs font-semibold text-blue-700">{mov.numero_expediente || '-'}</td>
+                        <td className="px-3 py-2.5 text-xs text-gray-500 max-w-[150px] truncate" title={mov.observaciones}>
                           {mov.observaciones?.slice(0, 40) || '-'}
                         </td>
                       </tr>
@@ -1424,7 +1435,7 @@ const Trazabilidad = () => {
                 </table>
               </div>
               {resultadosGlobal.movimientos.length > 100 && (
-                <p className="text-xs text-gray-500 mt-3 text-center">
+                <p className="text-[10px] text-gray-400 mt-3 text-center py-3 font-medium">
                   Para ver todos los movimientos, exporta a Excel o PDF
                 </p>
               )}
@@ -1437,67 +1448,54 @@ const Trazabilidad = () => {
       {!loading && resultados && !modoGlobal && (
         <div className="space-y-6">
           {/* Información principal */}
-          <div className="bg-white p-6 rounded-lg shadow">
-            <div className="flex items-center justify-between mb-4">
+          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary-hover)] px-6 py-4 text-white flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-3">
-                <div className="bg-violet-100 p-3 rounded-lg">
+                <div className="w-10 h-10 rounded-xl bg-white/15 backdrop-blur-sm flex items-center justify-center">
                   {tipoBusqueda === 'producto' ? (
-                    <FaBox className="text-violet-600 text-2xl" />
+                    <FaBox className="text-lg" />
                   ) : (
-                    <FaWarehouse className="text-violet-600 text-2xl" />
+                    <FaWarehouse className="text-lg" />
                   )}
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold">
+                  <h2 className="text-base font-bold tracking-wide">
                     Información del {tipoBusqueda === 'producto' ? 'producto' : 'lote'}
                   </h2>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-xs text-white/70">
                     Datos generales y estado actual
                     {identificadorResultados && (
-                      <span className="ml-2 text-violet-600 font-medium">({identificadorResultados})</span>
+                      <span className="ml-2 bg-white/15 px-2 py-0.5 rounded-lg text-white font-medium">({identificadorResultados})</span>
                     )}
                   </p>
                 </div>
               </div>
               
               {/* Botones de exportar */}
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <button
                   onClick={handleExportarExcel}
                   disabled={exportingExcel || !resultados || (tipoBusqueda === 'lote' && !esAdminOFarmacia)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-white transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-                  style={{ background: 'linear-gradient(135deg, #059669 0%, #047857 100%)' }}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm text-white transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 bg-white/15 backdrop-blur-sm hover:bg-white/25"
                   title={!esAdminOFarmacia && tipoBusqueda === 'lote' ? 'Requiere permisos de Admin/Farmacia' : 'Exportar a Excel'}
                 >
                   {exportingExcel ? (
-                    <>
-                      <FaSpinner className="animate-spin" />
-                      Generando...
-                    </>
+                    <><FaSpinner className="animate-spin" /> Generando...</>
                   ) : (
-                    <>
-                      <FaFileExcel />
-                      Excel
-                    </>
+                    <><FaFileExcel /> Excel</>
                   )}
                 </button>
                 <button
                   onClick={handleExportarPdf}
                   disabled={exportingPdf || !resultados || (tipoBusqueda === 'lote' && !esAdminOFarmacia)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-white transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-                  style={{ background: 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)' }}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm text-white transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 bg-white/15 backdrop-blur-sm hover:bg-white/25"
                   title={!esAdminOFarmacia && tipoBusqueda === 'lote' ? 'Requiere permisos de Admin/Farmacia' : 'Exportar a PDF'}
                 >
                   {exportingPdf ? (
-                    <>
-                      <FaSpinner className="animate-spin" />
-                      Generando...
-                    </>
+                    <><FaSpinner className="animate-spin" /> Generando...</>
                   ) : (
-                    <>
-                      <FaFilePdf />
-                      PDF
-                    </>
+                    <><FaFilePdf /> PDF</>
                   )}
                 </button>
                 {/* FORMATO OFICIAL B: Solo para lotes */}
@@ -1505,27 +1503,22 @@ const Trazabilidad = () => {
                   <button
                     onClick={handleExportarFormatoB}
                     disabled={exportingFormatoB || !resultados}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-white transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-                    style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #5B21B6 100%)' }}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm text-white transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 bg-white/15 backdrop-blur-sm hover:bg-white/25"
                     title="Formato Oficial B - Tarjeta de Entradas/Salidas"
                   >
                     {exportingFormatoB ? (
-                      <>
-                        <FaSpinner className="animate-spin" />
-                        Generando...
-                      </>
+                      <><FaSpinner className="animate-spin" /> Generando...</>
                     ) : (
-                      <>
-                        <FaClipboardList />
-                        Formato B
-                      </>
+                      <><FaClipboardList /> Formato B</>
                     )}
                   </button>
                 )}
               </div>
             </div>
             
-            {tipoBusqueda === 'producto' ? renderInfoProducto() : renderInfoLote()}
+            <div className="p-6">
+              {tipoBusqueda === 'producto' ? renderInfoProducto() : renderInfoLote()}
+            </div>
           </div>
 
           {/* Alertas */}
@@ -1533,32 +1526,35 @@ const Trazabilidad = () => {
 
           {/* Lotes asociados (solo para productos) */}
           {tipoBusqueda === 'producto' && lotesParaMostrar.length > 0 && (
-            <div className="bg-white p-6 rounded-lg shadow">
-              <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                <FaWarehouse /> Lotes asociados ({lotesParaMostrar.length})
-              </h3>
+            <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100">
+                <h3 className="text-base font-bold flex items-center gap-2 text-gray-800">
+                  <FaWarehouse className="text-[var(--color-primary)]" /> Lotes asociados
+                  <span className="text-xs font-normal text-gray-400 bg-gray-100 px-2.5 py-1 rounded-lg">{lotesParaMostrar.length}</span>
+                </h3>
+              </div>
               
               {/* Vista móvil: tarjetas */}
-              <div className="lg:hidden space-y-3">
+              <div className="lg:hidden space-y-3 p-4">
                 {lotesParaMostrar.map((lote) => (
-                  <div key={lote.numero_lote} className="p-3 border border-gray-200 rounded-lg">
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <span className="font-semibold text-gray-900">{lote.numero_lote}</span>
-                      <span className={`px-2 py-0.5 text-xs rounded-full ${estadoClass(lote.estado)}`}>
+                  <div key={lote.numero_lote} className="p-4 border border-gray-200/60 rounded-xl bg-gradient-to-br from-white to-gray-50/50 hover:shadow-md transition-shadow">
+                    <div className="flex items-center justify-between gap-2 mb-2.5">
+                      <span className="font-bold text-gray-900">{lote.numero_lote}</span>
+                      <span className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg ${estadoClass(lote.estado)}`}>
                         {lote.estado || '-'}
                       </span>
                     </div>
                     <div className="grid grid-cols-2 gap-2 text-sm">
                       <div>
-                        <span className="text-gray-500">Caducidad:</span>
-                        <span className="ml-1">{lote.fecha_caducidad ? new Date(lote.fecha_caducidad).toLocaleDateString() : '-'}</span>
+                        <span className="text-gray-500 text-xs">Caducidad:</span>
+                        <span className="ml-1 font-medium">{lote.fecha_caducidad ? new Date(lote.fecha_caducidad).toLocaleDateString() : '-'}</span>
                       </div>
                       <div>
-                        <span className="text-gray-500">Inv:</span>
-                        <span className="ml-1 font-medium">{lote.cantidad_actual}</span>
+                        <span className="text-gray-500 text-xs">Inv:</span>
+                        <span className="ml-1 font-bold text-gray-800">{lote.cantidad_actual}</span>
                       </div>
                       {puedeVerContrato && lote.numero_contrato && (
-                        <div className="col-span-2 text-xs text-gray-600">
+                        <div className="col-span-2 text-xs text-gray-600 bg-gray-50 rounded-lg px-2 py-1">
                           Contrato: {lote.numero_contrato} {lote.marca && `| ${lote.marca}`}
                         </div>
                       )}
@@ -1572,26 +1568,26 @@ const Trazabilidad = () => {
                 <table className="w-full min-w-[600px] divide-y divide-gray-200 text-sm">
                   <thead className="thead-soft sticky top-0 z-10">
                     <tr>
-                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Lote</th>
-                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Caducidad</th>
-                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Inventario</th>
-                      {puedeVerContrato && <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Contrato</th>}
-                      {puedeVerContrato && <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Marca</th>}
-                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Estado</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-white whitespace-nowrap">Lote</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-white whitespace-nowrap">Caducidad</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-white whitespace-nowrap">Inventario</th>
+                      {puedeVerContrato && <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-white whitespace-nowrap">Contrato</th>}
+                      {puedeVerContrato && <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-white whitespace-nowrap">Marca</th>}
+                      <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-white whitespace-nowrap">Estado</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {lotesParaMostrar.map((lote) => (
-                      <tr key={lote.numero_lote} className="hover:bg-gray-50">
-                        <td className="px-4 py-2 font-semibold">{lote.numero_lote}</td>
-                        <td className="px-4 py-2">
+                      <tr key={lote.numero_lote} className="hover:bg-gray-50/80 transition-colors">
+                        <td className="px-4 py-2.5 font-bold text-gray-800">{lote.numero_lote}</td>
+                        <td className="px-4 py-2.5 text-gray-600">
                           {lote.fecha_caducidad ? new Date(lote.fecha_caducidad).toLocaleDateString() : '-'}
                         </td>
-                        <td className="px-4 py-2">{lote.cantidad_actual}</td>
-                        {puedeVerContrato && <td className="px-4 py-2 text-gray-600">{lote.numero_contrato || '-'}</td>}
-                        {puedeVerContrato && <td className="px-4 py-2 text-gray-600">{lote.marca || '-'}</td>}
-                        <td className="px-4 py-2">
-                          <span className={`px-2 py-1 text-xs rounded-full ${estadoClass(lote.estado)}`}>
+                        <td className="px-4 py-2.5 font-bold text-gray-800">{lote.cantidad_actual}</td>
+                        {puedeVerContrato && <td className="px-4 py-2.5 text-gray-600">{lote.numero_contrato || '-'}</td>}
+                        {puedeVerContrato && <td className="px-4 py-2.5 text-gray-600">{lote.marca || '-'}</td>}
+                        <td className="px-4 py-2.5">
+                          <span className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg ${estadoClass(lote.estado)}`}>
                             {lote.estado || '-'}
                           </span>
                         </td>
@@ -1605,22 +1601,24 @@ const Trazabilidad = () => {
 
           {/* Historial de movimientos */}
           {movimientosParaMostrar.length > 0 && (
-            <div className="bg-white p-6 rounded-lg shadow">
-              <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                <FaHistory /> Historial de movimientos
-                {totalMovimientos > 100 && (
-                  <span className="text-sm font-normal text-gray-500">
-                    (mostrando 100 de {totalMovimientos})
-                  </span>
-                )}
-              </h3>
+            <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                <h3 className="text-base font-bold flex items-center gap-2 text-gray-800">
+                  <FaHistory className="text-[var(--color-primary)]" /> Historial de movimientos
+                  {totalMovimientos > 100 && (
+                    <span className="text-xs font-normal text-gray-400 bg-gray-100 px-2.5 py-1 rounded-lg">
+                      100 de {totalMovimientos}
+                    </span>
+                  )}
+                </h3>
+              </div>
               
               {/* Vista móvil: tarjetas */}
-              <div className="lg:hidden space-y-3">
+              <div className="lg:hidden space-y-3 p-4">
                 {movimientosParaMostrar.slice(0, 50).map((mov, idx) => (
-                  <div key={mov.id || idx} className="p-3 border border-gray-200 rounded-lg">
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <span className={`px-2 py-0.5 text-xs rounded-full ${
+                  <div key={mov.id || idx} className="p-4 border border-gray-200/60 rounded-xl bg-gradient-to-br from-white to-gray-50/50 hover:shadow-md transition-shadow">
+                    <div className="flex items-center justify-between gap-2 mb-2.5">
+                      <span className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg ${
                         mov.tipo === 'ENTRADA' ? 'bg-blue-100 text-blue-700' :
                         mov.tipo === 'SALIDA' ? 'bg-red-100 text-red-700' :
                         mov.tipo === 'AJUSTE' ? 'bg-yellow-100 text-yellow-700' :
@@ -1628,19 +1626,19 @@ const Trazabilidad = () => {
                       }`}>
                         {mov.tipo}
                       </span>
-                      <span className="text-xs text-gray-500">{mov.fecha ? new Date(mov.fecha).toLocaleString() : '-'}</span>
+                      <span className="text-[10px] text-gray-500 font-medium">{mov.fecha ? new Date(mov.fecha).toLocaleString() : '-'}</span>
                     </div>
                     <div className="grid grid-cols-2 gap-2 text-sm">
-                      <div className="font-semibold">Cantidad: {mov.cantidad}</div>
-                      {mostrarSaldo && <div>Saldo: {mov.saldo_lote ?? '-'}</div>}
-                      <div className="text-gray-600">Centro: {mov.centro_nombre || '-'}</div>
-                      <div className="text-gray-600">Usuario: {mov.usuario_nombre || '-'}</div>
-                      <div className="col-span-2 text-xs font-mono text-gray-500">Lote: {mov.numero_lote || '-'}</div>
+                      <div className="font-bold text-gray-800">Cantidad: {mov.cantidad}</div>
+                      {mostrarSaldo && <div>Saldo: <span className="font-medium">{mov.saldo_lote ?? '-'}</span></div>}
+                      <div className="text-gray-600 text-xs">Centro: <span className="font-medium">{mov.centro_nombre || '-'}</span></div>
+                      <div className="text-gray-600 text-xs">Usuario: <span className="font-medium">{mov.usuario_nombre || '-'}</span></div>
+                      <div className="col-span-2 text-xs font-mono text-gray-500 bg-gray-50 rounded-lg px-2 py-1">Lote: {mov.numero_lote || '-'}</div>
                     </div>
                   </div>
                 ))}
                 {movimientosParaMostrar.length > 50 && (
-                  <p className="text-xs text-gray-500 text-center py-2">
+                  <p className="text-[10px] text-gray-400 text-center py-3 font-medium">
                     Mostrando 50 de {movimientosParaMostrar.length}. Usa escritorio para ver más.
                   </p>
                 )}
@@ -1651,24 +1649,24 @@ const Trazabilidad = () => {
                 <table className="w-full min-w-[650px] divide-y divide-gray-200 text-sm">
                   <thead className="thead-soft sticky top-0 z-10">
                     <tr>
-                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Fecha</th>
-                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Tipo</th>
-                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Cantidad</th>
-                      {mostrarSaldo && <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap" title="Cantidad restante del lote después del movimiento">Saldo Lote</th>}
-                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Centro</th>
-                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Usuario</th>
-                      <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Lote</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-white whitespace-nowrap">Fecha</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-white whitespace-nowrap">Tipo</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-white whitespace-nowrap">Cantidad</th>
+                      {mostrarSaldo && <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-white whitespace-nowrap" title="Cantidad restante del lote después del movimiento">Saldo Lote</th>}
+                      <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-white whitespace-nowrap">Centro</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-white whitespace-nowrap">Usuario</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-white whitespace-nowrap">Lote</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {movimientosParaMostrar.map((mov, idx) => (
-                      <tr key={mov.id || idx} className="hover:bg-gray-50">
-                        <td className="px-4 py-2">
+                      <tr key={mov.id || idx} className="hover:bg-gray-50/80 transition-colors">
+                        <td className="px-4 py-2.5 text-gray-600">
                           {mov.fecha ? new Date(mov.fecha).toLocaleString() : '-'}
                         </td>
-                        <td className="px-4 py-2">
+                        <td className="px-4 py-2.5">
                           <span
-                            className={`px-2 py-1 text-xs rounded-full ${
+                            className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg ${
                               mov.tipo === 'ENTRADA'
                                 ? 'bg-blue-100 text-blue-700'
                                 : mov.tipo === 'AJUSTE'
@@ -1679,15 +1677,15 @@ const Trazabilidad = () => {
                             {mov.tipo}
                           </span>
                         </td>
-                        <td className="px-4 py-2 font-semibold">{mov.cantidad}</td>
+                        <td className="px-4 py-2.5 font-bold text-gray-800">{mov.cantidad}</td>
                         {mostrarSaldo && (
-                          <td className="px-4 py-2" title="Cantidad del lote después de este movimiento">
+                          <td className="px-4 py-2.5 font-medium text-gray-700" title="Cantidad del lote después de este movimiento">
                             {mov.saldo ?? '-'}
                           </td>
                         )}
-                        <td className="px-4 py-2">{mov.centro || 'Farmacia Central'}</td>
-                        <td className="px-4 py-2">{mov.usuario || '-'}</td>
-                        <td className="px-4 py-2">{mov.lote || '-'}</td>
+                        <td className="px-4 py-2.5 text-gray-600">{mov.centro || 'Farmacia Central'}</td>
+                        <td className="px-4 py-2.5 text-gray-600">{mov.usuario || '-'}</td>
+                        <td className="px-4 py-2.5 font-mono text-gray-700">{mov.lote || '-'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1695,7 +1693,7 @@ const Trazabilidad = () => {
               </div>
               
               {totalMovimientos > 100 && (
-                <p className="text-xs text-gray-500 mt-3 text-center">
+                <p className="text-[10px] text-gray-400 mt-3 text-center py-3 font-medium">
                   Para ver el historial completo, exporta el PDF de trazabilidad
                 </p>
               )}
