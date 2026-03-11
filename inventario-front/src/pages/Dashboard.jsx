@@ -1639,7 +1639,7 @@ const Dashboard = () => {
         </section>
       )}
 
-      {/* ========== REQUISICIONES — PANEL COMPLETO ACUMULATIVO ========== */}
+      {/* ========== REQUISICIONES — PANEL COMPACTO ACUMULATIVO ========== */}
       {puedeVerGraficasCompletas && graficas.requisiciones_por_estado.length > 0 && (
         <section>
           <ChartCard 
@@ -1648,55 +1648,50 @@ const Dashboard = () => {
             action={
               <button
                 onClick={() => navigate('/requisiciones')}
-                className="text-sm px-4 py-2 rounded-lg font-medium transition-colors hover:bg-gray-100"
+                className="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors hover:bg-gray-100"
                 style={{ color: 'var(--color-primary, #9F2241)' }}
               >
                 Ver todas →
               </button>
             }
           >
-            {/* Fila 1: KPIs de resumen */}
-            {graficas.requisiciones_resumen && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
-                {[
-                  { label: 'Total Acumulado', value: graficas.requisiciones_resumen.total, icon: FaClipboardList, color: '#9F2241' },
-                  { label: 'Completadas', value: graficas.requisiciones_resumen.completadas, icon: FaTrophy, color: '#10B981', sub: `${graficas.requisiciones_resumen.tasa_cumplimiento}%` },
-                  { label: 'En Proceso', value: graficas.requisiciones_resumen.en_proceso, icon: FaClock, color: '#F59E0B' },
-                  { label: 'Rechazadas', value: graficas.requisiciones_resumen.rechazadas, icon: FaTimesCircle, color: '#EF4444', sub: `${graficas.requisiciones_resumen.tasa_rechazo}%` },
-                ].map((kpi, i) => (
-                  <div key={i} className="bg-gray-50/80 rounded-xl p-3 border border-gray-100 hover:border-gray-200 transition-colors">
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${kpi.color}12` }}>
-                        <kpi.icon size={13} style={{ color: kpi.color }} />
+            {/* Layout principal: 3 columnas — Donut | Tendencia | Métricas */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
+              
+              {/* Col 1: Mini KPIs + Donut (4 cols) */}
+              <div className="lg:col-span-4 space-y-2.5">
+                {/* Mini KPIs inline */}
+                {graficas.requisiciones_resumen && (
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {[
+                      { label: 'Total', value: graficas.requisiciones_resumen.total, color: '#9F2241' },
+                      { label: 'Completadas', value: graficas.requisiciones_resumen.completadas, color: '#10B981', sub: `${graficas.requisiciones_resumen.tasa_cumplimiento}%` },
+                      { label: 'En Proceso', value: graficas.requisiciones_resumen.en_proceso, color: '#F59E0B' },
+                      { label: 'Rechazadas', value: graficas.requisiciones_resumen.rechazadas, color: '#EF4444', sub: `${graficas.requisiciones_resumen.tasa_rechazo}%` },
+                    ].map((k, i) => (
+                      <div key={i} className="bg-gray-50 rounded-lg px-2.5 py-1.5 border border-gray-100">
+                        <span className="text-[10px] text-gray-400 block">{k.label}</span>
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-lg font-black" style={{ color: k.color }}>{k.value}</span>
+                          {k.sub && <span className="text-[9px] font-bold text-gray-400">{k.sub}</span>}
+                        </div>
                       </div>
-                      <span className="text-[11px] font-medium text-gray-500">{kpi.label}</span>
-                    </div>
-                    <div className="flex items-end gap-1.5">
-                      <span className="text-2xl font-black text-gray-800">{kpi.value}</span>
-                      {kpi.sub && <span className="text-[10px] font-bold mb-1 px-1.5 py-0.5 rounded" style={{ color: kpi.color, backgroundColor: `${kpi.color}12` }}>{kpi.sub}</span>}
-                    </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
-
-            {/* Fila 2: Donut + Tendencia mensual */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
-              {/* Donut Chart — distribución actual */}
-              <div className="bg-gray-50/60 rounded-xl p-4 border border-gray-100">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Distribución por Estado</p>
+                )}
+                {/* Donut compacto */}
                 <div className="relative">
-                  <ResponsiveContainer width="100%" height={220}>
+                  <ResponsiveContainer width="100%" height={160}>
                     <PieChart>
                       <Pie
                         data={graficas.requisiciones_por_estado}
                         cx="50%"
                         cy="50%"
-                        innerRadius={55}
-                        outerRadius={85}
+                        innerRadius={42}
+                        outerRadius={68}
                         paddingAngle={3}
                         dataKey="cantidad"
-                        cornerRadius={4}
+                        cornerRadius={3}
                       >
                         {graficas.requisiciones_por_estado.map((entry, index) => (
                           <Cell 
@@ -1713,15 +1708,12 @@ const Dashboard = () => {
                           const data = payload[0].payload;
                           const color = COLORES_ESTADO_REQUISICION[data.estado] || COLORES_ESTADO_REQUISICION.DEFAULT;
                           return (
-                            <div className="bg-white rounded-xl shadow-xl border border-gray-200 p-3 min-w-[160px]">
-                              <div className="flex items-center gap-2 mb-1.5">
-                                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
-                                <span className="font-bold text-gray-800 text-xs">{formatearEstado(data.estado)}</span>
+                            <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-2 min-w-[120px]">
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                                <span className="font-bold text-gray-800 text-[11px]">{formatearEstado(data.estado)}</span>
                               </div>
-                              <p className="text-xl font-black text-gray-900">
-                                {data.cantidad} <span className="text-xs font-normal text-gray-500">de {totalRequisiciones}</span>
-                              </p>
-                              <p className="text-[10px] text-gray-400 mt-0.5">{((data.cantidad / totalRequisiciones) * 100).toFixed(1)}%</p>
+                              <p className="text-base font-black text-gray-900">{data.cantidad} <span className="text-[10px] font-normal text-gray-400">/ {totalRequisiciones}</span></p>
                             </div>
                           );
                         }}
@@ -1730,161 +1722,112 @@ const Dashboard = () => {
                   </ResponsiveContainer>
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <div className="text-center">
-                      <p className="text-3xl font-black text-gray-900">{totalRequisiciones}</p>
-                      <p className="text-[10px] text-gray-400 font-medium">Total</p>
+                      <p className="text-2xl font-black text-gray-900">{totalRequisiciones}</p>
+                      <p className="text-[9px] text-gray-400">Total</p>
                     </div>
                   </div>
                 </div>
-                {/* Legend inline */}
-                <div className="flex flex-wrap gap-x-3 gap-y-1 justify-center mt-2">
-                  {graficas.requisiciones_por_estado.map((item) => {
-                    const color = COLORES_ESTADO_REQUISICION[item.estado] || COLORES_ESTADO_REQUISICION.DEFAULT;
-                    return (
-                      <div key={item.estado} className="flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
-                        <span className="text-[10px] text-gray-500">{formatearEstado(item.estado)} ({item.cantidad})</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Tendencia mensual */}
-              <div className="bg-gray-50/60 rounded-xl p-4 border border-gray-100">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Tendencia Mensual</p>
-                {graficas.requisiciones_por_mes.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={220}>
-                    <BarChart data={graficas.requisiciones_por_mes} barGap={2}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                      <XAxis dataKey="mes_corto" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} allowDecimals={false} />
-                      <Tooltip
-                        content={({ active, payload, label }) => {
-                          if (!active || !payload?.length) return null;
-                          const d = payload[0]?.payload;
-                          return (
-                            <div className="bg-white rounded-xl shadow-xl border border-gray-200 p-3 min-w-[140px]">
-                              <p className="text-xs font-bold text-gray-700 mb-1.5">{d?.mes}</p>
-                              <div className="space-y-1">
-                                <p className="text-[11px] text-gray-600"><span className="inline-block w-2 h-2 rounded-full bg-emerald-500 mr-1.5" />{d?.completadas} completadas</p>
-                                <p className="text-[11px] text-gray-600"><span className="inline-block w-2 h-2 rounded-full bg-amber-400 mr-1.5" />{d?.pendientes} en proceso</p>
-                                <p className="text-[11px] text-gray-600"><span className="inline-block w-2 h-2 rounded-full bg-red-400 mr-1.5" />{d?.rechazadas} rechazadas</p>
-                                <p className="text-[11px] font-bold text-gray-800 pt-1 border-t border-gray-100">{d?.total} total</p>
-                              </div>
-                            </div>
-                          );
-                        }}
-                      />
-                      <Bar dataKey="completadas" stackId="a" fill="#10B981" radius={[0, 0, 0, 0]} name="Completadas" />
-                      <Bar dataKey="pendientes" stackId="a" fill="#F59E0B" radius={[0, 0, 0, 0]} name="En proceso" />
-                      <Bar dataKey="rechazadas" stackId="a" fill="#EF4444" radius={[4, 4, 0, 0]} name="Rechazadas" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="flex items-center justify-center h-[220px] text-gray-400 text-sm">Sin datos de tendencia</div>
-                )}
-                {/* Legend */}
-                <div className="flex items-center justify-center gap-4 mt-2">
-                  {[
-                    { label: 'Completadas', color: '#10B981' },
-                    { label: 'En proceso', color: '#F59E0B' },
-                    { label: 'Rechazadas', color: '#EF4444' },
-                  ].map(l => (
-                    <div key={l.label} className="flex items-center gap-1">
-                      <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: l.color }} />
-                      <span className="text-[10px] text-gray-500">{l.label}</span>
+                {/* Legend compacta */}
+                <div className="flex flex-wrap gap-x-2 gap-y-0.5 justify-center">
+                  {graficas.requisiciones_por_estado.map((item) => (
+                    <div key={item.estado} className="flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: COLORES_ESTADO_REQUISICION[item.estado] || COLORES_ESTADO_REQUISICION.DEFAULT }} />
+                      <span className="text-[9px] text-gray-400">{formatearEstado(item.estado)} ({item.cantidad})</span>
                     </div>
                   ))}
                 </div>
               </div>
-            </div>
 
-            {/* Fila 3: Badges por estado + métricas adicionales */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              {/* Badges de estados (ocupa 2 cols) */}
-              <div className="lg:col-span-2">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2.5">Desglose por Estado</p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {graficas.requisiciones_por_estado.map((item) => {
-                    const color = COLORES_ESTADO_REQUISICION[item.estado] || COLORES_ESTADO_REQUISICION.DEFAULT;
-                    const pct = totalRequisiciones > 0 ? ((item.cantidad / totalRequisiciones) * 100).toFixed(0) : 0;
-                    return (
-                      <div key={item.estado} className="dash-req-badge group" style={{ '--req-color': color }}>
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
-                          <span className="text-[11px] font-semibold text-gray-600 truncate">{formatearEstado(item.estado)}</span>
-                        </div>
-                        <div className="flex items-end justify-between">
-                          <span className="text-xl font-black text-gray-800">{item.cantidad}</span>
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md" style={{ color, backgroundColor: `${color}15` }}>{pct}%</span>
-                        </div>
-                        <div className="w-full bg-gray-100 rounded-full h-1 mt-1.5 overflow-hidden">
-                          <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, backgroundColor: color }} />
-                        </div>
-                      </div>
-                    );
-                  })}
+              {/* Col 2: Tendencia mensual (5 cols) */}
+              <div className="lg:col-span-5">
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Tendencia Mensual</p>
+                {graficas.requisiciones_por_mes.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={200}>
+                    <BarChart data={graficas.requisiciones_por_mes} barGap={1} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                      <XAxis dataKey="mes_corto" tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} allowDecimals={false} width={25} />
+                      <Tooltip
+                        content={({ active, payload }) => {
+                          if (!active || !payload?.length) return null;
+                          const d = payload[0]?.payload;
+                          return (
+                            <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-2 min-w-[110px]">
+                              <p className="text-[10px] font-bold text-gray-700 mb-1">{d?.mes}</p>
+                              <p className="text-[10px] text-gray-500"><span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1" />{d?.completadas} completadas</p>
+                              <p className="text-[10px] text-gray-500"><span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 mr-1" />{d?.pendientes} en proceso</p>
+                              <p className="text-[10px] text-gray-500"><span className="inline-block w-1.5 h-1.5 rounded-full bg-red-400 mr-1" />{d?.rechazadas} rechazadas</p>
+                              <p className="text-[10px] font-bold text-gray-800 pt-0.5 mt-0.5 border-t border-gray-100">{d?.total} total</p>
+                            </div>
+                          );
+                        }}
+                      />
+                      <Bar dataKey="completadas" stackId="a" fill="#10B981" radius={[0, 0, 0, 0]} />
+                      <Bar dataKey="pendientes" stackId="a" fill="#F59E0B" radius={[0, 0, 0, 0]} />
+                      <Bar dataKey="rechazadas" stackId="a" fill="#EF4444" radius={[3, 3, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex items-center justify-center h-[200px] text-gray-300 text-xs">Sin datos de tendencia</div>
+                )}
+                <div className="flex items-center justify-center gap-3 mt-1">
+                  {[{ l: 'Completadas', c: '#10B981' }, { l: 'En proceso', c: '#F59E0B' }, { l: 'Rechazadas', c: '#EF4444' }].map(x => (
+                    <div key={x.l} className="flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: x.c }} />
+                      <span className="text-[9px] text-gray-400">{x.l}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              {/* Panel lateral: métricas clave */}
-              <div className="space-y-3">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2.5">Métricas Clave</p>
+              {/* Col 3: Métricas clave compactas (3 cols) */}
+              <div className="lg:col-span-3 space-y-2">
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Métricas</p>
                 
-                {/* Tiempo promedio */}
                 {graficas.requisiciones_resumen?.dias_promedio_cumplimiento != null && (
-                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-3 border border-blue-100">
-                    <div className="flex items-center gap-2 mb-1">
-                      <FaClock size={11} className="text-blue-500" />
-                      <span className="text-[11px] font-medium text-blue-600">Tiempo Promedio</span>
+                  <div className="bg-blue-50/80 rounded-lg p-2.5 border border-blue-100">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <FaClock size={10} className="text-blue-500" />
+                      <span className="text-[10px] font-medium text-blue-600">Tiempo Promedio</span>
                     </div>
-                    <p className="text-2xl font-black text-blue-800">
-                      {graficas.requisiciones_resumen.dias_promedio_cumplimiento} <span className="text-sm font-medium">días</span>
-                    </p>
-                    <p className="text-[10px] text-blue-500 mt-0.5">Solicitud → Entrega</p>
+                    <p className="text-xl font-black text-blue-800">{graficas.requisiciones_resumen.dias_promedio_cumplimiento} <span className="text-[10px] font-medium">días</span></p>
                   </div>
                 )}
 
-                {/* Urgentes */}
                 {graficas.requisiciones_resumen?.urgentes > 0 && (
-                  <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl p-3 border border-orange-100">
-                    <div className="flex items-center gap-2 mb-1">
-                      <FaExclamationTriangle size={11} className="text-orange-500" />
-                      <span className="text-[11px] font-medium text-orange-600">Urgentes</span>
+                  <div className="bg-orange-50/80 rounded-lg p-2.5 border border-orange-100">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <FaExclamationTriangle size={10} className="text-orange-500" />
+                      <span className="text-[10px] font-medium text-orange-600">Urgentes</span>
                     </div>
-                    <p className="text-2xl font-black text-orange-800">{graficas.requisiciones_resumen.urgentes}</p>
-                    <p className="text-[10px] text-orange-500 mt-0.5">
-                      {totalRequisiciones > 0 ? ((graficas.requisiciones_resumen.urgentes / totalRequisiciones) * 100).toFixed(1) : 0}% del total
-                    </p>
+                    <p className="text-xl font-black text-orange-800">{graficas.requisiciones_resumen.urgentes}</p>
                   </div>
                 )}
 
-                {/* Eficiencia */}
                 {graficas.requisiciones_resumen && (
-                  <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-xl p-3 border border-emerald-100">
-                    <div className="flex items-center gap-2 mb-1">
-                      <FaChartLine size={11} className="text-emerald-500" />
-                      <span className="text-[11px] font-medium text-emerald-600">Tasa de Cumplimiento</span>
+                  <div className="bg-emerald-50/80 rounded-lg p-2.5 border border-emerald-100">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <FaChartLine size={10} className="text-emerald-500" />
+                      <span className="text-[10px] font-medium text-emerald-600">Cumplimiento</span>
                     </div>
-                    <p className="text-2xl font-black text-emerald-800">{graficas.requisiciones_resumen.tasa_cumplimiento}%</p>
-                    <div className="w-full bg-emerald-100 rounded-full h-1.5 mt-1.5 overflow-hidden">
-                      <div className="h-full bg-emerald-500 rounded-full transition-all duration-700" style={{ width: `${graficas.requisiciones_resumen.tasa_cumplimiento}%` }} />
+                    <p className="text-xl font-black text-emerald-800">{graficas.requisiciones_resumen.tasa_cumplimiento}%</p>
+                    <div className="w-full bg-emerald-100 rounded-full h-1 mt-1 overflow-hidden">
+                      <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${graficas.requisiciones_resumen.tasa_cumplimiento}%` }} />
                     </div>
                   </div>
                 )}
 
-                {/* Top centros solicitantes */}
                 {graficas.requisiciones_resumen?.por_centro?.length > 0 && (
-                  <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
-                    <div className="flex items-center gap-2 mb-2">
-                      <FaBuilding size={11} className="text-gray-500" />
-                      <span className="text-[11px] font-medium text-gray-600">Top Centros Solicitantes</span>
+                  <div className="bg-gray-50 rounded-lg p-2.5 border border-gray-100">
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <FaBuilding size={10} className="text-gray-400" />
+                      <span className="text-[10px] font-medium text-gray-500">Top Centros</span>
                     </div>
-                    <div className="space-y-1.5">
+                    <div className="space-y-1">
                       {graficas.requisiciones_resumen.por_centro.slice(0, 3).map((c, i) => (
                         <div key={i} className="flex items-center justify-between">
-                          <span className="text-[11px] text-gray-600 truncate flex-1">{c.centro}</span>
-                          <span className="text-[11px] font-bold text-gray-800 ml-2">{c.total}</span>
+                          <span className="text-[10px] text-gray-500 truncate flex-1">{c.centro}</span>
+                          <span className="text-[10px] font-bold text-gray-700 ml-1">{c.total}</span>
                         </div>
                       ))}
                     </div>
