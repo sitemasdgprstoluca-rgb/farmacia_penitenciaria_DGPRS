@@ -1699,8 +1699,8 @@ const Donaciones = () => {
       />
 
       {/* Tabs de navegación */}
-      <div className="bg-white rounded-xl shadow-sm border mb-6">
-        <div className="flex border-b overflow-x-auto">
+      <div className="bg-white rounded-xl shadow-sm border mb-6 mt-4">
+        <div className="flex border-b">
           <button
             onClick={() => setActiveTab('donaciones')}
             className={`flex items-center gap-2 px-6 py-4 font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
