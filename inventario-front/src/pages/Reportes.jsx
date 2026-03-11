@@ -973,7 +973,7 @@ const Reportes = () => {
   );
 
   return (
-    <div className="p-4 md:p-6 space-y-4 md:space-y-6 max-w-full overflow-hidden">
+    <div className="p-4 md:p-6 space-y-5 md:space-y-6 max-w-full overflow-hidden">
       <PageHeader
         icon={FaChartBar}
         title="Reportes"
@@ -982,26 +982,29 @@ const Reportes = () => {
       />
 
       {/* Panel de Filtros */}
-      <div className="bg-white rounded-xl shadow-lg p-4 md:p-6 border-l-4 card-theme-border">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
-          <h3 className="text-base md:text-lg font-bold flex items-center gap-2 text-theme-primary-hover">
-            <FaFilter />
+      <div className="bg-white rounded-2xl shadow-lg shadow-gray-200/60 overflow-hidden">
+        <div className="bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary-hover)] px-5 md:px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <h3 className="text-lg font-bold flex items-center gap-2.5 text-white tracking-wide">
+            <div className="w-8 h-8 rounded-lg bg-white/15 backdrop-blur-sm flex items-center justify-center">
+              <FaFilter className="text-sm" />
+            </div>
             Filtros de Reporte
           </h3>
-          <div className="flex items-center gap-2">
-            {getTipoIcon()}
-            <span className="text-sm font-semibold capitalize">{filtros.tipo}</span>
+          <div className="flex items-center gap-2 bg-white/15 backdrop-blur-sm px-3 py-1.5 rounded-lg">
+            <span className="text-white/80">{getTipoIcon()}</span>
+            <span className="text-sm font-semibold text-white capitalize">{filtros.tipo.replace('_', ' ')}</span>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-4">
+        <div className="p-5 md:p-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5 mb-5">
           {/* Tipo de reporte */}
-          <div className="space-y-1">
-            <label className="text-sm font-semibold text-gray-700">Tipo de reporte</label>
+          <div className="space-y-1.5">
+            <label className="label-elevated">Tipo de reporte</label>
             <select
               value={filtros.tipo}
               onChange={(e) => handleTipoChange(e.target.value)}
-              className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
+              className="input-elevated"
             >
               <option value="inventario">📦 Inventario</option>
               <option value="caducidades">⏰ Caducidades</option>
@@ -1016,24 +1019,24 @@ const Reportes = () => {
           {/* Filtros específicos por tipo */}
           {filtros.tipo === "caducidades" && (
             <>
-              <div className="space-y-1">
-                <label className="text-sm font-semibold text-gray-700">Días próximos</label>
+              <div className="space-y-1.5">
+                <label className="label-elevated">Días próximos</label>
                 <input
                   type="number"
                   min="1"
                   max="365"
                   value={filtros.dias}
                   onChange={(e) => handleFiltro("dias", Number(e.target.value) || 30)}
-                  className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
+                  className="input-elevated"
                 />
               </div>
-              <div className="space-y-1">
-                <label className="text-sm font-semibold text-gray-700">Centro</label>
+              <div className="space-y-1.5">
+                <label className="label-elevated">Centro</label>
                 <select
                   value={!esAdminOFarmacia && userCentroId ? userCentroId : (filtros.centro || 'todos')}
                   onChange={(e) => handleFiltro("centro", e.target.value)}
                   disabled={!esAdminOFarmacia && userCentroId}
-                  className={`w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors ${!esAdminOFarmacia && userCentroId ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                  className={`input-elevated ${!esAdminOFarmacia && userCentroId ? 'opacity-60 cursor-not-allowed' : ''}`}
                 >
                   {esAdminOFarmacia ? (
                     <>
@@ -1052,12 +1055,12 @@ const Reportes = () => {
                   )}
                 </select>
               </div>
-              <div className="space-y-1">
-                <label className="text-sm font-semibold text-gray-700">Estado caducidad</label>
+              <div className="space-y-1.5">
+                <label className="label-elevated">Estado caducidad</label>
                 <select
                   value={filtros.estado}
                   onChange={(e) => handleFiltro("estado", e.target.value)}
-                  className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
+                  className="input-elevated"
                 >
                   <option value="">Todos los estados</option>
                   <option value="vencido">🔴 Vencido</option>
@@ -1070,12 +1073,12 @@ const Reportes = () => {
 
           {filtros.tipo === "requisiciones" && (
             <>
-              <div className="space-y-1">
-                <label className="text-sm font-semibold text-gray-700">Estado</label>
+              <div className="space-y-1.5">
+                <label className="label-elevated">Estado</label>
                 <select
                   value={filtros.estado}
                   onChange={(e) => handleFiltro("estado", e.target.value)}
-                  className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
+                  className="input-elevated"
                 >
                   {/* ISS-DB-002: Estados alineados con BD Supabase y FLUJO V2 */}
                   <option value="">Todos los estados</option>
@@ -1097,13 +1100,13 @@ const Reportes = () => {
                   <option value="devuelta">↩️ Devuelta</option>
                 </select>
               </div>
-              <div className="space-y-1">
-                <label className="text-sm font-semibold text-gray-700">Centro</label>
+              <div className="space-y-1.5">
+                <label className="label-elevated">Centro</label>
                 <select
                   value={!esAdminOFarmacia && userCentroId ? userCentroId : (filtros.centro || 'todos')}
                   onChange={(e) => handleFiltro("centro", e.target.value)}
                   disabled={!esAdminOFarmacia && userCentroId}
-                  className={`w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors ${!esAdminOFarmacia && userCentroId ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                  className={`input-elevated ${!esAdminOFarmacia && userCentroId ? 'opacity-60 cursor-not-allowed' : ''}`}
                 >
                   {esAdminOFarmacia ? (
                     <>
@@ -1121,22 +1124,22 @@ const Reportes = () => {
                   )}
                 </select>
               </div>
-              <div className="space-y-1">
-                <label className="text-sm font-semibold text-gray-700">Desde</label>
+              <div className="space-y-1.5">
+                <label className="label-elevated">Desde</label>
                 <input
                   type="date"
                   value={filtros.fechaInicio}
                   onChange={(e) => handleFiltro("fechaInicio", e.target.value)}
-                  className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
+                  className="input-elevated"
                 />
               </div>
-              <div className="space-y-1">
-                <label className="text-sm font-semibold text-gray-700">Hasta</label>
+              <div className="space-y-1.5">
+                <label className="label-elevated">Hasta</label>
                 <input
                   type="date"
                   value={filtros.fechaFin}
                   onChange={(e) => handleFiltro("fechaFin", e.target.value)}
-                  className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
+                  className="input-elevated"
                 />
               </div>
             </>
@@ -1144,13 +1147,13 @@ const Reportes = () => {
 
           {filtros.tipo === "inventario" && (
             <>
-              <div className="space-y-1">
-                <label className="text-sm font-semibold text-gray-700">Centro</label>
+              <div className="space-y-1.5">
+                <label className="label-elevated">Centro</label>
                 <select
                   value={!esAdminOFarmacia && userCentroId ? userCentroId : (filtros.centro || 'todos')}
                   onChange={(e) => handleFiltro("centro", e.target.value)}
                   disabled={!esAdminOFarmacia && userCentroId}
-                  className={`w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors ${!esAdminOFarmacia && userCentroId ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                  className={`input-elevated ${!esAdminOFarmacia && userCentroId ? 'opacity-60 cursor-not-allowed' : ''}`}
                 >
                   {esAdminOFarmacia ? (
                     <>
@@ -1169,12 +1172,12 @@ const Reportes = () => {
                   )}
                 </select>
               </div>
-              <div className="space-y-1">
-                <label className="text-sm font-semibold text-gray-700">Nivel de inventario</label>
+              <div className="space-y-1.5">
+                <label className="label-elevated">Nivel de inventario</label>
                 <select
                   value={filtros.nivelStock}
                   onChange={(e) => handleFiltro("nivelStock", e.target.value)}
-                  className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
+                  className="input-elevated"
                 >
                   <option value="">Todos los niveles</option>
                   <option value="critico">🔴 Crítico</option>
@@ -1183,27 +1186,27 @@ const Reportes = () => {
                   <option value="sin_stock">⚪ Sin Inventario</option>
                 </select>
               </div>
-              <div className="space-y-1">
-                <label className="text-sm font-semibold text-gray-700">Desde</label>
+              <div className="space-y-1.5">
+                <label className="label-elevated">Desde</label>
                 <input
                   type="date"
                   value={filtros.fechaInicio}
                   onChange={(e) => handleFiltro("fechaInicio", e.target.value)}
-                  className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
+                  className="input-elevated"
                 />
               </div>
-              <div className="space-y-1">
-                <label className="text-sm font-semibold text-gray-700">Hasta</label>
+              <div className="space-y-1.5">
+                <label className="label-elevated">Hasta</label>
                 <input
                   type="date"
                   value={filtros.fechaFin}
                   onChange={(e) => handleFiltro("fechaFin", e.target.value)}
-                  className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
+                  className="input-elevated"
                 />
               </div>
               {/* Botones rápidos de período para inventario */}
-              <div className="space-y-1 col-span-full">
-                <label className="text-sm font-semibold text-gray-700">Período rápido</label>
+              <div className="space-y-1.5 col-span-full">
+                <label className="label-elevated">Período rápido</label>
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -1262,25 +1265,25 @@ const Reportes = () => {
 
           {filtros.tipo === "movimientos" && (
             <>
-              <div className="space-y-1">
-                <label className="text-sm font-semibold text-gray-700">Tipo de movimiento</label>
+              <div className="space-y-1.5">
+                <label className="label-elevated">Tipo de movimiento</label>
                 <select
                   value={filtros.tipoMovimiento}
                   onChange={(e) => handleFiltro("tipoMovimiento", e.target.value)}
-                  className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
+                  className="input-elevated"
                 >
                   <option value="">Todos los movimientos</option>
                   <option value="entrada">📥 Entradas</option>
                   <option value="salida">📤 Salidas</option>
                 </select>
               </div>
-              <div className="space-y-1">
-                <label className="text-sm font-semibold text-gray-700">Centro</label>
+              <div className="space-y-1.5">
+                <label className="label-elevated">Centro</label>
                 <select
                   value={!esAdminOFarmacia && userCentroId ? userCentroId : (filtros.centro || 'todos')}
                   onChange={(e) => handleFiltro("centro", e.target.value)}
                   disabled={!esAdminOFarmacia && userCentroId}
-                  className={`w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors ${!esAdminOFarmacia && userCentroId ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                  className={`input-elevated ${!esAdminOFarmacia && userCentroId ? 'opacity-60 cursor-not-allowed' : ''}`}
                 >
                   {esAdminOFarmacia ? (
                     <>
@@ -1299,27 +1302,27 @@ const Reportes = () => {
                   )}
                 </select>
               </div>
-              <div className="space-y-1">
-                <label className="text-sm font-semibold text-gray-700">Desde</label>
+              <div className="space-y-1.5">
+                <label className="label-elevated">Desde</label>
                 <input
                   type="date"
                   value={filtros.fechaInicio}
                   onChange={(e) => handleFiltro("fechaInicio", e.target.value)}
-                  className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
+                  className="input-elevated"
                 />
               </div>
-              <div className="space-y-1">
-                <label className="text-sm font-semibold text-gray-700">Hasta</label>
+              <div className="space-y-1.5">
+                <label className="label-elevated">Hasta</label>
                 <input
                   type="date"
                   value={filtros.fechaFin}
                   onChange={(e) => handleFiltro("fechaFin", e.target.value)}
-                  className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
+                  className="input-elevated"
                 />
               </div>
               {/* Botones rápidos de período */}
-              <div className="space-y-1 col-span-full">
-                <label className="text-sm font-semibold text-gray-700">Período rápido</label>
+              <div className="space-y-1.5 col-span-full">
+                <label className="label-elevated">Período rápido</label>
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -1362,28 +1365,28 @@ const Reportes = () => {
 
           {/* Filtros para Contratos */}
           {filtros.tipo === "contratos" && (
-            <div className="space-y-1 col-span-full">
-              <label className="text-sm font-semibold text-gray-700">Buscar por número de contrato</label>
+            <div className="space-y-1.5 col-span-full">
+              <label className="label-elevated">Buscar por número de contrato</label>
               <div className="flex gap-2">
                 <input
                   type="text"
                   value={filtros.numeroContrato}
                   onChange={(e) => handleFiltro("numeroContrato", e.target.value)}
                   placeholder="Ej: CB/A/37/2025"
-                  className="flex-1 rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
+                  className="input-elevated flex-1"
                 />
                 {filtros.numeroContrato && (
                   <button
                     type="button"
                     onClick={() => handleFiltro("numeroContrato", "")}
-                    className="px-3 py-2 text-sm font-semibold rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                    className="px-3.5 py-2.5 text-sm font-semibold rounded-xl border-2 border-gray-200 text-gray-600 hover:bg-gray-100 hover:border-gray-300 transition-all"
                     title="Limpiar filtro"
                   >
                     ✕
                   </button>
                 )}
               </div>
-              <p className="text-xs text-gray-500">
+              <p className="text-[11px] text-gray-400 mt-1">
                 Deja vacío para ver todos los contratos, o escribe parte del número para filtrar
               </p>
             </div>
@@ -1392,31 +1395,31 @@ const Reportes = () => {
           {/* Filtros para Historial de Entregas (Parcialidades) */}
           {filtros.tipo === "parcialidades" && (
             <>
-              <div className="space-y-1">
-                <label className="text-sm font-semibold text-gray-700">Fecha inicio</label>
+              <div className="space-y-1.5">
+                <label className="label-elevated">Fecha inicio</label>
                 <input
                   type="date"
                   value={filtros.fechaInicio}
                   onChange={(e) => handleFiltro("fechaInicio", e.target.value)}
-                  className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
+                  className="input-elevated"
                 />
               </div>
-              <div className="space-y-1">
-                <label className="text-sm font-semibold text-gray-700">Fecha fin</label>
+              <div className="space-y-1.5">
+                <label className="label-elevated">Fecha fin</label>
                 <input
                   type="date"
                   value={filtros.fechaFin}
                   onChange={(e) => handleFiltro("fechaFin", e.target.value)}
-                  className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
+                  className="input-elevated"
                 />
               </div>
-              <div className="space-y-1">
-                <label className="text-sm font-semibold text-gray-700">Centro</label>
+              <div className="space-y-1.5">
+                <label className="label-elevated">Centro</label>
                 <select
                   value={!esAdminOFarmacia && userCentroId ? userCentroId : (filtros.centro || 'todos')}
                   onChange={(e) => handleFiltro("centro", e.target.value)}
                   disabled={!esAdminOFarmacia && userCentroId}
-                  className={`w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors ${!esAdminOFarmacia && userCentroId ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                  className={`input-elevated ${!esAdminOFarmacia && userCentroId ? 'opacity-60 cursor-not-allowed' : ''}`}
                 >
                   {esAdminOFarmacia ? (
                     <>
@@ -1435,15 +1438,15 @@ const Reportes = () => {
                   )}
                 </select>
               </div>
-              <div className="space-y-1 flex items-end">
-                <label className="flex items-center gap-2 cursor-pointer">
+              <div className="space-y-1.5 flex items-end">
+                <label className="flex items-center gap-2.5 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={filtros.soloSobreentregas || false}
                     onChange={(e) => handleFiltro("soloSobreentregas", e.target.checked)}
-                    className="w-5 h-5 rounded border-gray-300 text-rose-600 focus:ring-rose-500"
+                    className="w-5 h-5 rounded-lg border-2 border-gray-300 text-[var(--color-primary)] focus:ring-[var(--color-primary)]"
                   />
-                  <span className="text-sm font-semibold text-gray-700">Solo sobre-entregas</span>
+                  <span className="label-elevated">Solo sobre-entregas</span>
                 </label>
               </div>
             </>
@@ -1452,12 +1455,12 @@ const Reportes = () => {
           {/* Control Mensual - Formato Oficial A */}
           {filtros.tipo === "control_mensual" && (
             <>
-              <div className="space-y-1">
-                <label className="text-sm font-semibold text-gray-700">Mes</label>
+              <div className="space-y-1.5">
+                <label className="label-elevated">Mes</label>
                 <select
                   value={filtros.mesControlMensual || new Date().getMonth() + 1}
                   onChange={(e) => handleFiltro("mesControlMensual", parseInt(e.target.value))}
-                  className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
+                  className="input-elevated"
                 >
                   <option value={1}>Enero</option>
                   <option value={2}>Febrero</option>
@@ -1473,12 +1476,12 @@ const Reportes = () => {
                   <option value={12}>Diciembre</option>
                 </select>
               </div>
-              <div className="space-y-1">
-                <label className="text-sm font-semibold text-gray-700">Año</label>
+              <div className="space-y-1.5">
+                <label className="label-elevated">Año</label>
                 <select
                   value={filtros.anioControlMensual || new Date().getFullYear()}
                   onChange={(e) => handleFiltro("anioControlMensual", parseInt(e.target.value))}
-                  className="w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors"
+                  className="input-elevated"
                 >
                   {[...Array(5)].map((_, i) => {
                     const year = new Date().getFullYear() - 2 + i;
@@ -1486,13 +1489,13 @@ const Reportes = () => {
                   })}
                 </select>
               </div>
-              <div className="space-y-1">
-                <label className="text-sm font-semibold text-gray-700">Centro / Almacén</label>
+              <div className="space-y-1.5">
+                <label className="label-elevated">Centro / Almacén</label>
                 <select
                   value={!esAdminOFarmacia && userCentroId ? userCentroId : (filtros.centro || 'central')}
                   onChange={(e) => handleFiltro("centro", e.target.value)}
                   disabled={!esAdminOFarmacia && userCentroId}
-                  className={`w-full rounded-lg border-2 border-gray-200 px-3 py-2.5 focus:outline-none focus:border-rose-500 transition-colors ${!esAdminOFarmacia && userCentroId ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                  className={`input-elevated ${!esAdminOFarmacia && userCentroId ? 'opacity-60 cursor-not-allowed' : ''}`}
                 >
                   {esAdminOFarmacia ? (
                     <>
@@ -1511,7 +1514,7 @@ const Reportes = () => {
                 </select>
               </div>
               <div className="col-span-full">
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+                <div className="p-3.5 bg-blue-50/80 border border-blue-100 rounded-xl text-sm text-blue-700">
                   <strong>📊 Formato A - Control Mensual:</strong> Este reporte genera un PDF oficial apaisado con el control consolidado 
                   de entradas, salidas y existencias de insumos médicos para el período seleccionado. Incluye movimientos del mes y 
                   totales acumulados.
@@ -1522,11 +1525,11 @@ const Reportes = () => {
         </div>
 
         {/* Botones de acción */}
-        <div className="flex flex-wrap gap-2 md:gap-3">
+        <div className="flex flex-wrap gap-2.5 md:gap-3 pt-2 border-t border-gray-100">
           <button
             onClick={cargarReporte}
             disabled={loading}
-            className="flex items-center gap-2 px-3 md:px-4 py-2 md:py-2.5 rounded-lg text-white font-semibold text-sm md:text-base transition-all hover:scale-105 disabled:opacity-60 bg-theme-gradient"
+            className="btn-elevated-primary flex items-center gap-2 text-sm md:text-base"
           >
             {loading ? (
               <>
@@ -1543,14 +1546,15 @@ const Reportes = () => {
           <button
             onClick={limpiarFiltros}
             disabled={loading}
-            className="px-3 md:px-4 py-2 md:py-2.5 rounded-lg bg-gray-200 text-gray-700 font-semibold text-sm md:text-base hover:bg-gray-300 transition disabled:opacity-60"
+            className="btn-elevated-cancel text-sm md:text-base"
           >
             Limpiar
           </button>
           <button
             onClick={exportarExcel}
             disabled={loading || exporting || datos.length === 0 || filtros.tipo === 'control_mensual'}
-            className="flex items-center gap-2 px-3 md:px-4 py-2 md:py-2.5 rounded-lg bg-green-600 text-white font-semibold text-sm md:text-base hover:bg-green-700 transition disabled:opacity-60"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white font-semibold text-sm md:text-base transition-all hover:scale-[1.02] hover:shadow-lg disabled:opacity-60 disabled:hover:scale-100"
+            style={{ background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)' }}
             title={filtros.tipo === 'control_mensual' ? 'Control Mensual solo disponible en PDF' : ''}
           >
             {exporting ? (
@@ -1568,7 +1572,7 @@ const Reportes = () => {
           <button
             onClick={exportarPDF}
             disabled={loading || exporting || (datos.length === 0 && filtros.tipo !== 'control_mensual')}
-            className="flex items-center gap-2 px-3 md:px-4 py-2 md:py-2.5 rounded-lg text-white font-semibold text-sm md:text-base hover:opacity-90 transition disabled:opacity-60"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white font-semibold text-sm md:text-base transition-all hover:scale-[1.02] hover:shadow-lg disabled:opacity-60 disabled:hover:scale-100"
             style={{ background: 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)' }}
           >
             {exporting ? (
@@ -1586,24 +1590,29 @@ const Reportes = () => {
         </div>
 
         {error && (
-          <div className="mt-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm flex items-center gap-2">
+          <div className="mt-4 p-3.5 rounded-xl bg-red-50/80 border border-red-100 text-red-700 text-sm flex items-center gap-2">
             <FaTimesCircle />
             {error}
           </div>
         )}
       </div>
+      </div>
 
       {/* Tabla de Datos */}
-      <div className="bg-white rounded-xl shadow-lg overflow-hidden border-l-4 card-theme-border max-w-full">
-        <div className="p-3 md:p-4 border-b border-gray-200 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-          <div>
-            <h3 className="text-base md:text-lg font-bold text-gray-800 flex items-center gap-2">
+      <div className="bg-white rounded-2xl shadow-lg shadow-gray-200/60 overflow-hidden max-w-full">
+        <div className="p-4 md:p-5 border-b border-gray-100 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary-hover)] flex items-center justify-center text-white text-lg shadow-md">
               {getTipoIcon()}
-              Reporte de {filtros.tipo.charAt(0).toUpperCase() + filtros.tipo.slice(1)}
-            </h3>
-            <p className="text-xs md:text-sm text-gray-500">
-              Mostrando {indiceInicio + 1}-{Math.min(indiceFin, datos.length)} de {datos.length} registros
-            </p>
+            </div>
+            <div>
+              <h3 className="text-base md:text-lg font-bold text-gray-800">
+                Reporte de {filtros.tipo.charAt(0).toUpperCase() + filtros.tipo.slice(1)}
+              </h3>
+              <p className="text-[11px] md:text-xs text-gray-400">
+                Mostrando {indiceInicio + 1}-{Math.min(indiceFin, datos.length)} de {datos.length} registros
+              </p>
+            </div>
           </div>
         </div>
 
@@ -1615,25 +1624,30 @@ const Reportes = () => {
           {loading ? (
             <div className="flex items-center justify-center py-20">
               <div className="text-center">
-                <FaSpinner className="animate-spin text-4xl mx-auto mb-4 text-theme-primary" />
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[var(--color-primary)]/10 to-[var(--color-primary)]/5 flex items-center justify-center mx-auto mb-4">
+                  <FaSpinner className="animate-spin text-2xl text-[var(--color-primary)]" />
+                </div>
                 <p className="text-gray-600 font-semibold">Cargando reporte...</p>
+                <p className="text-xs text-gray-400 mt-1">Procesando datos</p>
               </div>
             </div>
           ) : datosPaginados.length === 0 ? (
             <div className="text-center py-20">
-              <FaChartBar className="mx-auto text-6xl text-gray-300 mb-4" />
-              <p className="text-xl font-semibold text-gray-600">No hay datos para mostrar</p>
-              <p className="text-gray-500 mt-2">Intenta ajustar los filtros o selecciona otro tipo de reporte</p>
+              <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-4">
+                <FaChartBar className="text-3xl text-gray-300" />
+              </div>
+              <p className="text-lg font-semibold text-gray-600">No hay datos para mostrar</p>
+              <p className="text-sm text-gray-400 mt-1.5">Intenta ajustar los filtros o selecciona otro tipo de reporte</p>
             </div>
           ) : (
             <div className="table-soft overflow-x-auto">
             <table className="w-full text-xs md:text-sm" style={{ minWidth: '800px' }}>
-              <thead className="thead-soft sticky top-0 z-10">
-                <tr>
+              <thead className="sticky top-0 z-10">
+                <tr className="bg-gradient-to-r from-gray-50 to-gray-100/80">
                   {columnas.map((col) => (
                     <th 
                       key={col.key} 
-                      className="px-2 md:px-4 py-2 md:py-3 text-xs font-bold text-white uppercase tracking-wider whitespace-nowrap"
+                      className="px-2 md:px-4 py-2.5 md:py-3 text-[10px] font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap"
                       style={{ 
                         textAlign: col.align || 'left'
                       }}
@@ -1643,7 +1657,7 @@ const Reportes = () => {
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-gray-100">
                 {datosPaginados.map((fila, idx) => {
                   const isMovimientos = filtros.tipo === 'movimientos';
                   const isContratos = filtros.tipo === 'contratos';
@@ -1656,7 +1670,7 @@ const Reportes = () => {
                     <React.Fragment key={idx}>
                       {/* Fila principal */}
                       <tr 
-                        className={`${isExpandable ? 'cursor-pointer' : ''} hover:bg-gray-50 transition-colors ${isExpanded ? (isContratos ? 'bg-indigo-50' : 'bg-blue-50') : ''}`}
+                        className={`${isExpandable ? 'cursor-pointer' : ''} hover:bg-gray-50/80 transition-colors ${isExpanded ? (isContratos ? 'bg-indigo-50/50' : 'bg-blue-50/50') : ''}`}
                         onClick={isExpandable ? () => toggleRowExpansion(expandKey) : undefined}
                       >
                         {columnas.map((col) => (
@@ -1817,31 +1831,28 @@ const Reportes = () => {
 
         {/* Controles de Paginación */}
         {datos.length > 0 && (
-          <div className="p-3 md:p-4 bg-gray-50 border-t flex flex-col sm:flex-row items-center justify-between gap-3">
-            <p className="text-xs md:text-sm text-gray-600">
-              Página {paginaActual} de {totalPaginas} ({datos.length} registros)
+          <div className="p-4 md:p-5 bg-gradient-to-r from-gray-50 to-white border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <p className="text-[11px] md:text-xs text-gray-400 font-medium">
+              Página {paginaActual} de {totalPaginas} · {datos.length} registros
             </p>
-            <div className="flex items-center gap-1 md:gap-2">
-              {/* Primera página */}
+            <div className="flex items-center gap-1.5 md:gap-2">
               <button
                 onClick={() => setPaginaActual(1)}
                 disabled={paginaActual === 1}
-                className="p-1.5 md:p-2 rounded-lg bg-white border border-gray-300 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                className="p-2 rounded-xl bg-white border border-gray-200 text-gray-500 hover:bg-gray-50 hover:border-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                 title="Primera página"
               >
                 <FaAngleDoubleLeft className="text-sm" />
               </button>
-              {/* Página anterior */}
               <button
                 onClick={() => setPaginaActual(prev => Math.max(1, prev - 1))}
                 disabled={paginaActual === 1}
-                className="p-1.5 md:p-2 rounded-lg bg-white border border-gray-300 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                className="p-2 rounded-xl bg-white border border-gray-200 text-gray-500 hover:bg-gray-50 hover:border-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                 title="Página anterior"
               >
                 <FaChevronLeft className="text-sm" />
               </button>
               
-              {/* Números de página */}
               <div className="flex items-center gap-1">
                 {Array.from({ length: Math.min(5, totalPaginas) }, (_, i) => {
                   let pageNum;
@@ -1858,10 +1869,10 @@ const Reportes = () => {
                     <button
                       key={pageNum}
                       onClick={() => setPaginaActual(pageNum)}
-                      className={`w-7 h-7 md:w-8 md:h-8 rounded-lg text-xs md:text-sm font-semibold transition ${
+                      className={`w-8 h-8 md:w-9 md:h-9 rounded-xl text-xs md:text-sm font-semibold transition-all ${
                         paginaActual === pageNum
-                          ? 'bg-theme-gradient text-white'
-                          : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-100'
+                          ? 'bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary-hover)] text-white shadow-md shadow-[var(--color-primary)]/25'
+                          : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-50 hover:border-gray-300'
                       }`}
                     >
                       {pageNum}
@@ -1874,7 +1885,7 @@ const Reportes = () => {
               <button
                 onClick={() => setPaginaActual(prev => Math.min(totalPaginas, prev + 1))}
                 disabled={paginaActual === totalPaginas}
-                className="p-1.5 md:p-2 rounded-lg bg-white border border-gray-300 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                className="p-2 rounded-xl bg-white border border-gray-200 text-gray-500 hover:bg-gray-50 hover:border-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                 title="Página siguiente"
               >
                 <FaChevronRight className="text-sm" />
@@ -1883,7 +1894,7 @@ const Reportes = () => {
               <button
                 onClick={() => setPaginaActual(totalPaginas)}
                 disabled={paginaActual === totalPaginas}
-                className="p-1.5 md:p-2 rounded-lg bg-white border border-gray-300 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                className="p-2 rounded-xl bg-white border border-gray-200 text-gray-500 hover:bg-gray-50 hover:border-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                 title="Última página"
               >
                 <FaAngleDoubleRight className="text-sm" />

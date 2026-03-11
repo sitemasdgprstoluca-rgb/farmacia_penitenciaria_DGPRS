@@ -2860,109 +2860,173 @@ const Productos = () => {
       {/* Modal de Lotes del Producto */}
       {lotesModalVisible && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 modal-overlay-elevated p-4">
-          <div className="w-full max-w-3xl modal-elevated max-h-[85vh] overflow-hidden">
-            <div
-              className="modal-header-elevated sticky top-0"
-            >
-              <div>
+          <div className="w-full max-w-4xl modal-elevated max-h-[85vh] overflow-hidden">
+            <div className="modal-header-elevated sticky top-0">
+              <div className="min-w-0 flex-1">
                 <h3 className="text-xl font-bold flex items-center gap-2 tracking-wide">
                   <div className="modal-icon-badge"><FaLayerGroup /></div>
                   Lotes del Producto
                 </h3>
-                <p className="text-sm text-white/80">
+                <p className="text-sm text-white/80 truncate">
                   {lotesModalData?.producto?.clave} - {lotesModalData?.producto?.nombre}
                 </p>
               </div>
-              <div className="text-right">
-                <p className="text-sm font-semibold">{lotesModalData?.total_lotes || lotesModalData?.lotes?.length || 0} lotes</p>
-                <p className="text-xs text-white/80">Inventario total: {lotesModalData?.total_stock || 0}</p>
+              <div className="text-right shrink-0 ml-4">
+                <div className="flex items-center gap-2">
+                  <span className="bg-white/15 backdrop-blur-sm px-3 py-1.5 rounded-lg text-sm font-bold">
+                    {lotesModalData?.total_lotes || lotesModalData?.lotes?.length || 0} lotes
+                  </span>
+                  <span className="bg-white/15 backdrop-blur-sm px-3 py-1.5 rounded-lg text-sm font-bold">
+                    Stock: {lotesModalData?.total_stock || 0}
+                  </span>
+                </div>
               </div>
             </div>
             <div className="overflow-y-auto max-h-[60vh]">
               {lotesModalLoading ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="animate-spin rounded-full h-8 w-8 border-4 border-t-transparent spinner-institucional"></div>
-                  <span className="ml-3 text-gray-600">Cargando lotes...</span>
+                <div className="flex flex-col items-center justify-center py-16">
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[var(--color-primary)]/10 to-[var(--color-primary)]/5 flex items-center justify-center mb-4">
+                    <div className="animate-spin rounded-full h-7 w-7 border-[3px] border-[var(--color-primary)]/20 border-t-[var(--color-primary)]"></div>
+                  </div>
+                  <span className="text-sm font-medium text-gray-500">Cargando lotes...</span>
                 </div>
               ) : lotesModalData?.lotes?.length ? (
-                <div className="w-full overflow-x-auto table-soft">
-                  <table className="w-full min-w-[550px] divide-y divide-gray-200">
-                    <thead className="thead-soft sticky top-0 z-10">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Lote</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Cantidad</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Caducidad</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Días Rest.</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Estado</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Ubicación</th>
-                      </tr>
-                    </thead>
-                  <tbody className="bg-white divide-y divide-gray-100">
+                <>
+                  {/* Desktop table */}
+                  <div className="hidden md:block p-4">
+                    <div className="overflow-x-auto rounded-xl border border-gray-100">
+                      <table className="w-full min-w-[650px]">
+                        <thead>
+                          <tr className="bg-gradient-to-r from-gray-50 to-gray-100/80">
+                            <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Lote</th>
+                            <th className="px-4 py-3 text-center text-[10px] font-bold uppercase tracking-wider text-gray-500">Cantidad</th>
+                            <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Caducidad</th>
+                            <th className="px-4 py-3 text-center text-[10px] font-bold uppercase tracking-wider text-gray-500">Días Rest.</th>
+                            <th className="px-4 py-3 text-center text-[10px] font-bold uppercase tracking-wider text-gray-500">Estado</th>
+                            <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Ubicación</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {lotesModalData.lotes.map((lote, idx) => {
+                            const semaforoConfig = {
+                              vencido: { bg: 'bg-red-50', text: 'text-red-700', label: 'VENCIDO', dot: 'bg-red-500' },
+                              critico: { bg: 'bg-orange-50', text: 'text-orange-700', label: 'CRÍTICO', dot: 'bg-orange-500' },
+                              proximo: { bg: 'bg-yellow-50', text: 'text-yellow-700', label: 'PRÓXIMO', dot: 'bg-yellow-500' },
+                              normal: { bg: 'bg-green-50', text: 'text-green-700', label: 'OK', dot: 'bg-green-500' },
+                              sin_fecha: { bg: 'bg-gray-50', text: 'text-gray-500', label: 'S/F', dot: 'bg-gray-400' },
+                            };
+                            const semaforo = semaforoConfig[lote.alerta_caducidad] || semaforoConfig.normal;
+                            return (
+                              <tr
+                                key={lote.id}
+                                className={`transition-colors hover:bg-gray-50/80 ${lote.alerta_caducidad === 'vencido' ? 'bg-red-50/40' : lote.alerta_caducidad === 'critico' ? 'bg-orange-50/40' : ''}`}
+                              >
+                                <td className="px-4 py-3.5">
+                                  <span className="text-sm font-mono font-semibold text-gray-800 bg-gray-100 px-2 py-0.5 rounded">{lote.numero_lote}</span>
+                                </td>
+                                <td className="px-4 py-3.5 text-center">
+                                  <span className="text-sm font-black text-gray-900">{lote.cantidad_actual}</span>
+                                </td>
+                                <td className="px-4 py-3.5 text-sm text-gray-600">
+                                  <div className="flex items-center gap-1.5">
+                                    <FaCalendarAlt className="text-gray-400 shrink-0" size={12} />
+                                    {lote.fecha_caducidad 
+                                      ? new Date(lote.fecha_caducidad).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' })
+                                      : 'Sin fecha'}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3.5 text-center">
+                                  {lote.dias_para_caducar !== null ? (
+                                    <span className={`text-sm font-bold ${lote.dias_para_caducar < 0 ? 'text-red-600' : lote.dias_para_caducar <= 30 ? 'text-orange-600' : lote.dias_para_caducar <= 90 ? 'text-yellow-600' : 'text-green-600'}`}>
+                                      {lote.dias_para_caducar < 0 ? `${Math.abs(lote.dias_para_caducar)} vencido` : `${lote.dias_para_caducar} días`}
+                                    </span>
+                                  ) : <span className="text-gray-400">-</span>}
+                                </td>
+                                <td className="px-4 py-3.5 text-center">
+                                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold ${semaforo.bg} ${semaforo.text}`}>
+                                    <span className={`w-2 h-2 rounded-full ${semaforo.dot}`}></span>
+                                    {semaforo.label}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3.5 text-sm text-gray-600 max-w-[200px]">
+                                  <span className="block truncate" title={lote.centro_nombre || 'Almacén Central'}>
+                                    {lote.centro_nombre || 'Almacén Central'}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  {/* Mobile cards */}
+                  <div className="md:hidden p-3 space-y-2.5">
                     {lotesModalData.lotes.map((lote, idx) => {
-                      // Semáforo de caducidad
                       const semaforoConfig = {
-                        vencido: { bg: 'bg-red-100', text: 'text-red-800', label: 'VENCIDO', icon: '🔴' },
-                        critico: { bg: 'bg-orange-100', text: 'text-orange-800', label: 'CRÍTICO', icon: '🟠' },
-                        proximo: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'PRÓXIMO', icon: '🟡' },
-                        normal: { bg: 'bg-green-100', text: 'text-green-800', label: 'OK', icon: '🟢' },
-                        sin_fecha: { bg: 'bg-gray-100', text: 'text-gray-600', label: 'S/F', icon: '⚪' },
+                        vencido: { bg: 'bg-red-50', text: 'text-red-700', label: 'VENCIDO', dot: 'bg-red-500' },
+                        critico: { bg: 'bg-orange-50', text: 'text-orange-700', label: 'CRÍTICO', dot: 'bg-orange-500' },
+                        proximo: { bg: 'bg-yellow-50', text: 'text-yellow-700', label: 'PRÓXIMO', dot: 'bg-yellow-500' },
+                        normal: { bg: 'bg-green-50', text: 'text-green-700', label: 'OK', dot: 'bg-green-500' },
+                        sin_fecha: { bg: 'bg-gray-50', text: 'text-gray-500', label: 'S/F', dot: 'bg-gray-400' },
                       };
                       const semaforo = semaforoConfig[lote.alerta_caducidad] || semaforoConfig.normal;
-                      
                       return (
-                        <tr
+                        <div
                           key={lote.id}
-                          className={`transition hover:bg-gray-50 ${lote.alerta_caducidad === 'vencido' ? 'bg-red-50' : lote.alerta_caducidad === 'critico' ? 'bg-orange-50' : ''}`}
+                          className={`rounded-xl border p-3.5 transition-shadow hover:shadow-md ${lote.alerta_caducidad === 'vencido' ? 'border-red-200 bg-red-50/30' : lote.alerta_caducidad === 'critico' ? 'border-orange-200 bg-orange-50/30' : 'border-gray-100 bg-white'}`}
                         >
-                          <td className="px-4 py-3 text-sm font-mono font-semibold text-gray-800">
-                            {lote.numero_lote}
-                          </td>
-                          <td className="px-4 py-3 text-sm font-bold text-gray-900">
-                            {lote.cantidad_actual}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
-                            <div className="flex items-center gap-1">
-                              <FaCalendarAlt className="text-gray-400" />
-                              {lote.fecha_caducidad 
-                                ? new Date(lote.fecha_caducidad).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' })
-                                : 'Sin fecha'}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-sm">
-                            {lote.dias_para_caducar !== null ? (
-                              <span className={`font-semibold ${lote.dias_para_caducar < 0 ? 'text-red-600' : lote.dias_para_caducar <= 30 ? 'text-orange-600' : lote.dias_para_caducar <= 90 ? 'text-yellow-600' : 'text-green-600'}`}>
-                                {lote.dias_para_caducar < 0 ? `${Math.abs(lote.dias_para_caducar)} vencido` : `${lote.dias_para_caducar} días`}
-                              </span>
-                            ) : '-'}
-                          </td>
-                          <td className="px-4 py-3 text-sm">
-                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${semaforo.bg} ${semaforo.text}`}>
-                              <span>{semaforo.icon}</span>
+                          <div className="flex items-center justify-between mb-2.5">
+                            <span className="font-mono font-bold text-sm bg-gray-100 px-2 py-0.5 rounded text-gray-800">{lote.numero_lote}</span>
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold ${semaforo.bg} ${semaforo.text}`}>
+                              <span className={`w-2 h-2 rounded-full ${semaforo.dot}`}></span>
                               {semaforo.label}
                             </span>
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
-                            {lote.centro_nombre || 'Almacén Central'}
-                          </td>
-                        </tr>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 text-center">
+                            <div className="bg-gray-50 rounded-lg p-2">
+                              <p className="text-[10px] font-semibold text-gray-400 uppercase">Cant.</p>
+                              <p className="text-base font-black text-gray-900">{lote.cantidad_actual}</p>
+                            </div>
+                            <div className="bg-gray-50 rounded-lg p-2">
+                              <p className="text-[10px] font-semibold text-gray-400 uppercase">Caduca</p>
+                              <p className="text-xs font-semibold text-gray-700">
+                                {lote.fecha_caducidad 
+                                  ? new Date(lote.fecha_caducidad).toLocaleDateString('es-MX', { month: 'short', day: 'numeric', year: '2-digit' })
+                                  : 'S/F'}
+                              </p>
+                            </div>
+                            <div className="bg-gray-50 rounded-lg p-2">
+                              <p className="text-[10px] font-semibold text-gray-400 uppercase">Días</p>
+                              <p className={`text-xs font-bold ${lote.dias_para_caducar !== null ? (lote.dias_para_caducar < 0 ? 'text-red-600' : lote.dias_para_caducar <= 30 ? 'text-orange-600' : lote.dias_para_caducar <= 90 ? 'text-yellow-600' : 'text-green-600') : 'text-gray-400'}`}>
+                                {lote.dias_para_caducar !== null ? (lote.dias_para_caducar < 0 ? `${Math.abs(lote.dias_para_caducar)} venc.` : lote.dias_para_caducar) : '-'}
+                              </p>
+                            </div>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-2 truncate" title={lote.centro_nombre || 'Almacén Central'}>
+                            📍 {lote.centro_nombre || 'Almacén Central'}
+                          </p>
+                        </div>
                       );
                     })}
-                  </tbody>
-                </table>
-                </div>
+                  </div>
+                </>
               ) : (
-                <div className="py-12 text-center text-gray-500">
-                  <FaBoxOpen className="mx-auto text-4xl mb-3 text-gray-300" />
-                  <p>Este producto no tiene lotes con stock disponible.</p>
+                <div className="py-16 text-center">
+                  <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-4">
+                    <FaBoxOpen className="text-2xl text-gray-400" />
+                  </div>
+                  <p className="text-sm font-semibold text-gray-600">Sin lotes disponibles</p>
+                  <p className="text-xs text-gray-400 mt-1">Este producto no tiene lotes con stock.</p>
                 </div>
               )}
             </div>
-            <div className="px-6 py-4 bg-gray-50/80 border-t flex justify-between items-center rounded-b-2xl">
-              <div className="text-xs text-gray-500">
-                <span className="inline-flex items-center gap-1 mr-3">🟢 &gt;90 días</span>
-                <span className="inline-flex items-center gap-1 mr-3">🟡 31-90 días</span>
-                <span className="inline-flex items-center gap-1 mr-3">🟠 1-30 días</span>
-                <span className="inline-flex items-center gap-1">🔴 Vencido</span>
+            <div className="px-5 py-3.5 bg-gradient-to-r from-gray-50 to-white border-t flex justify-between items-center rounded-b-2xl">
+              <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-400 font-medium">
+                <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block"></span> &gt;90 días</span>
+                <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500 inline-block"></span> 31-90 días</span>
+                <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500 inline-block"></span> 1-30 días</span>
+                <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block"></span> Vencido</span>
               </div>
               <button
                 type="button"
