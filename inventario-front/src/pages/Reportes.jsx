@@ -27,7 +27,6 @@ import {
   FaDollarSign
 } from "react-icons/fa";
 import { reportesAPI, centrosAPI, descargarArchivo, abrirPdfEnNavegador } from "../services/api";
-import PageHeader from "../components/PageHeader";
 import { usePermissions } from '../hooks/usePermissions';
 
 // Los colores ahora se leen del tema CSS - esto es solo para compatibilidad
@@ -965,46 +964,42 @@ const Reportes = () => {
     return null;
   };
 
-  const badgeContent = (
-    <span className="flex items-center gap-2 rounded-full bg-primary/10 text-theme-primary px-4 py-1 text-sm font-semibold">
-      <FaDatabase />
-      {datos.length} registros
-    </span>
-  );
-
   return (
     <div className="p-4 md:p-6 space-y-5 md:space-y-6 max-w-full overflow-hidden">
-      <PageHeader
-        icon={FaChartBar}
-        title="Reportes"
-        subtitle="Consulta y exporta información clave del inventario"
-        badge={badgeContent}
-      />
-
-      {/* Panel de Filtros */}
-      <div className="bg-white rounded-2xl shadow-lg shadow-gray-200/60 overflow-hidden">
-        <div className="bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary-hover)] px-5 md:px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <h3 className="text-lg font-bold flex items-center gap-2.5 text-white tracking-wide">
-            <div className="w-8 h-8 rounded-lg bg-white/15 backdrop-blur-sm flex items-center justify-center">
-              <FaFilter className="text-sm" />
-            </div>
-            Filtros de Reporte
-          </h3>
-          <div className="flex items-center gap-2 bg-white/15 backdrop-blur-sm px-3 py-1.5 rounded-lg">
-            <span className="text-white/80">{getTipoIcon()}</span>
-            <span className="text-sm font-semibold text-white capitalize">{filtros.tipo.replace('_', ' ')}</span>
+      {/* Modern Page Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary-hover)] flex items-center justify-center text-white text-2xl shadow-lg shadow-[var(--color-primary)]/20">
+            {getTipoIcon()}
+          </div>
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 capitalize">
+              {filtros.tipo === 'control_mensual' ? 'Control Mensual' : filtros.tipo === 'parcialidades' ? 'Historial de Entregas' : filtros.tipo}
+            </h1>
+            <p className="text-sm text-gray-500 mt-0.5">Consulta y exporta informes clave del inventario</p>
           </div>
         </div>
+        <button
+          onClick={limpiarFiltros}
+          disabled={loading}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 bg-white hover:bg-gray-50 hover:border-gray-300 transition-all disabled:opacity-50 shadow-sm"
+        >
+          <FaSync className="text-xs" />
+          Restablecer filtros
+        </button>
+      </div>
 
-        <div className="p-5 md:p-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5 mb-5">
+      {/* Panel de Filtros - Clean Flat Card */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="p-5 md:p-6 space-y-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
           {/* Tipo de reporte */}
           <div className="space-y-1.5">
-            <label className="label-elevated">Tipo de reporte</label>
+            <label className="text-xs font-medium text-gray-500">Tipo de reporte</label>
             <select
               value={filtros.tipo}
               onChange={(e) => handleTipoChange(e.target.value)}
-              className="input-elevated"
+              className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-3.5 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)] transition-all hover:border-gray-300"
             >
               <option value="inventario">📦 Inventario</option>
               <option value="caducidades">⏰ Caducidades</option>
@@ -1525,11 +1520,11 @@ const Reportes = () => {
         </div>
 
         {/* Botones de acción */}
-        <div className="flex flex-wrap gap-2.5 md:gap-3 pt-2 border-t border-gray-100">
+        <div className="flex flex-wrap items-center gap-2.5">
           <button
             onClick={cargarReporte}
             disabled={loading}
-            className="btn-elevated-primary flex items-center gap-2 text-sm md:text-base"
+            className="btn-elevated-primary text-sm"
           >
             {loading ? (
               <>
@@ -1538,60 +1533,41 @@ const Reportes = () => {
               </>
             ) : (
               <>
-                <FaSync />
-                Aplicar Filtros
+                <FaFilter className="text-xs" />
+                Aplicar filtros
               </>
             )}
           </button>
           <button
             onClick={limpiarFiltros}
             disabled={loading}
-            className="btn-elevated-cancel text-sm md:text-base"
+            className="btn-elevated-cancel text-sm"
           >
+            <FaSync className="text-xs" />
             Limpiar
           </button>
           <button
             onClick={exportarExcel}
             disabled={loading || exporting || datos.length === 0 || filtros.tipo === 'control_mensual'}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white font-semibold text-sm md:text-base transition-all hover:scale-[1.02] hover:shadow-lg disabled:opacity-60 disabled:hover:scale-100"
-            style={{ background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)' }}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white font-medium text-sm transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed bg-emerald-600 shadow-sm"
             title={filtros.tipo === 'control_mensual' ? 'Control Mensual solo disponible en PDF' : ''}
           >
-            {exporting ? (
-              <>
-                <FaSpinner className="animate-spin" />
-                Exportando...
-              </>
-            ) : (
-              <>
-                <FaFileExcel />
-                Exportar Excel
-              </>
-            )}
+            {exporting ? <FaSpinner className="animate-spin" /> : <FaFileExcel />}
+            Exportar Excel
           </button>
           <button
             onClick={exportarPDF}
             disabled={loading || exporting || (datos.length === 0 && filtros.tipo !== 'control_mensual')}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white font-semibold text-sm md:text-base transition-all hover:scale-[1.02] hover:shadow-lg disabled:opacity-60 disabled:hover:scale-100"
-            style={{ background: 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)' }}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white font-medium text-sm transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed bg-red-600 shadow-sm"
           >
-            {exporting ? (
-              <>
-                <FaSpinner className="animate-spin" />
-                Exportando...
-              </>
-            ) : (
-              <>
-                <FaFilePdf />
-                Exportar PDF
-              </>
-            )}
+            {exporting ? <FaSpinner className="animate-spin" /> : <FaFilePdf />}
+            Exportar PDF
           </button>
         </div>
 
         {error && (
-          <div className="mt-4 p-3.5 rounded-xl bg-red-50/80 border border-red-100 text-red-700 text-sm flex items-center gap-2">
-            <FaTimesCircle />
+          <div className="p-3 rounded-xl bg-red-50 border border-red-100 text-red-600 text-sm flex items-center gap-2">
+            <FaTimesCircle className="flex-shrink-0" />
             {error}
           </div>
         )}
@@ -1599,17 +1575,17 @@ const Reportes = () => {
       </div>
 
       {/* Tabla de Datos */}
-      <div className="bg-white rounded-2xl shadow-lg shadow-gray-200/60 overflow-hidden max-w-full">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden max-w-full">
         <div className="p-4 md:p-5 border-b border-gray-100 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary-hover)] flex items-center justify-center text-white text-lg shadow-md">
+            <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-gray-500 text-lg">
               {getTipoIcon()}
             </div>
             <div>
-              <h3 className="text-base md:text-lg font-bold text-gray-800">
+              <h3 className="text-base md:text-lg font-semibold text-gray-800">
                 Reporte de {filtros.tipo.charAt(0).toUpperCase() + filtros.tipo.slice(1)}
               </h3>
-              <p className="text-[11px] md:text-xs text-gray-400">
+              <p className="text-xs text-gray-400">
                 Mostrando {indiceInicio + 1}-{Math.min(indiceFin, datos.length)} de {datos.length} registros
               </p>
             </div>
@@ -1624,20 +1600,20 @@ const Reportes = () => {
           {loading ? (
             <div className="flex items-center justify-center py-20">
               <div className="text-center">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[var(--color-primary)]/10 to-[var(--color-primary)]/5 flex items-center justify-center mx-auto mb-4">
-                  <FaSpinner className="animate-spin text-2xl text-[var(--color-primary)]" />
+                <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-4">
+                  <FaSpinner className="animate-spin text-xl text-gray-400" />
                 </div>
-                <p className="text-gray-600 font-semibold">Cargando reporte...</p>
+                <p className="text-gray-600 font-medium">Cargando reporte...</p>
                 <p className="text-xs text-gray-400 mt-1">Procesando datos</p>
               </div>
             </div>
           ) : datosPaginados.length === 0 ? (
             <div className="text-center py-20">
-              <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-4">
+              <div className="w-16 h-16 rounded-2xl bg-gray-50 flex items-center justify-center mx-auto mb-4">
                 <FaChartBar className="text-3xl text-gray-300" />
               </div>
               <p className="text-lg font-semibold text-gray-600">No hay datos para mostrar</p>
-              <p className="text-sm text-gray-400 mt-1.5">Intenta ajustar los filtros o selecciona otro tipo de reporte</p>
+              <p className="text-sm text-gray-400 mt-1">Intenta ajustar los filtros o selecciona otro tipo de reporte</p>
             </div>
           ) : (
             <div className="table-soft overflow-x-auto">
@@ -1831,26 +1807,26 @@ const Reportes = () => {
 
         {/* Controles de Paginación */}
         {datos.length > 0 && (
-          <div className="p-4 md:p-5 bg-gradient-to-r from-gray-50 to-white border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <p className="text-[11px] md:text-xs text-gray-400 font-medium">
+          <div className="p-4 md:p-5 bg-gray-50/50 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <p className="text-xs text-gray-400 font-medium">
               Página {paginaActual} de {totalPaginas} · {datos.length} registros
             </p>
-            <div className="flex items-center gap-1.5 md:gap-2">
+            <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setPaginaActual(1)}
                 disabled={paginaActual === 1}
-                className="p-2 rounded-xl bg-white border border-gray-200 text-gray-500 hover:bg-gray-50 hover:border-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                className="p-2 rounded-lg bg-white border border-gray-200 text-gray-500 hover:bg-gray-50 hover:border-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all text-xs"
                 title="Primera página"
               >
-                <FaAngleDoubleLeft className="text-sm" />
+                <FaAngleDoubleLeft />
               </button>
               <button
                 onClick={() => setPaginaActual(prev => Math.max(1, prev - 1))}
                 disabled={paginaActual === 1}
-                className="p-2 rounded-xl bg-white border border-gray-200 text-gray-500 hover:bg-gray-50 hover:border-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                className="p-2 rounded-lg bg-white border border-gray-200 text-gray-500 hover:bg-gray-50 hover:border-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all text-xs"
                 title="Página anterior"
               >
-                <FaChevronLeft className="text-sm" />
+                <FaChevronLeft />
               </button>
               
               <div className="flex items-center gap-1">
@@ -1869,9 +1845,9 @@ const Reportes = () => {
                     <button
                       key={pageNum}
                       onClick={() => setPaginaActual(pageNum)}
-                      className={`w-8 h-8 md:w-9 md:h-9 rounded-xl text-xs md:text-sm font-semibold transition-all ${
+                      className={`w-8 h-8 rounded-lg text-xs font-medium transition-all ${
                         paginaActual === pageNum
-                          ? 'bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary-hover)] text-white shadow-md shadow-[var(--color-primary)]/25'
+                          ? 'bg-[var(--color-primary)] text-white shadow-sm'
                           : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-50 hover:border-gray-300'
                       }`}
                     >
@@ -1885,16 +1861,16 @@ const Reportes = () => {
               <button
                 onClick={() => setPaginaActual(prev => Math.min(totalPaginas, prev + 1))}
                 disabled={paginaActual === totalPaginas}
-                className="p-2 rounded-xl bg-white border border-gray-200 text-gray-500 hover:bg-gray-50 hover:border-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                className="p-2 rounded-lg bg-white border border-gray-200 text-gray-500 hover:bg-gray-50 hover:border-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all text-xs"
                 title="Página siguiente"
               >
-                <FaChevronRight className="text-sm" />
+                <FaChevronRight />
               </button>
               {/* Última página */}
               <button
                 onClick={() => setPaginaActual(totalPaginas)}
                 disabled={paginaActual === totalPaginas}
-                className="p-2 rounded-xl bg-white border border-gray-200 text-gray-500 hover:bg-gray-50 hover:border-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                className="p-2 rounded-lg bg-white border border-gray-200 text-gray-500 hover:bg-gray-50 hover:border-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all text-xs"
                 title="Última página"
               >
                 <FaAngleDoubleRight className="text-sm" />
