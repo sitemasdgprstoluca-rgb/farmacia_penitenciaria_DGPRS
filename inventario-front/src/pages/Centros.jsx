@@ -387,12 +387,8 @@ const Centros = () => {
           type="button"
           onClick={handleDescargarPlantilla}
           disabled={exportLoading}
-          className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50"
+          className="cc-btn cc-btn-ghost"
           title="Descargar Plantilla"
-          style={{
-            backgroundColor: 'rgba(255,255,255,0.15)',
-            border: '1px solid rgba(255,255,255,0.4)'
-          }}
         >
           {exportLoading ? <FaSpinner className="animate-spin" /> : <FaDownload />} 
           {exportLoading ? 'Descargando...' : 'Plantilla'}
@@ -403,7 +399,7 @@ const Centros = () => {
           type="button"
           onClick={handleExportar}
           disabled={exportLoading}
-          className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 bg-theme-gradient"
+          className="cc-btn cc-btn-secondary"
         >
           {exportLoading ? <FaSpinner className="animate-spin" /> : <FaFileExcel />} 
           {exportLoading ? 'Exportando...' : 'Exportar'}
@@ -414,11 +410,7 @@ const Centros = () => {
           type="button"
           onClick={() => setShowImportModal(true)}
           disabled={importLoading}
-          className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50"
-          style={{
-            background: SECONDARY_GRADIENT,
-            border: '1px solid rgba(255,255,255,0.4)'
-          }}
+          className="cc-btn cc-btn-secondary"
         >
           {importLoading ? <FaSpinner className="animate-spin" /> : <FaFileUpload />} 
           {importLoading ? 'Importando...' : 'Importar'}
@@ -428,7 +420,7 @@ const Centros = () => {
         <button
           type="button"
           onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-bold hover:bg-white text-theme-primary"
+          className="cc-btn cc-btn-primary"
         >
           <FaPlus /> Nuevo Centro
         </button>

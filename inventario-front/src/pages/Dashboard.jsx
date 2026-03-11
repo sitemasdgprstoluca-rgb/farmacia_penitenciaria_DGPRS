@@ -54,6 +54,7 @@ import {
   Legend, BarChart, Bar
 } from 'recharts';
 import { usePermissions } from '../hooks/usePermissions';
+import PageHeader from '../components/PageHeader';
 import CentroSelector from '../components/CentroSelector';
 import { dashboardAPI } from '../services/api';
 import { hasAccessToken } from '../services/tokenManager';
@@ -1199,100 +1200,65 @@ const Dashboard = () => {
   return (
     <div className="px-4 sm:px-6 py-4 max-w-[1600px] mx-auto space-y-4 pb-8">
       {/* ========== HEADER ========== */}
-      <header 
-        className="rounded-xl shadow-sm border border-gray-100/80 overflow-hidden bg-white"
-      >
-        <div className="h-1 w-full" style={{ background: 'linear-gradient(90deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 40%, #C9A876 100%)' }} />
-        
-        <div className="px-4 py-3">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div 
-                className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ background: 'linear-gradient(135deg, var(--color-primary, #9F2241), var(--color-primary-hover, #6B1839))' }}
-              >
-                <FaChartLine className="text-white text-sm" />
-              </div>
-              <h1 
-                className="text-xl font-black tracking-tight"
-                style={{ color: 'var(--color-primary, #9F2241)' }}
-              >
-                Panel de Control
-              </h1>
-              <span 
-                className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white flex-shrink-0"
-                style={{ 
-                  background: rolPrincipal === 'ADMIN' 
-                    ? 'linear-gradient(135deg, #9F2241, #6B1839)'
-                    : rolPrincipal === 'FARMACIA'
-                    ? 'linear-gradient(135deg, #10B981, #059669)'
-                    : rolPrincipal === 'CENTRO'
-                    ? 'linear-gradient(135deg, #3B82F6, #2563EB)'
-                    : 'linear-gradient(135deg, #6B7280, #4B5563)'
-                }}
-              >
-                {getRolLabel()}
-              </span>
-            </div>
-          
-          {/* Controles */}
-          <div className="flex items-center gap-2 flex-shrink-0 w-full md:w-auto">
-            {/* Selector de centro */}
+      <PageHeader
+        icon={FaChartLine}
+        title="Panel de Control"
+        subtitle={
+          selectedCentro
+            ? `Datos de: ${centroNombre || 'Centro seleccionado'}`
+            : esCentroRestringido && nombreCentroUsuario
+            ? `Centro: ${nombreCentroUsuario}`
+            : 'Resumen general del sistema de inventario'
+        }
+        badge={
+          <span 
+            className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white flex-shrink-0"
+            style={{ 
+              background: rolPrincipal === 'ADMIN' 
+                ? 'linear-gradient(135deg, #9F2241, #6B1839)'
+                : rolPrincipal === 'FARMACIA'
+                ? 'linear-gradient(135deg, #10B981, #059669)'
+                : rolPrincipal === 'CENTRO'
+                ? 'linear-gradient(135deg, #3B82F6, #2563EB)'
+                : 'linear-gradient(135deg, #6B7280, #4B5563)'
+            }}
+          >
+            {getRolLabel()}
+          </span>
+        }
+        actions={
+          <div className="flex items-center gap-2 w-full md:w-auto">
             {puedeFiltrarPorCentro && (
               <div className="flex-1 md:flex-none md:min-w-[200px] md:max-w-[300px]">
                 <CentroSelector onCentroChange={handleCentroChange} selectedValue={selectedCentro} />
               </div>
             )}
-            
-            {/* Botón de refresh */}
             <button
               onClick={handleRefresh}
               disabled={refreshing}
-              className={`
-                p-2 rounded-lg bg-gray-50 border border-gray-200
-                hover:bg-gray-100 transition-all flex-shrink-0
-                ${refreshing ? 'opacity-50 cursor-not-allowed' : ''}
-              `}
+              className={`cc-btn cc-btn-secondary ${refreshing ? 'opacity-50 cursor-not-allowed' : ''}`}
               title="Actualizar datos"
             >
-              <FaSync className={`text-gray-400 text-xs ${refreshing ? 'animate-spin' : ''}`} />
+              <FaSync className={`text-xs ${refreshing ? 'animate-spin' : ''}`} />
             </button>
           </div>
-        </div>
-        
-        {/* Fila inferior: Subtítulo y fecha */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 mt-3 pt-2.5 border-t border-gray-100/60">
-          <p className="text-xs text-gray-500 flex items-center gap-1.5">
-            {selectedCentro ? (
-              <>
-                <FaBuilding className="text-xs flex-shrink-0" />
-                <span className="truncate">Datos de: <strong className="text-gray-700">{centroNombre || 'Centro seleccionado'}</strong></span>
-              </>
-            ) : esCentroRestringido && nombreCentroUsuario ? (
-              <>
-                <FaBuilding className="text-xs flex-shrink-0" />
-                <span className="truncate">Centro: <strong className="text-gray-700">{nombreCentroUsuario}</strong></span>
-              </>
-            ) : (
-              <span>Resumen general del sistema de inventario</span>
-            )}
-          </p>
-          
-          {/* Fecha compacta */}
-          <div className="flex items-center gap-1.5 text-xs text-gray-400 flex-shrink-0">
-            <FaCalendarAlt className="text-[10px]" style={{ color: 'var(--color-primary, #9F2241)' }} />
-            <span>
-              {(() => {
-                const d = new Date();
-                const dias = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-                const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-                return `${dias[d.getDay()]}, ${d.getDate()} de ${meses[d.getMonth()]} de ${d.getFullYear()}`;
-              })()}
-            </span>
+        }
+        filters={
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center gap-1.5 text-xs text-gray-400">
+              <FaCalendarAlt className="text-[10px]" style={{ color: 'var(--color-primary, #9F2241)' }} />
+              <span>
+                {(() => {
+                  const d = new Date();
+                  const dias = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+                  const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+                  return `${dias[d.getDay()]}, ${d.getDate()} de ${meses[d.getMonth()]} de ${d.getFullYear()}`;
+                })()}
+              </span>
+            </div>
           </div>
-        </div>
-        </div>
-      </header>
+        }
+      />
 
       {/* Indicador de filtro activo - solo mostrar cuando NO es Farmacia Central (el default) */}
       {selectedCentro && selectedCentro !== 'central' && puedeFiltrarPorCentro && (

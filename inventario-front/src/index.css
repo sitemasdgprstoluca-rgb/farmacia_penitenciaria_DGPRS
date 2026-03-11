@@ -86,6 +86,7 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+  scroll-behavior: smooth;
 }
 
 body {
@@ -98,11 +99,191 @@ body {
   line-height: 1.6;
   overflow-x: hidden; /* Prevenir scroll horizontal en el body */
   max-width: 100vw; /* Limitar el ancho al viewport */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(147, 32, 67, 0.3) transparent;
 }
 
 /* Títulos usan fuente de títulos del tema */
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-family-titulos);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   COMMAND CENTER - Sistema de botones y filtros para encabezados de módulos
+   Estilo SaaS moderno: Stripe, Linear, Vercel
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Botones Command Center */
+.cc-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.4375rem 0.875rem;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  cursor: pointer;
+  border: 1px solid transparent;
+  line-height: 1.25;
+}
+
+.cc-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Primario: fondo guinda */
+.cc-btn-primary {
+  background: linear-gradient(135deg, var(--color-primary, #932043) 0%, var(--color-primary-hover, #632842) 100%);
+  color: white;
+  border-color: transparent;
+  box-shadow: 0 1px 2px rgba(147, 32, 67, 0.2);
+}
+
+.cc-btn-primary:hover:not(:disabled) {
+  box-shadow: 0 2px 6px rgba(147, 32, 67, 0.3);
+  transform: translateY(-0.5px);
+}
+
+/* Secundario: borde gris, fondo blanco */
+.cc-btn-secondary {
+  background: white;
+  color: #374151;
+  border-color: #e5e7eb;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.cc-btn-secondary:hover:not(:disabled) {
+  background: #f9fafb;
+  border-color: #d1d5db;
+}
+
+/* Ghost: sin borde, sin fondo */
+.cc-btn-ghost {
+  background: transparent;
+  color: #6b7280;
+  border-color: transparent;
+}
+
+.cc-btn-ghost:hover:not(:disabled) {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+/* Danger */
+.cc-btn-danger {
+  background: white;
+  color: #dc2626;
+  border-color: #fecaca;
+}
+
+.cc-btn-danger:hover:not(:disabled) {
+  background: #fef2f2;
+  border-color: #f87171;
+}
+
+/* Filtros Command Center - Row 2 */
+.cc-filter-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #374151;
+  background: white;
+  border: 1px solid #e5e7eb;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.cc-filter-toggle:hover {
+  background: #f9fafb;
+  border-color: #d1d5db;
+}
+
+/* Mini selects en la barra de filtros */
+.cc-filter-select {
+  padding: 0.375rem 1.75rem 0.375rem 0.625rem;
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #6b7280;
+  background: white;
+  border: 1px solid #e5e7eb;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  min-height: unset;
+}
+
+.cc-filter-select:hover {
+  border-color: #d1d5db;
+}
+
+.cc-filter-select:focus {
+  outline: none;
+  border-color: var(--color-primary, #932043);
+  box-shadow: 0 0 0 2px rgba(147, 32, 67, 0.1);
+}
+
+/* Labels de filtro en panel expandido */
+.cc-filter-label {
+  display: block;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #6b7280;
+  margin-bottom: 0.25rem;
+}
+
+/* Input wrap para filtros */
+.cc-filter-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  background: white;
+  transition: all 0.15s ease;
+}
+
+.cc-filter-input-wrap:focus-within {
+  border-color: var(--color-primary, #932043);
+  box-shadow: 0 0 0 2px rgba(147, 32, 67, 0.1);
+}
+
+/* Select completo para panel expandido */
+.cc-filter-select-full {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  color: #374151;
+  background: white;
+  transition: all 0.15s ease;
+}
+
+.cc-filter-select-full:focus {
+  outline: none;
+  border-color: var(--color-primary, #932043);
+  box-shadow: 0 0 0 2px rgba(147, 32, 67, 0.1);
+}
+
+.cc-filter-select-full:disabled {
+  background: #f9fafb;
+  color: #9ca3af;
+  cursor: not-allowed;
 }
 
 h1 { font-size: var(--font-size-titulo); }
@@ -259,27 +440,25 @@ code {
 /* Scroll horizontal visible en pantallas pequeñas */
 @media (max-width: 1024px) {
   .table-container {
-    box-shadow: 
-      inset -10px 0 10px -10px rgba(0,0,0,0.15),
-      var(--shadow-md);
+    box-shadow: var(--shadow-md);
   }
   
   .table-container::-webkit-scrollbar {
-    height: 8px;
+    height: 5px;
   }
   
   .table-container::-webkit-scrollbar-track {
-    background: #f1f1f1;
-    border-radius: 4px;
+    background: transparent;
+    border-radius: 10px;
   }
   
   .table-container::-webkit-scrollbar-thumb {
-    background: var(--pantone-504c);
-    border-radius: 4px;
+    background: rgba(147, 32, 67, 0.3);
+    border-radius: 10px;
   }
   
   .table-container::-webkit-scrollbar-thumb:hover {
-    background: var(--pantone-7420c);
+    background: rgba(147, 32, 67, 0.5);
   }
 }
 
@@ -454,23 +633,7 @@ code {
   position: relative;
 }
 
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: #f1f5f9;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
+/* Scrollbar base - sobreescrito por el bloque global más abajo */
 
 @layer components {
   .btn-primary {
@@ -607,42 +770,30 @@ code {
 
 /* Mejorar scrollbars en navegadores WebKit (Chrome, Safari, Edge) */
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 5px;
+  background: transparent;
+  border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-primary, #9F2241);
-  border-radius: 5px;
-  opacity: 0.8;
+  background: rgba(147, 32, 67, 0.25);
+  border-radius: 10px;
+  transition: background 0.2s ease;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-primary-hover, #6B1839);
+  background: rgba(147, 32, 67, 0.45);
 }
 
-/* Mejorar indicador de scroll horizontal en tablas */
-.overflow-x-auto::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 20px;
-  background: linear-gradient(to left, rgba(255,255,255,0.8), transparent);
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.3s;
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
-.overflow-x-auto:hover::after {
-  opacity: 1;
-}
+/* Indicador de scroll horizontal en tablas - deshabilitado para evitar interferencias */
 
 /* Responsive media queries */
 @media (max-width: 1280px) {

@@ -3127,14 +3127,14 @@ def generar_recibo_salida_requisicion(requisicion_data, detalles_data):
     
     buffer = BytesIO()
     
-    # Crear documento simple sin canvas personalizado
+    # Crear documento con margen para fondo institucional
     doc = SimpleDocTemplate(
         buffer,
         pagesize=letter,
-        topMargin=1.0*inch,
-        bottomMargin=1.0*inch,
-        leftMargin=0.5*inch,
-        rightMargin=0.5*inch
+        topMargin=1.8*inch,
+        bottomMargin=1.2*inch,
+        leftMargin=0.6*inch,
+        rightMargin=0.6*inch
     )
     
     elements = []
@@ -3314,8 +3314,13 @@ def generar_recibo_salida_requisicion(requisicion_data, detalles_data):
         nota_style
     ))
     
-    # Construir PDF sin canvas personalizado (más robusto)
-    doc.build(elements)
+    # Usar canvas con fondo institucional
+    fondo_path = str(FONDO_INSTITUCIONAL_PATH) if FONDO_INSTITUCIONAL_PATH.exists() else None
+    
+    def make_canvas(*args, **kwargs):
+        return FondoOficialCanvas(*args, fondo_path=fondo_path, titulo_reporte='REQUISICIÓN SALIDA', **kwargs)
+    
+    doc.build(elements, canvasmaker=make_canvas)
     
     buffer.seek(0)
     return buffer

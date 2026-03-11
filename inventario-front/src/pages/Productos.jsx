@@ -41,6 +41,7 @@ import { DEV_CONFIG } from '../config/dev';
 import { usePermissions } from '../hooks/usePermissions';
 
 import { ProtectedButton } from '../components/ProtectedAction';
+import PageHeader from '../components/PageHeader';
 import Pagination from '../components/Pagination';
 import { ProductosSkeleton } from '../components/skeletons';
 import LimpiarInventario from '../components/LimpiarInventario';
@@ -277,7 +278,7 @@ const renderEstadoBadge = (texto, activo = true) => {
 
       }}
 
-      className="px-3 py-1 rounded-full text-xs font-semibold"
+      className="px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap"
 
     >
 
@@ -329,7 +330,7 @@ const renderStockBadge = (nivel) => {
 
       style={{ backgroundColor: `${color}22`, color }}
 
-      className="px-3 py-1 rounded-full text-xs font-semibold"
+      className="px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap"
 
     >
 
@@ -1762,8 +1763,8 @@ const Productos = () => {
         {renderMobileCards()}
         
         {/* Vista desktop: tabla */}
-        <div className="hidden lg:block w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
-        <table className="w-full min-w-[600px] divide-y divide-gray-200">
+        <div className="hidden lg:block w-full rounded-lg border border-gray-200 shadow-md">
+        <table className="w-full table-fixed divide-y divide-gray-200">
 
           <thead className="bg-theme-gradient sticky top-0 z-10">
 
@@ -1771,33 +1772,33 @@ const Productos = () => {
 
               {[
 
-                '#',
+                { key: '#', width: 'w-[3%]' },
 
-                'Clave',
+                { key: 'Clave', width: 'w-[7%]' },
 
-                'Nombre',
+                { key: 'Nombre', width: 'w-[18%]' },
 
-                'Presentación',
+                { key: 'Presentación', width: 'w-[14%]' },
 
-                'Inventario',
+                { key: 'Inventario', width: 'w-[8%]' },
 
-                'Lotes',
+                { key: 'Lotes', width: 'w-[5%]' },
 
-                'Inv. Mín.',
+                { key: 'Inv. Mín.', width: 'w-[6%]' },
 
-                'Estado',
+                { key: 'Estado', width: 'w-[9%]' },
 
-                'Nivel',
+                { key: 'Nivel', width: 'w-[9%]' },
 
-                'Creado por',
+                { key: 'Creado por', width: 'w-[10%]' },
 
-                ...(puede.tieneAcciones ? ['Acciones'] : []),
+                ...(puede.tieneAcciones ? [{ key: 'Acciones', width: 'w-[11%]' }] : []),
 
               ].map((col) => (
 
-                <th key={col} className="px-2 sm:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
+                <th key={col.key} className={`px-2 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white ${col.width}`}>
 
-                  {col}
+                  {col.key}
 
                 </th>
 
@@ -1830,16 +1831,16 @@ const Productos = () => {
 
               >
 
-                <td className="px-2 sm:px-3 py-3 text-sm font-semibold text-gray-500">{consecutivo}</td>
+                <td className="px-2 py-2 text-xs font-semibold text-gray-500">{consecutivo}</td>
 
-                <td className="px-2 sm:px-4 py-3 text-sm font-semibold text-gray-800">{producto.clave || '-'}</td>
+                <td className="px-2 py-2 text-xs font-semibold text-gray-800">{producto.clave || '-'}</td>
 
-                <td className="px-2 sm:px-4 py-3 text-sm text-gray-600 max-w-[200px] truncate" title={producto.nombre}>{producto.nombre}</td>
+                <td className="px-2 py-2 text-xs text-gray-600" title={producto.nombre}><span className="line-clamp-2 leading-tight">{producto.nombre}</span></td>
 
-                <td className="px-2 sm:px-4 py-3 text-sm text-gray-600">{producto.presentacion || producto.unidad_medida || <span className="text-gray-400 italic text-xs">-</span>}</td>
+                <td className="px-2 py-2 text-xs text-gray-600"><span className="line-clamp-2 leading-tight">{producto.presentacion || producto.unidad_medida || <span className="text-gray-400 italic">-</span>}</span></td>
 
                 {/* Inventario con tooltip informativo */}
-                <td className="px-2 sm:px-4 py-3 text-sm">
+                <td className="px-2 py-2 text-xs">
                   <span 
                     className={`font-semibold tabular-nums cursor-help ${
                       nivelStock === 'sin_stock' || nivelStock === 'critico'
@@ -1854,20 +1855,20 @@ const Productos = () => {
                   </span>
                 </td>
 
-                <td className="px-2 sm:px-4 py-3 text-sm">
+                <td className="px-2 py-2 text-xs">
                   <button
                     type="button"
                     onClick={() => verLotesProducto(producto)}
-                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors cursor-pointer text-xs"
                     title={`📦 Ver lotes de: ${producto.nombre}\n━━━━━━━━━━━━━━━━━━━━\n📋 Lotes activos: ${numLotes}\n💡 Click para ver detalle`}
                   >
-                    <FaLayerGroup className="text-xs" />
+                    <FaLayerGroup className="text-[10px]" />
                     <span className="font-semibold">{numLotes !== null ? numLotes : '?'}</span>
                   </button>
                 </td>
 
                 <td 
-                  className="px-2 sm:px-4 py-3 text-sm cursor-help"
+                  className="px-2 py-2 text-xs cursor-help"
                   title={`📉 Stock Mínimo\n━━━━━━━━━━━━━━━━━━━━\nCantidad: ${producto.stock_minimo || 'No definido'}\n💡 Cuando el inventario baja de este valor, el producto se marca como "Por surtir"`}
                 >
                   <span className={producto.stock_minimo ? 'text-slate-700' : 'text-gray-400 italic'}>
@@ -1875,20 +1876,20 @@ const Productos = () => {
                   </span>
                 </td>
 
-                <td className="px-2 sm:px-4 py-3 text-sm">{renderEstadoBadge(estadoInventario.label, estadoInventario.activo)}</td>
+                <td className="px-2 py-2 text-xs">{renderEstadoBadge(estadoInventario.label, estadoInventario.activo)}</td>
 
-                <td className="px-2 sm:px-4 py-3 text-sm">{renderStockBadge(nivelStock)}</td>
+                <td className="px-2 py-2 text-xs">{renderStockBadge(nivelStock)}</td>
 
                 {/* Creado por / Modificado por */}
-                <td className="px-2 sm:px-4 py-3 text-xs">
+                <td className="px-2 py-2 text-[11px]">
                   {producto.creado_por_nombre ? (
-                    <div>
-                      <div className="font-medium text-slate-700 truncate max-w-[90px]" title={producto.creado_por_nombre}>
-                        {producto.creado_por_nombre.length > 14 ? producto.creado_por_nombre.substring(0, 14) + '…' : producto.creado_por_nombre}
+                    <div className="leading-tight">
+                      <div className="font-medium text-slate-700 truncate" title={producto.creado_por_nombre}>
+                        {producto.creado_por_nombre.length > 12 ? producto.creado_por_nombre.substring(0, 12) + '…' : producto.creado_por_nombre}
                       </div>
                       {producto.modificado_por_nombre && producto.modificado_por_nombre !== producto.creado_por_nombre && (
-                        <div className="text-amber-600 truncate max-w-[90px]" title={`Modificado por: ${producto.modificado_por_nombre}`}>
-                          ✏️ {producto.modificado_por_nombre.length > 12 ? producto.modificado_por_nombre.substring(0, 12) + '…' : producto.modificado_por_nombre}
+                        <div className="text-amber-600 truncate" title={`Modificado por: ${producto.modificado_por_nombre}`}>
+                          ✏️ {producto.modificado_por_nombre.length > 10 ? producto.modificado_por_nombre.substring(0, 10) + '…' : producto.modificado_por_nombre}
                         </div>
                       )}
                     </div>
@@ -1898,9 +1899,9 @@ const Productos = () => {
                 </td>
 
                 {puede.tieneAcciones && (
-                <td className="px-2 sm:px-4 py-3 text-sm">
+                <td className="px-2 py-2 text-xs">
 
-                  <div className="flex items-center gap-2 sm:gap-3">
+                  <div className="flex items-center gap-1.5">
 
                     {puede.editar && (
 
@@ -2017,115 +2018,200 @@ const Productos = () => {
 
   return (
 
-    <div className="space-y-6 p-4 sm:p-6">
+    <div className="space-y-4 p-4 sm:p-6">
 
-      <div
+      <PageHeader
+        icon={FaBoxOpen}
+        title="Gestión de Productos"
+        subtitle={`Total activos: ${totalProductos}`}
+        badge={filtrosActivos > 0 ? `${filtrosActivos} filtros activos` : undefined}
+        actions={
+          <div className="flex flex-wrap gap-2 items-center">
+            {/* Exportar - Solo si tiene permiso */}
+            {puede.exportar && (
+              <button
+                type="button"
+                onClick={handleExportar}
+                disabled={exportLoading}
+                className="cc-btn cc-btn-secondary"
+              >
+                {exportLoading ? (
+                  <div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-current border-t-transparent" />
+                ) : (
+                  <FaDownload className="text-xs" />
+                )}
+                <span className="hidden sm:inline">{exportLoading ? 'Exportando...' : 'Exportar'}</span>
+              </button>
+            )}
 
-        className="rounded-2xl p-6 text-white shadow-lg bg-theme-gradient"
-
-      >
-
-        <div className="flex flex-wrap items-center justify-between gap-4">
-
-          <div className="flex items-center gap-4">
-
-            <div className="bg-white/20 p-3 rounded-full">
-
-              <FaBoxOpen size={24} />
-
-            </div>
-
-            <div>
-
-              <h1 className="text-2xl font-bold">Gestión de Productos</h1>
-
-              <p className="text-white/80 text-sm">Total activos: {totalProductos}</p>
-
-            </div>
-
-          </div>
-
-          {filtrosActivos > 0 && (
-
-            <span className="bg-white/20 px-4 py-1 rounded-full text-sm font-semibold">
-
-              {filtrosActivos} filtros activos
-
-            </span>
-
-          )}
-
-          {/* ISS-SEC FIX: Ocultar completamente botones de gestión para roles sin permisos */}
-          {/* CENTRO solo ve productos en modo lectura - no debe ver botones que no puede usar */}
-          <div className="flex flex-wrap gap-2 sm:gap-3 w-full sm:w-auto justify-end">
-              {/* Exportar - Solo si tiene permiso (Farmacia, Admin, Vista) */}
-              {puede.exportar && (
+            {/* Importar - Solo Farmacia/Admin */}
+            {puede.importar && (
+              <>
                 <button
                   type="button"
-                  onClick={handleExportar}
-                  disabled={exportLoading}
-                  className="flex items-center gap-1 sm:gap-2 rounded-full px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed bg-theme-gradient"
+                  onClick={() => setShowImportModal(true)}
+                  disabled={importLoading}
+                  className="cc-btn cc-btn-secondary"
                 >
-                  {exportLoading ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent inline-block" />
+                  {importLoading ? (
+                    <div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-current border-t-transparent" />
                   ) : (
-                    <FaDownload />
+                    <FaFileUpload className="text-xs" />
                   )}
-                  <span className="hidden sm:inline">{exportLoading ? 'Exportando...' : 'Exportar'}</span>
+                  <span className="hidden sm:inline">{importLoading ? 'Importando...' : 'Importar'}</span>
                 </button>
-              )}
-
-              {/* Importar - Solo Farmacia/Admin - Abre modal con ImportadorModerno */}
-              {puede.importar && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setShowImportModal(true)}
-                    disabled={importLoading}
-                    className="flex items-center gap-1 sm:gap-2 rounded-full px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed bg-theme-gradient"
-                  >
-                    {importLoading ? (
-                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent inline-block" />
-                    ) : (
-                      <FaFileUpload />
-                    )}
-                    <span className="hidden sm:inline">{importLoading ? 'Importando...' : 'Importar'}</span>
-                  </button>
-                  
-                  {/* Botón de descarga de plantilla */}
-                  <button
-                    type="button"
-                    onClick={handleDescargarPlantilla}
-                    className="flex items-center gap-1 sm:gap-2 rounded-full px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-theme-primary bg-white/90 hover:bg-white transition"
-                    title="Descargar plantilla Excel para importación"
-                  >
-                    <FaDownload />
-                    <span className="hidden sm:inline">Plantilla</span>
-                  </button>
-                </>
-              )}
-
-              {/* Nuevo Producto - Solo Farmacia/Admin */}
-              {puede.crear && (
+                
                 <button
                   type="button"
-                  onClick={() => openModal()}
-                  className="flex items-center gap-1 sm:gap-2 rounded-full bg-white/90 px-3 sm:px-4 py-2 text-xs sm:text-sm font-bold hover:bg-white text-theme-primary"
+                  onClick={handleDescargarPlantilla}
+                  className="cc-btn cc-btn-ghost"
+                  title="Descargar plantilla Excel para importación"
                 >
-                  <FaPlus />
-                  <span className="hidden sm:inline">Nuevo Producto</span>
+                  <FaDownload className="text-xs" />
+                  <span className="hidden sm:inline">Plantilla</span>
                 </button>
-              )}
-              
-              {/* Botón de limpieza de inventario - SOLO SUPERUSUARIOS */}
-              {permisos?.isSuperuser && (
-                <LimpiarInventario onLimpiezaCompletada={() => fetchProductos()} />
-              )}
+              </>
+            )}
+
+            {/* Nuevo Producto - Solo Farmacia/Admin */}
+            {puede.crear && (
+              <button
+                type="button"
+                onClick={() => openModal()}
+                className="cc-btn cc-btn-primary"
+              >
+                <FaPlus className="text-xs" />
+                <span className="hidden sm:inline">Nuevo Producto</span>
+              </button>
+            )}
+            
+            {/* Botón de limpieza de inventario - SOLO SUPERUSUARIOS */}
+            {permisos?.isSuperuser && (
+              <LimpiarInventario onLimpiezaCompletada={() => fetchProductos()} />
+            )}
           </div>
+        }
+        filters={
+          <>
+            <button
+              type="button"
+              onClick={toggleFiltersMenu}
+              aria-expanded={showFiltersMenu}
+              className="cc-filter-toggle"
+            >
+              <FaFilter className="text-[10px]" style={{ color: 'var(--color-primary)' }} />
+              <span>Filtros</span>
+              <FaChevronDown className={`text-[10px] transition-transform ${showFiltersMenu ? 'rotate-180' : ''}`} />
+            </button>
 
+            {!puede.verSoloActivos && (
+              <select
+                value={filters.estado}
+                onChange={(e) => handleFilterChange('estado', e.target.value)}
+                className="cc-filter-select"
+              >
+                <option value="">Estado ▾</option>
+                <option value="activo">Activos</option>
+                <option value="inactivo">Inactivos</option>
+              </select>
+            )}
+
+            <select
+              value={filters.stock}
+              onChange={(e) => handleFilterChange('stock', e.target.value)}
+              className="cc-filter-select"
+            >
+              {NIVELES_INVENTARIO.map((nivel) => (
+                <option key={nivel.value} value={nivel.value}>
+                  {nivel.value === '' ? 'Inventario ▾' : nivel.label}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={filters.unidad}
+              onChange={(e) => handleFilterChange('unidad', e.target.value)}
+              className="cc-filter-select"
+            >
+              <option value="">Nivel ▾</option>
+              {UNIDADES.map((unidad) => (
+                <option key={unidad} value={unidad}>
+                  {unidad}
+                </option>
+              ))}
+            </select>
+          </>
+        }
+      />
+
+      {/* Panel de filtros expandido */}
+      {showFiltersMenu && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-6">
+            <div className="lg:col-span-2">
+              <label className="cc-filter-label">Búsqueda</label>
+              <div className="cc-filter-input-wrap">
+                <FaFilter className="text-gray-400 text-xs" />
+                <input
+                  type="text"
+                  value={filters.search}
+                  onChange={(e) => handleFilterChange('search', e.target.value)}
+                  className="w-full bg-transparent text-sm focus:outline-none"
+                  placeholder="Buscar por clave o descripción"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="cc-filter-label">Estado</label>
+              <select
+                value={puede.verSoloActivos ? 'activo' : filters.estado}
+                disabled={puede.verSoloActivos}
+                onChange={(e) => handleFilterChange('estado', e.target.value)}
+                className="cc-filter-select-full"
+              >
+                <option value="">Todos</option>
+                <option value="activo">Activos</option>
+                <option value="inactivo">Inactivos</option>
+              </select>
+              {puede.verSoloActivos && <p className="mt-1 text-[11px] text-gray-400">Solo activos para su rol.</p>}
+            </div>
+            <div>
+              <label className="cc-filter-label">Unidad</label>
+              <select
+                value={filters.unidad}
+                onChange={(e) => handleFilterChange('unidad', e.target.value)}
+                className="cc-filter-select-full"
+              >
+                <option value="">Todas</option>
+                {UNIDADES.map((unidad) => (
+                  <option key={unidad} value={unidad}>{unidad}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="cc-filter-label">Nivel Inventario</label>
+              <select
+                value={filters.stock}
+                onChange={(e) => handleFilterChange('stock', e.target.value)}
+                className="cc-filter-select-full"
+              >
+                {NIVELES_INVENTARIO.map((nivel) => (
+                  <option key={nivel.value} value={nivel.value}>{nivel.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={limpiarFiltros}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-500 hover:bg-gray-50 transition"
+              >
+                Limpiar
+              </button>
+            </div>
+          </div>
         </div>
-
-      </div>
+      )}
 
       {/* ISS-FIX: Banner para usuarios CENTRO indicando que ven su inventario local */}
       {esCentroUser && centroNombre && (
@@ -2142,208 +2228,6 @@ const Productos = () => {
             </p>
           </div>
         </div>
-      )}
-
-      <div className="mb-4 flex justify-end">
-
-        <button
-
-          type="button"
-
-          onClick={toggleFiltersMenu}
-
-          aria-expanded={showFiltersMenu}
-
-          aria-haspopup="true"
-
-          className="flex items-center gap-2 rounded-full border border-gray-200 bg-white/90 px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-white"
-
-        >
-
-          <FaFilter className="text-theme-primary" />
-
-          {showFiltersMenu ? 'Ocultar filtros' : 'Mostrar filtros'}
-
-          <FaChevronDown className={`transition ${showFiltersMenu ? 'rotate-180' : ''}`} />
-
-        </button>
-
-      </div>
-
-
-
-      {showFiltersMenu && (
-
-        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
-
-          <div
-
-            className="flex items-center gap-3 px-5 py-3 border-b-[3px] border-theme-primary bg-gray-50"
-
-          >
-
-            <div className="bg-white p-2 rounded-lg">
-
-              <FaFilter className="text-theme-primary" />
-
-            </div>
-
-            <div>
-
-              <p className="text-sm font-semibold text-theme-primary-hover">Filtros avanzados</p>
-
-              <p className="text-xs text-gray-500">Aplique criterios sin ocupar espacio en pantalla</p>
-
-            </div>
-
-          </div>
-
-
-
-          <div className="space-y-3 px-5 py-3">
-
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-6">
-
-              <div className="lg:col-span-2">
-
-                <label className="text-xs font-semibold text-theme-primary-hover">Búsqueda</label>
-
-                <div
-
-                  className="mt-1 flex items-center rounded-lg border px-3 py-2 focus-within:ring-2 border-theme-primary"
-
-                >
-
-                  <FaFilter className="mr-2 text-gray-400" />
-
-                  <input
-
-                    type="text"
-
-                    value={filters.search}
-
-                    onChange={(e) => handleFilterChange('search', e.target.value)}
-
-                    className="w-full border-none bg-transparent text-sm focus:outline-none"
-
-                    placeholder="Buscar por clave o descripción"
-
-                  />
-
-                </div>
-
-              </div>
-
-              <div>
-
-                <label className="text-xs font-semibold text-theme-primary-hover">Estado</label>
-
-                <select
-
-                  value={puede.verSoloActivos ? 'activo' : filters.estado}
-
-                  disabled={puede.verSoloActivos}
-
-                  onChange={(e) => handleFilterChange('estado', e.target.value)}
-
-                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
-
-                >
-
-                  <option value="">Todos</option>
-
-                  <option value="activo">Activos</option>
-
-                  <option value="inactivo">Inactivos</option>
-
-                </select>
-
-                {puede.verSoloActivos && <p className="mt-1 text-xs text-gray-500">Su rol solo permite ver activos.</p>}
-
-              </div>
-
-              <div>
-
-                <label className="text-xs font-semibold text-theme-primary-hover">Unidad</label>
-
-                <select
-
-                  value={filters.unidad}
-
-                  onChange={(e) => handleFilterChange('unidad', e.target.value)}
-
-                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
-
-                >
-
-                  <option value="">Todas</option>
-
-                  {UNIDADES.map((unidad) => (
-
-                    <option key={unidad} value={unidad}>
-
-                      {unidad}
-
-                    </option>
-
-                  ))}
-
-                </select>
-
-              </div>
-
-              <div>
-
-                <label className="text-xs font-semibold text-theme-primary-hover">Nivel Inventario</label>
-
-                <select
-
-                  value={filters.stock}
-
-                  onChange={(e) => handleFilterChange('stock', e.target.value)}
-
-                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
-
-                >
-
-                  {NIVELES_INVENTARIO.map((nivel) => (
-
-                    <option key={nivel.value} value={nivel.value}>
-
-                      {nivel.label}
-
-                    </option>
-
-                  ))}
-
-                </select>
-
-              </div>
-
-              <div className="flex items-end">
-
-                <button
-
-                  type="button"
-
-                  onClick={limpiarFiltros}
-
-                  className="w-full rounded-lg border px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50"
-
-                >
-
-                  Limpiar
-
-                </button>
-
-              </div>
-
-            </div>
-
-          </div>
-
-        </div>
-
       )}
 
       {/* Validación explícita de puede.ver para tabla y paginación */}

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState, useRef, useCallback } from "react"
 import { useLocation, useSearchParams } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import Pagination from "../components/Pagination";
+import PageHeader from "../components/PageHeader";
 import SalidaMasiva from "../components/SalidaMasiva";
 import { movimientosAPI, productosAPI, centrosAPI, lotesAPI, salidaMasivaAPI, descargarArchivo, abrirPdfEnNavegador } from "../services/api";
 import { usePermissions } from "../hooks/usePermissions";
@@ -1617,116 +1618,44 @@ const Movimientos = () => {
   };
 
   return (
-    <div className="space-y-6 p-4 sm:p-6 max-w-[1600px] mx-auto">
-      {/* 🎯 HEADER PREMIUM con gradiente institucional del tema */}
-      <div className="rounded-2xl overflow-hidden shadow-xl">
-        <div className="bg-theme-gradient p-6 text-white relative">
-          {/* Decoración de fondo */}
-          <div className="absolute inset-0 opacity-10">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-white rounded-full blur-3xl transform translate-x-1/3 -translate-y-1/3"></div>
-            <div className="absolute bottom-0 left-0 w-48 h-48 bg-white rounded-full blur-3xl transform -translate-x-1/3 translate-y-1/3"></div>
-          </div>
-          
-          <div className="relative flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <div className="bg-gradient-to-br from-white/20 to-white/5 p-4 rounded-2xl backdrop-blur-sm border border-white/10 shadow-lg">
-                <FaExchangeAlt size={28} className="text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl sm:text-3xl font-black tracking-tight">Movimientos de Inventario</h1>
-                <p className="text-white/70 text-sm mt-1 flex items-center gap-2">
-                  {vistaAgrupada ? (
-                    <>
-                      <span className="inline-flex items-center gap-1">
-                        <FaLayerGroup className="text-xs" />
-                        {hayFiltrosActivos ? 'Filtrados:' : 'Total:'} 
-                        <span className="font-bold text-white">{totalGrupos}</span> {totalGrupos === 1 ? 'grupo' : 'grupos'}
-                      </span>
-                      {movimientosAgrupados && (
-                        <span className="hidden sm:inline text-white/50">
-                          • {movimientosAgrupados.totalGrupos || 0} agrupados, {movimientosAgrupados.totalSinGrupo || 0} individuales
-                        </span>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <FaList className="text-xs" />
-                      {hayFiltrosActivos ? 'Filtrados:' : 'Total:'} <span className="font-bold text-white">{total}</span> movimientos
-                    </>
-                  )}
-                </p>
-              </div>
-            </div>
-            
-            {!esMedico && hayFiltrosActivos && (
-              <span className="bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-1.5 rounded-full text-xs font-bold shadow-lg">
-                ⚡ {Object.values(filtrosAplicados).filter(v => v !== "").length} filtros activos
-              </span>
-            )}
-            
-            <div className="flex flex-wrap gap-2 sm:gap-3">
-              {/* Botón Salida Masiva - Solo Farmacia */}
-              {esFarmacia && (
-                <button
-                  onClick={() => setShowSalidaMasiva(true)}
-                  className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-all duration-300 bg-gradient-to-r from-pink-500 to-rose-500 text-white hover:from-pink-600 hover:to-rose-600 shadow-lg hover:shadow-xl hover:scale-[1.02]"
-                  title="Salida masiva a centros"
-                >
-                  <FaTruck />
-                  <span className="hidden sm:inline">Salida Masiva</span>
-                </button>
-              )}
-              {/* Toggle Vista Agrupada/Individual */}
+    <div className="space-y-4 p-4 sm:p-6 max-w-[1600px] mx-auto">
+      {/* HEADER Command Center */}
+      <PageHeader
+        icon={FaExchangeAlt}
+        title="Movimientos de Inventario"
+        subtitle={
+          vistaAgrupada ? (
+            `${hayFiltrosActivos ? 'Filtrados:' : 'Total:'} ${totalGrupos} ${totalGrupos === 1 ? 'grupo' : 'grupos'}${movimientosAgrupados ? ` • ${movimientosAgrupados.totalGrupos || 0} agrupados, ${movimientosAgrupados.totalSinGrupo || 0} individuales` : ''}`
+          ) : (
+            `${hayFiltrosActivos ? 'Filtrados:' : 'Total:'} ${total} movimientos`
+          )
+        }
+        badge={!esMedico && hayFiltrosActivos ? `${Object.values(filtrosAplicados).filter(v => v !== "").length} filtros activos` : undefined}
+        actions={
+          <div className="flex flex-wrap gap-2 items-center">
+            {/* Botón Salida Masiva - Solo Farmacia */}
+            {esFarmacia && (
               <button
-                onClick={() => setVistaAgrupada(!vistaAgrupada)}
-                className={`
-                  flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-all duration-300
-                  ${vistaAgrupada 
-                    ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-lg hover:shadow-xl hover:scale-[1.02]' 
-                    : 'bg-white/10 text-white border border-white/20 hover:bg-white/20'
-                  }
-                `}
-                title={vistaAgrupada ? "Ver movimientos individuales" : "Agrupar salidas masivas"}
+                onClick={() => setShowSalidaMasiva(true)}
+                className="cc-btn cc-btn-primary"
+                title="Salida masiva a centros"
               >
-                {vistaAgrupada ? <FaLayerGroup /> : <FaList />}
-                <span className="hidden sm:inline">{vistaAgrupada ? 'Vista Agrupada' : 'Vista Individual'}</span>
+                <FaTruck className="text-xs" />
+                <span className="hidden sm:inline">Salida Masiva</span>
               </button>
-              {/* TEMPORALMENTE OCULTO: Exportar PDF/Excel - pendiente de revisión
-            {puedeExportar && (
-              <>
-                <button
-                  onClick={exportarPdf}
-                  disabled={loading || exporting !== null}
-                  className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{
-                    background: 'rgba(255,255,255,0.2)',
-                    border: '1px solid rgba(255,255,255,0.4)'
-                  }}
-                  title="Exportar a PDF"
-                >
-                  {exporting === 'pdf' ? <FaSpinner className="animate-spin" /> : <FaFilePdf />}
-                  {exporting === 'pdf' ? 'Generando...' : 'PDF'}
-                </button>
-                <button
-                  onClick={exportarExcel}
-                  disabled={loading || exporting !== null}
-                  className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{
-                    background: 'rgba(255,255,255,0.2)',
-                    border: '1px solid rgba(255,255,255,0.4)'
-                  }}
-                  title="Exportar a Excel"
-                >
-                  {exporting === 'excel' ? <FaSpinner className="animate-spin" /> : <FaFileExcel />}
-                  {exporting === 'excel' ? 'Generando...' : 'Excel'}
-                </button>
-              </>
             )}
-            */}
-            </div>
+            {/* Toggle Vista Agrupada/Individual */}
+            <button
+              onClick={() => setVistaAgrupada(!vistaAgrupada)}
+              className={vistaAgrupada ? 'cc-btn cc-btn-primary' : 'cc-btn cc-btn-secondary'}
+              title={vistaAgrupada ? "Ver movimientos individuales" : "Agrupar salidas masivas"}
+            >
+              {vistaAgrupada ? <FaLayerGroup className="text-xs" /> : <FaList className="text-xs" />}
+              <span className="hidden sm:inline">{vistaAgrupada ? 'Vista Agrupada' : 'Vista Individual'}</span>
+            </button>
           </div>
-        </div>
-      </div>
+        }
+      />
 
       {/* 🏷️ Banner para usuarios CENTRO */}
       {esCentroUser && centroNombre && (

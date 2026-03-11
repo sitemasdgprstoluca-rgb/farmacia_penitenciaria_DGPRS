@@ -966,7 +966,7 @@ const Reportes = () => {
   };
 
   const badgeContent = (
-    <span className="flex items-center gap-2 rounded-full bg-white/20 px-4 py-1 text-sm font-semibold">
+    <span className="flex items-center gap-2 rounded-full bg-primary/10 text-theme-primary px-4 py-1 text-sm font-semibold">
       <FaDatabase />
       {datos.length} registros
     </span>

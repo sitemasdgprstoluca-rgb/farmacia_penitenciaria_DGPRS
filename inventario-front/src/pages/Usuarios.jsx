@@ -851,7 +851,7 @@ function Usuarios() {
           type="button"
           onClick={handleExportar}
           disabled={exportLoading || importLoading}
-          className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed bg-theme-gradient"
+          className="cc-btn cc-btn-secondary"
         >
           {exportLoading ? (
             <>
@@ -871,7 +871,7 @@ function Usuarios() {
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={exportLoading || importLoading}
-            className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed bg-theme-gradient"
+            className="cc-btn cc-btn-secondary"
           >
             {importLoading ? (
               <>
@@ -889,7 +889,7 @@ function Usuarios() {
           <button
             type="button"
             onClick={handleDescargarPlantilla}
-            className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-theme-primary bg-white/90 hover:bg-white transition"
+            className="cc-btn cc-btn-ghost"
             title="Descargar plantilla Excel para importación"
           >
             <FaDownload /> Plantilla
@@ -909,7 +909,7 @@ function Usuarios() {
           type="button"
           onClick={() => handleOpenModal()}
           disabled={exportLoading || importLoading}
-          className="flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-bold hover:bg-white transition disabled:opacity-50 disabled:cursor-not-allowed text-theme-primary"
+          className="cc-btn cc-btn-primary"
         >
           <FaPlus /> Nuevo Usuario
         </button>

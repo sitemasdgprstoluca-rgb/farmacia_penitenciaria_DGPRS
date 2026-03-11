@@ -226,12 +226,12 @@ function Notificaciones() {
 
   // Badge para el PageHeader
   const badgeContent = sinLeer > 0 ? (
-    <span className="flex items-center gap-2 rounded-full bg-white/20 px-4 py-1 text-sm font-semibold">
+    <span className="flex items-center gap-2 rounded-full bg-amber-100 text-amber-700 px-4 py-1 text-sm font-semibold">
       <FaBell className="animate-pulse" />
       {sinLeer} sin leer
     </span>
   ) : (
-    <span className="flex items-center gap-2 rounded-full bg-white/20 px-4 py-1 text-sm font-semibold">
+    <span className="flex items-center gap-2 rounded-full bg-emerald-100 text-emerald-700 px-4 py-1 text-sm font-semibold">
       <FaCheckCircle />
       Todas leídas
     </span>

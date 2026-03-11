@@ -836,7 +836,7 @@ const Trazabilidad = () => {
 
   // Badge de contexto para el header - muestra rol y centro si aplica
   const badgeContent = esCentroUser && centroUsuarioNombre ? (
-    <span className="flex items-center gap-2 rounded-full bg-white/20 px-4 py-1 text-sm font-semibold">
+    <span className="flex items-center gap-2 rounded-full bg-primary/10 text-theme-primary px-4 py-1 text-sm font-semibold">
       <FaBuilding />
       {centroUsuarioNombre}
     </span>

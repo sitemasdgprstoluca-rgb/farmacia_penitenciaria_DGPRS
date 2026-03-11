@@ -267,7 +267,7 @@ const ResponsiveTable = ({
                   return (
                     <td 
                       key={col.key}
-                      className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap"
+                      className="px-3 py-2.5 text-sm text-gray-700"
                     >
                       {value ?? '-'}
                     </td>

@@ -1761,10 +1761,10 @@ const Requisiciones = () => {
       onClick={abrirModalCrear}
       type="button"
       disabled={errorCentroNoAsignado || !centroResuelto}
-      className="flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-bold hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed text-theme-primary"
+      className="cc-btn cc-btn-primary"
       title={errorCentroNoAsignado ? 'No tienes un centro asignado' : undefined}
     >
-      <FaPlus /> Nueva Requisición
+      <FaPlus className="text-xs" /> Nueva Requisición
     </ProtectedButton>
   );
 
