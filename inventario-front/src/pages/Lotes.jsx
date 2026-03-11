@@ -2204,32 +2204,39 @@ const handleImportar = async (e) => {
         )}
       </div>
 
-      {/* Modal Crear/Editar */}
+      {/* Modal Crear/Editar - Elevated Clean Form */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl max-h-[90vh] overflow-hidden">
-            {/* Header del modal con gradiente institucional */}
-            <div className="flex items-center justify-between rounded-t-2xl px-6 py-4 text-white bg-theme-gradient sticky top-0">
-              <div>
-                <h2 className="text-xl font-bold">
-                  {editingLote ? 'Editar Lote' : 'Nuevo Lote'}
-                </h2>
-                <p className="text-sm text-white/80">Complete los campos obligatorios (*)</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 modal-overlay-elevated p-4">
+          <div className="w-full max-w-3xl rounded-2xl bg-white modal-elevated max-h-[90vh] overflow-hidden">
+            {/* Header elevado */}
+            <div className="flex items-center justify-between rounded-t-2xl px-6 py-5 text-white modal-header-elevated sticky top-0 z-10">
+              <div className="flex items-center gap-3">
+                <div className="modal-icon-badge">
+                  <FaBoxes className="text-white text-lg" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold tracking-wide">
+                    {editingLote ? 'Editar Lote' : 'Nuevo Lote'}
+                  </h2>
+                  <p className="text-xs text-white/60">Complete los campos obligatorios (*)</p>
+                </div>
               </div>
               <div className="flex items-center gap-3">
-                <span className="text-sm font-semibold">{editingLote ? editingLote.numero_lote : 'Nuevo'}</span>
+                <span className="px-2.5 py-1 rounded-lg bg-white/15 text-xs font-semibold backdrop-blur-sm">
+                  {editingLote ? editingLote.numero_lote : 'Nuevo'}
+                </span>
                 <button 
                   onClick={() => { setShowModal(false); resetForm(); }}
-                  className="text-white hover:text-gray-200 p-1 transition-colors"
+                  className="p-1.5 rounded-lg hover:bg-white/20 transition-colors"
                   title="Cerrar"
                 >
-                  <FaTimes className="text-xl" />
+                  <FaTimes className="text-lg" />
                 </button>
               </div>
             </div>
             
             <form onSubmit={handleSubmit} className="overflow-y-auto max-h-[calc(90vh-140px)]">
-              <div className="space-y-4 px-6 py-6">
+              <div className="px-6 py-6 space-y-5">
                 {/* Banner de advertencia si el lote tiene movimientos */}
                 {editingLote?.tiene_movimientos && (
                   <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg">
@@ -2249,224 +2256,212 @@ const handleImportar = async (e) => {
                   </div>
                 )}
 
-                {/* Producto */}
-                <div>
-                  <label className="text-xs font-semibold text-theme-primary-hover">
-                    Producto <span className="text-red-600">*</span>
-                  </label>
-                  <select
-                    value={formData.producto}
-                    onChange={(e) => {
-                      const productoId = e.target.value;
-                      const productoSeleccionado = productos.find(p => String(p.id) === String(productoId));
-                      setFormData({
-                        ...formData, 
-                        producto: productoId,
-                        presentacion_producto: productoSeleccionado?.presentacion || ''
-                      });
-                    }}
-                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
-                    required
-                    disabled={editingLote}
-                  >
-                    <option value="">Seleccione un producto</option>
-                    {productos.map(p => (
-                      <option key={p.id} value={p.id}>
-                        {p.clave} - {p.nombre}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-gray-500 italic mt-1">No se puede cambiar el producto de un lote existente</p>
-                </div>
-
-                {/* Presentación del Producto - SOLO LECTURA */}
-                <div>
-                  <label className="text-xs font-semibold text-theme-primary-hover">
-                    Presentación del producto
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.presentacion_producto}
-                    readOnly
-                    disabled
-                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm bg-gray-100 text-gray-700 cursor-not-allowed"
-                    placeholder="La presentación se obtiene del producto seleccionado"
-                  />
-                  <p className="text-xs text-gray-400 mt-1">
-                    <strong>Nota:</strong> La presentación es propiedad del PRODUCTO. Si necesita otra presentación, cree un nuevo producto.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  {/* Código de Lote */}
-                  <div>
-                    <label className="text-xs font-semibold text-theme-primary-hover">
-                      Código de Lote <span className="text-red-600">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.numero_lote}
-                      onChange={(e) => setFormData({...formData, numero_lote: e.target.value.toUpperCase()})}
-                      className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${editingLote ? 'bg-gray-100 cursor-not-allowed text-gray-600' : 'border-theme-primary'}`}
-                      required
-                      disabled={editingLote}
-                      minLength={3}
-                      maxLength={100}
-                      placeholder="Ingrese el código del lote"
-                    />
-                    <p className="text-xs text-gray-400 mt-1">
-                      {editingLote ? 'No editable - Identificador único del lote' : 'Se convertirá a mayúsculas automáticamente'}
-                    </p>
-                  </div>
-                  
-                  {/* Fecha Caducidad - BLOQUEADA SI TIENE MOVIMIENTOS */}
-                  <div>
-                    <label className="text-xs font-semibold text-theme-primary-hover">
-                      Fecha de caducidad {!(editingLote?.tiene_movimientos) && <span className="text-red-600">*</span>}
-                    </label>
-                    <input
-                      type="date"
-                      value={formData.fecha_caducidad}
-                      onChange={(e) => !(editingLote?.tiene_movimientos) && setFormData({...formData, fecha_caducidad: e.target.value})}
-                      className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${
-                        editingLote?.tiene_movimientos 
-                          ? 'bg-gray-100 text-gray-600 cursor-not-allowed' 
-                          : 'border-theme-primary'
-                      }`}
-                      required={!(editingLote?.tiene_movimientos)}
-                      disabled={editingLote?.tiene_movimientos}
-                      readOnly={editingLote?.tiene_movimientos}
-                      min={new Date().toISOString().split('T')[0]}
-                    />
-                    {editingLote?.tiene_movimientos ? (
-                      <p className="text-xs text-orange-600 italic mt-1">
-                        🔒 No editable - Lote con movimientos registrados
-                      </p>
-                    ) : formData.fecha_caducidad && (
-                      <p className="text-xs font-bold mt-1" style={{ color: '#D97706' }}>
-                        {(() => {
-                          const dias = Math.ceil((new Date(formData.fecha_caducidad) - new Date()) / (1000 * 60 * 60 * 24));
-                          return dias < 0 ? '-s  Vencido' : `Caduca en ${dias} días`;
-                        })()}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* CAMPOS OBLIGATORIOS: Número de Contrato y Fecha de Entrega */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {puedeVerContrato ? (
+                {/* Sección: Producto */}
+                <div className="section-elevated">
+                  <div className="section-elevated-title">Producto asociado</div>
+                  <div className="space-y-4">
                     <div>
-                      <label className="text-xs font-semibold text-theme-primary-hover">
-                        Número de contrato {!editingLote && <span className="text-red-600">*</span>}{editingLote?.tiene_movimientos && <span className="text-orange-500 text-xs">🔒</span>}
+                      <label className="label-elevated">
+                        Producto <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={formData.producto}
+                        onChange={(e) => {
+                          const productoId = e.target.value;
+                          const productoSeleccionado = productos.find(p => String(p.id) === String(productoId));
+                          setFormData({
+                            ...formData, 
+                            producto: productoId,
+                            presentacion_producto: productoSeleccionado?.presentacion || ''
+                          });
+                        }}
+                        className="input-elevated"
+                        required
+                        disabled={editingLote}
+                      >
+                        <option value="">Seleccione un producto</option>
+                        {productos.map(p => (
+                          <option key={p.id} value={p.id}>
+                            {p.clave} - {p.nombre}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-[11px] text-gray-400 mt-1.5 italic">No se puede cambiar el producto de un lote existente</p>
+                    </div>
+
+                    <div>
+                      <label className="label-elevated">Presentación del producto</label>
+                      <input
+                        type="text"
+                        value={formData.presentacion_producto}
+                        readOnly
+                        disabled
+                        className="input-elevated"
+                        placeholder="La presentación se obtiene del producto seleccionado"
+                      />
+                      <p className="text-[11px] text-gray-400 mt-1.5">
+                        <strong>Nota:</strong> La presentación es propiedad del PRODUCTO. Si necesita otra presentación, cree un nuevo producto.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sección: Datos del Lote */}
+                <div className="section-elevated">
+                  <div className="section-elevated-title">Datos del lote</div>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="label-elevated">
+                        Código de Lote <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="text"
-                        value={formData.numero_contrato}
-                        onChange={(e) => !(editingLote?.tiene_movimientos) && setFormData({...formData, numero_contrato: e.target.value})}
-                        className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${
-                          editingLote?.tiene_movimientos
-                            ? 'bg-gray-100 text-gray-600 cursor-not-allowed'
-                            : 'border-theme-primary'
-                        }`}
-                        disabled={editingLote?.tiene_movimientos}
-                        readOnly={editingLote?.tiene_movimientos}
-                        placeholder="Ej: CB/A/37/2025"
+                        value={formData.numero_lote}
+                        onChange={(e) => setFormData({...formData, numero_lote: e.target.value.toUpperCase()})}
+                        className={`input-elevated ${editingLote ? '!bg-gray-100 !cursor-not-allowed !text-gray-600' : ''}`}
+                        required
+                        disabled={editingLote}
+                        minLength={3}
                         maxLength={100}
+                        placeholder="Ingrese el código del lote"
                       />
-                      <p className="text-xs text-gray-400 mt-1">
-                        {editingLote?.tiene_movimientos
-                          ? '🔒 No editable - Campo auditable con movimientos'
-                          : 'Requerido para trazabilidad de adquisiciones'}
+                      <p className="text-[11px] text-gray-400 mt-1.5">
+                        {editingLote ? 'No editable - Identificador único del lote' : 'Se convertirá a mayúsculas automáticamente'}
                       </p>
                     </div>
-                  ) : (
-                    <div />
-                  )}
-
-                  <div>
-                    <label className="text-xs font-semibold text-theme-primary-hover">
-                      Fecha de entrega {!editingLote && <span className="text-red-600">*</span>}{editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
-                    </label>
-                    <input
-                      type="date"
-                      value={formData.fecha_fabricacion}
-                      onChange={(e) => !(editingLote?.tiene_movimientos) && setFormData({...formData, fecha_fabricacion: e.target.value})}
-                      className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${
-                        editingLote?.tiene_movimientos
-                          ? 'bg-gray-100 text-gray-600 cursor-not-allowed'
-                          : 'border-theme-primary'
-                      }`}
-                      required={!editingLote}
-                      disabled={editingLote?.tiene_movimientos}
-                      readOnly={editingLote?.tiene_movimientos}
-                      max={new Date().toISOString().split('T')[0]}
-                    />
-                    <p className="text-xs text-gray-400 mt-1">
-                      {editingLote?.tiene_movimientos ? '🔒 No editable' : 'Fecha de entrega del lote'}
-                    </p>
+                    
+                    <div>
+                      <label className="label-elevated">
+                        Fecha de caducidad {!(editingLote?.tiene_movimientos) && <span className="text-red-500">*</span>}
+                      </label>
+                      <input
+                        type="date"
+                        value={formData.fecha_caducidad}
+                        onChange={(e) => !(editingLote?.tiene_movimientos) && setFormData({...formData, fecha_caducidad: e.target.value})}
+                        className={`input-elevated ${editingLote?.tiene_movimientos ? '!bg-gray-100 !text-gray-600 !cursor-not-allowed' : ''}`}
+                        required={!(editingLote?.tiene_movimientos)}
+                        disabled={editingLote?.tiene_movimientos}
+                        readOnly={editingLote?.tiene_movimientos}
+                        min={new Date().toISOString().split('T')[0]}
+                      />
+                      {editingLote?.tiene_movimientos ? (
+                        <p className="text-[11px] text-orange-600 italic mt-1.5">
+                          🔒 No editable - Lote con movimientos registrados
+                        </p>
+                      ) : formData.fecha_caducidad && (
+                        <p className="text-[11px] font-bold mt-1.5" style={{ color: '#D97706' }}>
+                          {(() => {
+                            const dias = Math.ceil((new Date(formData.fecha_caducidad) - new Date()) / (1000 * 60 * 60 * 24));
+                            return dias < 0 ? '-s  Vencido' : `Caduca en ${dias} días`;
+                          })()}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 items-start">
-                  {/* Columna izquierda: CANTIDAD CONTRATO LOTE + CANTIDAD INICIAL apilados */}
-                  <div className="flex flex-col gap-4">
-                  {/* ISS-INV-002: Cantidad del Contrato LOTE (solo para este lote específico) */}
-                  <div>
-                    <label className="text-xs font-semibold text-theme-primary-hover">
-                      📦 Cantidad contrato lote
-                      <span className="text-gray-500 text-xs ml-2 font-normal">(Solo para este lote)</span>
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={formData.cantidad_contrato}
-                      onChange={(e) => setFormData({...formData, cantidad_contrato: e.target.value})}
-                      className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
-                      placeholder={formData.cantidad_contrato === '' || formData.cantidad_contrato === null ? 'Sin definir (opcional)' : 'Total para este lote'}
-                    />
-                    <p className="text-xs text-gray-400 mt-1">
-                      Opcional. Cantidad acordada solo para este lote
-                    </p>
-                  </div>
-                  
-                  {/* Cantidad Inicial - cantidad realmente recibida (puede ser parcial) */}
-                  <div>
-                    <label className="text-xs font-semibold text-theme-primary-hover">
-                      Cantidad inicial {!editingLote && <span className="text-red-600">*</span>}
-                      {editingLote && <span className="text-red-500 text-xs ml-1">🔒</span>}
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={formData.cantidad_inicial}
-                      onChange={(e) => !editingLote && setFormData({...formData, cantidad_inicial: e.target.value})}
-                      className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${
-                        editingLote 
-                          ? 'bg-gray-100 text-gray-600 cursor-not-allowed' 
-                          : 'border-theme-primary'
-                      }`}
-                      required={!editingLote}
-                      disabled={editingLote}
-                      readOnly={editingLote}
-                      placeholder="Cantidad de la primera entrega"
-                    />
-                    <p className="text-xs text-gray-400 mt-1">
-                      {editingLote 
-                        ? '🔒 Inmutable. Para reabastecer use Movimientos → Entrada' 
-                        : 'Cantidad de la primera entrega que se registra al crear el lote'}
-                    </p>
-                  </div>
-                  </div>{/* fin columna izquierda */}
-                  
-                  {/* ISS-INV-003: Columna derecha - Contrato Global */}
-                  {esFarmaciaAdmin && (
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                      <div className="flex items-center justify-between mb-3">
-                        <label className="text-sm font-semibold text-slate-700">
-                          Contrato Global
+                {/* Sección: Contrato */}
+                <div className="section-elevated">
+                  <div className="section-elevated-title">Información de contrato</div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {puedeVerContrato ? (
+                      <div>
+                        <label className="label-elevated">
+                          Número de contrato {!editingLote && <span className="text-red-500">*</span>}{editingLote?.tiene_movimientos && <span className="text-orange-500 text-xs">🔒</span>}
                         </label>
-                        <span className="text-xs text-slate-500">Aplica a todos los lotes</span>
+                        <input
+                          type="text"
+                          value={formData.numero_contrato}
+                          onChange={(e) => !(editingLote?.tiene_movimientos) && setFormData({...formData, numero_contrato: e.target.value})}
+                          className={`input-elevated ${editingLote?.tiene_movimientos ? '!bg-gray-100 !text-gray-600 !cursor-not-allowed' : ''}`}
+                          disabled={editingLote?.tiene_movimientos}
+                          readOnly={editingLote?.tiene_movimientos}
+                          placeholder="Ej: CB/A/37/2025"
+                          maxLength={100}
+                        />
+                        <p className="text-[11px] text-gray-400 mt-1.5">
+                          {editingLote?.tiene_movimientos
+                            ? '🔒 No editable - Campo auditable con movimientos'
+                            : 'Requerido para trazabilidad de adquisiciones'}
+                        </p>
+                      </div>
+                    ) : (
+                      <div />
+                    )}
+
+                    <div>
+                      <label className="label-elevated">
+                        Fecha de entrega {!editingLote && <span className="text-red-500">*</span>}{editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
+                      </label>
+                      <input
+                        type="date"
+                        value={formData.fecha_fabricacion}
+                        onChange={(e) => !(editingLote?.tiene_movimientos) && setFormData({...formData, fecha_fabricacion: e.target.value})}
+                        className={`input-elevated ${editingLote?.tiene_movimientos ? '!bg-gray-100 !text-gray-600 !cursor-not-allowed' : ''}`}
+                        required={!editingLote}
+                        disabled={editingLote?.tiene_movimientos}
+                        readOnly={editingLote?.tiene_movimientos}
+                        max={new Date().toISOString().split('T')[0]}
+                      />
+                      <p className="text-[11px] text-gray-400 mt-1.5">
+                        {editingLote?.tiene_movimientos ? '🔒 No editable' : 'Fecha de entrega del lote'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sección: Cantidades */}
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 items-start">
+                  <div className="section-elevated space-y-4">
+                    <div className="section-elevated-title">Cantidades</div>
+                    <div>
+                      <label className="label-elevated">
+                        📦 Cantidad contrato lote
+                        <span className="text-gray-400 text-[10px] ml-2 font-normal normal-case">(Solo para este lote)</span>
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={formData.cantidad_contrato}
+                        onChange={(e) => setFormData({...formData, cantidad_contrato: e.target.value})}
+                        className="input-elevated"
+                        placeholder={formData.cantidad_contrato === '' || formData.cantidad_contrato === null ? 'Sin definir (opcional)' : 'Total para este lote'}
+                      />
+                      <p className="text-[11px] text-gray-400 mt-1.5">
+                        Opcional. Cantidad acordada solo para este lote
+                      </p>
+                    </div>
+                  
+                    <div>
+                      <label className="label-elevated">
+                        Cantidad inicial {!editingLote && <span className="text-red-500">*</span>}
+                        {editingLote && <span className="text-red-500 text-xs ml-1">🔒</span>}
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={formData.cantidad_inicial}
+                        onChange={(e) => !editingLote && setFormData({...formData, cantidad_inicial: e.target.value})}
+                        className={`input-elevated ${editingLote ? '!bg-gray-100 !text-gray-600 !cursor-not-allowed' : ''}`}
+                        required={!editingLote}
+                        disabled={editingLote}
+                        readOnly={editingLote}
+                        placeholder="Cantidad de la primera entrega"
+                      />
+                      <p className="text-[11px] text-gray-400 mt-1.5">
+                        {editingLote 
+                          ? '🔒 Inmutable. Para reabastecer use Movimientos → Entrada' 
+                          : 'Cantidad de la primera entrega que se registra al crear el lote'}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {/* Contrato Global */}
+                  {esFarmaciaAdmin && (
+                    <div className="section-elevated">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="section-elevated-title !mb-0">Contrato Global</div>
+                        <span className="text-[10px] text-gray-400">Aplica a todos los lotes</span>
                       </div>
                       
                       <input
@@ -2477,22 +2472,18 @@ const handleImportar = async (e) => {
                           setCcgAutoCompletado(false);
                           setFormData({...formData, cantidad_contrato_global: e.target.value});
                         }}
-                        className={`w-full px-4 py-2.5 border rounded-lg text-base transition-all focus:outline-none ${
-                          ccgAutoCompletado
-                            ? 'border-emerald-400 bg-emerald-50 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100'
-                            : 'border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
-                        }`}
+                        className={`input-elevated ${ccgAutoCompletado ? '!border-emerald-400 !bg-emerald-50' : ''}`}
                         placeholder={cargandoCCG ? 'Buscando...' : 'Ej: 1000'}
                         disabled={cargandoCCG}
                       />
                       {cargandoCCG && (
-                        <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
-                          <div className="animate-spin rounded-full h-3 w-3 border-2 border-slate-400 border-t-transparent" />
+                        <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-gray-400">
+                          <div className="animate-spin rounded-full h-3 w-3 border-2 border-gray-400 border-t-transparent" />
                           Buscando contrato global existente...
                         </div>
                       )}
                       {!cargandoCCG && ccgAutoCompletado && formData.cantidad_contrato_global && (
-                        <div className="mt-1 flex items-center gap-1.5 text-xs text-emerald-700">
+                        <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-emerald-700">
                           <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                           </svg>
@@ -2500,28 +2491,28 @@ const handleImportar = async (e) => {
                         </div>
                       )}
                       
-                      {/* Estado del contrato - Solo si hay datos */}
+                      {/* Estado del contrato */}
                       {editingLote && editingLote.cantidad_contrato_global != null && (
-                        <div className="mt-3 grid grid-cols-3 gap-3">
-                          <div className="bg-white rounded-lg p-2.5 border border-slate-100 text-center">
-                            <div className="text-xs text-slate-500 mb-0.5">Contratado</div>
-                            <div className="text-base font-bold text-slate-800">{editingLote.cantidad_contrato_global?.toLocaleString()}</div>
+                        <div className="mt-3 grid grid-cols-3 gap-2">
+                          <div className="bg-white rounded-lg p-2 border border-gray-100 text-center">
+                            <div className="text-[10px] text-gray-400 mb-0.5">Contratado</div>
+                            <div className="text-sm font-bold text-gray-800">{editingLote.cantidad_contrato_global?.toLocaleString()}</div>
                           </div>
-                          <div className="bg-white rounded-lg p-2.5 border border-slate-100 text-center">
-                            <div className="text-xs text-slate-500 mb-0.5">Inventario</div>
-                            <div className="text-base font-bold text-indigo-600">{(editingLote.total_inventario_global ?? 0)?.toLocaleString()}</div>
+                          <div className="bg-white rounded-lg p-2 border border-gray-100 text-center">
+                            <div className="text-[10px] text-gray-400 mb-0.5">Inventario</div>
+                            <div className="text-sm font-bold text-indigo-600">{(editingLote.total_inventario_global ?? 0)?.toLocaleString()}</div>
                           </div>
-                          <div className={`rounded-lg p-2.5 text-center ${
+                          <div className={`rounded-lg p-2 text-center ${
                             editingLote.cantidad_pendiente_global > 0 
                               ? 'bg-amber-50 border border-amber-200' 
                               : editingLote.cantidad_pendiente_global < 0 
                                 ? 'bg-rose-50 border border-rose-200'
                                 : 'bg-emerald-50 border border-emerald-200'
                           }`}>
-                            <div className="text-xs text-slate-500 mb-0.5">
+                            <div className="text-[10px] text-gray-400 mb-0.5">
                               {editingLote.cantidad_pendiente_global > 0 ? 'Pendiente' : editingLote.cantidad_pendiente_global < 0 ? 'Excedente' : 'Estado'}
                             </div>
-                            <div className={`text-base font-bold ${
+                            <div className={`text-sm font-bold ${
                               editingLote.cantidad_pendiente_global > 0 
                                 ? 'text-amber-600' 
                                 : editingLote.cantidad_pendiente_global < 0 
@@ -2538,14 +2529,12 @@ const handleImportar = async (e) => {
                         </div>
                       )}
                       
-                      {/* Nota breve */}
-                      <p className="text-xs text-slate-500 mt-2">
+                      <p className="text-[11px] text-gray-400 mt-2">
                         Total contratado para esta clave. El sistema calcula automáticamente pendientes.
                       </p>
                       
-                      {/* Advertencia si falta número de contrato */}
                       {!formData.numero_contrato && formData.cantidad_contrato_global && (
-                        <div className="mt-2 flex items-center gap-2 text-xs text-amber-700 bg-amber-50 p-2 rounded-lg">
+                        <div className="mt-2 flex items-center gap-2 text-[11px] text-amber-700 bg-amber-50 p-2 rounded-lg">
                           <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                           </svg>
@@ -2553,9 +2542,8 @@ const handleImportar = async (e) => {
                         </div>
                       )}
                       
-                      {/* Confirmación de aplicación */}
                       {formData.numero_contrato && formData.cantidad_contrato_global && (
-                        <div className="mt-2 flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 p-2 rounded-lg">
+                        <div className="mt-2 flex items-center gap-2 text-[11px] text-emerald-700 bg-emerald-50 p-2 rounded-lg">
                           <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                           </svg>
@@ -2567,95 +2555,77 @@ const handleImportar = async (e) => {
                   
                 </div>
 
-                {/* Precio Unitario */}
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  {/* Precio Unitario (nombre real en DB) */}
-                  <div>
-                    <label className="text-xs font-semibold text-theme-primary-hover">
-                      Precio unitario {editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
-                    </label>
-                    <div className="relative mt-1">
-                      <span className="absolute left-3 top-2.5 font-bold text-gray-500 text-sm">$</span>
+                {/* Sección: Datos adicionales */}
+                <div className="section-elevated">
+                  <div className="section-elevated-title">Datos adicionales</div>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div>
+                        <label className="label-elevated">
+                          Precio unitario {editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-2.5 font-bold text-gray-400 text-sm">$</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={formData.precio_unitario}
+                            onChange={(e) => !(editingLote?.tiene_movimientos) && setFormData({...formData, precio_unitario: e.target.value})}
+                            className={`input-elevated !pl-7 ${editingLote?.tiene_movimientos ? '!bg-gray-100 !text-gray-600 !cursor-not-allowed' : ''}`}
+                            disabled={editingLote?.tiene_movimientos}
+                            readOnly={editingLote?.tiene_movimientos}
+                            placeholder="0.00"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="label-elevated">
+                          Ubicación {editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.ubicacion}
+                          onChange={(e) => !(editingLote?.tiene_movimientos) && setFormData({...formData, ubicacion: e.target.value})}
+                          className={`input-elevated ${editingLote?.tiene_movimientos ? '!bg-gray-100 !text-gray-600 !cursor-not-allowed' : ''}`}
+                          disabled={editingLote?.tiene_movimientos}
+                          readOnly={editingLote?.tiene_movimientos}
+                          placeholder="Ej: Estante A, Anaquel 3"
+                          maxLength={100}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Marca / Laboratorio - Solo Admin/Farmacia */}
+                    {puedeVerContrato && (
+                    <div>
+                      <label className="label-elevated">
+                        Marca / Laboratorio {editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
+                      </label>
                       <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={formData.precio_unitario}
-                        onChange={(e) => !(editingLote?.tiene_movimientos) && setFormData({...formData, precio_unitario: e.target.value})}
-                        className={`w-full pl-7 pr-3 py-2 rounded-lg border text-sm focus:ring-2 ${
-                          editingLote?.tiene_movimientos 
-                            ? 'bg-gray-100 text-gray-600 cursor-not-allowed' 
-                            : 'border-theme-primary'
-                        }`}
+                        type="text"
+                        value={formData.marca}
+                        onChange={(e) => !(editingLote?.tiene_movimientos) && setFormData({...formData, marca: e.target.value})}
+                        className={`input-elevated ${editingLote?.tiene_movimientos ? '!bg-gray-100 !text-gray-600 !cursor-not-allowed' : ''}`}
                         disabled={editingLote?.tiene_movimientos}
                         readOnly={editingLote?.tiene_movimientos}
-                        placeholder="0.00"
+                        placeholder="Ej: Bayer, Pfizer, Genérico"
+                        maxLength={150}
                       />
                     </div>
+                    )}
                   </div>
                 </div>
 
-                {/* Ubicación */}
-                <div>
-                  <label className="text-xs font-semibold text-theme-primary-hover">
-                    Ubicación {editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.ubicacion}
-                    onChange={(e) => !(editingLote?.tiene_movimientos) && setFormData({...formData, ubicacion: e.target.value})}
-                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${
-                      editingLote?.tiene_movimientos
-                        ? 'bg-gray-100 text-gray-600 cursor-not-allowed'
-                        : 'border-theme-primary'
-                    }`}
-                    disabled={editingLote?.tiene_movimientos}
-                    readOnly={editingLote?.tiene_movimientos}
-                    placeholder="Ej: Estante A, Anaquel 3"
-                    maxLength={100}
-                  />
-                  <p className="text-xs text-gray-400 mt-1">
-                    {editingLote?.tiene_movimientos ? '🔒 No editable' : 'Ubicación física del lote en almacén'}
-                  </p>
-                </div>
-
-                {/* Marca / Laboratorio - Solo Admin/Farmacia */}
-                {puedeVerContrato && (
-                <div>
-                  <label className="text-xs font-semibold text-theme-primary-hover">
-                    Marca / Laboratorio {editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.marca}
-                    onChange={(e) => !(editingLote?.tiene_movimientos) && setFormData({...formData, marca: e.target.value})}
-                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${
-                      editingLote?.tiene_movimientos
-                        ? 'bg-gray-100 text-gray-600 cursor-not-allowed'
-                        : 'border-theme-primary'
-                    }`}
-                    disabled={editingLote?.tiene_movimientos}
-                    readOnly={editingLote?.tiene_movimientos}
-                    placeholder="Ej: Bayer, Pfizer, Genérico"
-                    maxLength={150}
-                  />
-                  <p className="text-xs text-gray-400 mt-1">
-                    {editingLote?.tiene_movimientos ? '🔒 No editable' : 'Marca o laboratorio del lote'}
-                  </p>
-                </div>
-                )}
-
-                {/* Lote activo checkbox */}
-                <div className="flex items-center gap-2 rounded-lg border px-4 py-3 border-theme-primary">
-                  <input
-                    type="checkbox"
-                    checked={true}
-                    className="h-4 w-4"
-                    style={{ accentColor: 'var(--color-primary)' }}
-                    disabled
-                  />
-                  <span className="text-sm font-semibold text-gray-700">Lote activo</span>
-                  <span className="text-xs text-gray-400 ml-auto">Los lotes inactivos no estarán disponibles para salidas</span>
+                {/* Toggle: Lote activo */}
+                <div className="flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50/50 px-5 py-4">
+                  <div>
+                    <span className="text-sm font-semibold text-gray-700">Lote activo</span>
+                    <p className="text-[11px] text-gray-400 mt-0.5">Los lotes inactivos no estarán disponibles para salidas</p>
+                  </div>
+                  <div className={`toggle-switch active`}>
+                    <span className="toggle-switch-knob" />
+                  </div>
                 </div>
 
                 {/* Alerta de proximidad a caducidad */}
@@ -2666,7 +2636,7 @@ const handleImportar = async (e) => {
                       <FaExclamationTriangle className="text-xl mt-0.5" style={{ color: '#F59E0B' }} />
                       <div>
                         <p className="font-bold text-sm" style={{ color: '#92400E' }}>-s  Atención:</p>
-                        <p className="text-sm" style={{ color: '#78350F' }}>Este lote está príximo a caducar en {dias} días</p>
+                        <p className="text-sm" style={{ color: '#78350F' }}>Este lote está próximo a caducar en {dias} días</p>
                       </div>
                     </div>
                   );
@@ -2674,11 +2644,11 @@ const handleImportar = async (e) => {
               </div>
 
               {/* Footer con botones */}
-              <div className="px-6 py-4 border-t bg-gray-50 rounded-b-2xl flex justify-end gap-3">
+              <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 rounded-b-2xl flex justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => { setShowModal(false); resetForm(); }}
-                  className="rounded-lg border px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="btn-elevated-cancel"
                   disabled={savingLote}
                 >
                   Cancelar
@@ -2686,7 +2656,7 @@ const handleImportar = async (e) => {
                 <button
                   type="submit"
                   disabled={savingLote}
-                  className="rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 bg-theme-gradient"
+                  className="btn-elevated-primary"
                 >
                   {savingLote && (
                     <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />

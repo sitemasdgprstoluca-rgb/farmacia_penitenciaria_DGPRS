@@ -2261,39 +2261,47 @@ const Productos = () => {
 
       {showModal && (
 
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 modal-overlay-elevated p-4">
 
-          <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl max-h-[90vh] overflow-y-auto">
+          <div className="w-full max-w-3xl rounded-2xl bg-white modal-elevated max-h-[90vh] overflow-y-auto">
 
             <div
 
-              className="flex items-center justify-between rounded-t-2xl px-6 py-4 text-white bg-theme-gradient sticky top-0"
+              className="flex items-center justify-between rounded-t-2xl px-6 py-5 text-white modal-header-elevated sticky top-0 z-10"
 
             >
 
-              <div>
+              <div className="flex items-center gap-3">
 
-                <h2 className="text-xl font-bold">{editingProduct ? 'Editar producto' : 'Nuevo producto'}</h2>
+                <div className="modal-icon-badge">
+                  <FaBoxOpen className="text-white text-lg" />
+                </div>
 
-                <p className="text-sm text-white/80">Complete los campos obligatorios (*)</p>
+                <div>
+
+                <h2 className="text-lg font-bold tracking-wide">{editingProduct ? 'Editar producto' : 'Nuevo producto'}</h2>
+
+                <p className="text-xs text-white/60">Complete los campos obligatorios (*)</p>
+
+                </div>
 
               </div>
 
               <div className="flex items-center gap-3">
 
-                <span className="text-sm font-semibold">{editingProduct ? editingProduct.clave : 'Nuevo'}</span>
+                <span className="px-2.5 py-1 rounded-lg bg-white/15 text-xs font-semibold backdrop-blur-sm">{editingProduct ? editingProduct.clave : 'Nuevo'}</span>
 
                 <button
 
                   onClick={closeModal}
 
-                  className="text-white hover:text-gray-200 p-1 transition-colors"
+                  className="p-1.5 rounded-lg hover:bg-white/20 transition-colors"
 
                   title="Cerrar"
 
                 >
 
-                  <FaTimes className="text-xl" />
+                  <FaTimes className="text-lg" />
 
                 </button>
 
@@ -2350,14 +2358,16 @@ const Productos = () => {
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-4 px-6 py-6">
+            <form onSubmit={handleSubmit} className="px-6 py-6 space-y-5">
 
               {/* Clave y Descripción */}
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="section-elevated">
+                <div className="section-elevated-title">Datos principales</div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
 
                 <div>
 
-                  <label className="text-xs font-semibold text-theme-primary-hover">Clave *</label>
+                  <label className="label-elevated">Clave <span className="text-red-500">*</span></label>
 
                   <input
 
@@ -2373,21 +2383,21 @@ const Productos = () => {
 
                     disabled={editingProduct?.tiene_lotes}
 
-                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.clave ? 'border-red-500' : 'border-theme-primary'} ${editingProduct?.tiene_lotes ? 'bg-gray-100 cursor-not-allowed text-gray-600' : ''}`}
+                    className={`input-elevated ${formErrors.clave ? '!border-red-500' : ''} ${editingProduct?.tiene_lotes ? '!bg-gray-100 !cursor-not-allowed !text-gray-600' : ''}`}
 
                   />
 
                   {editingProduct?.tiene_lotes && (
-                    <p className="text-xs text-blue-600 mt-1">🔒 Campo protegido</p>
+                    <p className="text-[11px] text-blue-600 mt-1.5">🔒 Campo protegido</p>
                   )}
 
-                  {formErrors.clave && <p className="text-xs text-red-600">{formErrors.clave}</p>}
+                  {formErrors.clave && <p className="text-[11px] text-red-600">{formErrors.clave}</p>}
 
                 </div>
 
                 <div>
 
-                  <label className="text-xs font-semibold text-theme-primary-hover">Nombre *</label>
+                  <label className="label-elevated">Nombre <span className="text-red-500">*</span></label>
 
                   <input
 
@@ -2403,21 +2413,21 @@ const Productos = () => {
 
                     disabled={editingProduct?.tiene_lotes}
 
-                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.nombre ? 'border-red-500' : 'border-theme-primary'} ${editingProduct?.tiene_lotes ? 'bg-gray-100 cursor-not-allowed text-gray-600' : ''}`}
+                    className={`input-elevated ${formErrors.nombre ? '!border-red-500' : ''} ${editingProduct?.tiene_lotes ? '!bg-gray-100 !cursor-not-allowed !text-gray-600' : ''}`}
 
                   />
 
                   {editingProduct?.tiene_lotes && (
-                    <p className="text-xs text-blue-600 mt-1">🔒 Campo protegido</p>
+                    <p className="text-[11px] text-blue-600 mt-1.5">🔒 Campo protegido</p>
                   )}
 
-                  {formErrors.nombre && <p className="text-xs text-red-600">{formErrors.nombre}</p>}
+                  {formErrors.nombre && <p className="text-[11px] text-red-600">{formErrors.nombre}</p>}
 
                 </div>
 
                 <div>
 
-                  <label className="text-xs font-semibold text-theme-primary-hover">Nombre Comercial</label>
+                  <label className="label-elevated">Nombre Comercial</label>
 
                   <input
 
@@ -2431,21 +2441,24 @@ const Productos = () => {
 
                     placeholder="Ej: Tylenol, Aspirina, Tempra"
 
-                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
+                    className="input-elevated"
 
                   />
 
-                  <p className="text-xs text-gray-400 mt-1">Opcional - Nombre comercial del producto</p>
+                  <p className="text-[11px] text-gray-400 mt-1.5">Opcional - Nombre comercial del producto</p>
 
                 </div>
 
               </div>
+              </div>
 
               {/* Unidad y Stock Mínimo */}
+              <div className="section-elevated">
+                <div className="section-elevated-title">Clasificación y medida</div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
 
-                  <label className="text-xs font-semibold text-theme-primary-hover">Unidad de Medida *</label>
+                  <label className="label-elevated">Unidad de Medida <span className="text-red-500">*</span></label>
 
                   <select
 
@@ -2455,7 +2468,7 @@ const Productos = () => {
 
                     disabled={editingProduct?.tiene_lotes}
 
-                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.unidad_medida ? 'border-red-500' : 'border-theme-primary'} ${editingProduct?.tiene_lotes ? 'bg-gray-100 cursor-not-allowed text-gray-600' : ''}`}
+                    className={`input-elevated ${formErrors.unidad_medida ? '!border-red-500' : ''} ${editingProduct?.tiene_lotes ? '!bg-gray-100 !cursor-not-allowed !text-gray-600' : ''}`}
 
                   >
 
@@ -2470,16 +2483,16 @@ const Productos = () => {
                   </select>
 
                   {editingProduct?.tiene_lotes && (
-                    <p className="text-xs text-blue-600 mt-1">🔒 Campo protegido</p>
+                    <p className="text-[11px] text-blue-600 mt-1.5">🔒 Campo protegido</p>
                   )}
 
-                  {formErrors.unidad_medida && <p className="text-xs text-red-600">{formErrors.unidad_medida}</p>}
+                  {formErrors.unidad_medida && <p className="text-[11px] text-red-600">{formErrors.unidad_medida}</p>}
 
                 </div>
 
                 <div>
 
-                  <label className="text-xs font-semibold text-theme-primary-hover">Stock mínimo *</label>
+                  <label className="label-elevated">Stock mínimo <span className="text-red-500">*</span></label>
 
                   <input
 
@@ -2493,25 +2506,24 @@ const Productos = () => {
 
                     onChange={(e) => setFormData({ ...formData, stock_minimo: e.target.value })}
 
-                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.stock_minimo ? 'border-red-500' : 'border-theme-primary'}`}
+                    className={`input-elevated ${formErrors.stock_minimo ? '!border-red-500' : ''}`}
 
                   />
 
-                  {formErrors.stock_minimo && <p className="text-xs text-red-600">{formErrors.stock_minimo}</p>}
+                  {formErrors.stock_minimo && <p className="text-[11px] text-red-600">{formErrors.stock_minimo}</p>}
 
                 </div>
-
               </div>
 
               {/* Categoría y Presentación */}
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 mt-4">
                 <div>
-                  <label className="text-xs font-semibold text-theme-primary-hover">Categoría *</label>
+                  <label className="label-elevated">Categoría <span className="text-red-500">*</span></label>
                   <select
                     value={formData.categoria}
                     onChange={(e) => setFormData({ ...formData, categoria: e.target.value })}
                     disabled={editingProduct?.tiene_lotes}
-                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.categoria ? 'border-red-500' : 'border-theme-primary'} ${editingProduct?.tiene_lotes ? 'bg-gray-100 cursor-not-allowed text-gray-600' : ''}`}
+                    className={`input-elevated ${formErrors.categoria ? '!border-red-500' : ''} ${editingProduct?.tiene_lotes ? '!bg-gray-100 !cursor-not-allowed !text-gray-600' : ''}`}
                   >
                     {CATEGORIAS.map((cat) => (
                       <option key={cat} value={cat}>
@@ -2520,12 +2532,12 @@ const Productos = () => {
                     ))}
                   </select>
                   {editingProduct?.tiene_lotes && (
-                    <p className="text-xs text-blue-600 mt-1">🔒 Campo protegido</p>
+                    <p className="text-[11px] text-blue-600 mt-1.5">🔒 Campo protegido</p>
                   )}
-                  {formErrors.categoria && <p className="text-xs text-red-600">{formErrors.categoria}</p>}
+                  {formErrors.categoria && <p className="text-[11px] text-red-600">{formErrors.categoria}</p>}
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-theme-primary-hover">Presentación *</label>
+                  <label className="label-elevated">Presentación <span className="text-red-500">*</span></label>
                   <input
                     type="text"
                     value={formData.presentacion}
@@ -2533,66 +2545,67 @@ const Productos = () => {
                     maxLength={200}
                     placeholder="Ej: CAJA CON 10 TABLETAS, FRASCO 120ML"
                     disabled={editingProduct?.tiene_lotes}
-                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${formErrors.presentacion ? 'border-red-500' : 'border-theme-primary'} ${editingProduct?.tiene_lotes ? 'bg-gray-100 cursor-not-allowed text-gray-600' : ''}`}
+                    className={`input-elevated ${formErrors.presentacion ? '!border-red-500' : ''} ${editingProduct?.tiene_lotes ? '!bg-gray-100 !cursor-not-allowed !text-gray-600' : ''}`}
                   />
                   {editingProduct?.tiene_lotes && (
-                    <p className="text-xs text-blue-600 mt-1">🔒 Campo protegido</p>
+                    <p className="text-[11px] text-blue-600 mt-1.5">🔒 Campo protegido</p>
                   )}
-                  {formErrors.presentacion && <p className="text-xs text-red-600">{formErrors.presentacion}</p>}
+                  {formErrors.presentacion && <p className="text-[11px] text-red-600">{formErrors.presentacion}</p>}
                 </div>
+              </div>
               </div>
 
               {/* Datos Farmacéuticos (desplegable) */}
-              <details className="rounded-lg border border-gray-200 bg-gray-50">
-                <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-theme-primary-hover hover:bg-gray-100">
-                  📋 Datos Farmacéuticos (opcional)
+              <details className="section-elevated group">
+                <summary className="cursor-pointer px-4 py-3 text-sm font-bold uppercase tracking-wide text-[var(--color-primary-hover)] hover:bg-gray-100/80 transition-colors flex items-center gap-2">
+                  <span className="text-base">📋</span> Datos Farmacéuticos (opcional)
                 </summary>
                 <div className="space-y-4 px-4 pb-4 pt-2">
                   {/* Descripción (opcional) */}
                   <div>
-                    <label className="text-xs font-semibold text-gray-600">Descripción adicional</label>
+                    <label className="label-elevated">Descripción adicional</label>
                     <input
                       type="text"
                       value={formData.descripcion}
                       onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
                       maxLength={500}
                       placeholder="Descripción adicional del producto (opcional)"
-                      className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-gray-300"
+                      className="input-elevated"
                     />
                   </div>
                   {/* Sustancia Activa y Concentración */}
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div>
-                      <label className="text-xs font-semibold text-gray-600">Sustancia Activa</label>
+                      <label className="label-elevated">Sustancia Activa</label>
                       <input
                         type="text"
                         value={formData.sustancia_activa}
                         onChange={(e) => setFormData({ ...formData, sustancia_activa: e.target.value })}
                         maxLength={200}
                         placeholder="Ej: Paracetamol"
-                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-gray-300"
+                        className="input-elevated"
                       />
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-gray-600">Concentración</label>
+                      <label className="label-elevated">Concentración</label>
                       <input
                         type="text"
                         value={formData.concentracion}
                         onChange={(e) => setFormData({ ...formData, concentracion: e.target.value })}
                         maxLength={100}
                         placeholder="Ej: 500mg, 10ml"
-                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-gray-300"
+                        className="input-elevated"
                       />
                     </div>
                   </div>
                   {/* Vía de Administración */}
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div>
-                      <label className="text-xs font-semibold text-gray-600">Vía de Administración</label>
+                      <label className="label-elevated">Vía de Administración</label>
                       <select
                         value={formData.via_administracion}
                         onChange={(e) => setFormData({ ...formData, via_administracion: e.target.value })}
-                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-gray-300"
+                        className="input-elevated"
                       >
                         <option value="">-- Seleccionar --</option>
                         {VIAS_ADMINISTRACION.map((via) => (
@@ -2603,65 +2616,58 @@ const Productos = () => {
                       </select>
                     </div>
                   </div>
-                  {/* Checkboxes: Requiere Receta y Es Controlado */}
-                  <div className="flex flex-wrap gap-6">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.requiere_receta}
-                        onChange={(e) => setFormData({ ...formData, requiere_receta: e.target.checked })}
-                        className="h-4 w-4"
-                      />
-                      <span className="text-sm text-gray-700">Requiere Receta</span>
+                  {/* Toggles: Requiere Receta y Es Controlado */}
+                  <div className="flex flex-wrap gap-6 pt-1">
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <div className={`toggle-switch ${formData.requiere_receta ? 'active' : ''}`} onClick={() => setFormData({ ...formData, requiere_receta: !formData.requiere_receta })}>
+                        <div className="toggle-switch-knob"></div>
+                      </div>
+                      <span className="text-sm font-medium text-gray-700">Requiere Receta</span>
                     </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.es_controlado}
-                        onChange={(e) => setFormData({ ...formData, es_controlado: e.target.checked })}
-                        className="h-4 w-4"
-                      />
-                      <span className="text-sm text-gray-700">Es Controlado</span>
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <div className={`toggle-switch ${formData.es_controlado ? 'active' : ''}`} onClick={() => setFormData({ ...formData, es_controlado: !formData.es_controlado })}>
+                        <div className="toggle-switch-knob"></div>
+                      </div>
+                      <span className="text-sm font-medium text-gray-700">Es Controlado</span>
                     </label>
                   </div>
                 </div>
               </details>
 
-              {/* Checkbox: activo */}
-              <div className="flex items-center gap-2 rounded-lg border px-4 py-3 border-theme-primary">
-                <input
-                  type="checkbox"
-                  checked={formData.activo}
-                  onChange={(e) => setFormData({ ...formData, activo: e.target.checked })}
-                  className="h-4 w-4"
-                />
-                <span className="text-sm font-semibold text-gray-700">Producto Activo</span>
+              {/* Toggle: Producto activo */}
+              <div className="section-elevated">
+                <div className="flex items-center justify-between px-1">
+                  <span className="label-elevated !mb-0">Producto Activo</span>
+                  <div className={`toggle-switch ${formData.activo ? 'active' : ''}`} onClick={() => setFormData({ ...formData, activo: !formData.activo })}>
+                    <div className="toggle-switch-knob"></div>
+                  </div>
+                </div>
               </div>
 
               {/* Campo de imagen del producto - DESHABILITADO */}
-              <div>
-                <label className="text-xs font-semibold text-gray-400">Imagen del producto</label>
-                <div className="mt-1 flex items-center gap-4 opacity-60 cursor-not-allowed">
-                  <div className="flex items-center gap-2 rounded-lg border border-dashed border-gray-300 px-4 py-3 bg-gray-50">
+              <div className="section-elevated opacity-60">
+                <label className="label-elevated !text-gray-400">Imagen del producto</label>
+                <div className="mt-1 flex items-center gap-4 cursor-not-allowed">
+                  <div className="flex items-center gap-2 rounded-xl border-2 border-dashed border-gray-300 px-4 py-3 bg-gray-50/50">
                     <FaFileUpload className="text-gray-400" />
                     <span className="text-sm text-gray-400">Seleccionar imagen</span>
                   </div>
                 </div>
-                <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-lg">
-                  <p className="text-xs text-amber-700 flex items-center gap-1">
-                    <span className="font-semibold">⏳ Funcionalidad pendiente:</span>
+                <div className="mt-2 p-2.5 bg-amber-50 border border-amber-200 rounded-xl">
+                  <p className="text-[11px] text-amber-700 flex items-center gap-1">
+                    <span className="font-bold">⏳ Funcionalidad pendiente:</span>
                     En espera de mejora de almacenamiento para esta funcionalidad.
                   </p>
                 </div>
               </div>
 
-              <div className="flex justify-end gap-3 pt-2">
+              <div className="flex justify-end gap-3 pt-3 border-t border-gray-100">
 
                 <button 
                   type="button" 
                   onClick={closeModal} 
                   disabled={savingProduct}
-                  className="rounded-lg border px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="btn-elevated-cancel disabled:opacity-50 disabled:cursor-not-allowed"
                 >
 
                   Cancelar
@@ -2673,7 +2679,7 @@ const Productos = () => {
                   type="submit"
                   disabled={savingProduct}
 
-                  className="rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 bg-theme-gradient"
+                  className="btn-elevated-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
 
                 >
                   {savingProduct && (
@@ -2696,14 +2702,14 @@ const Productos = () => {
 
 
       {auditoriaVisible && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4" onClick={(e) => e.target === e.currentTarget && cerrarAuditoria()}>
-          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 modal-overlay-elevated p-4" onClick={(e) => e.target === e.currentTarget && cerrarAuditoria()}>
+          <div className="w-full max-w-2xl modal-elevated flex flex-col max-h-[90vh]">
 
             {/* Cabecera */}
-            <div className="flex items-start justify-between rounded-t-2xl px-6 py-4 text-white bg-theme-gradient shrink-0">
+            <div className="modal-header-elevated shrink-0">
               <div>
-                <h3 className="text-lg font-bold flex items-center gap-2">
-                  <FaHistory className="opacity-80" />
+                <h3 className="text-lg font-bold flex items-center gap-2 tracking-wide">
+                  <div className="modal-icon-badge"><FaHistory /></div>
                   Historial de auditoría
                 </h3>
                 <p className="text-sm text-white/70 mt-0.5">
@@ -2833,7 +2839,7 @@ const Productos = () => {
             </div>
 
             {/* Pie */}
-            <div className="shrink-0 px-6 py-3 border-t bg-gray-50 rounded-b-2xl flex items-center justify-between">
+            <div className="shrink-0 px-6 py-3 border-t bg-gray-50/80 rounded-b-2xl flex items-center justify-between">
               <span className="text-xs text-gray-400">
                 {auditoriaData?.historial?.length
                   ? `${auditoriaData.historial.length} registro${auditoriaData.historial.length !== 1 ? 's' : ''} en el historial`
@@ -2842,7 +2848,7 @@ const Productos = () => {
               <button
                 type="button"
                 onClick={cerrarAuditoria}
-                className="px-4 py-1.5 text-sm font-semibold text-[#632842] border border-[#632842]/30 rounded-lg hover:bg-[#632842] hover:text-white transition-colors"
+                className="btn-elevated-cancel"
               >
                 Cerrar
               </button>
@@ -2853,14 +2859,14 @@ const Productos = () => {
 
       {/* Modal de Lotes del Producto */}
       {lotesModalVisible && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl max-h-[85vh] overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 modal-overlay-elevated p-4">
+          <div className="w-full max-w-3xl modal-elevated max-h-[85vh] overflow-hidden">
             <div
-              className="flex items-center justify-between rounded-t-2xl px-6 py-4 text-white bg-theme-gradient sticky top-0"
+              className="modal-header-elevated sticky top-0"
             >
               <div>
-                <h3 className="text-xl font-bold flex items-center gap-2">
-                  <FaLayerGroup />
+                <h3 className="text-xl font-bold flex items-center gap-2 tracking-wide">
+                  <div className="modal-icon-badge"><FaLayerGroup /></div>
                   Lotes del Producto
                 </h3>
                 <p className="text-sm text-white/80">
@@ -2951,7 +2957,7 @@ const Productos = () => {
                 </div>
               )}
             </div>
-            <div className="px-6 py-4 bg-gray-50 border-t flex justify-between items-center">
+            <div className="px-6 py-4 bg-gray-50/80 border-t flex justify-between items-center rounded-b-2xl">
               <div className="text-xs text-gray-500">
                 <span className="inline-flex items-center gap-1 mr-3">🟢 &gt;90 días</span>
                 <span className="inline-flex items-center gap-1 mr-3">🟡 31-90 días</span>
@@ -2961,7 +2967,7 @@ const Productos = () => {
               <button
                 type="button"
                 onClick={cerrarLotesModal}
-                className="rounded-lg px-4 py-2 text-sm font-semibold text-white bg-theme-gradient hover:opacity-90"
+                className="btn-elevated-primary"
               >
                 Cerrar
               </button>

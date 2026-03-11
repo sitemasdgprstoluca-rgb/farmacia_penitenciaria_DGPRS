@@ -3170,69 +3170,74 @@ const Donaciones = () => {
         </>
       )}
 
-      {/* Modal de Creación/Edición */}
+      {/* Modal de Creación/Edición - Elevated Clean Form */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-            {/* Header */}
-            <div className="flex items-center justify-between rounded-t-2xl px-6 py-4 text-white bg-theme-gradient">
-              <div>
-                <h2 className="text-xl font-bold">
-                  {editingDonacion ? 'Editar Donación' : 'Nueva Donación'}
-                </h2>
-                <p className="text-sm text-white/80">Complete los campos obligatorios (*)</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 modal-overlay-elevated">
+          <div className="bg-white rounded-2xl modal-elevated w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Header elevado */}
+            <div className="flex items-center justify-between rounded-t-2xl px-6 py-5 text-white modal-header-elevated">
+              <div className="flex items-center gap-3">
+                <div className="modal-icon-badge">
+                  <FaGift className="text-white text-lg" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold tracking-wide">
+                    {editingDonacion ? 'Editar Donación' : 'Nueva Donación'}
+                  </h2>
+                  <p className="text-xs text-white/60">Complete los campos obligatorios (*)</p>
+                </div>
               </div>
               <div className="flex items-center gap-3">
-                <span className="text-sm font-semibold">{editingDonacion ? formData.numero : 'Nueva'}</span>
+                <span className="px-2.5 py-1 rounded-lg bg-white/15 text-xs font-semibold backdrop-blur-sm">
+                  {editingDonacion ? formData.numero : 'Nueva'}
+                </span>
                 <button
                   onClick={() => {
                     setShowModal(false);
                     resetForm();
                   }}
-                  className="text-white hover:text-gray-200 p-1 transition-colors"
+                  className="p-1.5 rounded-lg hover:bg-white/20 transition-colors"
                   title="Cerrar"
                 >
-                  <FaTimes className="text-xl" />
+                  <FaTimes className="text-lg" />
                 </button>
               </div>
             </div>
 
             {/* Contenido */}
             <div className="flex-1 overflow-y-auto p-6">
-              {/* Datos principales - Simplificados */}
-              <div className="mb-6">
-                <h3 className="text-xs font-semibold text-theme-primary-hover mb-3 flex items-center gap-2">
-                  <FaGift /> Datos de la Donación
-                </h3>
+              {/* Sección: Datos de la Donación */}
+              <div className="section-elevated mb-5">
+                <div className="section-elevated-title">
+                  <FaGift className="text-[10px]" /> Datos de la Donación
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   <div>
-                    <label className="text-xs font-semibold text-theme-primary-hover">Número *</label>
+                    <label className="label-elevated">Número <span className="text-red-500">*</span></label>
                     <input
                       type="text"
                       value={formData.numero}
                       onChange={(e) => setFormData({ ...formData, numero: e.target.value })}
-                      className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
+                      className="input-elevated"
                       placeholder="DON-001"
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-theme-primary-hover">
-                      Donante *
-                    </label>
+                    <label className="label-elevated">Donante <span className="text-red-500">*</span></label>
                     <input
                       type="text"
                       value={formData.donante_nombre}
                       onChange={(e) => setFormData({ ...formData, donante_nombre: e.target.value })}
-                      className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
+                      className="input-elevated"
                       placeholder="Nombre o razón social"
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-theme-primary-hover">Tipo</label>
+                    <label className="label-elevated">Tipo</label>
                     <select
                       value={formData.donante_tipo}
                       onChange={(e) => setFormData({ ...formData, donante_tipo: e.target.value })}
-                      className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
+                      className="input-elevated"
                     >
                       {TIPOS_DONANTE.map((t) => (
                         <option key={t.value} value={t.value}>
@@ -3242,20 +3247,20 @@ const Donaciones = () => {
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-theme-primary-hover">Fecha Donación *</label>
+                    <label className="label-elevated">Fecha Donación <span className="text-red-500">*</span></label>
                     <input
                       type="date"
                       value={formData.fecha_donacion}
                       onChange={(e) => setFormData({ ...formData, fecha_donacion: e.target.value })}
-                      className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
+                      className="input-elevated"
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-theme-primary-hover">Centro Destino *</label>
+                    <label className="label-elevated">Centro Destino <span className="text-red-500">*</span></label>
                     <select
                       value={formData.centro_destino}
                       onChange={(e) => setFormData({ ...formData, centro_destino: e.target.value })}
-                      className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
+                      className="input-elevated"
                     >
                       <option value="">Seleccionar centro</option>
                       {centros.map((c) => (
@@ -3266,33 +3271,33 @@ const Donaciones = () => {
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-theme-primary-hover">Notas</label>
+                    <label className="label-elevated">Notas</label>
                     <input
                       type="text"
                       value={formData.notas}
                       onChange={(e) => setFormData({ ...formData, notas: e.target.value })}
-                      className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
+                      className="input-elevated"
                       placeholder="Observaciones (opcional)"
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Productos donados */}
-              <div className="mb-6">
-                <h3 className="text-xs font-semibold text-theme-primary-hover mb-3 flex items-center gap-2">
-                  <FaBox /> Productos Donados (Catálogo Independiente)
-                </h3>
+              {/* Sección: Productos donados */}
+              <div className="section-elevated mb-5">
+                <div className="section-elevated-title">
+                  <FaBox className="text-[10px]" /> Productos Donados (Catálogo Independiente)
+                </div>
 
                 {/* Formulario para agregar producto */}
-                <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                <div className="bg-white rounded-xl border border-gray-100 p-4 mb-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3">
                     <div className="lg:col-span-2">
-                      <label className="text-xs font-semibold text-theme-primary-hover">Producto Donación *</label>
+                      <label className="label-elevated">Producto Donación <span className="text-red-500">*</span></label>
                       <select
                         value={detalleForm.producto_donacion}
                         onChange={(e) => setDetalleForm({ ...detalleForm, producto_donacion: e.target.value })}
-                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
+                        className="input-elevated"
                       >
                         <option value="">Seleccionar producto</option>
                         {productosDonacion.map((p) => (
@@ -3303,45 +3308,44 @@ const Donaciones = () => {
                       </select>
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-theme-primary-hover">Lote *</label>
+                      <label className="label-elevated">Lote <span className="text-red-500">*</span></label>
                       <input
                         type="text"
                         required
                         value={detalleForm.numero_lote}
                         onChange={(e) => setDetalleForm({ ...detalleForm, numero_lote: e.target.value })}
-                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
+                        className="input-elevated"
                         placeholder="Nº lote"
                       />
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-theme-primary-hover">Cantidad *</label>
+                      <label className="label-elevated">Cantidad <span className="text-red-500">*</span></label>
                       <input
                         type="number"
                         min="1"
                         value={detalleForm.cantidad}
                         onChange={(e) => setDetalleForm({ ...detalleForm, cantidad: e.target.value })}
-                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
+                        className="input-elevated"
                         placeholder="0"
                       />
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-theme-primary-hover">Caducidad *</label>
+                      <label className="label-elevated">Caducidad <span className="text-red-500">*</span></label>
                       <input
                         type="date"
                         required
                         value={detalleForm.fecha_caducidad}
                         onChange={(e) => setDetalleForm({ ...detalleForm, fecha_caducidad: e.target.value })}
-                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
+                        className="input-elevated"
                       />
                     </div>
                     <div className="flex items-end">
                       <button
                         type="button"
                         onClick={handleAgregarDetalle}
-                        className="w-full px-4 py-2 rounded-lg text-white transition-colors"
-                        style={{ backgroundColor: COLORS.primary }}
+                        className="btn-elevated-primary w-full justify-center"
                       >
-                        <FaPlus className="inline mr-1" /> Agregar
+                        <FaPlus className="text-xs" /> Agregar
                       </button>
                     </div>
                   </div>
@@ -3349,23 +3353,23 @@ const Donaciones = () => {
 
                 {/* Lista de productos agregados */}
                 {formData.detalles.length > 0 ? (
-                  <div className="border rounded-lg overflow-hidden">
+                  <div className="border border-gray-100 rounded-xl overflow-hidden">
                     <table className="w-full text-sm">
-                      <thead className="bg-gray-50 border-b">
+                      <thead className="bg-gray-50/80 border-b border-gray-100">
                         <tr>
-                          <th className="px-3 py-2 text-left font-medium text-gray-600">Producto</th>
-                          <th className="px-3 py-2 text-left font-medium text-gray-600">Lote</th>
-                          <th className="px-3 py-2 text-center font-medium text-gray-600">Cantidad</th>
-                          <th className="px-3 py-2 text-left font-medium text-gray-600">Caducidad</th>
-                          <th className="px-3 py-2 text-center font-medium text-gray-600"></th>
+                          <th className="px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-400">Producto</th>
+                          <th className="px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-400">Lote</th>
+                          <th className="px-3 py-2.5 text-center text-[11px] font-bold uppercase tracking-wider text-gray-400">Cantidad</th>
+                          <th className="px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-400">Caducidad</th>
+                          <th className="px-3 py-2.5 text-center text-[11px] font-bold uppercase tracking-wider text-gray-400"></th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y">
+                      <tbody className="divide-y divide-gray-50">
                         {formData.detalles.map((d, idx) => (
-                          <tr key={d.tempId || d.id || idx} className="hover:bg-gray-50">
+                          <tr key={d.tempId || d.id || idx} className="hover:bg-gray-50/50 transition-colors">
                             <td className="px-3 py-2">
                               <span className="font-medium">{d.producto_clave}</span>
-                              <span className="block text-xs text-gray-500">{d.producto_nombre}</span>
+                              <span className="block text-[11px] text-gray-400">{d.producto_nombre}</span>
                             </td>
                             <td className="px-3 py-2 text-gray-600">{d.numero_lote || '-'}</td>
                             <td className="px-3 py-2 text-center font-medium">{d.cantidad}</td>
@@ -3373,9 +3377,9 @@ const Donaciones = () => {
                             <td className="px-3 py-2 text-center">
                               <button
                                 onClick={() => handleEliminarDetalle(idx)}
-                                className="p-1 text-red-500 hover:bg-red-50 rounded transition-colors"
+                                className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                               >
-                                <FaTrash />
+                                <FaTrash className="text-xs" />
                               </button>
                             </td>
                           </tr>
@@ -3384,20 +3388,19 @@ const Donaciones = () => {
                     </table>
                   </div>
                 ) : (
-                  <div className="text-center py-8 text-gray-400 border-2 border-dashed rounded-lg">
+                  <div className="text-center py-8 text-gray-300 border-2 border-dashed border-gray-100 rounded-xl">
                     <FaBox className="mx-auto text-3xl mb-2" />
-                    <p>No hay productos agregados</p>
+                    <p className="text-sm">No hay productos agregados</p>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Footer */}
-            <div className="px-6 py-4 border-t bg-gray-50 rounded-b-2xl flex justify-between items-center">
-              {/* Mensaje de ayuda si no hay productos */}
+            {/* Footer elevado */}
+            <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 rounded-b-2xl flex justify-between items-center">
               {formData.detalles.length === 0 && (
-                <p className="text-sm text-amber-600 flex items-center gap-1">
-                  <FaExclamationTriangle className="text-amber-500" />
+                <p className="text-sm text-amber-600 flex items-center gap-1.5">
+                  <FaExclamationTriangle className="text-amber-400" />
                   Agregue al menos un producto para guardar
                 </p>
               )}
@@ -3409,14 +3412,14 @@ const Donaciones = () => {
                     setShowModal(false);
                     resetForm();
                   }}
-                  className="rounded-lg border px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="btn-elevated-cancel"
                 >
                   Cancelar
                 </button>
                 <button
                   onClick={handleGuardar}
                   disabled={actionLoading === 'guardar' || formData.detalles.length === 0}
-                  className="rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 bg-theme-gradient"
+                  className="btn-elevated-primary"
                   title={formData.detalles.length === 0 ? 'Debe agregar al menos un producto' : ''}
                 >
                   {actionLoading === 'guardar' ? (
@@ -3435,25 +3438,28 @@ const Donaciones = () => {
 
       {/* Modal de Ver Detalle */}
       {showDetalleModal && viewingDonacion && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
-            {/* Header */}
-            <div className="flex items-center justify-between rounded-t-2xl px-6 py-4 text-white bg-theme-gradient">
-              <div>
-                <h2 className="text-xl font-bold">
-                  Detalle de Donación
-                </h2>
-                <p className="text-sm text-white/80">{viewingDonacion.numero || `DON-${viewingDonacion.id}`}</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 modal-overlay-elevated">
+          <div className="bg-white rounded-2xl modal-elevated w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Header elevado */}
+            <div className="flex items-center justify-between rounded-t-2xl px-6 py-5 text-white modal-header-elevated">
+              <div className="flex items-center gap-3">
+                <div className="modal-icon-badge">
+                  <FaEye className="text-white text-lg" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold tracking-wide">Detalle de Donación</h2>
+                  <p className="text-xs text-white/60">{viewingDonacion.numero || `DON-${viewingDonacion.id}`}</p>
+                </div>
               </div>
               <button
                 onClick={() => {
                   setShowDetalleModal(false);
                   setViewingDonacion(null);
                 }}
-                className="text-white hover:text-gray-200 p-1 transition-colors"
+                className="p-1.5 rounded-lg hover:bg-white/20 transition-colors"
                 title="Cerrar"
               >
-                <FaTimes className="text-xl" />
+                <FaTimes className="text-lg" />
               </button>
             </div>
 

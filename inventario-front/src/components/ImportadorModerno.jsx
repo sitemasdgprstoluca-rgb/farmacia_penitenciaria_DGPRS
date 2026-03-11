@@ -869,22 +869,27 @@ const ImportadorModerno = ({
     : [];
 
   return (
-    <div className={`bg-white rounded-2xl shadow-lg overflow-hidden flex flex-col max-h-[90vh] ${className}`}>
-      {/* Header fijo con botón cerrar */}
-      <div className="px-6 py-4 bg-theme-gradient flex-shrink-0">
+    <div className={`bg-white rounded-2xl modal-elevated overflow-hidden flex flex-col max-h-[90vh] ${className}`}>
+      {/* Header elevado */}
+      <div className="px-6 py-5 modal-header-elevated flex-shrink-0 rounded-t-2xl">
         <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-white flex items-center gap-2">
-              <FaFileExcel /> Importar {config.titulo}
-            </h2>
-            <p className="text-white/80 text-sm mt-1">{config.descripcion}</p>
+          <div className="flex items-center gap-3">
+            <div className="modal-icon-badge">
+              <FaFileExcel className="text-white text-lg" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-white tracking-wide flex items-center gap-2">
+                Importar {config.titulo}
+              </h2>
+              <p className="text-white/60 text-xs mt-0.5">{config.descripcion}</p>
+            </div>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-white/60 text-xs">v{PLANTILLA_VERSION}</span>
+            <span className="px-2.5 py-1 rounded-lg bg-white/15 text-xs font-semibold backdrop-blur-sm text-white">v{PLANTILLA_VERSION}</span>
             {onCerrar && (
               <button
                 onClick={onCerrar}
-                className="p-2 rounded-full bg-white/20 hover:bg-white/30 transition text-white"
+                className="p-1.5 rounded-lg hover:bg-white/20 transition-colors text-white"
                 title="Cerrar importador"
               >
                 <FaTimes size={18} />
@@ -1605,9 +1610,9 @@ const ImportadorModerno = ({
               onClick={ejecutarImportacion}
               disabled={!puedeImportar}
               className={`
-                flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-white transition
+                flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-white transition-all
                 ${puedeImportar 
-                  ? 'bg-theme-gradient hover:opacity-90 cursor-pointer' 
+                  ? 'btn-elevated-primary !px-6 !py-3 !text-base' 
                   : 'bg-gray-400 cursor-not-allowed'
                 }
               `}

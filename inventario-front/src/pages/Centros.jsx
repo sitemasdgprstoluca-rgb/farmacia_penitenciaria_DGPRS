@@ -728,103 +728,127 @@ const Centros = () => {
         )}
       </div>
 
-      {/* Modal Crear/Editar */}
+      {/* Modal Crear/Editar - Elevated Clean Form */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between rounded-t-2xl px-6 py-4 text-white bg-theme-gradient sticky top-0">
-              <div>
-                <h2 className="text-xl font-bold">{editingCentro ? 'Editar Centro' : 'Nuevo Centro'}</h2>
-                <p className="text-sm text-white/80">Complete los campos obligatorios (*)</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 modal-overlay-elevated p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white modal-elevated max-h-[90vh] overflow-y-auto">
+            {/* Header elevado con icono decorativo */}
+            <div className="flex items-center justify-between rounded-t-2xl px-6 py-5 text-white modal-header-elevated sticky top-0 z-10">
+              <div className="flex items-center gap-3">
+                <div className="modal-icon-badge">
+                  <FaBuilding className="text-white text-lg" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold tracking-wide">{editingCentro ? 'Editar Centro' : 'Nuevo Centro'}</h2>
+                  <p className="text-xs text-white/60">Complete los campos obligatorios (*)</p>
+                </div>
               </div>
               <div className="flex items-center gap-3">
-                <span className="text-sm font-semibold">{editingCentro ? editingCentro.nombre?.slice(0, 15) : 'Nuevo'}</span>
+                <span className="px-2.5 py-1 rounded-lg bg-white/15 text-xs font-semibold backdrop-blur-sm">
+                  {editingCentro ? editingCentro.nombre?.slice(0, 15) : 'Nuevo'}
+                </span>
                 <button
                   onClick={() => { setShowModal(false); resetForm(); }}
-                  className="text-white hover:text-gray-200 p-1 transition-colors"
+                  className="p-1.5 rounded-lg hover:bg-white/20 transition-colors"
                   title="Cerrar"
                 >
-                  <FaTimes className="text-xl" />
+                  <FaTimes className="text-lg" />
                 </button>
               </div>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4 px-6 py-6">
-              <div>
-                <label className="text-xs font-semibold text-theme-primary-hover">Nombre *</label>
-                <input
-                  type="text"
-                  value={formData.nombre}
-                  onChange={(e) => setFormData({...formData, nombre: e.target.value})}
-                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
-                  required
-                  minLength={3}
-                  maxLength={200}
-                  placeholder="Nombre del centro penitenciario"
-                />
-                <p className="text-xs text-gray-400 mt-1">3-200 caracteres (debe ser único)</p>
-              </div>
+            <form onSubmit={handleSubmit} className="px-6 py-6 space-y-5">
+              {/* Sección: Información principal */}
+              <div className="section-elevated">
+                <div className="section-elevated-title">Información principal</div>
+                <div className="space-y-4">
+                  <div>
+                    <label className="label-elevated">Nombre <span className="text-red-500">*</span></label>
+                    <input
+                      type="text"
+                      value={formData.nombre}
+                      onChange={(e) => setFormData({...formData, nombre: e.target.value})}
+                      className="input-elevated"
+                      required
+                      minLength={3}
+                      maxLength={200}
+                      placeholder="Nombre del centro penitenciario"
+                    />
+                    <p className="text-[11px] text-gray-400 mt-1.5">3-200 caracteres (debe ser único)</p>
+                  </div>
 
-              <div>
-                <label className="text-xs font-semibold text-theme-primary-hover">Dirección</label>
-                <textarea
-                  value={formData.direccion}
-                  onChange={(e) => setFormData({...formData, direccion: e.target.value})}
-                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
-                  rows="2"
-                  placeholder="Dirección completa del centro"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <label className="text-xs font-semibold text-theme-primary-hover">Teléfono</label>
-                  <input
-                    type="text"
-                    value={formData.telefono}
-                    onChange={(e) => setFormData({...formData, telefono: e.target.value})}
-                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
-                    placeholder="(555) 123-4567"
-                    maxLength={20}
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-theme-primary-hover">Email</label>
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({...formData, email: e.target.value})}
-                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
-                    placeholder="centro@ejemplo.gob.mx"
-                    maxLength={254}
-                  />
+                  <div>
+                    <label className="label-elevated">Dirección</label>
+                    <textarea
+                      value={formData.direccion}
+                      onChange={(e) => setFormData({...formData, direccion: e.target.value})}
+                      className="input-elevated"
+                      rows="2"
+                      placeholder="Dirección completa del centro"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 rounded-lg border px-4 py-3 border-theme-primary">
-                <input
-                  type="checkbox"
-                  checked={formData.activo}
-                  onChange={(e) => setFormData({...formData, activo: e.target.checked})}
-                  className="h-4 w-4"
-                />
-                <span className="text-sm font-semibold text-gray-700">Centro Activo</span>
+              {/* Sección: Contacto */}
+              <div className="section-elevated">
+                <div className="section-elevated-title">Información de contacto</div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="label-elevated">Teléfono</label>
+                    <input
+                      type="text"
+                      value={formData.telefono}
+                      onChange={(e) => setFormData({...formData, telefono: e.target.value})}
+                      className="input-elevated"
+                      placeholder="(555) 123-4567"
+                      maxLength={20}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="label-elevated">Email</label>
+                    <input
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => setFormData({...formData, email: e.target.value})}
+                      className="input-elevated"
+                      placeholder="centro@ejemplo.gob.mx"
+                      maxLength={254}
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div className="flex justify-end gap-3 pt-2">
+              {/* Toggle: Centro Activo */}
+              <div className="flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50/50 px-5 py-4">
+                <div>
+                  <span className="text-sm font-semibold text-gray-700">Centro Activo</span>
+                  <p className="text-[11px] text-gray-400 mt-0.5">Visible en el sistema para asignaciones</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFormData({...formData, activo: !formData.activo})}
+                  className={`toggle-switch ${formData.activo ? 'active' : 'inactive'}`}
+                >
+                  <span className="toggle-switch-knob" />
+                </button>
+              </div>
+
+              {/* Botones */}
+              <div className="flex justify-end gap-3 pt-3 border-t border-gray-100">
                 <button
                   type="button"
                   onClick={() => { setShowModal(false); resetForm(); }}
                   disabled={loading}
-                  className="rounded-lg border px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="btn-elevated-cancel"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 bg-theme-gradient"
+                  className="btn-elevated-primary"
                 >
                   {loading ? <><FaSpinner className="animate-spin" /> Guardando...</> : 'Guardar'}
                 </button>
@@ -836,56 +860,59 @@ const Centros = () => {
 
       {/* Modal Importar */}
       {showImportModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
-            <div className="px-6 py-4 bg-theme-gradient rounded-t-2xl flex items-center justify-between">
-              <h2 className="text-xl font-bold text-white">Importar Centros desde Excel</h2>
-              <button onClick={() => setShowImportModal(false)} className="text-white/70 hover:text-white">
-                <FaTimes size={24} />
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 modal-overlay-elevated">
+          <div className="bg-white rounded-2xl w-full max-w-md modal-elevated overflow-hidden">
+            <div className="px-6 py-5 modal-header-elevated rounded-t-2xl flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="modal-icon-badge">
+                  <FaFileExcel className="text-white text-lg" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-white tracking-wide">Importar Centros</h2>
+                  <p className="text-xs text-white/60">Desde archivo Excel</p>
+                </div>
+              </div>
+              <button onClick={() => setShowImportModal(false)} className="p-1.5 rounded-lg hover:bg-white/20 transition-colors text-white">
+                <FaTimes size={18} />
               </button>
             </div>
             
-            <div className="p-6">
-              <div className="mb-4">
-                <p className="text-sm text-gray-600 mb-2">
-                  El archivo debe contener las siguientes columnas:
-                </p>
-                <ul className="text-sm text-gray-600 list-disc list-inside">
-                  <li><strong>Nombre</strong> (requerido, único)</li>
-                  <li>Dirección (opcional)</li>
-                  <li>Teléfono (opcional)</li>
-                  <li>Email (opcional)</li>
-                  <li>Estado (opcional: Activo/Inactivo)</li>
+            <div className="p-6 space-y-4">
+              <div className="section-elevated">
+                <div className="section-elevated-title">Formato requerido</div>
+                <ul className="text-sm text-gray-600 space-y-1.5">
+                  <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-red-400"></span><strong>Nombre</strong> (requerido, único)</li>
+                  <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>Dirección (opcional)</li>
+                  <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>Teléfono (opcional)</li>
+                  <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>Email (opcional)</li>
+                  <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>Estado (opcional: Activo/Inactivo)</li>
                 </ul>
-                <p className="text-sm text-theme-primary mt-2">
-                  Descarga la plantilla para ver el formato correcto
-                </p>
               </div>
               
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-2">
+              <div>
+                <label className="label-elevated">
                   Seleccionar archivo Excel (.xlsx, .xls)
                 </label>
                 <input
                   type="file"
                   accept=".xlsx,.xls"
                   onChange={handleImportar}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-theme-primary"
+                  className="input-elevated"
                   disabled={importLoading}
                 />
               </div>
               
               {importLoading && (
-                <div className="mb-4 text-center">
-                  <FaSpinner className="animate-spin h-8 w-8 mx-auto text-theme-primary" />
-                  <p className="text-sm text-gray-600 mt-2">Procesando archivo...</p>
+                <div className="text-center py-3">
+                  <FaSpinner className="animate-spin h-8 w-8 mx-auto" style={{ color: 'var(--color-primary)' }} />
+                  <p className="text-sm text-gray-500 mt-2">Procesando archivo...</p>
                 </div>
               )}
               
-              <div className="flex justify-end gap-2">
+              <div className="flex justify-end pt-2 border-t border-gray-100">
                 <button
                   onClick={() => setShowImportModal(false)}
-                  className="px-4 py-2 border rounded-lg hover:bg-gray-100"
+                  className="btn-elevated-cancel"
                   disabled={loading}
                 >
                   Cerrar
