@@ -730,102 +730,106 @@ const Centros = () => {
 
       {/* Modal Crear/Editar */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl">
-            <div className="px-6 py-4 bg-theme-gradient rounded-t-2xl flex items-center justify-between">
-              <h2 className="text-xl font-bold text-white">
-                {editingCentro ? 'Editar Centro' : 'Nuevo Centro'}
-              </h2>
-              <button onClick={() => { setShowModal(false); resetForm(); }} className="text-white/70 hover:text-white">
-                <FaTimes size={24} />
-              </button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between rounded-t-2xl px-6 py-4 text-white bg-theme-gradient sticky top-0">
+              <div>
+                <h2 className="text-xl font-bold">{editingCentro ? 'Editar Centro' : 'Nuevo Centro'}</h2>
+                <p className="text-sm text-white/80">Complete los campos obligatorios (*)</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-semibold">{editingCentro ? editingCentro.nombre?.slice(0, 15) : 'Nuevo'}</span>
+                <button
+                  onClick={() => { setShowModal(false); resetForm(); }}
+                  className="text-white hover:text-gray-200 p-1 transition-colors"
+                  title="Cerrar"
+                >
+                  <FaTimes className="text-xl" />
+                </button>
+              </div>
             </div>
-            <div className="p-6 overflow-y-auto max-h-[calc(90vh-80px)]">
-            
-            <form onSubmit={handleSubmit}>
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-1">Nombre *</label>
+
+            <form onSubmit={handleSubmit} className="space-y-4 px-6 py-6">
+              <div>
+                <label className="text-xs font-semibold text-theme-primary-hover">Nombre *</label>
                 <input
                   type="text"
                   value={formData.nombre}
                   onChange={(e) => setFormData({...formData, nombre: e.target.value})}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
                   required
                   minLength={3}
                   maxLength={200}
                   placeholder="Nombre del centro penitenciario"
                 />
-                <p className="text-xs text-gray-500 mt-1">3-200 caracteres (debe ser único)</p>
+                <p className="text-xs text-gray-400 mt-1">3-200 caracteres (debe ser único)</p>
               </div>
-              
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-1">Dirección</label>
+
+              <div>
+                <label className="text-xs font-semibold text-theme-primary-hover">Dirección</label>
                 <textarea
                   value={formData.direccion}
                   onChange={(e) => setFormData({...formData, direccion: e.target.value})}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
                   rows="2"
                   placeholder="Dirección completa del centro"
                 />
               </div>
-              
-              <div className="grid grid-cols-2 gap-4 mb-4">
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Teléfono</label>
+                  <label className="text-xs font-semibold text-theme-primary-hover">Teléfono</label>
                   <input
                     type="text"
                     value={formData.telefono}
                     onChange={(e) => setFormData({...formData, telefono: e.target.value})}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
                     placeholder="(555) 123-4567"
                     maxLength={20}
                   />
                 </div>
-                
+
                 <div>
-                  <label className="block text-sm font-medium mb-1">Email</label>
+                  <label className="text-xs font-semibold text-theme-primary-hover">Email</label>
                   <input
                     type="email"
                     value={formData.email}
                     onChange={(e) => setFormData({...formData, email: e.target.value})}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
                     placeholder="centro@ejemplo.gob.mx"
                     maxLength={254}
                   />
                 </div>
               </div>
-              
-              <div className="mb-4">
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={formData.activo}
-                    onChange={(e) => setFormData({...formData, activo: e.target.checked})}
-                    className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <span className="text-sm font-medium">Centro Activo</span>
-                </label>
+
+              <div className="flex items-center gap-2 rounded-lg border px-4 py-3 border-theme-primary">
+                <input
+                  type="checkbox"
+                  checked={formData.activo}
+                  onChange={(e) => setFormData({...formData, activo: e.target.checked})}
+                  className="h-4 w-4"
+                />
+                <span className="text-sm font-semibold text-gray-700">Centro Activo</span>
               </div>
-              
-              <div className="flex justify-end gap-2">
+
+              <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => { setShowModal(false); resetForm(); }}
-                  className="px-4 py-2 border rounded-lg hover:bg-gray-100"
                   disabled={loading}
+                  className="rounded-lg border px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="px-4 py-2 bg-theme-gradient text-white rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
+                  className="rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 bg-theme-gradient"
                 >
                   {loading ? <><FaSpinner className="animate-spin" /> Guardando...</> : 'Guardar'}
                 </button>
               </div>
             </form>
-            </div>
           </div>
         </div>
       )}

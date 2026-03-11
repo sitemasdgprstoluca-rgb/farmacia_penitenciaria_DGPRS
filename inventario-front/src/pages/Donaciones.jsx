@@ -3172,63 +3172,67 @@ const Donaciones = () => {
 
       {/* Modal de Creación/Edición */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
             {/* Header */}
-            <div
-              className="px-6 py-4 border-b flex items-center justify-between"
-              style={{ backgroundColor: COLORS.primary }}
-            >
-              <h2 className="text-lg font-semibold text-white">
-                {editingDonacion ? 'Editar Donación' : 'Nueva Donación'}
-              </h2>
-              <button
-                onClick={() => {
-                  setShowModal(false);
-                  resetForm();
-                }}
-                className="text-white/80 hover:text-white transition-colors"
-              >
-                <FaTimes size={20} />
-              </button>
+            <div className="flex items-center justify-between rounded-t-2xl px-6 py-4 text-white bg-theme-gradient">
+              <div>
+                <h2 className="text-xl font-bold">
+                  {editingDonacion ? 'Editar Donación' : 'Nueva Donación'}
+                </h2>
+                <p className="text-sm text-white/80">Complete los campos obligatorios (*)</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-semibold">{editingDonacion ? formData.numero : 'Nueva'}</span>
+                <button
+                  onClick={() => {
+                    setShowModal(false);
+                    resetForm();
+                  }}
+                  className="text-white hover:text-gray-200 p-1 transition-colors"
+                  title="Cerrar"
+                >
+                  <FaTimes className="text-xl" />
+                </button>
+              </div>
             </div>
 
             {/* Contenido */}
             <div className="flex-1 overflow-y-auto p-6">
               {/* Datos principales - Simplificados */}
               <div className="mb-6">
-                <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                <h3 className="text-xs font-semibold text-theme-primary-hover mb-3 flex items-center gap-2">
                   <FaGift /> Datos de la Donación
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-600 mb-1">Número *</label>
+                    <label className="text-xs font-semibold text-theme-primary-hover">Número *</label>
                     <input
                       type="text"
                       value={formData.numero}
                       onChange={(e) => setFormData({ ...formData, numero: e.target.value })}
-                      className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
+                      className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
                       placeholder="DON-001"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-600 mb-1">
+                    <label className="text-xs font-semibold text-theme-primary-hover">
                       Donante *
                     </label>
                     <input
                       type="text"
                       value={formData.donante_nombre}
                       onChange={(e) => setFormData({ ...formData, donante_nombre: e.target.value })}
-                      className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
+                      className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
                       placeholder="Nombre o razón social"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-600 mb-1">Tipo</label>
+                    <label className="text-xs font-semibold text-theme-primary-hover">Tipo</label>
                     <select
                       value={formData.donante_tipo}
                       onChange={(e) => setFormData({ ...formData, donante_tipo: e.target.value })}
-                      className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
+                      className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
                     >
                       {TIPOS_DONANTE.map((t) => (
                         <option key={t.value} value={t.value}>
@@ -3238,20 +3242,20 @@ const Donaciones = () => {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-600 mb-1">Fecha Donación *</label>
+                    <label className="text-xs font-semibold text-theme-primary-hover">Fecha Donación *</label>
                     <input
                       type="date"
                       value={formData.fecha_donacion}
                       onChange={(e) => setFormData({ ...formData, fecha_donacion: e.target.value })}
-                      className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
+                      className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-600 mb-1">Centro Destino *</label>
+                    <label className="text-xs font-semibold text-theme-primary-hover">Centro Destino *</label>
                     <select
                       value={formData.centro_destino}
                       onChange={(e) => setFormData({ ...formData, centro_destino: e.target.value })}
-                      className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
+                      className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
                     >
                       <option value="">Seleccionar centro</option>
                       {centros.map((c) => (
@@ -3262,12 +3266,12 @@ const Donaciones = () => {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-600 mb-1">Notas</label>
+                    <label className="text-xs font-semibold text-theme-primary-hover">Notas</label>
                     <input
                       type="text"
                       value={formData.notas}
                       onChange={(e) => setFormData({ ...formData, notas: e.target.value })}
-                      className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary"
+                      className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
                       placeholder="Observaciones (opcional)"
                     />
                   </div>
@@ -3276,7 +3280,7 @@ const Donaciones = () => {
 
               {/* Productos donados */}
               <div className="mb-6">
-                <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                <h3 className="text-xs font-semibold text-theme-primary-hover mb-3 flex items-center gap-2">
                   <FaBox /> Productos Donados (Catálogo Independiente)
                 </h3>
 
@@ -3284,11 +3288,11 @@ const Donaciones = () => {
                 <div className="bg-gray-50 rounded-lg p-4 mb-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3">
                     <div className="lg:col-span-2">
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Producto Donación *</label>
+                      <label className="text-xs font-semibold text-theme-primary-hover">Producto Donación *</label>
                       <select
                         value={detalleForm.producto_donacion}
                         onChange={(e) => setDetalleForm({ ...detalleForm, producto_donacion: e.target.value })}
-                        className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary"
+                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
                       >
                         <option value="">Seleccionar producto</option>
                         {productosDonacion.map((p) => (
@@ -3299,35 +3303,35 @@ const Donaciones = () => {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Lote *</label>
+                      <label className="text-xs font-semibold text-theme-primary-hover">Lote *</label>
                       <input
                         type="text"
                         required
                         value={detalleForm.numero_lote}
                         onChange={(e) => setDetalleForm({ ...detalleForm, numero_lote: e.target.value })}
-                        className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary"
+                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
                         placeholder="Nº lote"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Cantidad *</label>
+                      <label className="text-xs font-semibold text-theme-primary-hover">Cantidad *</label>
                       <input
                         type="number"
                         min="1"
                         value={detalleForm.cantidad}
                         onChange={(e) => setDetalleForm({ ...detalleForm, cantidad: e.target.value })}
-                        className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary"
+                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
                         placeholder="0"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Caducidad *</label>
+                      <label className="text-xs font-semibold text-theme-primary-hover">Caducidad *</label>
                       <input
                         type="date"
                         required
                         value={detalleForm.fecha_caducidad}
                         onChange={(e) => setDetalleForm({ ...detalleForm, fecha_caducidad: e.target.value })}
-                        className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary"
+                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
                       />
                     </div>
                     <div className="flex items-end">
@@ -3389,7 +3393,7 @@ const Donaciones = () => {
             </div>
 
             {/* Footer */}
-            <div className="px-6 py-4 border-t bg-gray-50 flex justify-between items-center">
+            <div className="px-6 py-4 border-t bg-gray-50 rounded-b-2xl flex justify-between items-center">
               {/* Mensaje de ayuda si no hay productos */}
               {formData.detalles.length === 0 && (
                 <p className="text-sm text-amber-600 flex items-center gap-1">
@@ -3405,15 +3409,14 @@ const Donaciones = () => {
                     setShowModal(false);
                     resetForm();
                   }}
-                  className="px-4 py-2 border rounded-lg hover:bg-gray-100 transition-colors"
+                  className="rounded-lg border px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancelar
                 </button>
                 <button
                   onClick={handleGuardar}
                   disabled={actionLoading === 'guardar' || formData.detalles.length === 0}
-                  className="px-6 py-2 rounded-lg text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  style={{ backgroundColor: formData.detalles.length === 0 ? '#9CA3AF' : COLORS.primary }}
+                  className="rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 bg-theme-gradient"
                   title={formData.detalles.length === 0 ? 'Debe agregar al menos un producto' : ''}
                 >
                   {actionLoading === 'guardar' ? (
@@ -3432,24 +3435,25 @@ const Donaciones = () => {
 
       {/* Modal de Ver Detalle */}
       {showDetalleModal && viewingDonacion && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
             {/* Header */}
-            <div
-              className="px-6 py-4 border-b flex items-center justify-between"
-              style={{ backgroundColor: COLORS.primary }}
-            >
-              <h2 className="text-lg font-semibold text-white">
-                Detalle de Donación {viewingDonacion.numero || `DON-${viewingDonacion.id}`}
-              </h2>
+            <div className="flex items-center justify-between rounded-t-2xl px-6 py-4 text-white bg-theme-gradient">
+              <div>
+                <h2 className="text-xl font-bold">
+                  Detalle de Donación
+                </h2>
+                <p className="text-sm text-white/80">{viewingDonacion.numero || `DON-${viewingDonacion.id}`}</p>
+              </div>
               <button
                 onClick={() => {
                   setShowDetalleModal(false);
                   setViewingDonacion(null);
                 }}
-                className="text-white/80 hover:text-white transition-colors"
+                className="text-white hover:text-gray-200 p-1 transition-colors"
+                title="Cerrar"
               >
-                <FaTimes size={20} />
+                <FaTimes className="text-xl" />
               </button>
             </div>
 

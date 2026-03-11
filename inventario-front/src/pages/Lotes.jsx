@@ -2206,24 +2206,30 @@ const handleImportar = async (e) => {
 
       {/* Modal Crear/Editar */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl max-h-[90vh] overflow-hidden">
             {/* Header del modal con gradiente institucional */}
-            <div className="px-6 py-4 border-b-4 flex items-center justify-between modal-header-theme">
-              <h2 className="text-2xl font-bold text-white">
-                {editingLote ? 'EDITAR LOTE' : 'NUEVO LOTE'}
-              </h2>
-              <button 
-                onClick={() => { setShowModal(false); resetForm(); }}
-                className="text-white hover:text-gray-200 p-1 transition-colors"
-                title="Cerrar"
-              >
-                <FaTimes className="text-xl" />
-              </button>
+            <div className="flex items-center justify-between rounded-t-2xl px-6 py-4 text-white bg-theme-gradient sticky top-0">
+              <div>
+                <h2 className="text-xl font-bold">
+                  {editingLote ? 'Editar Lote' : 'Nuevo Lote'}
+                </h2>
+                <p className="text-sm text-white/80">Complete los campos obligatorios (*)</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-semibold">{editingLote ? editingLote.numero_lote : 'Nuevo'}</span>
+                <button 
+                  onClick={() => { setShowModal(false); resetForm(); }}
+                  className="text-white hover:text-gray-200 p-1 transition-colors"
+                  title="Cerrar"
+                >
+                  <FaTimes className="text-xl" />
+                </button>
+              </div>
             </div>
             
             <form onSubmit={handleSubmit} className="overflow-y-auto max-h-[calc(90vh-140px)]">
-              <div className="p-6 space-y-5">
+              <div className="space-y-4 px-6 py-6">
                 {/* Banner de advertencia si el lote tiene movimientos */}
                 {editingLote?.tiene_movimientos && (
                   <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg">
@@ -2245,8 +2251,8 @@ const handleImportar = async (e) => {
 
                 {/* Producto */}
                 <div>
-                  <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                    PRODUCTO <span className="text-red-600">*</span>
+                  <label className="text-xs font-semibold text-theme-primary-hover">
+                    Producto <span className="text-red-600">*</span>
                   </label>
                   <select
                     value={formData.producto}
@@ -2256,22 +2262,10 @@ const handleImportar = async (e) => {
                       setFormData({
                         ...formData, 
                         producto: productoId,
-                        // Auto-rellenar presentación del producto si existe
                         presentacion_producto: productoSeleccionado?.presentacion || ''
                       });
                     }}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl transition-all focus:outline-none"
-                    style={{
-                      '--tw-ring-color': 'rgba(159, 34, 65, 0.2)'
-                    }}
-                    onFocus={(e) => {
-                      e.target.style.borderColor = '#9F2241';
-                      e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
-                    }}
-                    onBlur={(e) => {
-                      e.target.style.borderColor = '#E5E7EB';
-                      e.target.style.boxShadow = 'none';
-                    }}
+                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
                     required
                     disabled={editingLote}
                   >
@@ -2287,76 +2281,58 @@ const handleImportar = async (e) => {
 
                 {/* Presentación del Producto - SOLO LECTURA */}
                 <div>
-                  <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                    PRESENTACIÓN DEL PRODUCTO
+                  <label className="text-xs font-semibold text-theme-primary-hover">
+                    Presentación del producto
                   </label>
                   <input
                     type="text"
                     value={formData.presentacion_producto}
                     readOnly
                     disabled
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl bg-gray-100 text-gray-700 cursor-not-allowed"
+                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm bg-gray-100 text-gray-700 cursor-not-allowed"
                     placeholder="La presentación se obtiene del producto seleccionado"
                   />
-                  <p className="text-xs text-gray-500 italic mt-1">
+                  <p className="text-xs text-gray-400 mt-1">
                     <strong>Nota:</strong> La presentación es propiedad del PRODUCTO. Si necesita otra presentación, cree un nuevo producto.
                   </p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   {/* Código de Lote */}
                   <div>
-                    <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                      CÓDIGO DE LOTE <span className="text-red-600">*</span>
+                    <label className="text-xs font-semibold text-theme-primary-hover">
+                      Código de Lote <span className="text-red-600">*</span>
                     </label>
                     <input
                       type="text"
                       value={formData.numero_lote}
                       onChange={(e) => setFormData({...formData, numero_lote: e.target.value.toUpperCase()})}
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl transition-all focus:outline-none"
-                      onFocus={(e) => {
-                        e.target.style.borderColor = '#9F2241';
-                        e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
-                      }}
-                      onBlur={(e) => {
-                        e.target.style.borderColor = '#E5E7EB';
-                        e.target.style.boxShadow = 'none';
-                      }}
+                      className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${editingLote ? 'bg-gray-100 cursor-not-allowed text-gray-600' : 'border-theme-primary'}`}
                       required
                       disabled={editingLote}
                       minLength={3}
                       maxLength={100}
                       placeholder="Ingrese el código del lote"
                     />
-                    <p className="text-xs text-gray-500 italic mt-1">
+                    <p className="text-xs text-gray-400 mt-1">
                       {editingLote ? 'No editable - Identificador único del lote' : 'Se convertirá a mayúsculas automáticamente'}
                     </p>
                   </div>
                   
                   {/* Fecha Caducidad - BLOQUEADA SI TIENE MOVIMIENTOS */}
                   <div>
-                    <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                      FECHA DE CADUCIDAD {!(editingLote?.tiene_movimientos) && <span className="text-red-600">*</span>}
+                    <label className="text-xs font-semibold text-theme-primary-hover">
+                      Fecha de caducidad {!(editingLote?.tiene_movimientos) && <span className="text-red-600">*</span>}
                     </label>
                     <input
                       type="date"
                       value={formData.fecha_caducidad}
                       onChange={(e) => !(editingLote?.tiene_movimientos) && setFormData({...formData, fecha_caducidad: e.target.value})}
-                      className={`w-full px-4 py-3 border-2 rounded-xl transition-all focus:outline-none ${
+                      className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${
                         editingLote?.tiene_movimientos 
-                          ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed' 
-                          : 'border-gray-200'
+                          ? 'bg-gray-100 text-gray-600 cursor-not-allowed' 
+                          : 'border-theme-primary'
                       }`}
-                      onFocus={(e) => {
-                        if (!(editingLote?.tiene_movimientos)) {
-                          e.target.style.borderColor = '#9F2241';
-                          e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
-                        }
-                      }}
-                      onBlur={(e) => {
-                        e.target.style.borderColor = '#E5E7EB';
-                        e.target.style.boxShadow = 'none';
-                      }}
                       required={!(editingLote?.tiene_movimientos)}
                       disabled={editingLote?.tiene_movimientos}
                       readOnly={editingLote?.tiene_movimientos}
@@ -2381,28 +2357,18 @@ const handleImportar = async (e) => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {puedeVerContrato ? (
                     <div>
-                      <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                        NÚMERO DE CONTRATO {!editingLote && <span className="text-red-600">*</span>}{editingLote?.tiene_movimientos && <span className="text-orange-500 text-xs">🔒</span>}
+                      <label className="text-xs font-semibold text-theme-primary-hover">
+                        Número de contrato {!editingLote && <span className="text-red-600">*</span>}{editingLote?.tiene_movimientos && <span className="text-orange-500 text-xs">🔒</span>}
                       </label>
                       <input
                         type="text"
                         value={formData.numero_contrato}
                         onChange={(e) => !(editingLote?.tiene_movimientos) && setFormData({...formData, numero_contrato: e.target.value})}
-                        className={`w-full px-4 py-3 border-2 rounded-xl transition-all focus:outline-none ${
+                        className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${
                           editingLote?.tiene_movimientos
-                            ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed'
-                            : 'border-gray-200'
+                            ? 'bg-gray-100 text-gray-600 cursor-not-allowed'
+                            : 'border-theme-primary'
                         }`}
-                        onFocus={(e) => {
-                          if (!(editingLote?.tiene_movimientos)) {
-                            e.target.style.borderColor = '#9F2241';
-                            e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
-                          }
-                        }}
-                        onBlur={(e) => {
-                          e.target.style.borderColor = '#E5E7EB';
-                          e.target.style.boxShadow = 'none';
-                        }}
                         disabled={editingLote?.tiene_movimientos}
                         readOnly={editingLote?.tiene_movimientos}
                         placeholder="Ej: CB/A/37/2025"
@@ -2419,46 +2385,36 @@ const handleImportar = async (e) => {
                   )}
 
                   <div>
-                    <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                      FECHA DE ENTREGA {!editingLote && <span className="text-red-600">*</span>}{editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
+                    <label className="text-xs font-semibold text-theme-primary-hover">
+                      Fecha de entrega {!editingLote && <span className="text-red-600">*</span>}{editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
                     </label>
                     <input
                       type="date"
                       value={formData.fecha_fabricacion}
                       onChange={(e) => !(editingLote?.tiene_movimientos) && setFormData({...formData, fecha_fabricacion: e.target.value})}
-                      className={`w-full px-4 py-3 border-2 rounded-xl transition-all focus:outline-none ${
+                      className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${
                         editingLote?.tiene_movimientos
-                          ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed'
-                          : 'border-gray-200'
+                          ? 'bg-gray-100 text-gray-600 cursor-not-allowed'
+                          : 'border-theme-primary'
                       }`}
-                      onFocus={(e) => {
-                        if (!(editingLote?.tiene_movimientos)) {
-                          e.target.style.borderColor = '#9F2241';
-                          e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
-                        }
-                      }}
-                      onBlur={(e) => {
-                        e.target.style.borderColor = '#E5E7EB';
-                        e.target.style.boxShadow = 'none';
-                      }}
                       required={!editingLote}
                       disabled={editingLote?.tiene_movimientos}
                       readOnly={editingLote?.tiene_movimientos}
                       max={new Date().toISOString().split('T')[0]}
                     />
-                    <p className="text-xs text-gray-500 italic mt-1">
+                    <p className="text-xs text-gray-400 mt-1">
                       {editingLote?.tiene_movimientos ? '🔒 No editable' : 'Fecha de entrega del lote'}
                     </p>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 items-start">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 items-start">
                   {/* Columna izquierda: CANTIDAD CONTRATO LOTE + CANTIDAD INICIAL apilados */}
                   <div className="flex flex-col gap-4">
                   {/* ISS-INV-002: Cantidad del Contrato LOTE (solo para este lote específico) */}
                   <div>
-                    <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                      📦 CANTIDAD CONTRATO LOTE
+                    <label className="text-xs font-semibold text-theme-primary-hover">
+                      📦 Cantidad contrato lote
                       <span className="text-gray-500 text-xs ml-2 font-normal">(Solo para este lote)</span>
                     </label>
                     <input
@@ -2466,26 +2422,18 @@ const handleImportar = async (e) => {
                       min="0"
                       value={formData.cantidad_contrato}
                       onChange={(e) => setFormData({...formData, cantidad_contrato: e.target.value})}
-                      className="w-full px-4 py-3 border-2 rounded-xl transition-all focus:outline-none border-gray-200"
-                      onFocus={(e) => {
-                        e.target.style.borderColor = '#9F2241';
-                        e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
-                      }}
-                      onBlur={(e) => {
-                        e.target.style.borderColor = '#E5E7EB';
-                        e.target.style.boxShadow = 'none';
-                      }}
+                      className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 border-theme-primary"
                       placeholder={formData.cantidad_contrato === '' || formData.cantidad_contrato === null ? 'Sin definir (opcional)' : 'Total para este lote'}
                     />
-                    <p className="text-xs text-gray-500 italic mt-1">
+                    <p className="text-xs text-gray-400 mt-1">
                       Opcional. Cantidad acordada solo para este lote
                     </p>
                   </div>
                   
                   {/* Cantidad Inicial - cantidad realmente recibida (puede ser parcial) */}
                   <div>
-                    <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                      CANTIDAD INICIAL {!editingLote && <span className="text-red-600">*</span>}
+                    <label className="text-xs font-semibold text-theme-primary-hover">
+                      Cantidad inicial {!editingLote && <span className="text-red-600">*</span>}
                       {editingLote && <span className="text-red-500 text-xs ml-1">🔒</span>}
                     </label>
                     <input
@@ -2493,27 +2441,17 @@ const handleImportar = async (e) => {
                       min="1"
                       value={formData.cantidad_inicial}
                       onChange={(e) => !editingLote && setFormData({...formData, cantidad_inicial: e.target.value})}
-                      className={`w-full px-4 py-3 border-2 rounded-xl transition-all focus:outline-none ${
+                      className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${
                         editingLote 
-                          ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed' 
-                          : 'border-gray-200'
+                          ? 'bg-gray-100 text-gray-600 cursor-not-allowed' 
+                          : 'border-theme-primary'
                       }`}
-                      onFocus={(e) => {
-                        if (!editingLote) {
-                          e.target.style.borderColor = '#9F2241';
-                          e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
-                        }
-                      }}
-                      onBlur={(e) => {
-                        e.target.style.borderColor = '#E5E7EB';
-                        e.target.style.boxShadow = 'none';
-                      }}
                       required={!editingLote}
                       disabled={editingLote}
                       readOnly={editingLote}
                       placeholder="Cantidad de la primera entrega"
                     />
-                    <p className="text-xs text-gray-500 italic mt-1">
+                    <p className="text-xs text-gray-400 mt-1">
                       {editingLote 
                         ? '🔒 Inmutable. Para reabastecer use Movimientos → Entrada' 
                         : 'Cantidad de la primera entrega que se registra al crear el lote'}
@@ -2630,35 +2568,25 @@ const handleImportar = async (e) => {
                 </div>
 
                 {/* Precio Unitario */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   {/* Precio Unitario (nombre real en DB) */}
                   <div>
-                    <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                      PRECIO UNITARIO {editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
+                    <label className="text-xs font-semibold text-theme-primary-hover">
+                      Precio unitario {editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
                     </label>
-                    <div className="relative">
-                      <span className="absolute left-4 top-3.5 font-bold" style={{ color: '#6B7280' }}>$</span>
+                    <div className="relative mt-1">
+                      <span className="absolute left-3 top-2.5 font-bold text-gray-500 text-sm">$</span>
                       <input
                         type="number"
                         step="0.01"
                         min="0"
                         value={formData.precio_unitario}
                         onChange={(e) => !(editingLote?.tiene_movimientos) && setFormData({...formData, precio_unitario: e.target.value})}
-                        className={`w-full pl-8 pr-4 py-3 border-2 rounded-xl transition-all focus:outline-none ${
+                        className={`w-full pl-7 pr-3 py-2 rounded-lg border text-sm focus:ring-2 ${
                           editingLote?.tiene_movimientos 
-                            ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed' 
-                            : 'border-gray-200'
+                            ? 'bg-gray-100 text-gray-600 cursor-not-allowed' 
+                            : 'border-theme-primary'
                         }`}
-                        onFocus={(e) => {
-                          if (!(editingLote?.tiene_movimientos)) {
-                            e.target.style.borderColor = '#9F2241';
-                            e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
-                          }
-                        }}
-                        onBlur={(e) => {
-                          e.target.style.borderColor = '#E5E7EB';
-                          e.target.style.boxShadow = 'none';
-                        }}
                         disabled={editingLote?.tiene_movimientos}
                         readOnly={editingLote?.tiene_movimientos}
                         placeholder="0.00"
@@ -2669,34 +2597,24 @@ const handleImportar = async (e) => {
 
                 {/* Ubicación */}
                 <div>
-                  <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                    UBICACIÓN {editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
+                  <label className="text-xs font-semibold text-theme-primary-hover">
+                    Ubicación {editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
                   </label>
                   <input
                     type="text"
                     value={formData.ubicacion}
                     onChange={(e) => !(editingLote?.tiene_movimientos) && setFormData({...formData, ubicacion: e.target.value})}
-                    className={`w-full px-4 py-3 border-2 rounded-xl transition-all focus:outline-none ${
+                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${
                       editingLote?.tiene_movimientos
-                        ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed'
-                        : 'border-gray-200'
+                        ? 'bg-gray-100 text-gray-600 cursor-not-allowed'
+                        : 'border-theme-primary'
                     }`}
-                    onFocus={(e) => {
-                      if (!(editingLote?.tiene_movimientos)) {
-                        e.target.style.borderColor = '#9F2241';
-                        e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
-                      }
-                    }}
-                    onBlur={(e) => {
-                      e.target.style.borderColor = '#E5E7EB';
-                      e.target.style.boxShadow = 'none';
-                    }}
                     disabled={editingLote?.tiene_movimientos}
                     readOnly={editingLote?.tiene_movimientos}
                     placeholder="Ej: Estante A, Anaquel 3"
                     maxLength={100}
                   />
-                  <p className="text-xs text-gray-500 italic mt-1">
+                  <p className="text-xs text-gray-400 mt-1">
                     {editingLote?.tiene_movimientos ? '🔒 No editable' : 'Ubicación física del lote en almacén'}
                   </p>
                 </div>
@@ -2704,28 +2622,18 @@ const handleImportar = async (e) => {
                 {/* Marca / Laboratorio - Solo Admin/Farmacia */}
                 {puedeVerContrato && (
                 <div>
-                  <label className="block text-sm font-bold mb-2 text-theme-primary-hover">
-                    MARCA / LABORATORIO {editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
+                  <label className="text-xs font-semibold text-theme-primary-hover">
+                    Marca / Laboratorio {editingLote?.tiene_movimientos && <span className="text-red-500 text-xs">🔒</span>}
                   </label>
                   <input
                     type="text"
                     value={formData.marca}
                     onChange={(e) => !(editingLote?.tiene_movimientos) && setFormData({...formData, marca: e.target.value})}
-                    className={`w-full px-4 py-3 border-2 rounded-xl transition-all focus:outline-none ${
+                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 ${
                       editingLote?.tiene_movimientos
-                        ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed'
-                        : 'border-gray-200'
+                        ? 'bg-gray-100 text-gray-600 cursor-not-allowed'
+                        : 'border-theme-primary'
                     }`}
-                    onFocus={(e) => {
-                      if (!(editingLote?.tiene_movimientos)) {
-                        e.target.style.borderColor = '#9F2241';
-                        e.target.style.boxShadow = '0 0 0 3px rgba(159, 34, 65, 0.1)';
-                      }
-                    }}
-                    onBlur={(e) => {
-                      e.target.style.borderColor = '#E5E7EB';
-                      e.target.style.boxShadow = 'none';
-                    }}
                     disabled={editingLote?.tiene_movimientos}
                     readOnly={editingLote?.tiene_movimientos}
                     placeholder="Ej: Bayer, Pfizer, Genérico"
@@ -2738,18 +2646,16 @@ const handleImportar = async (e) => {
                 )}
 
                 {/* Lote activo checkbox */}
-                <div className="flex items-center gap-3 p-4 rounded-xl" style={{ backgroundColor: '#FEF9F2', border: '2px solid #E5E7EB' }}>
+                <div className="flex items-center gap-2 rounded-lg border px-4 py-3 border-theme-primary">
                   <input
                     type="checkbox"
                     checked={true}
-                    className="w-5 h-5 rounded"
+                    className="h-4 w-4"
                     style={{ accentColor: 'var(--color-primary)' }}
                     disabled
                   />
-                  <div>
-                    <label className="font-bold text-sm text-theme-primary-hover">Lote activo</label>
-                    <p className="text-xs text-gray-600">Los lotes inactivos no estarín disponibles para salidas</p>
-                  </div>
+                  <span className="text-sm font-semibold text-gray-700">Lote activo</span>
+                  <span className="text-xs text-gray-400 ml-auto">Los lotes inactivos no estarán disponibles para salidas</span>
                 </div>
 
                 {/* Alerta de proximidad a caducidad */}
@@ -2768,28 +2674,24 @@ const handleImportar = async (e) => {
               </div>
 
               {/* Footer con botones */}
-              <div className="px-6 py-4 border-t-2 bg-gray-50 flex justify-between gap-3">
+              <div className="px-6 py-4 border-t bg-gray-50 rounded-b-2xl flex justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => { setShowModal(false); resetForm(); }}
-                  className="px-6 py-3 rounded-xl font-bold transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ 
-                    background: 'linear-gradient(135deg, #6B7280 0%, #4B5563 100%)',
-                    color: 'white'
-                  }}
+                  className="rounded-lg border px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={savingLote}
                 >
-                  CANCELAR
+                  Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={savingLote}
-                  className="px-8 py-3 rounded-xl font-bold transition-all transform hover:scale-105 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed text-white bg-theme-gradient flex items-center gap-2"
+                  className="rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 bg-theme-gradient"
                 >
                   {savingLote && (
                     <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
                   )}
-                  {savingLote ? 'GUARDANDO...' : 'GUARDAR LOTE'}
+                  {savingLote ? 'Guardando...' : 'Guardar'}
                 </button>
               </div>
             </form>
