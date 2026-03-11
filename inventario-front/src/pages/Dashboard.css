@@ -276,7 +276,7 @@ a:focus-visible {
 /* Borde animado */
 .kpi-glow-border {
   position: relative;
-  border-radius: 16px;
+  border-radius: 12px;
   padding: 1.5px;
   overflow: hidden;
   isolation: isolate;
@@ -315,7 +315,7 @@ a:focus-visible {
   content: '';
   position: absolute;
   inset: 0;
-  border-radius: 16px;
+  border-radius: 12px;
   box-shadow: 0 0 0 0 var(--kpi-glow);
   transition: box-shadow 0.5s ease;
   z-index: -2;
@@ -334,13 +334,13 @@ a:focus-visible {
 .kpi-card-modern {
   position: relative;
   overflow: hidden;
-  border-radius: 15px;
+  border-radius: 11px;
   background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(16px) saturate(180%);
   -webkit-backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid rgba(0, 0, 0, 0.04);
   will-change: transform;
-  transition: background 0.3s ease, border-color 0.3s ease;
+  transition: background 0.2s ease, border-color 0.2s ease;
 }
 
 .kpi-card-modern:hover {
@@ -399,10 +399,10 @@ a:focus-visible {
 
 /* --- Mini Stat Cards --- */
 .dash-stat-mini {
-  border-radius: 10px;
-  padding: 10px 14px;
+  border-radius: 8px;
+  padding: 8px 10px;
   border: 1px solid rgba(0, 0, 0, 0.04);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .dash-stat-mini:hover {
@@ -432,8 +432,8 @@ a:focus-visible {
 }
 
 .dash-ranking-item {
-  padding: 8px 10px;
-  border-radius: 10px;
+  padding: 6px 8px;
+  border-radius: 8px;
   transition: background 0.15s ease;
 }
 
@@ -445,10 +445,10 @@ a:focus-visible {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 8px;
-  font-size: 11px;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  font-size: 10px;
   font-weight: 800;
   color: #6B7280;
   background: #F3F4F6;
@@ -461,8 +461,8 @@ a:focus-visible {
 
 /* --- Requisiciones Badge --- */
 .dash-req-badge {
-  padding: 10px 14px;
-  border-radius: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
   background: white;
   border: 1px solid rgba(0, 0, 0, 0.06);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
@@ -482,12 +482,12 @@ a:focus-visible {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 16px 18px;
-  border-radius: 14px;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
   border: 1px solid rgba(0, 0, 0, 0.04);
   overflow: hidden;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .dash-caducidad-card:hover {
@@ -500,9 +500,9 @@ a:focus-visible {
 .dash-caducidad-yellow { background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%); border-left: 4px solid #F59E0B; }
 
 .dash-caducidad-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -520,8 +520,8 @@ a:focus-visible {
 
 /* --- Centro Item --- */
 .dash-centro-item {
-  padding: 10px 12px;
-  border-radius: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
   transition: background 0.15s ease;
 }
 
@@ -533,9 +533,9 @@ a:focus-visible {
 .dash-list-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 8px;
+  gap: 6px;
+  padding: 5px 6px;
+  border-radius: 6px;
   transition: background 0.15s ease;
 }
 
@@ -545,8 +545,8 @@ a:focus-visible {
 
 /* --- Money Card --- */
 .dash-money-card {
-  padding: 14px 16px;
-  border-radius: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
   background: linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%);
   border: 1px solid rgba(16, 185, 129, 0.1);
 }
@@ -560,16 +560,16 @@ a:focus-visible {
   position: relative;
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding: 12px 14px;
-  margin-left: 12px;
+  gap: 10px;
+  padding: 8px 10px;
+  margin-left: 10px;
   border-left: 2px solid #E5E7EB;
   transition: background 0.15s ease;
 }
 
 .dash-timeline-item:hover {
   background: #FAFAFA;
-  border-radius: 0 10px 10px 0;
+  border-radius: 0 8px 8px 0;
 }
 
 .dash-timeline-item:last-child {
@@ -578,10 +578,10 @@ a:focus-visible {
 
 .dash-timeline-dot {
   position: absolute;
-  left: -6px;
-  top: 16px;
-  width: 10px;
-  height: 10px;
+  left: -5px;
+  top: 12px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   border: 2px solid white;
   box-shadow: 0 0 0 2px currentColor;

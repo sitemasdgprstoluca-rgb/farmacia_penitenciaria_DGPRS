@@ -328,88 +328,88 @@ const KPICard = ({
           }}
         >
           {/* Franja superior Pantone */}
-          <div className="h-[3px]" style={{ background: colors.gradient }} />
+          <div className="h-[2px]" style={{ background: colors.gradient }} />
           
-          <div className="relative z-10 p-4 sm:p-5">
+          <div className="relative z-10 p-3 sm:p-4">
             {/* Fila 1: Icono + Título + Trend badge */}
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex items-center gap-2.5">
+            <div className="flex items-start justify-between mb-2">
+              <div className="flex items-center gap-2">
                 <div 
-                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-transform duration-300"
+                  className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
                   style={{ background: colors.gradient }}
                 >
-                  <Icon className="text-white text-sm sm:text-base" />
+                  <Icon className="text-white text-xs" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[11px] sm:text-xs font-bold uppercase tracking-[0.12em]" style={{ color: colors.text }}>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.1em]" style={{ color: colors.text }}>
                     {title}
                   </p>
-                  <p className="text-[10px] text-gray-400 truncate mt-0.5">{subtext}</p>
+                  <p className="text-[9px] text-gray-400 truncate">{subtext}</p>
                 </div>
               </div>
               {trend && (
                 <div className={`
-                  flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] sm:text-[11px] font-bold flex-shrink-0
+                  flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-bold flex-shrink-0
                   ${trend === 'up' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'}
                 `}>
-                  {trend === 'up' ? <FaArrowUp size={8} /> : <FaArrowDown size={8} />}
+                  {trend === 'up' ? <FaArrowUp size={7} /> : <FaArrowDown size={7} />}
                   {trendValue}%
                 </div>
               )}
             </div>
             
             {/* Fila 2: Número principal */}
-            <div className="mb-1">
+            <div className="mb-0.5">
               {loading ? (
-                <div className="h-10 w-28 rounded-lg skeleton-loader" />
+                <div className="h-8 w-24 rounded skeleton-loader" />
               ) : (
-                <div className="flex items-baseline gap-1">
-                  {prefix && <span className="text-lg font-bold" style={{ color: colors.text }}>{prefix}</span>}
-                  <span className="text-3xl sm:text-4xl font-black tracking-tight tabular-nums" style={{ color: '#111827' }}>
+                <div className="flex items-baseline gap-0.5">
+                  {prefix && <span className="text-base font-bold" style={{ color: colors.text }}>{prefix}</span>}
+                  <span className="text-2xl sm:text-3xl font-black tracking-tight tabular-nums" style={{ color: '#111827' }}>
                     {displayValue.toLocaleString('es-MX')}
                   </span>
-                  {suffix && <span className="text-sm font-semibold text-gray-400 ml-0.5">{suffix}</span>}
+                  {suffix && <span className="text-xs font-medium text-gray-400 ml-0.5">{suffix}</span>}
                 </div>
               )}
             </div>
             
             {/* Fila 3: Métrica secundaria (opcional) */}
             {secondaryLabel && (
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-[10px] text-gray-400">{secondaryLabel}</span>
-                <span className="text-xs font-bold" style={{ color: colors.text }}>{secondaryValue}</span>
+              <div className="flex items-center gap-1.5 mb-1">
+                <span className="text-[9px] text-gray-400">{secondaryLabel}</span>
+                <span className="text-[11px] font-bold" style={{ color: colors.text }}>{secondaryValue}</span>
               </div>
             )}
             
             {/* Sparkline mini-chart (opcional) */}
             {sparklinePath && (
-              <div className="mt-2 mb-1 kpi-sparkline-wrap">
+              <div className="mt-1 kpi-sparkline-wrap">
                 <svg 
                   viewBox={`0 0 ${sparklinePath.W} ${sparklinePath.H}`} 
-                  className="w-full h-9 sm:h-10"
+                  className="w-full h-7 sm:h-8"
                   preserveAspectRatio="none"
                 >
                   <defs>
                     <linearGradient id={`spark-fill-${colorType}-${delay}`} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={colors.sparkStroke} stopOpacity="0.2" />
+                      <stop offset="0%" stopColor={colors.sparkStroke} stopOpacity="0.15" />
                       <stop offset="100%" stopColor={colors.sparkStroke} stopOpacity="0" />
                     </linearGradient>
                   </defs>
                   <path d={sparklinePath.area} fill={`url(#spark-fill-${colorType}-${delay})`} />
-                  <path d={sparklinePath.line} fill="none" stroke={colors.sparkStroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d={sparklinePath.line} fill="none" stroke={colors.sparkStroke} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </div>
             )}
             
             {/* Footer: Action link */}
             {onClick && (
-              <div className="flex items-center justify-end mt-2 pt-2 border-t" style={{ borderColor: 'rgba(0,0,0,0.04)' }}>
+              <div className="flex items-center justify-end mt-1.5 pt-1.5 border-t" style={{ borderColor: 'rgba(0,0,0,0.03)' }}>
                 <div 
-                  className="kpi-action-link flex items-center gap-1 text-[10px] sm:text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-all duration-300"
+                  className="kpi-action-link flex items-center gap-1 text-[9px] font-semibold px-2 py-0.5 rounded-md"
                   style={{ color: colors.text, backgroundColor: colors.light }}
                 >
                   <span>Ver detalle</span>
-                  <FaArrowRight size={8} className="kpi-action-arrow" />
+                  <FaArrowRight size={7} className="kpi-action-arrow" />
                 </div>
               </div>
             )}
@@ -444,43 +444,43 @@ const ChartCard = ({
         />
       )}
       <div className={`
-        bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden
-        transition-all duration-300 hover:shadow-xl
+        bg-white rounded-xl shadow-sm border border-gray-100/80 overflow-hidden
+        transition-all duration-200 hover:shadow-md
         ${isExpanded ? 'fixed inset-6 z-50 shadow-2xl overflow-y-auto' : ''}
         ${className}
       `}>
-        {/* Header con gradiente del tema */}
+        {/* Header */}
         <div 
-          className="px-6 py-4 border-b border-gray-100 flex items-center justify-between"
+          className="px-4 py-2.5 border-b border-gray-100/60 flex items-center justify-between"
           style={{ 
-            background: 'linear-gradient(to right, var(--color-primary-light, rgba(159, 34, 65, 0.05)), transparent)'
+            background: 'linear-gradient(to right, var(--color-primary-light, rgba(159, 34, 65, 0.03)), transparent)'
           }}
         >
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             <div 
-              className="w-10 h-10 rounded-xl flex items-center justify-center"
-              style={{ backgroundColor: 'var(--color-primary-light, rgba(159, 34, 65, 0.1))' }}
+              className="w-7 h-7 rounded-lg flex items-center justify-center"
+              style={{ backgroundColor: 'var(--color-primary-light, rgba(159, 34, 65, 0.08))' }}
             >
-              <Icon className="text-lg" style={{ color: 'var(--color-primary, #9F2241)' }} />
+              <Icon className="text-xs" style={{ color: 'var(--color-primary, #9F2241)' }} />
             </div>
-            <h3 className="font-bold text-gray-800">{title}</h3>
+            <h3 className="text-sm font-bold text-gray-700">{title}</h3>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             {action}
             {expandable && (
               <button
                 onClick={() => setIsExpanded(!isExpanded)}
-                className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600"
+                className="p-1.5 rounded-md hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600"
                 title={isExpanded ? 'Minimizar' : 'Pantalla completa'}
               >
-                {isExpanded ? <FaCompress /> : <FaExpand />}
+                {isExpanded ? <FaCompress size={11} /> : <FaExpand size={11} />}
               </button>
             )}
           </div>
         </div>
         
         {/* Contenido */}
-        <div className={`p-6 ${isExpanded ? 'h-[calc(100%-80px)] overflow-y-auto' : ''}`}>
+        <div className={`p-4 ${isExpanded ? 'h-[calc(100%-56px)] overflow-y-auto' : ''}`}>
           {children}
         </div>
       </div>
@@ -628,25 +628,22 @@ const QuickAccessCard = ({ icon: Icon, title, subtitle, onClick, colorVar }) => 
   <button
     onClick={onClick}
     className="
-      flex items-center gap-4 p-4 rounded-xl bg-white border border-gray-100
-      shadow-sm hover:shadow-lg transition-all duration-300
-      hover:-translate-y-1 hover:border-gray-200 text-left w-full
-      group
+      flex items-center gap-3 p-3 rounded-lg bg-white border border-gray-100
+      shadow-sm hover:shadow-md transition-all duration-200
+      hover:border-gray-200 text-left w-full group
     "
   >
     <div 
-      className="w-12 h-12 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110 group-hover:rotate-3"
-      style={{ backgroundColor: `var(${colorVar}-light, rgba(159, 34, 65, 0.1))` }}
+      className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+      style={{ backgroundColor: `var(${colorVar}-light, rgba(159, 34, 65, 0.08))` }}
     >
-      <Icon className="text-xl" style={{ color: `var(${colorVar}, #9F2241)` }} />
+      <Icon className="text-sm" style={{ color: `var(${colorVar}, #9F2241)` }} />
     </div>
-    <div className="flex-1">
-      <p className="font-semibold text-gray-900 group-hover:text-gray-700 transition-colors">
-        {title}
-      </p>
-      <p className="text-sm text-gray-500">{subtitle}</p>
+    <div className="flex-1 min-w-0">
+      <p className="text-sm font-semibold text-gray-800">{title}</p>
+      <p className="text-[11px] text-gray-400 truncate">{subtitle}</p>
     </div>
-    <FaArrowRight className="text-gray-300 group-hover:text-gray-400 transition-colors" />
+    <FaArrowRight className="text-gray-300 group-hover:text-gray-400 transition-colors text-xs flex-shrink-0" />
   </button>
 );
 
@@ -1174,19 +1171,19 @@ const Dashboard = () => {
         </div>
         
         {/* KPI skeletons */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           {[1,2,3,4].map(i => <SkeletonCard key={i} />)}
         </div>
         
         {/* Chart skeletons */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white rounded-2xl p-6 h-96 animate-pulse">
-            <div className="h-6 w-48 bg-gray-200 rounded mb-4" />
-            <div className="h-72 bg-gray-100 rounded-xl" />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="bg-white rounded-xl p-4 h-80 animate-pulse">
+            <div className="h-5 w-40 bg-gray-200 rounded mb-3" />
+            <div className="h-60 bg-gray-100 rounded-lg" />
           </div>
-          <div className="bg-white rounded-2xl p-6 h-96 animate-pulse">
-            <div className="h-6 w-48 bg-gray-200 rounded mb-4" />
-            <div className="h-72 bg-gray-100 rounded-xl" />
+          <div className="bg-white rounded-xl p-4 h-80 animate-pulse">
+            <div className="h-5 w-40 bg-gray-200 rounded mb-3" />
+            <div className="h-60 bg-gray-100 rounded-lg" />
           </div>
         </div>
       </div>
@@ -1194,47 +1191,38 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="p-6 max-w-[1600px] mx-auto space-y-6 pb-12">
+    <div className="px-4 sm:px-6 py-4 max-w-[1600px] mx-auto space-y-4 pb-8">
       {/* ========== HEADER ========== */}
       <header 
-        className="rounded-2xl shadow-sm border border-gray-100 overflow-hidden"
-        style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,1) 100%)' }}
+        className="rounded-xl shadow-sm border border-gray-100/80 overflow-hidden bg-white"
       >
-        {/* Barra decorativa superior */}
-        <div 
-          className="h-1.5 w-full"
-          style={{ background: 'linear-gradient(90deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 40%, #F59E0B 100%)' }}
-        />
+        <div className="h-1 w-full" style={{ background: 'linear-gradient(90deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 40%, #C9A876 100%)' }} />
         
-        <div className="p-5">
-          {/* Fila superior: Título y controles */}
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            {/* Título y badge */}
-            <div className="flex items-center gap-3 min-w-0">
+        <div className="px-4 py-3">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
               <div 
-                className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
-                style={{ background: 'linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 100%)' }}
+                className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                style={{ background: 'linear-gradient(135deg, var(--color-primary, #9F2241), var(--color-primary-hover, #6B1839))' }}
               >
-                <FaChartLine className="text-white text-lg" />
+                <FaChartLine className="text-white text-sm" />
               </div>
-              <div>
-                <h1 
-                  className="text-2xl md:text-3xl font-black tracking-tight"
-                  style={{ color: 'var(--color-primary, #9F2241)' }}
-                >
-                  Panel de Control
-                </h1>
-              </div>
+              <h1 
+                className="text-xl font-black tracking-tight"
+                style={{ color: 'var(--color-primary, #9F2241)' }}
+              >
+                Panel de Control
+              </h1>
               <span 
-                className="px-3 py-1 rounded-full text-xs font-bold text-white shadow-sm flex-shrink-0"
+                className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white flex-shrink-0"
                 style={{ 
                   background: rolPrincipal === 'ADMIN' 
-                    ? 'linear-gradient(135deg, #9F2241 0%, #6B1839 100%)'
+                    ? 'linear-gradient(135deg, #9F2241, #6B1839)'
                     : rolPrincipal === 'FARMACIA'
-                    ? 'linear-gradient(135deg, #10B981 0%, #059669 100%)'
+                    ? 'linear-gradient(135deg, #10B981, #059669)'
                     : rolPrincipal === 'CENTRO'
-                    ? 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)'
-                    : 'linear-gradient(135deg, #6B7280 0%, #4B5563 100%)'
+                    ? 'linear-gradient(135deg, #3B82F6, #2563EB)'
+                    : 'linear-gradient(135deg, #6B7280, #4B5563)'
                 }}
               >
                 {getRolLabel()}
@@ -1242,7 +1230,7 @@ const Dashboard = () => {
             </div>
           
           {/* Controles */}
-          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0 w-full md:w-auto">
+          <div className="flex items-center gap-2 flex-shrink-0 w-full md:w-auto">
             {/* Selector de centro */}
             {puedeFiltrarPorCentro && (
               <div className="flex-1 md:flex-none md:min-w-[200px] md:max-w-[300px]">
@@ -1255,20 +1243,20 @@ const Dashboard = () => {
               onClick={handleRefresh}
               disabled={refreshing}
               className={`
-                p-2.5 rounded-xl bg-gray-50 border border-gray-200
-                hover:bg-gray-100 hover:border-gray-300 transition-all flex-shrink-0
+                p-2 rounded-lg bg-gray-50 border border-gray-200
+                hover:bg-gray-100 transition-all flex-shrink-0
                 ${refreshing ? 'opacity-50 cursor-not-allowed' : ''}
               `}
               title="Actualizar datos"
             >
-              <FaSync className={`text-gray-500 ${refreshing ? 'animate-spin' : ''}`} />
+              <FaSync className={`text-gray-400 text-xs ${refreshing ? 'animate-spin' : ''}`} />
             </button>
           </div>
         </div>
         
         {/* Fila inferior: Subtítulo y fecha */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mt-4 pt-4 border-t border-gray-100">
-          <p className="text-sm text-gray-500 flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 mt-3 pt-2.5 border-t border-gray-100/60">
+          <p className="text-xs text-gray-500 flex items-center gap-1.5">
             {selectedCentro ? (
               <>
                 <FaBuilding className="text-xs flex-shrink-0" />
@@ -1285,8 +1273,8 @@ const Dashboard = () => {
           </p>
           
           {/* Fecha compacta */}
-          <div className="flex items-center gap-2 text-sm text-gray-500 flex-shrink-0">
-            <FaCalendarAlt className="text-xs" style={{ color: 'var(--color-primary, #9F2241)' }} />
+          <div className="flex items-center gap-1.5 text-xs text-gray-400 flex-shrink-0">
+            <FaCalendarAlt className="text-[10px]" style={{ color: 'var(--color-primary, #9F2241)' }} />
             <span>
               {(() => {
                 const d = new Date();
@@ -1353,18 +1341,18 @@ const Dashboard = () => {
       )}
 
       {/* ========== KPI CARDS - Dashboard Profesional ========== */}
-      <section className="kpi-section-wrapper rounded-2xl sm:rounded-3xl p-4 sm:p-6">
-        <div className="flex items-center gap-3 mb-4 sm:mb-5">
+      <section className="kpi-section-wrapper rounded-xl sm:rounded-2xl p-3 sm:p-4">
+        <div className="flex items-center gap-2 mb-3 sm:mb-3">
           <div className="kpi-section-dot" />
           <h2 
-            className="text-[11px] sm:text-xs font-extrabold uppercase tracking-[0.18em]"
+            className="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-[0.15em]"
             style={{ color: 'var(--color-primary, #932043)' }}
           >
             Indicadores principales
           </h2>
           <div className="h-px flex-1 bg-gradient-to-r from-gray-200 to-transparent" />
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {kpiCards
             .filter(card => card.show)
             .map((card, index) => (
@@ -1380,17 +1368,17 @@ const Dashboard = () => {
         {/* Fila secundaria de analytics - Solo Admin/Farmacia */}
         {puedeVerGraficasCompletas && analytics && (
           <>
-            <div className="flex items-center gap-3 mt-6 sm:mt-7 mb-4 sm:mb-5">
+            <div className="flex items-center gap-2 mt-4 sm:mt-5 mb-3 sm:mb-3">
               <div className="kpi-section-dot" style={{ background: 'linear-gradient(135deg, #9B7E4C, #C9A876)' }} />
               <h2 
-                className="text-[11px] sm:text-xs font-extrabold uppercase tracking-[0.18em]"
+                className="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-[0.15em]"
                 style={{ color: '#9B7E4C' }}
               >
                 Análisis avanzado
               </h2>
               <div className="h-px flex-1 bg-gradient-to-r from-gray-200 to-transparent" />
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
               {/* Requisiciones totales */}
               {permisos?.verRequisiciones && (
                 <KPICard
@@ -1459,8 +1447,7 @@ const Dashboard = () => {
 
       {/* ========== GRÁFICAS PRINCIPALES ========== */}
       {puedeVerGraficasBasicas && (
-        <section className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-          {/* Consumo Mensual - Area Chart con resumen */}
+        <section className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           <ChartCard title="Consumo Mensual (Últimos 6 meses)" icon={FaChartLine} expandable>
             {graficas.consumo_mensual.length > 0 ? (
               <>
@@ -1473,31 +1460,31 @@ const Dashboard = () => {
                   const mesAnterior = graficas.consumo_mensual[graficas.consumo_mensual.length - 2];
                   const tendencia = mesAnterior?.salidas ? (((mesActual?.salidas || 0) - mesAnterior.salidas) / mesAnterior.salidas * 100).toFixed(0) : 0;
                   return (
-                    <div className="grid grid-cols-3 gap-3 mb-5">
+                    <div className="grid grid-cols-3 gap-2 mb-3">
                       <div className="dash-stat-mini dash-stat-success">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <FaArrowDown className="text-emerald-500" size={10} />
-                          <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Entradas</span>
+                        <div className="flex items-center gap-1 mb-0.5">
+                          <FaArrowDown className="text-emerald-500" size={9} />
+                          <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider">Entradas</span>
                         </div>
-                        <p className="text-xl font-black text-emerald-700 tabular-nums">{totalEntradas.toLocaleString('es-MX')}</p>
+                        <p className="text-lg font-black text-emerald-700 tabular-nums">{totalEntradas.toLocaleString('es-MX')}</p>
                         <p className="text-[10px] text-emerald-500 mt-0.5">6 meses</p>
                       </div>
                       <div className="dash-stat-mini dash-stat-danger">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <FaArrowUp className="text-red-500" size={10} />
-                          <span className="text-[10px] font-bold text-red-600 uppercase tracking-wider">Salidas</span>
+                        <div className="flex items-center gap-1 mb-0.5">
+                          <FaArrowUp className="text-red-500" size={9} />
+                          <span className="text-[9px] font-bold text-red-600 uppercase tracking-wider">Salidas</span>
                         </div>
-                        <p className="text-xl font-black text-red-700 tabular-nums">{totalSalidas.toLocaleString('es-MX')}</p>
+                        <p className="text-lg font-black text-red-700 tabular-nums">{totalSalidas.toLocaleString('es-MX')}</p>
                         <p className="text-[10px] text-red-500 mt-0.5">
                           {Number(tendencia) > 0 ? `↑${tendencia}%` : Number(tendencia) < 0 ? `↓${Math.abs(Number(tendencia))}%` : '—'} vs anterior
                         </p>
                       </div>
                       <div className={`dash-stat-mini ${balance >= 0 ? 'dash-stat-info' : 'dash-stat-warning'}`}>
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <FaChartBar className={balance >= 0 ? 'text-blue-500' : 'text-amber-500'} size={10} />
-                          <span className={`text-[10px] font-bold uppercase tracking-wider ${balance >= 0 ? 'text-blue-600' : 'text-amber-600'}`}>Balance</span>
+                        <div className="flex items-center gap-1 mb-0.5">
+                          <FaChartBar className={balance >= 0 ? 'text-blue-500' : 'text-amber-500'} size={9} />
+                          <span className={`text-[9px] font-bold uppercase tracking-wider ${balance >= 0 ? 'text-blue-600' : 'text-amber-600'}`}>Balance</span>
                         </div>
-                        <p className={`text-xl font-black tabular-nums ${balance >= 0 ? 'text-blue-700' : 'text-amber-700'}`}>
+                        <p className={`text-lg font-black tabular-nums ${balance >= 0 ? 'text-blue-700' : 'text-amber-700'}`}>
                           {balance >= 0 ? '+' : ''}{balance.toLocaleString('es-MX')}
                         </p>
                         <p className={`text-[10px] mt-0.5 ${balance >= 0 ? 'text-blue-500' : 'text-amber-500'}`}>{balance >= 0 ? 'Superávit' : 'Déficit'}</p>
@@ -1574,18 +1561,18 @@ const Dashboard = () => {
               return (
                 <div>
                   {/* Resumen superior */}
-                  <div className="grid grid-cols-3 gap-3 mb-5">
+                  <div className="grid grid-cols-3 gap-2 mb-3">
                     <div className="dash-stat-mini dash-stat-primary">
-                      <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{esCentroUnico ? 'Productos' : 'Centros'}</span>
-                      <p className="text-xl font-black text-gray-800 mt-1">{sorted.length}</p>
+                      <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">{esCentroUnico ? 'Productos' : 'Centros'}</span>
+                      <p className="text-lg font-black text-gray-800 mt-0.5">{sorted.length}</p>
                     </div>
                     <div className="dash-stat-mini dash-stat-success">
-                      <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Stock total</span>
-                      <p className="text-xl font-black text-gray-800 mt-1">{totalStock.toLocaleString('es-MX')}</p>
+                      <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Stock total</span>
+                      <p className="text-lg font-black text-gray-800 mt-0.5">{totalStock.toLocaleString('es-MX')}</p>
                     </div>
                     <div className="dash-stat-mini dash-stat-info">
-                      <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Promedio</span>
-                      <p className="text-xl font-black text-gray-800 mt-1">{Math.round(totalStock / (sorted.length || 1)).toLocaleString('es-MX')}</p>
+                      <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Promedio</span>
+                      <p className="text-lg font-black text-gray-800 mt-0.5">{Math.round(totalStock / (sorted.length || 1)).toLocaleString('es-MX')}</p>
                     </div>
                   </div>
                   {/* Barras */}
@@ -1662,7 +1649,7 @@ const Dashboard = () => {
               </button>
             }
           >
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-start">
               {/* Donut Chart — col 1-2 */}
               <div className="lg:col-span-2 relative">
                 <ResponsiveContainer width="100%" height={260}>
@@ -1770,16 +1757,16 @@ const Dashboard = () => {
                 <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Alertas de Caducidad</h2>
                 <div className="h-px flex-1 bg-gradient-to-r from-red-200 to-transparent" />
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
                 {analytics.caducidades.vencidos > 0 && (
                   <div className="dash-caducidad-card dash-caducidad-red">
                     <div className="dash-caducidad-icon bg-red-100">
-                      <FaTimesCircle className="text-red-500 text-lg" />
+                      <FaTimesCircle className="text-red-500 text-base" />
                     </div>
                     <div className="flex-1">
-                      <p className="text-3xl font-black text-red-700">{analytics.caducidades.vencidos}</p>
-                      <p className="text-sm text-red-600 font-semibold">Lotes Vencidos</p>
-                      <p className="text-[10px] text-red-400 mt-1">Acción inmediata</p>
+                      <p className="text-2xl font-black text-red-700">{analytics.caducidades.vencidos}</p>
+                      <p className="text-xs text-red-600 font-semibold">Lotes Vencidos</p>
+                      <p className="text-[9px] text-red-400 mt-0.5">Acción inmediata</p>
                     </div>
                     <div className="dash-caducidad-bar bg-red-500" />
                   </div>
@@ -1787,12 +1774,12 @@ const Dashboard = () => {
                 {analytics.caducidades.vencen_15_dias > 0 && (
                   <div className="dash-caducidad-card dash-caducidad-orange">
                     <div className="dash-caducidad-icon bg-orange-100">
-                      <FaExclamationCircle className="text-orange-500 text-lg" />
+                      <FaExclamationCircle className="text-orange-500 text-base" />
                     </div>
                     <div className="flex-1">
-                      <p className="text-3xl font-black text-orange-700">{analytics.caducidades.vencen_15_dias}</p>
-                      <p className="text-sm text-orange-600 font-semibold">Vencen en 15 días</p>
-                      <p className="text-[10px] text-orange-400 mt-1">Prioridad alta</p>
+                      <p className="text-2xl font-black text-orange-700">{analytics.caducidades.vencen_15_dias}</p>
+                      <p className="text-xs text-orange-600 font-semibold">Vencen en 15 días</p>
+                      <p className="text-[9px] text-orange-400 mt-0.5">Prioridad alta</p>
                     </div>
                     <div className="dash-caducidad-bar bg-orange-500" />
                   </div>
@@ -1800,12 +1787,12 @@ const Dashboard = () => {
                 {analytics.caducidades.vencen_30_dias > 0 && (
                   <div className="dash-caducidad-card dash-caducidad-yellow">
                     <div className="dash-caducidad-icon bg-amber-100">
-                      <FaExclamationTriangle className="text-amber-500 text-lg" />
+                      <FaExclamationTriangle className="text-amber-500 text-base" />
                     </div>
                     <div className="flex-1">
-                      <p className="text-3xl font-black text-amber-700">{analytics.caducidades.vencen_30_dias}</p>
-                      <p className="text-sm text-amber-600 font-semibold">Vencen en 30 días</p>
-                      <p className="text-[10px] text-amber-400 mt-1">Monitorear</p>
+                      <p className="text-2xl font-black text-amber-700">{analytics.caducidades.vencen_30_dias}</p>
+                      <p className="text-xs text-amber-600 font-semibold">Vencen en 30 días</p>
+                      <p className="text-[9px] text-amber-400 mt-0.5">Monitorear</p>
                     </div>
                     <div className="dash-caducidad-bar bg-amber-500" />
                   </div>
@@ -1813,12 +1800,12 @@ const Dashboard = () => {
                 {(analytics.caducidades.vencen_90_dias || 0) > 0 && (
                   <div className="dash-caducidad-card" style={{ background: 'linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%)', borderLeft: '4px solid #3B82F6' }}>
                     <div className="dash-caducidad-icon bg-blue-100">
-                      <FaCalendarAlt className="text-blue-500 text-lg" />
+                      <FaCalendarAlt className="text-blue-500 text-base" />
                     </div>
                     <div className="flex-1">
-                      <p className="text-3xl font-black text-blue-700">{analytics.caducidades.vencen_90_dias}</p>
-                      <p className="text-sm text-blue-600 font-semibold">Vencen en 90 días</p>
-                      <p className="text-[10px] text-blue-400 mt-1">Atención preventiva</p>
+                      <p className="text-2xl font-black text-blue-700">{analytics.caducidades.vencen_90_dias}</p>
+                      <p className="text-xs text-blue-600 font-semibold">Vencen en 90 días</p>
+                      <p className="text-[9px] text-blue-400 mt-0.5">Atención preventiva</p>
                     </div>
                     <div className="dash-caducidad-bar bg-blue-500" />
                   </div>
@@ -1852,7 +1839,7 @@ const Dashboard = () => {
           )}
 
           {/* Top Productos y Top Centros */}
-          <section className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          <section className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             {/* Top 10 Productos más Surtidos */}
             {analytics.top_productos && analytics.top_productos.length > 0 && (
               <ChartCard title="Top 10 Productos más Surtidos" icon={FaTrophy}>
@@ -1916,18 +1903,18 @@ const Dashboard = () => {
                   const totalPendientes = analytics.top_centros.reduce((s, c) => s + (c.pendientes || 0), 0);
                   return (
                     <div className="space-y-3">
-                      <div className="grid grid-cols-3 gap-3 mb-4">
+                      <div className="grid grid-cols-3 gap-2 mb-3">
                         <div className="dash-stat-mini dash-stat-info">
-                          <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Requisiciones</span>
-                          <p className="text-xl font-black text-blue-800 mt-1">{totalReq}</p>
+                          <span className="text-[9px] font-bold text-blue-600 uppercase tracking-wider">Requisiciones</span>
+                          <p className="text-lg font-black text-blue-800 mt-0.5">{totalReq}</p>
                         </div>
                         <div className="dash-stat-mini dash-stat-success">
-                          <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Surtidas</span>
-                          <p className="text-xl font-black text-emerald-800 mt-1">{totalSurtidas}</p>
+                          <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider">Surtidas</span>
+                          <p className="text-lg font-black text-emerald-800 mt-0.5">{totalSurtidas}</p>
                         </div>
                         <div className="dash-stat-mini dash-stat-warning">
-                          <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Pendientes</span>
-                          <p className="text-xl font-black text-amber-800 mt-1">{totalPendientes}</p>
+                          <span className="text-[9px] font-bold text-amber-600 uppercase tracking-wider">Pendientes</span>
+                          <p className="text-lg font-black text-amber-800 mt-0.5">{totalPendientes}</p>
                         </div>
                       </div>
                       <div className={`space-y-2.5 ${analytics.top_centros.length > 5 ? 'max-h-[300px] overflow-y-auto pr-2 custom-scrollbar' : ''}`}>
@@ -1969,27 +1956,27 @@ const Dashboard = () => {
           </section>
 
           {/* Donaciones y Caja Chica */}
-          <section className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          <section className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             {/* Resumen Donaciones */}
             {analytics.donaciones && (
               <ChartCard title="Resumen de Donaciones" icon={FaHandHoldingHeart}>
                 {/* KPIs principales */}
-                <div className="grid grid-cols-2 gap-3 mb-5">
+                <div className="grid grid-cols-2 gap-2 mb-3">
                   <div className="dash-stat-mini dash-stat-primary">
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <FaGift className="text-purple-500" size={10} />
-                      <span className="text-[10px] font-bold text-purple-600 uppercase tracking-wider">Total</span>
+                    <div className="flex items-center gap-1 mb-0.5">
+                      <FaGift className="text-purple-500" size={9} />
+                      <span className="text-[9px] font-bold text-purple-600 uppercase tracking-wider">Total</span>
                     </div>
-                    <p className="text-2xl font-black text-purple-700">{analytics.donaciones.total_donaciones || 0}</p>
-                    <p className="text-[10px] text-purple-400 mt-0.5">donaciones registradas</p>
+                    <p className="text-xl font-black text-purple-700">{analytics.donaciones.total_donaciones || 0}</p>
+                    <p className="text-[9px] text-purple-400 mt-0.5">donaciones registradas</p>
                   </div>
                   <div className="dash-stat-mini dash-stat-success">
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <FaCalendarAlt className="text-emerald-500" size={10} />
-                      <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Este mes</span>
+                    <div className="flex items-center gap-1 mb-0.5">
+                      <FaCalendarAlt className="text-emerald-500" size={9} />
+                      <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider">Este mes</span>
                     </div>
-                    <p className="text-2xl font-black text-emerald-700">{analytics.donaciones.donaciones_mes || 0}</p>
-                    <p className="text-[10px] text-emerald-400 mt-0.5">nuevas donaciones</p>
+                    <p className="text-xl font-black text-emerald-700">{analytics.donaciones.donaciones_mes || 0}</p>
+                    <p className="text-[9px] text-emerald-400 mt-0.5">nuevas donaciones</p>
                   </div>
                 </div>
                 
@@ -2035,34 +2022,34 @@ const Dashboard = () => {
             {analytics.caja_chica && (
               <ChartCard title="Resumen Caja Chica" icon={FaMoneyBillWave}>
                 {/* KPIs principales */}
-                <div className="grid grid-cols-2 gap-3 mb-4">
+                <div className="grid grid-cols-2 gap-2 mb-3">
                   <div className="dash-money-card">
-                    <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Monto Total</span>
-                    <p className="text-2xl font-black text-emerald-700 mt-1">
-                      <span className="text-base">$</span>{(analytics.caja_chica.monto_total || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                    <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider">Monto Total</span>
+                    <p className="text-xl font-black text-emerald-700 mt-0.5">
+                      <span className="text-sm">$</span>{(analytics.caja_chica.monto_total || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
                     </p>
                     <div className="w-full bg-emerald-100 rounded-full h-1 mt-2">
                       <div className="h-full rounded-full bg-emerald-500" style={{ width: '100%' }} />
                     </div>
                   </div>
                   <div className="dash-money-card">
-                    <span className="text-[10px] font-bold text-teal-600 uppercase tracking-wider">Promedio/Compra</span>
-                    <p className="text-2xl font-black text-teal-700 mt-1">
-                      <span className="text-base">$</span>{(analytics.caja_chica.promedio_compra || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                    <span className="text-[9px] font-bold text-teal-600 uppercase tracking-wider">Promedio/Compra</span>
+                    <p className="text-xl font-black text-teal-700 mt-0.5">
+                      <span className="text-sm">$</span>{(analytics.caja_chica.promedio_compra || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
                     </p>
                     <p className="text-[10px] text-gray-400 mt-1.5">{analytics.caja_chica.total_compras || 0} compras totales</p>
                   </div>
                 </div>
                 
                 {/* Stats del mes */}
-                <div className="grid grid-cols-2 gap-3 mb-4">
+                <div className="grid grid-cols-2 gap-2 mb-3">
                   <div className="dash-stat-mini dash-stat-info">
-                    <span className="text-[10px] font-bold text-blue-600 uppercase">Compras este mes</span>
-                    <p className="text-xl font-black text-blue-800 mt-1">{analytics.caja_chica.compras_mes || 0}</p>
+                    <span className="text-[9px] font-bold text-blue-600 uppercase">Compras este mes</span>
+                    <p className="text-lg font-black text-blue-800 mt-0.5">{analytics.caja_chica.compras_mes || 0}</p>
                   </div>
                   <div className="dash-stat-mini dash-stat-success">
-                    <span className="text-[10px] font-bold text-emerald-600 uppercase">Monto del mes</span>
-                    <p className="text-lg font-black text-emerald-800 mt-1"><span className="text-xs">$</span>{(analytics.caja_chica.monto_mes || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
+                    <span className="text-[9px] font-bold text-emerald-600 uppercase">Monto del mes</span>
+                    <p className="text-base font-black text-emerald-800 mt-0.5"><span className="text-[10px]">$</span>{(analytics.caja_chica.monto_mes || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
                   </div>
                 </div>
 
@@ -2111,7 +2098,7 @@ const Dashboard = () => {
       )}
 
       {/* ========== SECCIÓN INFERIOR: MOVIMIENTOS + ACCESOS RÁPIDOS ========== */}
-      <section className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      <section className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         {/* Últimos Movimientos - Timeline moderno */}
         {puedeVerGraficasBasicas && permisos?.verMovimientos && movimientos.length > 0 && (
           <div className="xl:col-span-2">
