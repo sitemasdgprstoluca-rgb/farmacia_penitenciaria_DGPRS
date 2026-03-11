@@ -1248,96 +1248,46 @@ const Dashboard = () => {
               <div className="h-px flex-1 bg-gradient-to-r from-gray-200 to-transparent" />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-              {/* Alertas de Inventario */}
-              <div className="dash-alert-card-ref">
-                <div className="flex items-center gap-2 mb-1">
-                  <FaBox className="text-sm" style={{ color: '#932043' }} />
-                  <div>
-                    <h4 className="text-sm font-bold text-gray-700">Alertas de Inventario</h4>
-                    <p className="text-[9px] text-gray-400">Notificaciones activas</p>
-                  </div>
-                </div>
-                <p className="text-3xl font-black text-gray-900 my-1">
-                  {(analytics.caducidades?.vencidos || 0) + (analytics.caducidades?.vencen_30_dias || 0) + (analytics.caducidades?.vencen_15_dias || 0)}
-                </p>
-                <div className="flex items-center gap-3 mt-2">
-                  <span className="flex items-center gap-1 text-[10px]">
-                    <span className="w-2 h-2 rounded-full bg-red-500" />
-                    <span className="text-gray-500">{analytics.caducidades?.vencidos || 0}</span>
-                  </span>
-                  <div className="flex-1 bg-emerald-100 rounded-full h-1.5 overflow-hidden">
-                    <div className="h-full bg-emerald-500 rounded-full transition-all duration-700" style={{ width: `${Math.min(100, ((analytics.caducidades?.vencen_90_dias || 0) / Math.max(1, (analytics.caducidades?.vencidos || 0) + (analytics.caducidades?.vencen_30_dias || 0) + (analytics.caducidades?.vencen_90_dias || 0))) * 100)}%` }} />
-                  </div>
-                  <span className="text-[10px] text-gray-400">{analytics.caducidades?.vencen_90_dias || 0} preventivas</span>
-                </div>
-              </div>
-
-              {/* Alertas de Lotes */}
-              <div className="dash-alert-card-ref">
-                <div className="flex items-center gap-2 mb-1">
-                  <FaWarehouse className="text-sm" style={{ color: '#0F766E' }} />
-                  <div>
-                    <h4 className="text-sm font-bold text-gray-700">Alertas de Lotes</h4>
-                    <p className="text-[9px] text-gray-400">Lotes cercanos a vencer</p>
-                  </div>
-                </div>
-                <p className="text-3xl font-black text-gray-900 my-1">
-                  {(analytics.caducidades?.vencen_15_dias || 0) + (analytics.caducidades?.vencen_30_dias || 0)}
-                </p>
-                <div className="flex items-center gap-3 mt-2">
-                  <span className="flex items-center gap-1 text-[10px]">
-                    <span className="w-2 h-2 rounded-full bg-amber-500" />
-                    <span className="text-gray-500">{analytics.caducidades?.vencen_15_dias || 0}</span>
-                  </span>
-                  <div className="flex-1 bg-amber-100 rounded-full h-1.5 overflow-hidden">
-                    <div className="h-full bg-amber-500 rounded-full transition-all duration-700" style={{ width: `${Math.min(100, ((analytics.caducidades?.vencen_15_dias || 0) / Math.max(1, (analytics.caducidades?.vencen_15_dias || 0) + (analytics.caducidades?.vencen_30_dias || 0))) * 100)}%` }} />
-                  </div>
-                  <span className="text-[10px] text-gray-400">{analytics.caducidades?.vencen_30_dias || 0} en 30d</span>
-                </div>
-              </div>
-
-              {/* Alertas de Caducidad */}
-              <div className="dash-alert-card-ref">
-                <div className="flex items-center gap-2 mb-1">
-                  <FaExclamationTriangle className="text-sm" style={{ color: '#DC2626' }} />
-                  <div>
-                    <h4 className="text-sm font-bold text-gray-700">Alertas de Caducidad</h4>
-                    <p className="text-[9px] text-gray-400">Productos vencidos o próximos</p>
-                  </div>
-                </div>
-                <p className="text-3xl font-black text-gray-900 my-1">{analytics.caducidades?.vencidos || 0}</p>
-                <div className="flex items-center gap-3 mt-2">
-                  <span className="flex items-center gap-1 text-[10px]">
-                    <span className="w-2 h-2 rounded-full bg-red-500" />
-                    <span className="text-gray-500">{analytics.caducidades?.vencidos || 0} vencidos</span>
-                  </span>
-                  <div className="flex-1 bg-red-100 rounded-full h-1.5 overflow-hidden">
-                    <div className="h-full bg-red-500 rounded-full transition-all duration-700" style={{ width: `${analytics.caducidades?.vencidos > 0 ? 100 : 0}%` }} />
-                  </div>
-                </div>
-              </div>
-
-              {/* Alertas de Donaciones */}
-              <div className="dash-alert-card-ref">
-                <div className="flex items-center gap-2 mb-1">
-                  <FaHandHoldingHeart className="text-sm" style={{ color: '#1E40AF' }} />
-                  <div>
-                    <h4 className="text-sm font-bold text-gray-700">Alertas de Donaciones</h4>
-                    <p className="text-[9px] text-gray-400">Donaciones recibidas este mes</p>
-                  </div>
-                </div>
-                <p className="text-3xl font-black text-gray-900 my-1">{analytics.donaciones?.donaciones_mes || 0}</p>
-                <div className="flex items-center gap-3 mt-2">
-                  <span className="flex items-center gap-1 text-[10px]">
-                    <span className="w-2 h-2 rounded-full bg-blue-500" />
-                    <span className="text-gray-500">{analytics.donaciones?.total_donaciones || 0} total</span>
-                  </span>
-                  <div className="flex-1 bg-blue-100 rounded-full h-1.5 overflow-hidden">
-                    <div className="h-full bg-blue-500 rounded-full transition-all duration-700" style={{ width: `${Math.min(100, ((analytics.donaciones?.donaciones_mes || 0) / Math.max(1, analytics.donaciones?.total_donaciones || 1)) * 100)}%` }} />
-                  </div>
-                  <span className="text-[10px] text-gray-400">{analytics.donaciones?.total_unidades || 0} uds</span>
-                </div>
-              </div>
+              <KPICard
+                title="Alertas de Inventario"
+                value={(analytics.caducidades?.vencidos || 0) + (analytics.caducidades?.vencen_30_dias || 0) + (analytics.caducidades?.vencen_15_dias || 0)}
+                subtext="Notificaciones activas"
+                icon={FaBox}
+                colorType="danger"
+                delay={0}
+                secondaryLabel="Preventivas:"
+                secondaryValue={String(analytics.caducidades?.vencen_90_dias || 0)}
+              />
+              <KPICard
+                title="Alertas de Lotes"
+                value={(analytics.caducidades?.vencen_15_dias || 0) + (analytics.caducidades?.vencen_30_dias || 0)}
+                subtext="Lotes cercanos a vencer"
+                icon={FaWarehouse}
+                colorType="warning"
+                delay={50}
+                secondaryLabel="En 15d:"
+                secondaryValue={String(analytics.caducidades?.vencen_15_dias || 0)}
+              />
+              <KPICard
+                title="Alertas de Caducidad"
+                value={analytics.caducidades?.vencidos || 0}
+                subtext="Productos vencidos o próximos"
+                icon={FaExclamationTriangle}
+                colorType="danger"
+                delay={100}
+                secondaryLabel="Vencen 30d:"
+                secondaryValue={String(analytics.caducidades?.vencen_30_dias || 0)}
+              />
+              <KPICard
+                title="Alertas de Donaciones"
+                value={analytics.donaciones?.donaciones_mes || 0}
+                subtext="Donaciones recibidas este mes"
+                icon={FaHandHoldingHeart}
+                colorType="info"
+                delay={150}
+                secondaryLabel="Total:"
+                secondaryValue={String(analytics.donaciones?.total_donaciones || 0)}
+              />
             </div>
           </>
         )}
