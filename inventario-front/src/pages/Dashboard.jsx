@@ -1682,7 +1682,8 @@ const Dashboard = () => {
               const pctRech = totalRequisiciones > 0 ? Math.round((rechazadas / totalRequisiciones) * 100) : 0;
 
               return (
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <div className="space-y-4">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
                   {/* ── COLUMNA IZQUIERDA: Donut + porcentajes ── */}
                   <div className="lg:col-span-3 flex flex-col items-center gap-3">
                     <div className="relative dash-donut-container" style={{ width: 200, height: 200 }}>
@@ -1778,8 +1779,8 @@ const Dashboard = () => {
                     </div>
                   </div>
 
-                  {/* ── COLUMNA CENTRAL: badges + distribución + tendencia + tabla ── */}
-                  <div className="lg:col-span-6 space-y-4">
+                  {/* ── COLUMNA CENTRAL: badges + distribución + tendencia ── */}
+                  <div className="lg:col-span-6 space-y-3">
                     {/* Badge strip */}
                     <div className="grid grid-cols-3 gap-0 rounded-xl overflow-hidden border border-gray-100 shadow-sm">
                       <div className="text-center py-2.5 px-2" style={{ background: 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)' }}>
@@ -1913,50 +1914,6 @@ const Dashboard = () => {
                       </div>
                     </div>
 
-                    {/* Tabla de detalle por producto */}
-                    {analytics?.top_productos?.length > 0 && (
-                      <div className="pt-3 border-t border-gray-100">
-                        <div className="max-h-[150px] overflow-y-auto custom-scrollbar">
-                          <table className="w-full text-left">
-                            <thead className="sticky top-0 z-10">
-                              <tr className="bg-gray-50/90">
-                                <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1">Clave</th>
-                                <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1">Producto</th>
-                                <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1 text-center">Surtido</th>
-                                <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1 text-center">Solicit.</th>
-                                <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1 text-right w-20">Cumpl.</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {analytics.top_productos.slice(0, 5).map((item, idx) => (
-                                <tr key={idx} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
-                                  <td className="px-2 py-1">
-                                    <span className="text-[10px] font-mono font-bold text-gray-600">{item.clave}</span>
-                                  </td>
-                                  <td className="px-2 py-1">
-                                    <span className="text-[10px] text-gray-500 truncate block max-w-[120px]" title={item.nombre}>{item.nombre}</span>
-                                  </td>
-                                  <td className="px-2 py-1 text-center">
-                                    <span className="text-[11px] font-bold text-gray-800 tabular-nums">{(item.total_surtido || 0).toLocaleString('es-MX')}</span>
-                                  </td>
-                                  <td className="px-2 py-1 text-center">
-                                    <span className="text-[11px] font-bold text-gray-600 tabular-nums">{item.veces_solicitado || 0}</span>
-                                  </td>
-                                  <td className="px-2 py-1">
-                                    <div className="flex items-center gap-1 justify-end">
-                                      <div className="w-10 bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                                        <div className="h-full rounded-full" style={{ width: `${item.porcentaje_cumplimiento || 0}%`, backgroundColor: (item.porcentaje_cumplimiento || 0) >= 80 ? '#10B981' : (item.porcentaje_cumplimiento || 0) >= 50 ? '#F59E0B' : '#EF4444' }} />
-                                      </div>
-                                      <span className={`text-[10px] font-black tabular-nums ${(item.porcentaje_cumplimiento || 0) >= 80 ? 'text-emerald-600' : (item.porcentaje_cumplimiento || 0) >= 50 ? 'text-amber-600' : 'text-red-600'}`}>{(item.porcentaje_cumplimiento || 0).toFixed(0)}%</span>
-                                    </div>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
                   </div>
 
                   {/* ── COLUMNA DERECHA: Cumplimiento donut ── */}
@@ -2018,6 +1975,53 @@ const Dashboard = () => {
                       </div>
                     )}
                   </div>
+                </div>
+
+                {/* ── TABLA FULL-WIDTH: Detalle por producto ── */}
+                {analytics?.top_productos?.length > 0 && (
+                  <div className="pt-3 border-t border-gray-100">
+                    <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">Top Productos Solicitados</p>
+                    <div className="rounded-xl border border-gray-100 overflow-hidden">
+                      <table className="w-full text-left">
+                        <thead>
+                          <tr style={{ background: 'linear-gradient(135deg, #F9FAFB 0%, #F3F4F6 100%)' }}>
+                            <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-3 py-2">Clave</th>
+                            <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-3 py-2">Producto</th>
+                            <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-3 py-2 text-center">Surtido</th>
+                            <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-3 py-2 text-center">Solicitado</th>
+                            <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-3 py-2 text-right" style={{ minWidth: 140 }}>Cumplimiento</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {analytics.top_productos.slice(0, 5).map((item, idx) => (
+                            <tr key={idx} className={`border-b border-gray-50 last:border-0 hover:bg-gray-50/60 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
+                              <td className="px-3 py-1.5">
+                                <span className="text-[11px] font-mono font-bold text-gray-700">{item.clave}</span>
+                              </td>
+                              <td className="px-3 py-1.5">
+                                <span className="text-[11px] text-gray-600 truncate block max-w-[280px]" title={item.nombre}>{item.nombre}</span>
+                              </td>
+                              <td className="px-3 py-1.5 text-center">
+                                <span className="text-[11px] font-bold text-gray-800 tabular-nums">{(item.total_surtido || 0).toLocaleString('es-MX')}</span>
+                              </td>
+                              <td className="px-3 py-1.5 text-center">
+                                <span className="text-[11px] font-bold text-gray-600 tabular-nums">{item.veces_solicitado || 0}</span>
+                              </td>
+                              <td className="px-3 py-1.5">
+                                <div className="flex items-center gap-2 justify-end">
+                                  <div className="w-20 bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                                    <div className="h-full rounded-full transition-all duration-700" style={{ width: `${item.porcentaje_cumplimiento || 0}%`, background: (item.porcentaje_cumplimiento || 0) >= 80 ? 'linear-gradient(90deg, #10B981, #34D399)' : (item.porcentaje_cumplimiento || 0) >= 50 ? 'linear-gradient(90deg, #F59E0B, #FBBF24)' : 'linear-gradient(90deg, #DC2626, #EF4444)' }} />
+                                  </div>
+                                  <span className={`text-[11px] font-black tabular-nums min-w-[32px] text-right ${(item.porcentaje_cumplimiento || 0) >= 80 ? 'text-emerald-600' : (item.porcentaje_cumplimiento || 0) >= 50 ? 'text-amber-600' : 'text-red-600'}`}>{(item.porcentaje_cumplimiento || 0).toFixed(0)}%</span>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
                 </div>
               );
             })()}
