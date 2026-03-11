@@ -28,6 +28,7 @@ import {
 } from "react-icons/fa";
 import { reportesAPI, centrosAPI, descargarArchivo, abrirPdfEnNavegador } from "../services/api";
 import { usePermissions } from '../hooks/usePermissions';
+import PageHeader from '../components/PageHeader';
 
 // Los colores ahora se leen del tema CSS - esto es solo para compatibilidad
 const getThemeColor = (varName, fallback) => {
@@ -966,28 +967,22 @@ const Reportes = () => {
 
   return (
     <div className="p-4 md:p-6 space-y-5 md:space-y-6 max-w-full overflow-hidden">
-      {/* Modern Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary-hover)] flex items-center justify-center text-white text-2xl shadow-lg shadow-[var(--color-primary)]/20">
-            {getTipoIcon()}
-          </div>
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 capitalize">
-              {filtros.tipo === 'control_mensual' ? 'Control Mensual' : filtros.tipo === 'parcialidades' ? 'Historial de Entregas' : filtros.tipo}
-            </h1>
-            <p className="text-sm text-gray-500 mt-0.5">Consulta y exporta informes clave del inventario</p>
-          </div>
-        </div>
-        <button
-          onClick={limpiarFiltros}
-          disabled={loading}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 bg-white hover:bg-gray-50 hover:border-gray-300 transition-all disabled:opacity-50 shadow-sm"
-        >
-          <FaSync className="text-xs" />
-          Restablecer filtros
-        </button>
-      </div>
+      {/* Page Header — homologado con Centros/Productos */}
+      <PageHeader
+        icon={FaChartBar}
+        title="Reportes"
+        subtitle={`${filtros.tipo === 'control_mensual' ? 'Control Mensual' : filtros.tipo === 'parcialidades' ? 'Historial de Entregas' : filtros.tipo.charAt(0).toUpperCase() + filtros.tipo.slice(1)} · Consulta y exporta informes clave`}
+        actions={
+          <button
+            onClick={limpiarFiltros}
+            disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 text-sm font-medium text-gray-600 bg-white hover:bg-gray-50 hover:border-gray-300 transition-all disabled:opacity-50 shadow-sm"
+          >
+            <FaSync className="text-xs" />
+            Restablecer filtros
+          </button>
+        }
+      />
 
       {/* Panel de Filtros - Clean Flat Card */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">

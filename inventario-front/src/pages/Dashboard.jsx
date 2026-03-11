@@ -1653,6 +1653,52 @@ const Dashboard = () => {
                     </div>
                   ))}
                 </div>
+
+                {/* Tabla de detalle por producto — referencia */}
+                {analytics?.top_productos?.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-gray-100">
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Detalle por Producto</p>
+                    <div className="max-h-[200px] overflow-y-auto custom-scrollbar">
+                      <table className="w-full text-left">
+                        <thead className="sticky top-0 z-10">
+                          <tr className="bg-gray-50/90">
+                            <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1.5">Clave</th>
+                            <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1.5">Producto</th>
+                            <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1.5 text-center">Surtido</th>
+                            <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1.5 text-center">Solicit.</th>
+                            <th className="text-[9px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1.5 text-right w-24">Cumplimiento</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {analytics.top_productos.slice(0, 5).map((item, idx) => (
+                            <tr key={idx} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
+                              <td className="px-2 py-1.5">
+                                <span className="text-[10px] font-mono font-bold text-gray-600">{item.clave}</span>
+                              </td>
+                              <td className="px-2 py-1.5">
+                                <span className="text-[10px] text-gray-500 truncate block max-w-[120px]" title={item.nombre}>{item.nombre}</span>
+                              </td>
+                              <td className="px-2 py-1.5 text-center">
+                                <span className="text-xs font-bold text-gray-800 tabular-nums">{(item.total_surtido || 0).toLocaleString('es-MX')}</span>
+                              </td>
+                              <td className="px-2 py-1.5 text-center">
+                                <span className="text-xs font-bold text-gray-600 tabular-nums">{item.veces_solicitado || 0}</span>
+                              </td>
+                              <td className="px-2 py-1.5">
+                                <div className="flex items-center gap-1.5 justify-end">
+                                  <div className="w-12 bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                                    <div className="h-full rounded-full transition-all duration-500" style={{ width: `${item.porcentaje_cumplimiento || 0}%`, backgroundColor: (item.porcentaje_cumplimiento || 0) >= 80 ? '#10B981' : (item.porcentaje_cumplimiento || 0) >= 50 ? '#F59E0B' : '#EF4444' }} />
+                                  </div>
+                                  <span className={`text-[10px] font-black tabular-nums ${(item.porcentaje_cumplimiento || 0) >= 80 ? 'text-emerald-600' : (item.porcentaje_cumplimiento || 0) >= 50 ? 'text-amber-600' : 'text-red-600'}`}>{(item.porcentaje_cumplimiento || 0).toFixed(0)}%</span>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Donut + Leyenda + Cumplimiento */}
@@ -1970,7 +2016,7 @@ const Dashboard = () => {
             )}
           </section>
 
-          {/* Donaciones y Caja Chica */}
+          {/* Donaciones + Logs Críticos — lado a lado (referencia) */}
           <section className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             {/* Resumen Donaciones */}
             {analytics.donaciones && (
@@ -2033,6 +2079,108 @@ const Dashboard = () => {
               </ChartCard>
             )}
 
+            {/* Últimos Logs Críticos — junto a Donaciones (referencia) */}
+            {puedeVerGraficasBasicas && permisos?.verMovimientos && movimientos.length > 0 && (
+              <ChartCard 
+                title="Últimos Logs Críticos" 
+                icon={FaExchangeAlt}
+                action={
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{movimientos.length} registros</span>
+                    <button
+                      onClick={() => setMostrarTodos(!mostrarTodos)}
+                      className="text-xs px-3 py-1.5 rounded-lg font-bold transition-all"
+                      style={{ 
+                        backgroundColor: mostrarTodos ? 'var(--color-primary, #9F2241)' : '#F3F4F6',
+                        color: mostrarTodos ? 'white' : '#374151'
+                      }}
+                    >
+                      {mostrarTodos ? 'Menos' : 'Todos'}
+                    </button>
+                    <button
+                      onClick={handleRefresh}
+                      className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors text-gray-400"
+                      title="Actualizar"
+                    >
+                      <FaSync size={11} className={refreshing ? 'animate-spin' : ''} />
+                    </button>
+                  </div>
+                }
+              >
+                <div className="max-h-[420px] overflow-y-auto custom-scrollbar">
+                  <table className="dash-logs-table">
+                    <thead>
+                      <tr>
+                        <th>Tipo</th>
+                        <th>Responsable</th>
+                        <th>Descripción</th>
+                        <th className="text-center">Cant.</th>
+                        <th className="text-right">Fecha</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(mostrarTodos ? movimientos : movimientos.slice(0, 8)).map((mov, index) => (
+                        <tr 
+                          key={mov.id || index}
+                          className="cursor-pointer group"
+                          onClick={() => permisos?.verMovimientos && navigate('/movimientos', { state: { highlightId: mov.id } })}
+                        >
+                          <td>
+                            <span className={`inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                              mov.tipo_movimiento === 'ENTRADA' ? 'bg-emerald-50 text-emerald-700' : 
+                              mov.tipo_movimiento === 'SALIDA' ? 'bg-red-50 text-red-700' : 'bg-indigo-50 text-indigo-700'
+                            }`}>
+                              {mov.tipo_movimiento === 'ENTRADA' ? <FaArrowDown size={8} /> : <FaArrowUp size={8} />}
+                              {mov.tipo_movimiento || 'MOV'}
+                            </span>
+                          </td>
+                          <td>
+                            <span className="text-xs font-medium text-gray-600">{mov.usuario || 'Sistema'}</span>
+                          </td>
+                          <td>
+                            <div className="max-w-[200px]">
+                              <p className="text-xs font-semibold text-gray-800 truncate group-hover:text-gray-900" title={mov.producto__descripcion}>
+                                {mov.producto__descripcion || 'Producto'}
+                              </p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                {mov.producto__clave && <span className="text-[10px] font-mono text-gray-400">{mov.producto__clave}</span>}
+                                {mov.lote__codigo_lote && mov.lote__codigo_lote !== 'N/A' && (
+                                  <span className="text-[10px] text-gray-400">Lote: {mov.lote__codigo_lote}</span>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="text-center">
+                            <span className={`text-sm font-black tabular-nums ${
+                              mov.tipo_movimiento === 'ENTRADA' ? 'text-emerald-600' : mov.tipo_movimiento === 'SALIDA' ? 'text-red-600' : 'text-indigo-600'
+                            }`}>
+                              {mov.tipo_movimiento === 'ENTRADA' ? '+' : mov.tipo_movimiento === 'SALIDA' ? '-' : ''}{mov.cantidad}
+                            </span>
+                          </td>
+                          <td className="text-right">
+                            <span className="text-[11px] text-gray-500 whitespace-nowrap">
+                              {mov.fecha_movimiento ? new Date(mov.fecha_movimiento).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <button
+                  onClick={() => navigate('/movimientos')}
+                  className="w-full mt-4 py-2.5 rounded-xl font-bold text-sm text-white transition-all hover:shadow-lg hover:opacity-90 flex items-center justify-center gap-2"
+                  style={{ background: 'linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 100%)' }}
+                >
+                  <FaExchangeAlt size={12} />
+                  Ver todos los movimientos
+                </button>
+              </ChartCard>
+            )}
+          </section>
+
+          {/* Caja Chica */}
+          <section className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             {/* Resumen Caja Chica */}
             {analytics.caja_chica && (
               <ChartCard title="Resumen Caja Chica" icon={FaMoneyBillWave}>
@@ -2108,149 +2256,94 @@ const Dashboard = () => {
                 )}
               </ChartCard>
             )}
+
+            {/* Accesos Rápidos — en la misma fila que Caja Chica */}
+            {quickAccessItems.length > 0 && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 px-1">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, var(--color-primary, #9F2241), var(--color-primary-hover, #6B1839))' }}>
+                    <FaArrowRight className="text-white" size={12} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-gray-800 text-sm">Accesos Rápidos</h3>
+                    <p className="text-[10px] text-gray-400">Navegación directa</p>
+                  </div>
+                </div>
+                <div className="space-y-2.5">
+                  {quickAccessItems.map((item, index) => (
+                    <QuickAccessCard key={index} {...item} />
+                  ))}
+                </div>
+                {lastUpdate && (
+                  <div className="dash-update-footer">
+                    <FaClock className="text-gray-300" size={10} />
+                    <span className="text-[10px] text-gray-400">
+                      Actualizado: {lastUpdate.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
           </section>
         </>
       )}
 
-      {/* ========== SECCIÓN INFERIOR: LOGS + ACCESOS RÁPIDOS ========== */}
-      <section className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        {/* Últimos Logs Críticos - Tabla moderna */}
-        {puedeVerGraficasBasicas && permisos?.verMovimientos && movimientos.length > 0 && (
-          <div className="xl:col-span-2">
-            <ChartCard 
-              title="Últimos Logs Críticos" 
-              icon={FaExchangeAlt}
-              action={
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{movimientos.length} registros</span>
-                  <button
-                    onClick={() => setMostrarTodos(!mostrarTodos)}
-                    className="text-xs px-3 py-1.5 rounded-lg font-bold transition-all"
-                    style={{ 
-                      backgroundColor: mostrarTodos ? 'var(--color-primary, #9F2241)' : '#F3F4F6',
-                      color: mostrarTodos ? 'white' : '#374151'
-                    }}
-                  >
-                    {mostrarTodos ? 'Menos' : 'Todos'}
-                  </button>
-                  <button
-                    onClick={handleRefresh}
-                    className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors text-gray-400"
-                    title="Actualizar"
-                  >
-                    <FaSync size={11} className={refreshing ? 'animate-spin' : ''} />
-                  </button>
-                </div>
-              }
-            >
-              <div className="max-h-[420px] overflow-y-auto custom-scrollbar">
-                <table className="dash-logs-table">
-                  <thead>
-                    <tr>
-                      <th>Tipo</th>
-                      <th>Responsable</th>
-                      <th>Descripción</th>
-                      <th className="text-center">Cant.</th>
-                      <th className="text-right">Fecha</th>
+      {/* Logs Críticos — fallback para usuarios sin analytics */}
+      {!(puedeVerGraficasCompletas && analytics) && puedeVerGraficasBasicas && permisos?.verMovimientos && movimientos.length > 0 && (
+        <section>
+          <ChartCard 
+            title="Últimos Logs Críticos" 
+            icon={FaExchangeAlt}
+            action={
+              <div className="flex items-center gap-2">
+                <button onClick={handleRefresh} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors text-gray-400" title="Actualizar">
+                  <FaSync size={11} className={refreshing ? 'animate-spin' : ''} />
+                </button>
+              </div>
+            }
+          >
+            <div className="max-h-[320px] overflow-y-auto custom-scrollbar">
+              <table className="dash-logs-table">
+                <thead>
+                  <tr>
+                    <th>Tipo</th>
+                    <th>Responsable</th>
+                    <th>Descripción</th>
+                    <th className="text-center">Cant.</th>
+                    <th className="text-right">Fecha</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {movimientos.slice(0, 6).map((mov, index) => (
+                    <tr key={mov.id || index} className="cursor-pointer group" onClick={() => navigate('/movimientos', { state: { highlightId: mov.id } })}>
+                      <td>
+                        <span className={`inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${
+                          mov.tipo_movimiento === 'ENTRADA' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
+                        }`}>
+                          {mov.tipo_movimiento === 'ENTRADA' ? <FaArrowDown size={8} /> : <FaArrowUp size={8} />}
+                          {mov.tipo_movimiento || 'MOV'}
+                        </span>
+                      </td>
+                      <td><span className="text-xs font-medium text-gray-600">{mov.usuario || 'Sistema'}</span></td>
+                      <td><span className="text-xs text-gray-700 truncate block max-w-[180px]">{mov.producto__descripcion || 'Producto'}</span></td>
+                      <td className="text-center">
+                        <span className={`text-sm font-black tabular-nums ${mov.tipo_movimiento === 'ENTRADA' ? 'text-emerald-600' : 'text-red-600'}`}>
+                          {mov.tipo_movimiento === 'ENTRADA' ? '+' : '-'}{mov.cantidad}
+                        </span>
+                      </td>
+                      <td className="text-right">
+                        <span className="text-[11px] text-gray-500 whitespace-nowrap">
+                          {mov.fecha_movimiento ? new Date(mov.fecha_movimiento).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}
+                        </span>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {(mostrarTodos ? movimientos : movimientos.slice(0, 8)).map((mov, index) => (
-                      <tr 
-                        key={mov.id || index}
-                        className="cursor-pointer group"
-                        onClick={() => permisos?.verMovimientos && navigate('/movimientos', { state: { highlightId: mov.id } })}
-                      >
-                        <td>
-                          <span className={`inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${
-                            mov.tipo_movimiento === 'ENTRADA' ? 'bg-emerald-50 text-emerald-700' : 
-                            mov.tipo_movimiento === 'SALIDA' ? 'bg-red-50 text-red-700' : 'bg-indigo-50 text-indigo-700'
-                          }`}>
-                            {mov.tipo_movimiento === 'ENTRADA' ? <FaArrowDown size={8} /> : <FaArrowUp size={8} />}
-                            {mov.tipo_movimiento || 'MOV'}
-                          </span>
-                        </td>
-                        <td>
-                          <span className="text-xs font-medium text-gray-600">{mov.usuario || 'Sistema'}</span>
-                        </td>
-                        <td>
-                          <div className="max-w-[200px]">
-                            <p className="text-xs font-semibold text-gray-800 truncate group-hover:text-gray-900" title={mov.producto__descripcion}>
-                              {mov.producto__descripcion || 'Producto'}
-                            </p>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              {mov.producto__clave && <span className="text-[10px] font-mono text-gray-400">{mov.producto__clave}</span>}
-                              {mov.lote__codigo_lote && mov.lote__codigo_lote !== 'N/A' && (
-                                <span className="text-[10px] text-gray-400">Lote: {mov.lote__codigo_lote}</span>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="text-center">
-                          <span className={`text-sm font-black tabular-nums ${
-                            mov.tipo_movimiento === 'ENTRADA' ? 'text-emerald-600' : mov.tipo_movimiento === 'SALIDA' ? 'text-red-600' : 'text-indigo-600'
-                          }`}>
-                            {mov.tipo_movimiento === 'ENTRADA' ? '+' : mov.tipo_movimiento === 'SALIDA' ? '-' : ''}{mov.cantidad}
-                          </span>
-                        </td>
-                        <td className="text-right">
-                          <span className="text-[11px] text-gray-500 whitespace-nowrap">
-                            {mov.fecha_movimiento ? new Date(mov.fecha_movimiento).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <button
-                onClick={() => navigate('/movimientos')}
-                className="w-full mt-4 py-2.5 rounded-xl font-bold text-sm text-white transition-all hover:shadow-lg hover:opacity-90 flex items-center justify-center gap-2"
-                style={{ background: 'linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 100%)' }}
-              >
-                <FaExchangeAlt size={12} />
-                Ver todos los movimientos
-              </button>
-            </ChartCard>
-          </div>
-        )}
-
-        {/* Accesos Rápidos - Cards modernos */}
-        {quickAccessItems.length > 0 && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-3 px-1">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, var(--color-primary, #9F2241), var(--color-primary-hover, #6B1839))' }}>
-                <FaArrowRight className="text-white" size={12} />
-              </div>
-              <div>
-                <h3 className="font-bold text-gray-800 text-sm">Accesos Rápidos</h3>
-                <p className="text-[10px] text-gray-400">Navegación directa</p>
-              </div>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            <div className="space-y-2.5">
-              {quickAccessItems.map((item, index) => (
-                <QuickAccessCard key={index} {...item} />
-              ))}
-            </div>
-            
-            {lastUpdate && (
-              <div className="dash-update-footer">
-                <FaClock className="text-gray-300" size={10} />
-                <span className="text-[10px] text-gray-400">
-                  Actualizado: {lastUpdate.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
-                </span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {(!movimientos.length || !permisos?.verMovimientos) && quickAccessItems.length === 0 && (
-          <div className="xl:col-span-3 text-center py-12 text-gray-400">
-            <FaInfoCircle className="text-4xl mx-auto mb-3 opacity-50" />
-            <p className="text-sm">No hay datos adicionales para mostrar</p>
-          </div>
-        )}
-      </section>
+          </ChartCard>
+        </section>
+      )}
 
       {/* ========== FOOTER CON INFO ========== */}
       <footer className="dash-footer">
