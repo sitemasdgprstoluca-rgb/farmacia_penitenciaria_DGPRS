@@ -1828,11 +1828,11 @@ const Dashboard = () => {
               const pctRech = totalRequisiciones > 0 ? Math.round((rechazadas / totalRequisiciones) * 100) : 0;
               
               return (
-                <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-center">
+                <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
                   {/* Donut premium — grande con profundidad */}
-                  <div className="lg:col-span-2 flex justify-center">
-                    <div className="relative dash-donut-container" style={{ width: 260, height: 260 }}>
-                      <ResponsiveContainer width={260} height={260} minWidth={0} minHeight={0}>
+                  <div className="lg:col-span-2 flex flex-col items-center gap-4">
+                    <div className="relative dash-donut-container" style={{ width: 220, height: 220 }}>
+                      <ResponsiveContainer width={220} height={220} minWidth={0} minHeight={0}>
                         <PieChart>
                           <defs>
                             {graficas.requisiciones_por_estado.map((entry, index) => {
@@ -1852,8 +1852,8 @@ const Dashboard = () => {
                             data={graficas.requisiciones_por_estado}
                             cx="50%"
                             cy="50%"
-                            innerRadius={70}
-                            outerRadius={115}
+                            innerRadius={58}
+                            outerRadius={98}
                             paddingAngle={3}
                             dataKey="cantidad"
                             cornerRadius={6}
@@ -1892,15 +1892,30 @@ const Dashboard = () => {
                       </ResponsiveContainer>
                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                         <div className="text-center dash-donut-center">
-                          <p className="text-5xl font-black text-gray-900 leading-none tracking-tight">{totalRequisiciones}</p>
-                          <p className="text-[11px] text-gray-400 font-bold uppercase tracking-widest mt-1">Total</p>
+                          <p className="text-4xl font-black text-gray-900 leading-none tracking-tight">{totalRequisiciones}</p>
+                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Total</p>
                         </div>
                       </div>
                     </div>
+                    {/* Cumplimiento ring — debajo del donut */}
+                    {graficas.requisiciones_resumen?.tasa_cumplimiento != null && (
+                      <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-emerald-50 border border-emerald-100">
+                        <MicroRadial 
+                          value={graficas.requisiciones_resumen.tasa_cumplimiento} 
+                          max={100} 
+                          color="#10B981" 
+                          size={40}
+                        />
+                        <div>
+                          <p className="text-sm font-black text-emerald-700">{graficas.requisiciones_resumen.tasa_cumplimiento}%</p>
+                          <p className="text-[9px] text-gray-400 font-semibold">Tasa de Cumplimiento</p>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Lado derecho — badges + barras de progreso */}
-                  <div className="lg:col-span-3 space-y-5">
+                  <div className="lg:col-span-3 space-y-4">
                     {/* Badge strip conectado */}
                     <div className="grid grid-cols-3 gap-0 rounded-xl overflow-hidden border border-gray-100 shadow-sm">
                       <div className="text-center py-3 px-2" style={{ background: 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)' }}>
@@ -1918,7 +1933,7 @@ const Dashboard = () => {
                     </div>
 
                     {/* Barras de progreso premium */}
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                       {/* Completadas */}
                       <div>
                         <div className="flex items-center justify-between mb-1.5">
@@ -1968,32 +1983,14 @@ const Dashboard = () => {
                       </div>
                     </div>
 
-                    {/* Footer: Cumplimiento + Tiempo promedio */}
-                    <div className="flex flex-wrap items-center gap-4 pt-4 border-t border-gray-100">
-                      {graficas.requisiciones_resumen?.tasa_cumplimiento != null && (
-                        <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-emerald-50 border border-emerald-100">
-                          <MicroRadial 
-                            value={graficas.requisiciones_resumen.tasa_cumplimiento} 
-                            max={100} 
-                            color="#10B981" 
-                            size={44}
-                          />
-                          <div>
-                            <p className="text-base font-black text-emerald-700">{graficas.requisiciones_resumen.tasa_cumplimiento}%</p>
-                            <p className="text-[9px] text-gray-400 font-semibold">Tasa de Cumplimiento</p>
-                          </div>
-                        </div>
-                      )}
-                      {graficas.requisiciones_resumen?.dias_promedio_cumplimiento != null && (
-                        <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-50 border border-blue-100">
-                          <FaClock size={12} className="text-blue-500" />
-                          <div>
-                            <p className="text-[10px] text-gray-500">Tiempo promedio<br/>de cumplimiento:</p>
-                          </div>
-                          <span className="text-xl font-black text-blue-700 ml-1">{graficas.requisiciones_resumen.dias_promedio_cumplimiento} <span className="text-sm">días</span></span>
-                        </div>
-                      )}
-                    </div>
+                    {/* Footer: Tiempo promedio */}
+                    {graficas.requisiciones_resumen?.dias_promedio_cumplimiento != null && (
+                      <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
+                        <FaClock size={11} className="text-blue-500" />
+                        <span className="text-xs text-gray-500">Tiempo promedio de cumplimiento:</span>
+                        <span className="text-sm font-black text-blue-700">{graficas.requisiciones_resumen.dias_promedio_cumplimiento} días</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
