@@ -1498,7 +1498,7 @@ const Dashboard = () => {
                     </div>
                   );
                 })()}
-                <ResponsiveContainer width="100%" height={280} minHeight={0}>
+                <ResponsiveContainer width="100%" height={280} minWidth={0} minHeight={0}>
                   <AreaChart data={graficas.consumo_mensual}>
                     <defs>
                       <linearGradient id="colorEntradas" x1="0" y1="0" x2="0" y2="1">
@@ -1700,7 +1700,7 @@ const Dashboard = () => {
               <div className="lg:col-span-2 min-w-0">
                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Tendencia Mensual</p>
                 {graficas.requisiciones_por_mes.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={165} minHeight={0}>
+                  <ResponsiveContainer width="100%" height={165} minWidth={0} minHeight={0}>
                     <BarChart data={graficas.requisiciones_por_mes} barGap={1} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
                       <XAxis dataKey="mes_corto" tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
@@ -1743,7 +1743,7 @@ const Dashboard = () => {
             <div className="flex flex-wrap items-center justify-center gap-4">
               {/* Donut compacto */}
               <div className="relative" style={{ width: 140, height: 140 }}>
-                <ResponsiveContainer width="100%" height="100%" minHeight={0}>
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <PieChart>
                     <Pie
                       data={graficas.requisiciones_por_estado}

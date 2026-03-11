@@ -540,7 +540,7 @@ function Layout() {
       </aside>
 
       {/* ========== CONTENIDO PRINCIPAL ========== */}
-      <div className={`flex-1 transition-all duration-300 min-h-screen flex flex-col ${sidebarMargin}`}>
+      <div className={`flex-1 min-w-0 transition-all duration-300 min-h-screen flex flex-col ${sidebarMargin}`}>
         {/* Header Moderno — Blanco, minimalista */}
         <header 
           className={`fixed top-0 right-0 z-30 h-14 flex items-center px-4 sm:px-6 bg-white border-b border-gray-200/80 transition-all duration-300
@@ -611,7 +611,7 @@ function Layout() {
 
         {/* Main Content */}
         <main 
-          className="flex-1 p-4 sm:p-6 lg:p-8 w-full max-w-full overflow-x-hidden pb-20 lg:pb-8"
+          className="flex-1 p-4 sm:p-6 lg:p-8 w-full max-w-full overflow-x-auto pb-20 lg:pb-8"
           style={{ backgroundColor: "var(--color-background, #F8FAFC)" }}
         >
           <div className="w-full max-w-full">
