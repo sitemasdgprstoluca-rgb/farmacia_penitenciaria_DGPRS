@@ -1541,7 +1541,7 @@ const Dashboard = () => {
             )}
           </ChartCard>
 
-          {/* Stock por Centro / por Producto — Horizontal BarChart moderno */}
+          {/* Stock por Centro / por Producto — Lista rankeada */}
           {(() => {
             const stockCentro = graficas.stock_por_centro || [];
             const stockProducto = graficas.stock_por_producto || [];
@@ -1550,7 +1550,7 @@ const Dashboard = () => {
             const chartIcon = esCentroUnico ? FaCubes : FaWarehouse;
             const items = esCentroUnico ? stockProducto : stockCentro;
             const labelKey = esCentroUnico ? 'producto' : 'centro';
-            const COLORS_BAR = ['#932043', '#0EA5E9', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316', '#6366F1', '#EF4444'];
+            const COLORS_BAR = ['#932043', '#0EA5E9', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316', '#6366F1', '#EF4444', '#0D9488', '#7C3AED', '#DB2777', '#EA580C', '#2563EB', '#059669', '#D97706', '#4F46E5', '#E11D48', '#0891B2', '#65A30D', '#9333EA'];
 
             const puedeNavegar = permisos?.verReportes;
 
@@ -1565,15 +1565,9 @@ const Dashboard = () => {
               );
             }
 
-            const sorted = [...items].sort((a, b) => b.stock - a.stock).slice(0, 10);
+            const sorted = [...items].sort((a, b) => b.stock - a.stock);
             const totalStock = sorted.reduce((s, p) => s + p.stock, 0);
-            const barData = sorted.map((item, i) => ({
-              name: item[labelKey]?.length > 18 ? item[labelKey].substring(0, 18) + '…' : item[labelKey],
-              fullName: item[labelKey],
-              stock: item.stock,
-              fill: COLORS_BAR[i % COLORS_BAR.length],
-              centro_id: item.centro_id,
-            }));
+            const maxStock = sorted[0]?.stock || 1;
 
             return (
               <ChartCard 
@@ -1607,43 +1601,40 @@ const Dashboard = () => {
                     <p className="text-lg font-black text-gray-800 mt-0.5">{Math.round(totalStock / (sorted.length || 1)).toLocaleString('es-MX')}</p>
                   </div>
                 </div>
-                {/* Recharts Horizontal BarChart */}
-                <ResponsiveContainer width="100%" height={Math.max(sorted.length * 38, 180)} minWidth={0} minHeight={0}>
-                  <BarChart data={barData} layout="vertical" margin={{ top: 0, right: 40, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" horizontal={false} />
-                    <XAxis type="number" tick={{ fill: '#9CA3AF', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} />
-                    <YAxis dataKey="name" type="category" tick={{ fill: '#6B7280', fontSize: 11, fontWeight: 500 }} axisLine={false} tickLine={false} width={130} />
-                    <Tooltip
-                      content={({ active, payload, label }) => {
-                        if (!active || !payload?.length) return null;
-                        const matched = barData.find(b => b.name === label);
-                        const fullName = matched?.fullName || label;
-                        const stock = matched?.stock ?? payload[0]?.value ?? 0;
-                        return (
-                          <div className="bg-white rounded-lg shadow-xl border border-gray-200 p-3 min-w-[140px]">
-                            <p className="text-xs font-bold text-gray-800 mb-1">{fullName}</p>
-                            <p className="text-lg font-black text-gray-900">{stock?.toLocaleString('es-MX')} <span className="text-xs font-normal text-gray-400">uds</span></p>
-                            <p className="text-[10px] text-gray-400">{totalStock > 0 ? ((stock / totalStock) * 100).toFixed(1) : 0}% del total</p>
+                {/* Lista rankeada con barras inline */}
+                <div className="space-y-1 max-h-[420px] overflow-y-auto custom-scrollbar pr-1">
+                  {sorted.map((item, idx) => {
+                    const nombre = item[labelKey];
+                    const pct = totalStock > 0 ? ((item.stock / totalStock) * 100) : 0;
+                    const barPct = Math.max((item.stock / maxStock) * 100, 1);
+                    const color = COLORS_BAR[idx % COLORS_BAR.length];
+                    return (
+                      <div
+                        key={item.centro_id || item.producto_id || idx}
+                        className={`group flex items-center gap-2.5 px-2.5 py-2 rounded-lg border border-transparent hover:border-gray-100 hover:bg-gray-50/70 transition-all ${puedeNavegar && !esCentroUnico ? 'cursor-pointer' : ''}`}
+                        onClick={() => puedeNavegar && !esCentroUnico && item.centro_id && navigate('/reportes', { state: { tipo: 'inventario', centro: item.centro_id } })}
+                        title={nombre}
+                      >
+                        <span className="w-5 h-5 rounded-md flex items-center justify-center text-[9px] font-black text-white flex-shrink-0" style={{ backgroundColor: color }}>{idx + 1}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2 mb-0.5">
+                            <span className="text-[11px] font-semibold text-gray-700 truncate group-hover:text-gray-900 transition-colors">{nombre}</span>
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              <span className="text-xs font-black text-gray-900 tabular-nums">{item.stock.toLocaleString('es-MX')}</span>
+                              <span className="text-[9px] text-gray-400 tabular-nums w-[38px] text-right">{pct.toFixed(1)}%</span>
+                            </div>
                           </div>
-                        );
-                      }}
-                    />
-                    <Bar 
-                      dataKey="stock" 
-                      radius={[0, 6, 6, 0]}
-                      cursor={puedeNavegar && !esCentroUnico ? 'pointer' : 'default'}
-                      onClick={(data) => {
-                        if (puedeNavegar && !esCentroUnico && data?.centro_id) {
-                          navigate('/reportes', { state: { tipo: 'inventario', centro: data.centro_id } });
-                        }
-                      }}
-                    >
-                      {barData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+                          <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                            <div className="h-full rounded-full transition-all duration-700" style={{ width: `${barPct}%`, backgroundColor: color }} />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {sorted.length > 8 && (
+                  <p className="text-[9px] text-gray-400 text-center mt-2 italic">Mostrando {sorted.length} {esCentroUnico ? 'productos' : 'centros'} · Scroll para ver todos</p>
+                )}
               </ChartCard>
             );
           })()}
@@ -1674,20 +1665,24 @@ const Dashboard = () => {
               <div className="flex items-center flex-wrap gap-2 mb-3 pb-3 border-b border-gray-100">
                 <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg" style={{ background: 'rgba(159, 34, 65, 0.06)' }}>
                   <span className="text-lg font-black" style={{ color: '#9F2241' }}>{graficas.requisiciones_resumen.total}</span>
-                  <span className="text-[10px] text-gray-500">Pendientes</span>
+                  <span className="text-[10px] text-gray-500">Total</span>
                 </div>
                 <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50">
                   <span className="text-lg font-black text-amber-700">{graficas.requisiciones_resumen.en_proceso}</span>
-                  <span className="text-[10px] text-gray-500">Procesando</span>
+                  <span className="text-[10px] text-gray-500">En Proceso</span>
                 </div>
                 <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50">
                   <span className="text-lg font-black text-emerald-700">{graficas.requisiciones_resumen.completadas}</span>
-                  <span className="text-[10px] text-gray-500">Aportado</span>
+                  <span className="text-[10px] text-gray-500">Completadas</span>
+                </div>
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-50">
+                  <span className="text-lg font-black text-red-600">{graficas.requisiciones_resumen.rechazadas || 0}</span>
+                  <span className="text-[10px] text-gray-500">Rechazadas</span>
                 </div>
                 {graficas.requisiciones_resumen.dias_promedio_cumplimiento != null && (
                   <div className="ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50">
                     <FaClock size={10} className="text-blue-500" />
-                    <span className="text-[10px] font-bold text-blue-700">VM {graficas.requisiciones_resumen.dias_promedio_cumplimiento}d</span>
+                    <span className="text-[10px] font-bold text-blue-700">Promedio {graficas.requisiciones_resumen.dias_promedio_cumplimiento}d</span>
                   </div>
                 )}
               </div>
