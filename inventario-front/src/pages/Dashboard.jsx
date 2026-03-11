@@ -1479,7 +1479,7 @@ const Dashboard = () => {
                                   axisLine={false} 
                                   tickLine={false} 
                                 />
-                                <YAxis tick={{ fill: '#9CA3AF', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} />
+                                <YAxis domain={[0, 'auto']} tick={{ fill: '#9CA3AF', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} />
                                 <Tooltip 
                                   content={<ConsumoTooltip />} 
                                   cursor={{ stroke: '#D1D5DB', strokeWidth: 1, strokeDasharray: '4 4' }}
@@ -1487,7 +1487,7 @@ const Dashboard = () => {
                                 {consumoProd.map((prod, idx) => (
                                   <Area
                                     key={prod.clave}
-                                    type="natural"
+                                    type="monotone"
                                     dataKey={prod.nombre}
                                     stroke={PROD_COLORS[idx % PROD_COLORS.length]}
                                     strokeWidth={2.5}
@@ -1530,8 +1530,8 @@ const Dashboard = () => {
                             <YAxis tick={{ fill: '#9CA3AF', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} />
                             <Tooltip content={<ConsumoTooltip />} cursor={{ stroke: '#D1D5DB', strokeWidth: 1, strokeDasharray: '4 4' }} />
                             <Legend iconType="circle" wrapperStyle={{ paddingTop: '12px', fontSize: '12px' }} />
-                            <Area type="natural" dataKey="entradas" stroke="#10B981" strokeWidth={2.5} fill="url(#colorEntradas)" name="Entradas" dot={{ fill: '#10B981', strokeWidth: 2, r: 4, stroke: '#fff' }} activeDot={{ r: 7, stroke: '#fff', strokeWidth: 2.5, fill: '#10B981' }} />
-                            <Area type="natural" dataKey="salidas" stroke="#EF4444" strokeWidth={2.5} fill="url(#colorSalidas)" name="Salidas" dot={{ fill: '#EF4444', strokeWidth: 2, r: 4, stroke: '#fff' }} activeDot={{ r: 7, stroke: '#fff', strokeWidth: 2.5, fill: '#EF4444' }} />
+                            <Area type="monotone" dataKey="entradas" stroke="#10B981" strokeWidth={2.5} fill="url(#colorEntradas)" name="Entradas" dot={{ fill: '#10B981', strokeWidth: 2, r: 4, stroke: '#fff' }} activeDot={{ r: 7, stroke: '#fff', strokeWidth: 2.5, fill: '#10B981' }} />
+                            <Area type="monotone" dataKey="salidas" stroke="#EF4444" strokeWidth={2.5} fill="url(#colorSalidas)" name="Salidas" dot={{ fill: '#EF4444', strokeWidth: 2, r: 4, stroke: '#fff' }} activeDot={{ r: 7, stroke: '#fff', strokeWidth: 2.5, fill: '#EF4444' }} />
                           </AreaChart>
                         </ResponsiveContainer>
                       );
@@ -1828,9 +1828,9 @@ const Dashboard = () => {
               const pctRech = totalRequisiciones > 0 ? Math.round((rechazadas / totalRequisiciones) * 100) : 0;
               
               return (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+                <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-center">
                   {/* Donut premium — grande con profundidad */}
-                  <div className="flex justify-center">
+                  <div className="lg:col-span-2 flex justify-center">
                     <div className="relative dash-donut-container" style={{ width: 260, height: 260 }}>
                       <ResponsiveContainer width={260} height={260} minWidth={0} minHeight={0}>
                         <PieChart>
@@ -1900,7 +1900,7 @@ const Dashboard = () => {
                   </div>
 
                   {/* Lado derecho — badges + barras de progreso */}
-                  <div className="space-y-5">
+                  <div className="lg:col-span-3 space-y-5">
                     {/* Badge strip conectado */}
                     <div className="grid grid-cols-3 gap-0 rounded-xl overflow-hidden border border-gray-100 shadow-sm">
                       <div className="text-center py-3 px-2" style={{ background: 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)' }}>
@@ -1969,26 +1969,28 @@ const Dashboard = () => {
                     </div>
 
                     {/* Footer: Cumplimiento + Tiempo promedio */}
-                    <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                    <div className="flex flex-wrap items-center gap-4 pt-4 border-t border-gray-100">
                       {graficas.requisiciones_resumen?.tasa_cumplimiento != null && (
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-emerald-50 border border-emerald-100">
                           <MicroRadial 
                             value={graficas.requisiciones_resumen.tasa_cumplimiento} 
                             max={100} 
                             color="#10B981" 
-                            size={48}
+                            size={44}
                           />
                           <div>
-                            <p className="text-lg font-black text-emerald-700">{graficas.requisiciones_resumen.tasa_cumplimiento}%</p>
-                            <p className="text-[10px] text-gray-400 font-semibold">Tasa de Cumplimiento</p>
+                            <p className="text-base font-black text-emerald-700">{graficas.requisiciones_resumen.tasa_cumplimiento}%</p>
+                            <p className="text-[9px] text-gray-400 font-semibold">Tasa de Cumplimiento</p>
                           </div>
                         </div>
                       )}
                       {graficas.requisiciones_resumen?.dias_promedio_cumplimiento != null && (
-                        <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-50 border border-blue-100">
+                        <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-50 border border-blue-100">
                           <FaClock size={12} className="text-blue-500" />
-                          <span className="text-[11px] font-medium text-gray-500">Tiempo promedio de cumplimiento:</span>
-                          <span className="text-base font-black text-blue-700">{graficas.requisiciones_resumen.dias_promedio_cumplimiento} días</span>
+                          <div>
+                            <p className="text-[10px] text-gray-500">Tiempo promedio<br/>de cumplimiento:</p>
+                          </div>
+                          <span className="text-xl font-black text-blue-700 ml-1">{graficas.requisiciones_resumen.dias_promedio_cumplimiento} <span className="text-sm">días</span></span>
                         </div>
                       )}
                     </div>
