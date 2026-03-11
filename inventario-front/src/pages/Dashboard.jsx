@@ -717,7 +717,9 @@ const Dashboard = () => {
     consumo_mensual: [],
     stock_por_centro: [],
     stock_por_producto: [],
-    requisiciones_por_estado: []
+    requisiciones_por_estado: [],
+    requisiciones_por_mes: [],
+    requisiciones_resumen: null,
   });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -788,7 +790,9 @@ const Dashboard = () => {
           consumo_mensual: graficasResponse.data.consumo_mensual || [],
           stock_por_centro: graficasResponse.data.stock_por_centro || [],
           stock_por_producto: graficasResponse.data.stock_por_producto || [],
-          requisiciones_por_estado: graficasResponse.data.requisiciones_por_estado || []
+          requisiciones_por_estado: graficasResponse.data.requisiciones_por_estado || [],
+          requisiciones_por_mes: graficasResponse.data.requisiciones_por_mes || [],
+          requisiciones_resumen: graficasResponse.data.requisiciones_resumen || null,
         });
       } catch (graficasError) {
         console.warn('Error al cargar gráficas:', graficasError);
@@ -797,7 +801,9 @@ const Dashboard = () => {
             consumo_mensual: [],
             stock_por_centro: [],
             stock_por_producto: [],
-            requisiciones_por_estado: []
+            requisiciones_por_estado: [],
+            requisiciones_por_mes: [],
+            requisiciones_resumen: null,
           });
         }
       }
@@ -814,7 +820,7 @@ const Dashboard = () => {
       }
       setKpis({ total_productos: 0, stock_total: 0, lotes_activos: 0, movimientos_mes: 0 });
       setMovimientos([]);
-      setGraficas({ consumo_mensual: [], stock_por_centro: [], stock_por_producto: [], requisiciones_por_estado: [] });
+      setGraficas({ consumo_mensual: [], stock_por_centro: [], stock_por_producto: [], requisiciones_por_estado: [], requisiciones_por_mes: [], requisiciones_resumen: null });
     } finally {
       if (isMountedRef.current) {
         setLoading(false);
@@ -1633,11 +1639,11 @@ const Dashboard = () => {
         </section>
       )}
 
-      {/* ========== REQUISICIONES POR ESTADO ========== */}
+      {/* ========== REQUISICIONES — PANEL COMPLETO ACUMULATIVO ========== */}
       {puedeVerGraficasCompletas && graficas.requisiciones_por_estado.length > 0 && (
         <section>
           <ChartCard 
-            title="Requisiciones por Estado" 
+            title="Requisiciones — Panel Acumulativo" 
             icon={FaClipboardList}
             action={
               <button
@@ -1649,95 +1655,241 @@ const Dashboard = () => {
               </button>
             }
           >
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-start">
-              {/* Donut Chart — col 1-2 */}
-              <div className="lg:col-span-2 relative">
-                <ResponsiveContainer width="100%" height={260}>
-                  <PieChart>
-                    <Pie
-                      data={graficas.requisiciones_por_estado}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={65}
-                      outerRadius={100}
-                      paddingAngle={3}
-                      dataKey="cantidad"
-                      cornerRadius={4}
-                    >
-                      {graficas.requisiciones_por_estado.map((entry, index) => (
-                        <Cell 
-                          key={`cell-${index}`} 
-                          fill={COLORES_ESTADO_REQUISICION[entry.estado] || COLORES_ESTADO_REQUISICION.DEFAULT}
-                          stroke="#fff"
-                          strokeWidth={2}
-                        />
-                      ))}
-                    </Pie>
-                    <Tooltip 
-                      content={({ active, payload }) => {
-                        if (!active || !payload?.length) return null;
-                        const data = payload[0].payload;
-                        const color = COLORES_ESTADO_REQUISICION[data.estado] || COLORES_ESTADO_REQUISICION.DEFAULT;
-                        return (
-                          <div className="bg-white rounded-xl shadow-xl border border-gray-200 p-4 min-w-[180px]">
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
-                              <span className="font-bold text-gray-800 text-sm">{formatearEstado(data.estado)}</span>
+            {/* Fila 1: KPIs de resumen */}
+            {graficas.requisiciones_resumen && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+                {[
+                  { label: 'Total Acumulado', value: graficas.requisiciones_resumen.total, icon: FaClipboardList, color: '#9F2241' },
+                  { label: 'Completadas', value: graficas.requisiciones_resumen.completadas, icon: FaTrophy, color: '#10B981', sub: `${graficas.requisiciones_resumen.tasa_cumplimiento}%` },
+                  { label: 'En Proceso', value: graficas.requisiciones_resumen.en_proceso, icon: FaClock, color: '#F59E0B' },
+                  { label: 'Rechazadas', value: graficas.requisiciones_resumen.rechazadas, icon: FaTimesCircle, color: '#EF4444', sub: `${graficas.requisiciones_resumen.tasa_rechazo}%` },
+                ].map((kpi, i) => (
+                  <div key={i} className="bg-gray-50/80 rounded-xl p-3 border border-gray-100 hover:border-gray-200 transition-colors">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${kpi.color}12` }}>
+                        <kpi.icon size={13} style={{ color: kpi.color }} />
+                      </div>
+                      <span className="text-[11px] font-medium text-gray-500">{kpi.label}</span>
+                    </div>
+                    <div className="flex items-end gap-1.5">
+                      <span className="text-2xl font-black text-gray-800">{kpi.value}</span>
+                      {kpi.sub && <span className="text-[10px] font-bold mb-1 px-1.5 py-0.5 rounded" style={{ color: kpi.color, backgroundColor: `${kpi.color}12` }}>{kpi.sub}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Fila 2: Donut + Tendencia mensual */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
+              {/* Donut Chart — distribución actual */}
+              <div className="bg-gray-50/60 rounded-xl p-4 border border-gray-100">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Distribución por Estado</p>
+                <div className="relative">
+                  <ResponsiveContainer width="100%" height={220}>
+                    <PieChart>
+                      <Pie
+                        data={graficas.requisiciones_por_estado}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={55}
+                        outerRadius={85}
+                        paddingAngle={3}
+                        dataKey="cantidad"
+                        cornerRadius={4}
+                      >
+                        {graficas.requisiciones_por_estado.map((entry, index) => (
+                          <Cell 
+                            key={`cell-${index}`} 
+                            fill={COLORES_ESTADO_REQUISICION[entry.estado] || COLORES_ESTADO_REQUISICION.DEFAULT}
+                            stroke="#fff"
+                            strokeWidth={2}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                        content={({ active, payload }) => {
+                          if (!active || !payload?.length) return null;
+                          const data = payload[0].payload;
+                          const color = COLORES_ESTADO_REQUISICION[data.estado] || COLORES_ESTADO_REQUISICION.DEFAULT;
+                          return (
+                            <div className="bg-white rounded-xl shadow-xl border border-gray-200 p-3 min-w-[160px]">
+                              <div className="flex items-center gap-2 mb-1.5">
+                                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                                <span className="font-bold text-gray-800 text-xs">{formatearEstado(data.estado)}</span>
+                              </div>
+                              <p className="text-xl font-black text-gray-900">
+                                {data.cantidad} <span className="text-xs font-normal text-gray-500">de {totalRequisiciones}</span>
+                              </p>
+                              <p className="text-[10px] text-gray-400 mt-0.5">{((data.cantidad / totalRequisiciones) * 100).toFixed(1)}%</p>
                             </div>
-                            <p className="text-2xl font-black text-gray-900">
-                              {data.cantidad} <span className="text-sm font-normal text-gray-500">de {totalRequisiciones}</span>
-                            </p>
-                            <p className="text-xs text-gray-400 mt-1">{((data.cantidad / totalRequisiciones) * 100).toFixed(1)}% del total</p>
-                          </div>
-                        );
-                      }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="text-center">
-                    <p className="text-4xl font-black text-gray-900">{totalRequisiciones}</p>
-                    <p className="text-xs text-gray-400 font-medium">Total</p>
+                          );
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="text-center">
+                      <p className="text-3xl font-black text-gray-900">{totalRequisiciones}</p>
+                      <p className="text-[10px] text-gray-400 font-medium">Total</p>
+                    </div>
                   </div>
                 </div>
+                {/* Legend inline */}
+                <div className="flex flex-wrap gap-x-3 gap-y-1 justify-center mt-2">
+                  {graficas.requisiciones_por_estado.map((item) => {
+                    const color = COLORES_ESTADO_REQUISICION[item.estado] || COLORES_ESTADO_REQUISICION.DEFAULT;
+                    return (
+                      <div key={item.estado} className="flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                        <span className="text-[10px] text-gray-500">{formatearEstado(item.estado)} ({item.cantidad})</span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-              
-              {/* Estadísticas detalladas — col 3-5 */}
-              <div className="lg:col-span-3 space-y-4">
-                {/* Badges de estados */}
+
+              {/* Tendencia mensual */}
+              <div className="bg-gray-50/60 rounded-xl p-4 border border-gray-100">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Tendencia Mensual (6 meses)</p>
+                {graficas.requisiciones_por_mes.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={graficas.requisiciones_por_mes} barGap={2}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                      <XAxis dataKey="mes_corto" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                      <Tooltip
+                        content={({ active, payload, label }) => {
+                          if (!active || !payload?.length) return null;
+                          const d = payload[0]?.payload;
+                          return (
+                            <div className="bg-white rounded-xl shadow-xl border border-gray-200 p-3 min-w-[140px]">
+                              <p className="text-xs font-bold text-gray-700 mb-1.5">{d?.mes}</p>
+                              <div className="space-y-1">
+                                <p className="text-[11px] text-gray-600"><span className="inline-block w-2 h-2 rounded-full bg-emerald-500 mr-1.5" />{d?.completadas} completadas</p>
+                                <p className="text-[11px] text-gray-600"><span className="inline-block w-2 h-2 rounded-full bg-amber-400 mr-1.5" />{d?.pendientes} en proceso</p>
+                                <p className="text-[11px] text-gray-600"><span className="inline-block w-2 h-2 rounded-full bg-red-400 mr-1.5" />{d?.rechazadas} rechazadas</p>
+                                <p className="text-[11px] font-bold text-gray-800 pt-1 border-t border-gray-100">{d?.total} total</p>
+                              </div>
+                            </div>
+                          );
+                        }}
+                      />
+                      <Bar dataKey="completadas" stackId="a" fill="#10B981" radius={[0, 0, 0, 0]} name="Completadas" />
+                      <Bar dataKey="pendientes" stackId="a" fill="#F59E0B" radius={[0, 0, 0, 0]} name="En proceso" />
+                      <Bar dataKey="rechazadas" stackId="a" fill="#EF4444" radius={[4, 4, 0, 0]} name="Rechazadas" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex items-center justify-center h-[220px] text-gray-400 text-sm">Sin datos de tendencia</div>
+                )}
+                {/* Legend */}
+                <div className="flex items-center justify-center gap-4 mt-2">
+                  {[
+                    { label: 'Completadas', color: '#10B981' },
+                    { label: 'En proceso', color: '#F59E0B' },
+                    { label: 'Rechazadas', color: '#EF4444' },
+                  ].map(l => (
+                    <div key={l.label} className="flex items-center gap-1">
+                      <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: l.color }} />
+                      <span className="text-[10px] text-gray-500">{l.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Fila 3: Badges por estado + métricas adicionales */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {/* Badges de estados (ocupa 2 cols) */}
+              <div className="lg:col-span-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2.5">Desglose por Estado</p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {graficas.requisiciones_por_estado.map((item) => {
                     const color = COLORES_ESTADO_REQUISICION[item.estado] || COLORES_ESTADO_REQUISICION.DEFAULT;
-                    const pct = ((item.cantidad / totalRequisiciones) * 100).toFixed(0);
+                    const pct = totalRequisiciones > 0 ? ((item.cantidad / totalRequisiciones) * 100).toFixed(0) : 0;
                     return (
                       <div key={item.estado} className="dash-req-badge group" style={{ '--req-color': color }}>
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
-                          <span className="text-xs font-semibold text-gray-600 truncate">{formatearEstado(item.estado)}</span>
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                          <span className="text-[11px] font-semibold text-gray-600 truncate">{formatearEstado(item.estado)}</span>
                         </div>
                         <div className="flex items-end justify-between">
-                          <span className="text-2xl font-black text-gray-800">{item.cantidad}</span>
+                          <span className="text-xl font-black text-gray-800">{item.cantidad}</span>
                           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md" style={{ color, backgroundColor: `${color}15` }}>{pct}%</span>
                         </div>
-                        <div className="w-full bg-gray-100 rounded-full h-1.5 mt-2 overflow-hidden">
+                        <div className="w-full bg-gray-100 rounded-full h-1 mt-1.5 overflow-hidden">
                           <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, backgroundColor: color }} />
                         </div>
                       </div>
                     );
                   })}
                 </div>
-                {/* Resumen rápido */}
-                <div className="flex items-center gap-3 pt-2 border-t border-gray-100">
-                  <span className="text-xs text-gray-400">{graficas.requisiciones_por_estado.length} estados activos</span>
-                  <span className="text-xs text-gray-300">•</span>
-                  <span className="text-xs text-gray-400">
-                    {graficas.requisiciones_por_estado.filter(r => ['SURTIDA', 'ENTREGADA'].includes(r.estado)).reduce((s, r) => s + r.cantidad, 0)} completadas
-                  </span>
-                  <span className="text-xs text-gray-300">•</span>
-                  <span className="text-xs text-gray-400">
-                    {graficas.requisiciones_por_estado.filter(r => ['PENDIENTE_ADMIN', 'PENDIENTE_DIRECTOR', 'EN_REVISION', 'ENVIADA'].includes(r.estado)).reduce((s, r) => s + r.cantidad, 0)} pendientes
-                  </span>
-                </div>
+              </div>
+
+              {/* Panel lateral: métricas clave */}
+              <div className="space-y-3">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2.5">Métricas Clave</p>
+                
+                {/* Tiempo promedio */}
+                {graficas.requisiciones_resumen?.dias_promedio_cumplimiento != null && (
+                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-3 border border-blue-100">
+                    <div className="flex items-center gap-2 mb-1">
+                      <FaClock size={11} className="text-blue-500" />
+                      <span className="text-[11px] font-medium text-blue-600">Tiempo Promedio</span>
+                    </div>
+                    <p className="text-2xl font-black text-blue-800">
+                      {graficas.requisiciones_resumen.dias_promedio_cumplimiento} <span className="text-sm font-medium">días</span>
+                    </p>
+                    <p className="text-[10px] text-blue-500 mt-0.5">Solicitud → Entrega</p>
+                  </div>
+                )}
+
+                {/* Urgentes */}
+                {graficas.requisiciones_resumen?.urgentes > 0 && (
+                  <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl p-3 border border-orange-100">
+                    <div className="flex items-center gap-2 mb-1">
+                      <FaExclamationTriangle size={11} className="text-orange-500" />
+                      <span className="text-[11px] font-medium text-orange-600">Urgentes</span>
+                    </div>
+                    <p className="text-2xl font-black text-orange-800">{graficas.requisiciones_resumen.urgentes}</p>
+                    <p className="text-[10px] text-orange-500 mt-0.5">
+                      {totalRequisiciones > 0 ? ((graficas.requisiciones_resumen.urgentes / totalRequisiciones) * 100).toFixed(1) : 0}% del total
+                    </p>
+                  </div>
+                )}
+
+                {/* Eficiencia */}
+                {graficas.requisiciones_resumen && (
+                  <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-xl p-3 border border-emerald-100">
+                    <div className="flex items-center gap-2 mb-1">
+                      <FaChartLine size={11} className="text-emerald-500" />
+                      <span className="text-[11px] font-medium text-emerald-600">Tasa de Cumplimiento</span>
+                    </div>
+                    <p className="text-2xl font-black text-emerald-800">{graficas.requisiciones_resumen.tasa_cumplimiento}%</p>
+                    <div className="w-full bg-emerald-100 rounded-full h-1.5 mt-1.5 overflow-hidden">
+                      <div className="h-full bg-emerald-500 rounded-full transition-all duration-700" style={{ width: `${graficas.requisiciones_resumen.tasa_cumplimiento}%` }} />
+                    </div>
+                  </div>
+                )}
+
+                {/* Top centros solicitantes */}
+                {graficas.requisiciones_resumen?.por_centro?.length > 0 && (
+                  <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                    <div className="flex items-center gap-2 mb-2">
+                      <FaBuilding size={11} className="text-gray-500" />
+                      <span className="text-[11px] font-medium text-gray-600">Top Centros Solicitantes</span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {graficas.requisiciones_resumen.por_centro.slice(0, 3).map((c, i) => (
+                        <div key={i} className="flex items-center justify-between">
+                          <span className="text-[11px] text-gray-600 truncate flex-1">{c.centro}</span>
+                          <span className="text-[11px] font-bold text-gray-800 ml-2">{c.total}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </ChartCard>

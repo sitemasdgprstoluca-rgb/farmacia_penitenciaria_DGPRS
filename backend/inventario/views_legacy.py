@@ -8670,12 +8670,85 @@ def dashboard_graficas(request):
                     'cantidad': item['cantidad']
                 })
         
+        # =========================================
+        # 4. REQUISICIONES MÉTRICAS ACUMULATIVAS
+        # =========================================
+        from django.db.models import Avg
+        from django.db.models.functions import TruncMonth
+        
+        ahora = timezone.now()
+        hace_6_meses = ahora - timedelta(days=180)
+        
+        # Tendencia mensual (últimos 6 meses)
+        req_mensual_qs = requisiciones_qs.filter(
+            fecha_solicitud__gte=hace_6_meses
+        ).annotate(
+            mes=TruncMonth('fecha_solicitud')
+        ).values('mes').annotate(
+            total=Count('id'),
+            completadas=Count('id', filter=Q(estado__in=['surtida', 'entregada', 'parcial'])),
+            rechazadas=Count('id', filter=Q(estado__in=['rechazada', 'devuelta', 'cancelada'])),
+        ).order_by('mes')
+        
+        requisiciones_por_mes = []
+        for item in req_mensual_qs:
+            requisiciones_por_mes.append({
+                'mes': item['mes'].strftime('%b %Y'),
+                'mes_corto': item['mes'].strftime('%b'),
+                'total': item['total'],
+                'completadas': item['completadas'],
+                'rechazadas': item['rechazadas'],
+                'pendientes': item['total'] - item['completadas'] - item['rechazadas'],
+            })
+        
+        # Resumen acumulativo
+        total_req = requisiciones_qs.count()
+        completadas_total = requisiciones_qs.filter(estado__in=['surtida', 'entregada', 'parcial']).count()
+        urgentes_total = requisiciones_qs.filter(es_urgente=True).count()
+        rechazadas_total = requisiciones_qs.filter(estado__in=['rechazada', 'devuelta']).count()
+        en_proceso = requisiciones_qs.filter(estado__in=[
+            'borrador', 'pendiente_admin', 'pendiente_director', 'enviada', 
+            'en_revision', 'autorizada', 'en_surtido'
+        ]).count()
+        
+        # Tiempo promedio de cumplimiento (solicitud → entrega)
+        tiempo_promedio = requisiciones_qs.filter(
+            estado='entregada',
+            fecha_entrega__isnull=False,
+            fecha_solicitud__isnull=False
+        ).aggregate(
+            promedio=Avg(F('fecha_entrega') - F('fecha_solicitud'))
+        )['promedio']
+        
+        dias_promedio = round(tiempo_promedio.total_seconds() / 86400, 1) if tiempo_promedio else None
+        
+        # Top centros solicitantes
+        req_por_centro = list(
+            requisiciones_qs.values('centro_origen__nombre')
+            .annotate(total=Count('id'))
+            .order_by('-total')[:5]
+        )
+        
+        requisiciones_resumen = {
+            'total': total_req,
+            'completadas': completadas_total,
+            'en_proceso': en_proceso,
+            'urgentes': urgentes_total,
+            'rechazadas': rechazadas_total,
+            'tasa_cumplimiento': round((completadas_total / total_req * 100), 1) if total_req > 0 else 0,
+            'tasa_rechazo': round((rechazadas_total / total_req * 100), 1) if total_req > 0 else 0,
+            'dias_promedio_cumplimiento': dias_promedio,
+            'por_centro': [{'centro': r['centro_origen__nombre'] or 'Sin centro', 'total': r['total']} for r in req_por_centro],
+        }
+        
         # ISS-005: Preparar respuesta y guardar en caché
         response_data = {
             'consumo_mensual': consumo_mensual,
             'stock_por_centro': stock_por_centro,
             'stock_por_producto': stock_por_producto,
-            'requisiciones_por_estado': requisiciones_por_estado
+            'requisiciones_por_estado': requisiciones_por_estado,
+            'requisiciones_por_mes': requisiciones_por_mes,
+            'requisiciones_resumen': requisiciones_resumen,
         }
         
         # Guardar en caché con TTL de estadísticas (5 minutos por defecto)
