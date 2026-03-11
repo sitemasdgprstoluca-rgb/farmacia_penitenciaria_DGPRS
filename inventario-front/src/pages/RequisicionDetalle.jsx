@@ -1351,7 +1351,7 @@ const RequisicionDetalle = () => {
             
             {/* Vista desktop: tabla editable */}
             <div className="hidden lg:block w-full overflow-x-auto rounded-lg border border-amber-200 shadow-md -mx-2 sm:mx-0">
-              <table className="w-full min-w-[700px] border-collapse table-fixed">
+              <table className="w-full min-w-[600px] border-collapse table-fixed">
                 <thead className="bg-amber-500">
                   <tr>
                     <th className="w-20 px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white">Clave</th>

@@ -619,7 +619,7 @@ const InventarioCajaChica = () => {
         
         {/* Vista desktop: tabla */}
         <div className="hidden lg:block w-full overflow-x-auto">
-          <table className="w-full min-w-[900px] divide-y divide-gray-200">
+          <table className="w-full min-w-[650px] divide-y divide-gray-200">
             <thead className="bg-theme-gradient sticky top-0 z-10">
               <tr>
                 {esUsuarioFarmacia && (

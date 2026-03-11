@@ -1106,7 +1106,7 @@ function Usuarios() {
         
         {/* Vista desktop: tabla */}
         <div className="hidden lg:block w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
-          <table className="w-full min-w-[1000px] divide-y divide-gray-200">
+          <table className="w-full min-w-[700px] divide-y divide-gray-200">
             <thead className="bg-theme-gradient sticky top-0 z-10">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-white uppercase whitespace-nowrap">#</th>

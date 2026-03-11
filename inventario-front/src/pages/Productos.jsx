@@ -1763,7 +1763,7 @@ const Productos = () => {
         
         {/* Vista desktop: tabla */}
         <div className="hidden lg:block w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
-        <table className="w-full min-w-[800px] divide-y divide-gray-200">
+        <table className="w-full min-w-[600px] divide-y divide-gray-200">
 
           <thead className="bg-theme-gradient sticky top-0 z-10">
 
@@ -2990,7 +2990,7 @@ const Productos = () => {
                 </div>
               ) : lotesModalData?.lotes?.length ? (
                 <div className="w-full overflow-x-auto">
-                  <table className="w-full min-w-[700px] divide-y divide-gray-200">
+                  <table className="w-full min-w-[550px] divide-y divide-gray-200">
                     <thead className="bg-theme-gradient sticky top-0 z-10">
                       <tr>
                         <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Lote</th>

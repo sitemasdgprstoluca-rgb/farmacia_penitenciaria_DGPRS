@@ -2026,7 +2026,7 @@ const Donaciones = () => {
         
         {/* Vista desktop: tabla */}
         <div className="hidden lg:block w-full overflow-x-auto rounded-lg border border-gray-200 shadow-md">
-          <table className="w-full min-w-[1000px]">
+          <table className="w-full min-w-[700px]">
               <thead className="bg-theme-gradient sticky top-0 z-10">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Número</th>

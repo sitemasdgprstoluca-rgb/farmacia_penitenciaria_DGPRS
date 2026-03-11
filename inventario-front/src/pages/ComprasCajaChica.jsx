@@ -1411,7 +1411,7 @@ const ComprasCajaChica = () => {
         
         {/* Vista desktop: tabla */}
         <div className="hidden lg:block w-full overflow-x-auto">
-          <table className="w-full min-w-[900px] divide-y divide-gray-200 text-sm">
+          <table className="w-full min-w-[650px] divide-y divide-gray-200 text-sm">
             <thead className="bg-theme-gradient sticky top-0 z-10">
               <tr>
                 <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">
