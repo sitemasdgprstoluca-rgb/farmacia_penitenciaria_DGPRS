@@ -1487,7 +1487,7 @@ const Dashboard = () => {
                                 {consumoProd.map((prod, idx) => (
                                   <Area
                                     key={prod.clave}
-                                    type="monotone"
+                                    type="linear"
                                     dataKey={prod.nombre}
                                     stroke={PROD_COLORS[idx % PROD_COLORS.length]}
                                     strokeWidth={2.5}
@@ -1530,8 +1530,8 @@ const Dashboard = () => {
                             <YAxis tick={{ fill: '#9CA3AF', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} />
                             <Tooltip content={<ConsumoTooltip />} cursor={{ stroke: '#D1D5DB', strokeWidth: 1, strokeDasharray: '4 4' }} />
                             <Legend iconType="circle" wrapperStyle={{ paddingTop: '12px', fontSize: '12px' }} />
-                            <Area type="monotone" dataKey="entradas" stroke="#10B981" strokeWidth={2.5} fill="url(#colorEntradas)" name="Entradas" dot={{ fill: '#10B981', strokeWidth: 2, r: 4, stroke: '#fff' }} activeDot={{ r: 7, stroke: '#fff', strokeWidth: 2.5, fill: '#10B981' }} />
-                            <Area type="monotone" dataKey="salidas" stroke="#EF4444" strokeWidth={2.5} fill="url(#colorSalidas)" name="Salidas" dot={{ fill: '#EF4444', strokeWidth: 2, r: 4, stroke: '#fff' }} activeDot={{ r: 7, stroke: '#fff', strokeWidth: 2.5, fill: '#EF4444' }} />
+                            <Area type="linear" dataKey="entradas" stroke="#10B981" strokeWidth={2.5} fill="url(#colorEntradas)" name="Entradas" dot={{ fill: '#10B981', strokeWidth: 2, r: 4, stroke: '#fff' }} activeDot={{ r: 7, stroke: '#fff', strokeWidth: 2.5, fill: '#10B981' }} />
+                            <Area type="linear" dataKey="salidas" stroke="#EF4444" strokeWidth={2.5} fill="url(#colorSalidas)" name="Salidas" dot={{ fill: '#EF4444', strokeWidth: 2, r: 4, stroke: '#fff' }} activeDot={{ r: 7, stroke: '#fff', strokeWidth: 2.5, fill: '#EF4444' }} />
                           </AreaChart>
                         </ResponsiveContainer>
                       );
