@@ -88,11 +88,11 @@ def generar_plantilla_productos():
     # ============================================================
     ejemplos = [
         ["PRUEBA001", "[EJEMPLO] Paracetamol 500mg - ELIMINAR", "Tylenol", "CAJA", 50, "medicamento",
-         "Paracetamol", "Tableta", "500 mg", "oral", "No", "No", "Activo"],
+         "Paracetamol", "CAJA CON 20 TABLETAS", "500 mg", "oral", "No", "No", "Activo"],
         ["PRUEBA002", "[EJEMPLO] Ibuprofeno 400mg - ELIMINAR", "Advil", "FRASCO", 30, "medicamento",
-         "Ibuprofeno", "Cápsula", "400 mg", "oral", "No", "No", "Activo"],
+         "Ibuprofeno", "FRASCO CON 30 CAPSULAS", "400 mg", "oral", "No", "No", "Activo"],
         ["PRUEBA003", "[EJEMPLO] Jeringa 10ml - ELIMINAR", "", "PIEZA", 100, "material_curacion",
-         "", "", "", "", "No", "No", "Activo"],
+         "", "CAJA CON 100 PIEZAS", "", "", "No", "No", "Activo"],
     ]
     
     for ejemplo in ejemplos:
@@ -118,9 +118,10 @@ def generar_plantilla_productos():
         ["────────────────────────────────────────────────────────────────────────"],
         ["COLUMNAS REQUERIDAS (obligatorias):"],
         ["────────────────────────────────────────────────────────────────────────"],
-        ["• Clave      - Código único del producto (ej: 001, MED001, ABC123)"],
-        ["• Nombre     - Nombre completo del producto (nombre genérico)"],
-        ["• Controlado - Sí / No   ¿Es medicamento controlado?"],
+        ["• Clave        - Código único del producto (ej: 001, MED001, ABC123)"],
+        ["• Nombre       - Nombre completo del producto (nombre genérico)"],
+        ["• Presentacion - OBLIGATORIA: Forma farmacéutica (ej: CAJA CON 14 TABLETAS, FRASCO 120ML)"],
+        ["• Controlado   - Sí / No   ¿Es medicamento controlado?"],
         [""],
         ["────────────────────────────────────────────────────────────────────────"],
         ["COLUMNAS OPCIONALES:"],
@@ -130,7 +131,6 @@ def generar_plantilla_productos():
         ["• Stock Minimo   - Cantidad mínima para alertas (default: 10)"],
         ["• Categoria      - medicamento, material_curacion, insumo (default: medicamento)"],
         ["• Sustancia Activa - Principio activo del medicamento"],
-        ["• Presentacion   - Forma farmacéutica (tableta, cápsula, jarabe, etc.)"],
         ["• Concentracion  - Dosis (ej: 500 mg, 10 ml)"],
         ["• Via Admin      - oral, intravenosa, tópica, etc."],
         ["• Requiere Receta - Sí / No (default: No)"],

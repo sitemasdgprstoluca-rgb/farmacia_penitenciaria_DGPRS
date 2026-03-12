@@ -96,9 +96,10 @@ const IMPORT_CONFIGS = {
   productos: {
     titulo: 'Catálogo de Productos',
     descripcion: 'Importar productos al catálogo',
-    columnasRequeridas: ['Clave', 'Nombre'],
-    columnasOpcionales: ['Nombre Comercial', 'Unidad', 'Stock Mínimo', 'Categoría', 'Sustancia Activa', 'Presentación', 'Concentración', 'Vía Admin', 'Requiere Receta', 'Controlado', 'Estado'],
+    columnasRequeridas: ['Clave', 'Nombre', 'Presentación', 'Controlado'],
+    columnasOpcionales: ['Nombre Comercial', 'Unidad', 'Stock Mínimo', 'Categoría', 'Sustancia Activa', 'Concentración', 'Vía Admin', 'Requiere Receta', 'Estado'],
     formatos: {
+      'Presentación': 'Texto (ej: CAJA CON 14 TABLETAS, FRASCO 120ML)',
       'Stock Mínimo': 'Número entero',
       'Requiere Receta': 'Sí / No',
       'Controlado': 'Sí / No',
@@ -106,7 +107,8 @@ const IMPORT_CONFIGS = {
     },
     sinonimosCols: {
       'clave': ['clave', 'codigo', 'sku'],
-      'nombre': ['nombre', 'descripcion', 'producto']
+      'nombre': ['nombre', 'descripcion', 'producto'],
+      'presentacion': ['presentacion', 'presentación', 'forma farmaceutica', 'forma', 'envase']
     },
     limites: {
       maxFilas: 2000,
@@ -114,14 +116,16 @@ const IMPORT_CONFIGS = {
     },
     pasos: [
       { numero: 1, titulo: 'Descargar plantilla', descripcion: 'Descarga la plantilla con el formato correcto' },
-      { numero: 2, titulo: 'Llenar datos', descripcion: 'Completa los productos. Elimina los ejemplos' },
+      { numero: 2, titulo: 'Llenar datos', descripcion: 'Completa los productos. ⚠️ Presentación es OBLIGATORIA' },
       { numero: 3, titulo: 'Importar', descripcion: 'Sube el archivo y el sistema validará los datos' }
     ],
     ejemploRegistro: {
       'Clave': 'MED001',
       'Nombre': 'Paracetamol 500mg',
+      'Presentación': 'CAJA CON 20 TABLETAS',
       'Unidad': 'CAJA',
-      'Stock Mínimo': 50
+      'Stock Mínimo': 50,
+      'Controlado': 'No'
     }
   },
   usuarios: {

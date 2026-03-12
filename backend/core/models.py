@@ -617,7 +617,7 @@ class Producto(models.Model):
     stock_minimo = models.IntegerField(default=0)
     stock_actual = models.IntegerField(default=0)
     sustancia_activa = models.CharField(max_length=200, blank=True, null=True)
-    presentacion = models.CharField(max_length=200, blank=True, null=True)
+    presentacion = models.CharField(max_length=200, blank=False, null=True)
     concentracion = models.CharField(max_length=100, blank=True, null=True)
     via_administracion = models.CharField(max_length=50, blank=True, null=True)
     requiere_receta = models.BooleanField(default=False)

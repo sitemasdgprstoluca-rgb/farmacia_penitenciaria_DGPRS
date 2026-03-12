@@ -383,8 +383,14 @@ def importar_productos_desde_excel(archivo, usuario):
                 unidad_raw = get_val('unidad_medida', 'PIEZA')
                 unidad_medida = str(unidad_raw).strip().upper()[:100] if unidad_raw else 'PIEZA'
                 
-                # ========== PRESENTACION ==========
+                # ========== PRESENTACION (obligatoria) ==========
                 presentacion = get_val('presentacion', '')
+                if not presentacion or not presentacion.strip():
+                    resultado.agregar_error(fila_num, 'presentacion',
+                        f'Presentación es OBLIGATORIA para producto "{nombre}" (clave: {clave}). '
+                        f'Ejemplo: "CAJA CON 14 TABLETAS", "FRASCO 120ML"')
+                    continue
+                presentacion = presentacion.strip().upper()
                 
                 # ========== CATEGORIA ==========
                 categoria_raw = get_val('categoria', '')

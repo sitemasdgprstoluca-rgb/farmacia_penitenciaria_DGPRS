@@ -422,10 +422,17 @@ def obtener_o_crear_variante(
         if k not in ('clave', 'nombre', 'presentacion')
     }
 
+    # ISS-PRES-REQ: Presentación obligatoria para crear producto
+    if not presentacion or not str(presentacion).strip():
+        raise ValueError(
+            f"La presentación es obligatoria para crear el producto '{nombre}' "
+            f"(clave: {nuevo_codigo}). Ejemplo: 'CAJA CON 14 TABLETAS'"
+        )
+
     producto_nuevo = Producto.objects.create(
         clave=nuevo_codigo,
         nombre=str(nombre)[:500],
-        presentacion=str(presentacion)[:200] if presentacion else None,
+        presentacion=str(presentacion).strip().upper()[:200],
         **campos_permitidos,
     )
 
