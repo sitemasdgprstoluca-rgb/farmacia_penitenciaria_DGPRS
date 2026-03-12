@@ -38,13 +38,11 @@ import {
   FaFileDownload,
   FaEye,
   FaTimes,
-  FaChartBar,
-  FaExclamationTriangle,
   FaCheckCircle,
   FaTimesCircle,
+  FaExclamationTriangle,
   FaClock,
   FaUser,
-  FaBuilding,
   FaBox,
   FaArrowRight,
 } from 'react-icons/fa';
@@ -67,13 +65,145 @@ const METODOS_HTTP = [
   { value: 'DELETE', label: 'DELETE (Eliminar)' },
 ];
 
+// ── Normalización de datos ──────────────────────────────────────────────
+
+// Normalizar nombre de módulo para mostrar
+const normalizarModulo = (modelo, accion, endpoint) => {
+  if (!modelo) return 'Sistema';
+  const upper = (modelo || '').toUpperCase().replace(/\s+/g, '_');
+  const MAP = {
+    PRODUCTOS: 'Productos', PRODUCTO: 'Productos', CORE_PRODUCTO: 'Productos',
+    LOTES: 'Lotes', LOTE: 'Lotes', LOTEPARCIALIDAD: 'Parcialidades',
+    REQUISICIONES: 'Requisiciones', MOVIMIENTOS: 'Movimientos',
+    DONACIONES: 'Donaciones', PACIENTES: 'Pacientes',
+    DISPENSACIONES: 'Dispensaciones', CAJA_CHICA: 'Caja Chica',
+    CENTROS: 'Centros', USUARIOS: 'Usuarios', USER: 'Usuarios', USUARIO: 'Usuarios',
+    CONFIGURACION: 'Configuración', AUTH: 'Sesión',
+    NOTIFICACIONES: 'Notificaciones', TEMA: 'Tema', TEMAGLOBAL: 'Tema',
+    IMPORTACION: 'Importación', EXPORTACION: 'Exportación',
+    REPORTES: 'Reportes', SISTEMA: 'Sistema',
+  };
+  if (MAP[upper]) return MAP[upper];
+  if (upper === 'OTRO') {
+    const a = (accion || '').toUpperCase();
+    if (['LOGIN', 'LOGOUT', 'CAMBIO_PASSWORD'].includes(a) || a.includes('PASSWORD') || a.includes('RESET')) return 'Sesión';
+    if (endpoint) {
+      if (endpoint.includes('producto')) return 'Productos';
+      if (endpoint.includes('lote')) return 'Lotes';
+      if (endpoint.includes('requisicion')) return 'Requisiciones';
+      if (endpoint.includes('movimiento')) return 'Movimientos';
+      if (endpoint.includes('donacion')) return 'Donaciones';
+      if (endpoint.includes('paciente')) return 'Pacientes';
+      if (endpoint.includes('dispensacion')) return 'Dispensaciones';
+      if (endpoint.includes('caja')) return 'Caja Chica';
+      if (endpoint.includes('user')) return 'Usuarios';
+      if (endpoint.includes('centro')) return 'Centros';
+      if (endpoint.includes('notificacion')) return 'Notificaciones';
+      if (endpoint.includes('reporte')) return 'Reportes';
+      if (endpoint.includes('tema')) return 'Tema';
+    }
+    return 'General';
+  }
+  return modelo.charAt(0).toUpperCase() + modelo.slice(1).toLowerCase();
+};
+
+// Normalizar acción para display
+const normalizarAccion = (accion) => {
+  if (!accion) return 'Acción';
+  const MAP = {
+    LOGIN: 'Inicio Sesión', LOGOUT: 'Cierre Sesión',
+    CREAR: 'Crear', CREATE: 'Crear',
+    ACTUALIZAR: 'Actualizar', UPDATE: 'Actualizar', MODIFICAR: 'Modificar',
+    ELIMINAR: 'Eliminar', DELETE: 'Eliminar',
+    CONSULTAR: 'Consultar', APROBAR: 'Aprobar',
+    RECHAZAR: 'Rechazar', CANCELAR: 'Cancelar',
+    RECIBIR: 'Recibir', SURTIR: 'Surtir',
+    ENVIAR: 'Enviar', IMPORTAR: 'Importar', EXPORTAR: 'Exportar',
+    CAMBIO_PASSWORD: 'Cambio Contraseña',
+    OVERRIDE_SOBREENTREGA: 'Sobreentrega',
+    LIMPIEZA_DATOS: 'Limpieza Datos',
+  };
+  const upper = accion.toUpperCase();
+  return MAP[upper] || accion.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+};
+
+// Categoría de color por acción
+const getAccionColor = (accion) => {
+  const u = (accion || '').toUpperCase();
+  if (['LOGIN', 'CONSULTAR'].includes(u)) return 'blue';
+  if (u === 'LOGOUT') return 'slate';
+  if (['CREAR', 'CREATE', 'APROBAR'].includes(u) || u.includes('AUTORIZAR') || u.includes('REGISTRAR')) return 'emerald';
+  if (['ACTUALIZAR', 'UPDATE', 'MODIFICAR'].includes(u) || u.includes('ACTUALIZAR') || u.includes('CAMBIAR') || u.includes('PASSWORD')) return 'amber';
+  if (['ELIMINAR', 'DELETE', 'LIMPIEZA_DATOS', 'RECHAZAR', 'CANCELAR'].includes(u) || u.includes('RECHAZAR')) return 'red';
+  if (['ENVIAR', 'SURTIR', 'DISPENSAR', 'RECIBIR', 'DEVOLVER'].includes(u) || u.includes('ENVIAR')) return 'indigo';
+  if (['IMPORTAR', 'EXPORTAR'].includes(u)) return 'violet';
+  return 'gray';
+};
+
+const COLOR_STYLES = {
+  blue:    { bg: 'bg-blue-50',    text: 'text-blue-700',    border: 'border-blue-200',    dot: 'bg-blue-500' },
+  slate:   { bg: 'bg-slate-50',   text: 'text-slate-600',   border: 'border-slate-200',   dot: 'bg-slate-400' },
+  emerald: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500' },
+  amber:   { bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200',   dot: 'bg-amber-500' },
+  red:     { bg: 'bg-red-50',     text: 'text-red-700',     border: 'border-red-200',     dot: 'bg-red-500' },
+  indigo:  { bg: 'bg-indigo-50',  text: 'text-indigo-700',  border: 'border-indigo-200',  dot: 'bg-indigo-500' },
+  violet:  { bg: 'bg-violet-50',  text: 'text-violet-700',  border: 'border-violet-200',  dot: 'bg-violet-500' },
+  gray:    { bg: 'bg-gray-50',    text: 'text-gray-600',    border: 'border-gray-200',    dot: 'bg-gray-400' },
+};
+
+const getAccionStyle = (accion) => COLOR_STYLES[getAccionColor(accion)] || COLOR_STYLES.gray;
+
+// Formato relativo de tiempo (compacto)
+const tiempoRelativo = (fechaStr) => {
+  const fecha = new Date(fechaStr);
+  const ahora = new Date();
+  const diffMs = ahora - fecha;
+  const diffMin  = Math.floor(diffMs / 60000);
+  const diffHrs  = Math.floor(diffMs / 3600000);
+  const diffDias = Math.floor(diffMs / 86400000);
+  if (diffMin < 1) return 'Ahora';
+  if (diffMin < 60) return `${diffMin}m`;
+  if (diffHrs < 24) return `${diffHrs}h`;
+  if (diffDias < 7) return `${diffDias}d`;
+  return fecha.toLocaleDateString('es-MX', { day: '2-digit', month: 'short' });
+};
+
+// Descripción legible y completa del evento
+const descripcionEvento = (evento) => {
+  const { accion, modelo, objeto_repr, datos_nuevos, cambios_resumen } = evento;
+  const upper = (accion || '').toUpperCase();
+
+  if (upper === 'LOGIN') return 'Inició sesión en el sistema';
+  if (upper === 'LOGOUT') return 'Cerró sesión del sistema';
+  if (upper === 'CAMBIO_PASSWORD' || upper.includes('PASSWORD')) return 'Cambió su contraseña';
+
+  if (cambios_resumen && cambios_resumen.length > 0) {
+    const c = cambios_resumen[0];
+    const extra = cambios_resumen.length > 1 ? ` (+${cambios_resumen.length - 1} más)` : '';
+    return `${c.campo}: ${c.antes ?? '—'} → ${c.despues ?? '—'}${extra}`;
+  }
+
+  if (objeto_repr) return objeto_repr;
+
+  if (datos_nuevos && typeof datos_nuevos === 'object') {
+    const keys = Object.keys(datos_nuevos);
+    if (keys.length > 0 && keys.length <= 2) {
+      return keys.map(k => `${k}: ${datos_nuevos[k]}`).join(', ');
+    }
+    if (keys.length > 2) return `${keys.length} campos modificados`;
+  }
+
+  const mod = normalizarModulo(modelo, accion, evento.endpoint);
+  return `${normalizarAccion(accion)} en ${mod}`;
+};
+
 // Badge de resultado con colores
 const ResultadoBadge = ({ resultado }) => {
   const config = {
-    success: { bg: 'bg-green-100', text: 'text-green-800', icon: FaCheckCircle },
-    fail: { bg: 'bg-red-100', text: 'text-red-800', icon: FaTimesCircle },
-    error: { bg: 'bg-red-100', text: 'text-red-800', icon: FaExclamationTriangle },
-    warning: { bg: 'bg-yellow-100', text: 'text-yellow-800', icon: FaExclamationTriangle },
+    success: { bg: 'bg-green-100', text: 'text-green-800', icon: FaCheckCircle, label: 'Exitoso' },
+    fail: { bg: 'bg-red-100', text: 'text-red-800', icon: FaTimesCircle, label: 'Fallido' },
+    error: { bg: 'bg-red-100', text: 'text-red-800', icon: FaExclamationTriangle, label: 'Error' },
+    warning: { bg: 'bg-yellow-100', text: 'text-yellow-800', icon: FaExclamationTriangle, label: 'Alerta' },
   };
   const style = config[resultado] || config.success;
   const Icon = style.icon;
@@ -81,133 +211,142 @@ const ResultadoBadge = ({ resultado }) => {
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${style.bg} ${style.text}`}>
       <Icon className="w-3 h-3 mr-1" />
-      {resultado}
+      {style.label}
     </span>
   );
 };
 
-// Modal de detalle del evento
+// Modal de detalle del evento — versión mejorada para responsabilidad
 const DetalleModal = ({ evento, onClose }) => {
   if (!evento) return null;
 
+  const aStyle = getAccionStyle(evento.accion);
+
+  // Calcular campos cambiados desde datos_anteriores vs datos_nuevos
+  const computedChanges = (() => {
+    if (evento.cambios_resumen && evento.cambios_resumen.length > 0) return evento.cambios_resumen;
+    const ant = evento.datos_anteriores || {};
+    const nue = evento.datos_nuevos || {};
+    const allKeys = new Set([...Object.keys(ant), ...Object.keys(nue)]);
+    const changes = [];
+    allKeys.forEach((k) => {
+      const a = ant[k], b = nue[k];
+      if (JSON.stringify(a) !== JSON.stringify(b) && b !== undefined) {
+        changes.push({ campo: k, antes: a ?? null, despues: b });
+      }
+    });
+    return changes;
+  })();
+
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
-        <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={onClose} />
+      <div className="flex items-start justify-center min-h-screen px-3 py-6 sm:p-0 sm:items-center">
+        <div className="fixed inset-0 transition-opacity bg-gray-900/60 backdrop-blur-sm" onClick={onClose} />
         
-        <div className="relative inline-block w-full max-w-4xl p-6 overflow-hidden text-left align-middle transition-all transform bg-white rounded-lg shadow-xl">
-          {/* Header */}
-          <div className="flex items-center justify-between pb-4 border-b">
+        <div className="relative w-full max-w-3xl mx-auto bg-white rounded-xl shadow-2xl overflow-hidden">
+          {/* Header gradient */}
+          <div className="bg-gradient-to-r from-institucional-700 to-institucional-500 px-5 py-4 flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">
-                Detalle del Evento #{evento.id}
+              <h3 className="text-base font-bold text-white">
+                Evento #{evento.id}
               </h3>
-              <p className="text-sm text-gray-500">
-                {new Date(evento.fecha).toLocaleString('es-MX')}
+              <p className="text-xs text-white/70 mt-0.5">
+                {new Date(evento.fecha).toLocaleString('es-MX', { dateStyle: 'full', timeStyle: 'medium' })}
+                {' · '}{tiempoRelativo(evento.fecha)}
               </p>
             </div>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-              <FaTimes className="w-6 h-6" />
+            <button onClick={onClose} className="text-white/70 hover:text-white p-1 rounded-md hover:bg-white/10 transition-colors">
+              <FaTimes className="w-5 h-5" />
             </button>
           </div>
 
-          {/* Content */}
-          <div className="mt-4 space-y-6">
-            {/* Info General */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div>
-                <p className="text-xs text-gray-500">Usuario</p>
-                <p className="font-medium">{evento.usuario_nombre || 'Sistema'}</p>
-                <p className="text-xs text-gray-400">{evento.usuario_username}</p>
+          <div className="p-5 space-y-5 max-h-[75vh] overflow-y-auto">
+            {/* Quién, Cuándo, Dónde */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Usuario</p>
+                <p className="text-sm font-semibold text-gray-800">{evento.usuario_nombre || 'Sistema'}</p>
+                <p className="text-[11px] text-gray-400">{evento.usuario_username || '—'}</p>
               </div>
-              <div>
-                <p className="text-xs text-gray-500">Rol</p>
-                <p className="font-medium">{evento.rol_usuario || '-'}</p>
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Rol</p>
+                <p className="text-sm font-semibold text-gray-800">{evento.rol_usuario || '—'}</p>
               </div>
-              <div>
-                <p className="text-xs text-gray-500">Centro</p>
-                <p className="font-medium">{evento.centro_nombre || 'N/A'}</p>
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Centro</p>
+                <p className="text-sm font-semibold text-gray-800 truncate" title={evento.centro_nombre}>{evento.centro_nombre || 'N/A'}</p>
               </div>
-              <div>
-                <p className="text-xs text-gray-500">Resultado</p>
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Resultado</p>
                 <ResultadoBadge resultado={evento.resultado} />
               </div>
             </div>
 
-            {/* Acción y Módulo */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
-              <div>
-                <p className="text-xs text-gray-500">Acción</p>
-                <p className="font-semibold text-institucional-800">{evento.accion}</p>
+            {/* Qué hizo */}
+            <div className="bg-gray-50 rounded-lg p-4">
+              <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">Acción Realizada</p>
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold border ${aStyle.bg} ${aStyle.text} ${aStyle.border}`}>
+                  {normalizarAccion(evento.accion)}
+                </span>
+                <span className="text-sm text-gray-600">
+                  en <span className="font-semibold">{normalizarModulo(evento.modelo, evento.accion, evento.endpoint)}</span>
+                  {evento.objeto_id ? <> — <code className="text-xs bg-gray-200 px-1.5 py-0.5 rounded font-mono">ID {evento.objeto_id}</code></> : ''}
+                </span>
               </div>
-              <div>
-                <p className="text-xs text-gray-500">Módulo</p>
-                <p className="font-medium">{evento.modelo}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Objeto ID</p>
-                <p className="font-mono text-sm">{evento.objeto_id || '-'}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Status Code</p>
-                <p className={`font-mono ${evento.status_code >= 400 ? 'text-red-600' : 'text-green-600'}`}>
-                  {evento.status_code}
-                </p>
-              </div>
+              {evento.objeto_repr && (
+                <p className="text-xs text-gray-500 mt-2">{evento.objeto_repr}</p>
+              )}
             </div>
 
-            {/* Contexto Técnico */}
-            <div className="p-4 bg-gray-100 rounded-lg">
-              <h4 className="text-sm font-medium text-gray-700 mb-2">Contexto Técnico</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-                <div>
-                  <span className="text-gray-500">IP:</span> {evento.ip_address || '-'}
+            {/* Cambios Detectados — tabla visual */}
+            {computedChanges.length > 0 && (
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">Cambios Detectados ({computedChanges.length})</p>
+                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-gray-50">
+                        <th className="text-left px-3 py-2 text-gray-500 font-medium w-1/4">Campo</th>
+                        <th className="text-left px-3 py-2 text-red-400 font-medium">Antes</th>
+                        <th className="w-6"></th>
+                        <th className="text-left px-3 py-2 text-green-500 font-medium">Después</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {computedChanges.map((ch, idx) => (
+                        <tr key={idx} className="hover:bg-gray-50/50">
+                          <td className="px-3 py-2 font-medium text-gray-700">{ch.campo}</td>
+                          <td className="px-3 py-2 text-red-600 bg-red-50/40 break-all">
+                            {ch.antes !== null && ch.antes !== undefined ? String(ch.antes) : <span className="italic text-gray-300">vacío</span>}
+                          </td>
+                          <td className="text-center text-gray-300"><FaArrowRight className="w-3 h-3 mx-auto" /></td>
+                          <td className="px-3 py-2 text-green-700 bg-green-50/40 break-all">
+                            {ch.despues !== null && ch.despues !== undefined ? String(ch.despues) : <span className="italic text-gray-300">vacío</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-                <div>
-                  <span className="text-gray-500">Método:</span> {evento.metodo_http || '-'}
-                </div>
-                <div className="md:col-span-2">
-                  <span className="text-gray-500">Endpoint:</span> <code className="text-xs bg-gray-200 px-1 rounded">{evento.endpoint || '-'}</code>
-                </div>
-                {evento.request_id && (
-                  <div className="md:col-span-2">
-                    <span className="text-gray-500">Request ID:</span> <code className="text-xs">{evento.request_id}</code>
-                  </div>
-                )}
-                {evento.idempotency_key && (
-                  <div className="md:col-span-2">
-                    <span className="text-gray-500">Idempotency Key:</span> <code className="text-xs">{evento.idempotency_key}</code>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* User Agent */}
-            {evento.user_agent && (
-              <div className="text-xs text-gray-400 truncate">
-                <span className="font-medium">User-Agent:</span> {evento.user_agent}
               </div>
             )}
 
-            {/* Before / After */}
-            {(evento.datos_anteriores || evento.datos_nuevos) && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {evento.datos_anteriores && (
+            {/* Datos before/after en crudo (si no hubo cambios computados) */}
+            {computedChanges.length === 0 && (evento.datos_anteriores || evento.datos_nuevos) && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {evento.datos_anteriores && Object.keys(evento.datos_anteriores).length > 0 && (
                   <div>
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">
-                      <span className="text-red-600">← Antes</span>
-                    </h4>
-                    <pre className="p-3 bg-red-50 rounded-lg text-xs overflow-auto max-h-64">
+                    <p className="text-[10px] uppercase tracking-wider text-red-400 mb-1">Datos Anteriores</p>
+                    <pre className="p-3 bg-red-50 rounded-lg text-[11px] overflow-auto max-h-48 text-red-800">
                       {JSON.stringify(evento.datos_anteriores, null, 2)}
                     </pre>
                   </div>
                 )}
-                {evento.datos_nuevos && (
+                {evento.datos_nuevos && Object.keys(evento.datos_nuevos).length > 0 && (
                   <div>
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">
-                      <span className="text-green-600">Después →</span>
-                    </h4>
-                    <pre className="p-3 bg-green-50 rounded-lg text-xs overflow-auto max-h-64">
+                    <p className="text-[10px] uppercase tracking-wider text-green-500 mb-1">Datos Nuevos</p>
+                    <pre className="p-3 bg-green-50 rounded-lg text-[11px] overflow-auto max-h-48 text-green-800">
                       {JSON.stringify(evento.datos_nuevos, null, 2)}
                     </pre>
                   </div>
@@ -215,28 +354,49 @@ const DetalleModal = ({ evento, onClose }) => {
               </div>
             )}
 
-            {/* Resumen de Cambios */}
-            {evento.cambios_resumen && evento.cambios_resumen.length > 0 && (
-              <div>
-                <h4 className="text-sm font-medium text-gray-700 mb-2">Cambios Detectados</h4>
-                <div className="space-y-2">
-                  {evento.cambios_resumen.map((cambio, idx) => (
-                    <div key={idx} className="flex items-center gap-2 p-2 bg-gray-50 rounded text-sm">
-                      <span className="font-medium text-gray-600">{cambio.campo}:</span>
-                      <span className="text-red-500 line-through">{JSON.stringify(cambio.antes)}</span>
-                      <FaArrowRight className="w-4 h-4 text-gray-400" />
-                      <span className="text-green-600">{JSON.stringify(cambio.despues)}</span>
-                    </div>
-                  ))}
+            {/* Contexto Técnico para responsabilidad */}
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">Contexto Técnico — Trazabilidad</p>
+              <div className="bg-gray-50 rounded-lg p-3 grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                <div>
+                  <span className="text-gray-400">IP:</span>{' '}
+                  <span className="font-mono text-gray-700">{evento.ip_address || '—'}</span>
                 </div>
+                <div>
+                  <span className="text-gray-400">Método:</span>{' '}
+                  <span className="font-mono text-gray-700">{evento.metodo_http || '—'}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400">Status:</span>{' '}
+                  <span className={`font-mono ${(evento.status_code || 0) >= 400 ? 'text-red-600 font-bold' : 'text-green-600'}`}>
+                    {evento.status_code || '—'}
+                  </span>
+                </div>
+                <div className="col-span-2 sm:col-span-3">
+                  <span className="text-gray-400">Endpoint:</span>{' '}
+                  <code className="text-[11px] bg-gray-200/60 px-1.5 py-0.5 rounded text-gray-700 break-all">{evento.endpoint || '—'}</code>
+                </div>
+                {evento.request_id && (
+                  <div className="col-span-2 sm:col-span-3">
+                    <span className="text-gray-400">Request ID:</span>{' '}
+                    <code className="text-[11px] text-gray-600 break-all">{evento.request_id}</code>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* User Agent */}
+            {evento.user_agent && (
+              <div className="text-[11px] text-gray-400 bg-gray-50 rounded-lg p-2 break-all">
+                <span className="font-medium text-gray-500">User-Agent:</span> {evento.user_agent}
               </div>
             )}
 
             {/* Detalles Adicionales */}
             {evento.detalles && Object.keys(evento.detalles).length > 0 && (
               <div>
-                <h4 className="text-sm font-medium text-gray-700 mb-2">Detalles Adicionales</h4>
-                <pre className="p-3 bg-gray-50 rounded-lg text-xs overflow-auto max-h-32">
+                <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Detalles Adicionales</p>
+                <pre className="p-3 bg-gray-50 rounded-lg text-[11px] overflow-auto max-h-32 text-gray-600">
                   {JSON.stringify(evento.detalles, null, 2)}
                 </pre>
               </div>
@@ -244,10 +404,10 @@ const DetalleModal = ({ evento, onClose }) => {
           </div>
 
           {/* Footer */}
-          <div className="mt-6 flex justify-end">
+          <div className="border-t px-5 py-3 flex justify-end bg-gray-50">
             <button
               onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-white rounded-md bg-institucional-600 hover:bg-institucional-700"
+              className="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-100 transition-colors"
             >
               Cerrar
             </button>
@@ -668,103 +828,96 @@ export default function Auditoria() {
         </div>
       )}
 
-      {/* Tabla de Eventos */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+      {/* Tabla de Eventos — DESKTOP (5 columnas compactas) */}
+      <div className="hidden lg:block bg-white rounded-lg shadow overflow-hidden">
+        <table className="w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="w-[100px] px-2 py-2.5 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Cuándo</th>
+              <th className="w-[120px] px-2 py-2.5 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Quién</th>
+              <th className="w-[150px] px-2 py-2.5 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Acción</th>
+              <th className="px-2 py-2.5 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Descripción</th>
+              <th className="w-[52px] px-1 py-2.5"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {loading ? (
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fecha</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Usuario</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Centro</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acción</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Módulo</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Objeto</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Resultado</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">IP</th>
-                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Detalle</th>
+                <td colSpan="5" className="px-4 py-10 text-center">
+                  <FaSync className="w-6 h-6 animate-spin text-gray-300 mx-auto" />
+                  <p className="mt-2 text-xs text-gray-400">Cargando eventos...</p>
+                </td>
               </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {loading ? (
-                <tr>
-                  <td colSpan="9" className="px-4 py-8 text-center">
-                    <FaSync className="w-8 h-8 animate-spin text-gray-400 mx-auto" />
-                    <p className="mt-2 text-gray-500">Cargando eventos...</p>
-                  </td>
-                </tr>
-              ) : eventos.length === 0 ? (
-                <tr>
-                  <td colSpan="9" className="px-4 py-8 text-center text-gray-500">
-                    No se encontraron eventos con los filtros seleccionados
-                  </td>
-                </tr>
-              ) : (
-                eventos.map((evento) => (
-                  <tr key={evento.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                      <div className="flex items-center gap-1">
-                        <FaClock className="w-4 h-4 text-gray-400" />
-                        {new Date(evento.fecha).toLocaleString('es-MX', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          year: '2-digit',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </div>
+            ) : eventos.length === 0 ? (
+              <tr>
+                <td colSpan="5" className="px-4 py-10 text-center text-gray-400 text-xs">
+                  Sin eventos para los filtros seleccionados
+                </td>
+              </tr>
+            ) : (
+              eventos.map((evento) => {
+                const style = getAccionStyle(evento.accion);
+                const modulo = normalizarModulo(evento.modelo, evento.accion, evento.endpoint);
+                const accionLabel = normalizarAccion(evento.accion);
+                const desc = descripcionEvento(evento);
+                const esError = evento.resultado === 'fail' || evento.resultado === 'error';
+                return (
+                  <tr key={evento.id} className={`hover:bg-gray-50/60 transition-colors ${esError ? 'bg-red-50/30' : ''}`}>
+                    {/* Cuándo */}
+                    <td className="px-2 py-1.5 align-top">
+                      <p className="text-[11px] font-medium text-gray-700 whitespace-nowrap">
+                        {new Date(evento.fecha).toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                        {' '}
+                        <span className="text-gray-400">
+                          {new Date(evento.fecha).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </p>
+                      <p className="text-[10px] text-gray-400">{tiempoRelativo(evento.fecha)}</p>
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                        <FaUser className="w-4 h-4 text-gray-400" />
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">{evento.usuario_nombre || 'Sistema'}</p>
-                          <p className="text-xs text-gray-500">{evento.rol_usuario}</p>
-                        </div>
-                      </div>
+                    {/* Quién */}
+                    <td className="px-2 py-1.5 align-top">
+                      <p className="text-[11px] font-medium text-gray-800 truncate" title={evento.usuario_nombre}>
+                        {evento.usuario_nombre || 'Sistema'}
+                      </p>
+                      <p className="text-[10px] text-gray-400 truncate" title={evento.rol_usuario}>
+                        {evento.rol_usuario || '—'}
+                      </p>
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                      {evento.centro_nombre || '-'}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className="px-2 py-1 text-xs font-medium rounded bg-institucional-100 text-institucional-800">
-                        {evento.accion}
+                    {/* Acción + Módulo */}
+                    <td className="px-2 py-1.5 align-top">
+                      <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold border leading-tight ${style.bg} ${style.text} ${style.border}`}>
+                        {accionLabel}
                       </span>
+                      <p className="text-[10px] text-gray-500 mt-0.5 truncate" title={modulo}>
+                        {modulo}{evento.objeto_id ? ` #${evento.objeto_id}` : ''}
+                      </p>
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <div className="flex items-center gap-1">
-                        <FaBox className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm text-gray-900">{evento.modelo}</span>
+                    {/* Descripción */}
+                    <td className="px-2 py-1.5 align-top">
+                      <p className="text-[11px] text-gray-600 line-clamp-2" title={desc}>{desc}</p>
+                    </td>
+                    {/* Estado + Ver */}
+                    <td className="px-1 py-1.5 align-top">
+                      <div className="flex items-center gap-1 justify-center">
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${esError ? 'bg-red-500' : 'bg-green-500'}`}
+                              title={evento.resultado} />
+                        <button
+                          onClick={() => verDetalle(evento)}
+                          className="p-1 text-gray-400 hover:text-institucional-600 hover:bg-institucional-50 rounded transition-colors"
+                          title="Ver detalle"
+                        >
+                          <FaEye className="w-3.5 h-3.5" />
+                        </button>
                       </div>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <code className="text-xs bg-gray-100 px-2 py-1 rounded">
-                        {evento.objeto_id || '-'}
-                      </code>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <ResultadoBadge resultado={evento.resultado} />
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500 font-mono">
-                      {evento.ip_address || '-'}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-center">
-                      <button
-                        onClick={() => verDetalle(evento)}
-                        className="p-1 text-institucional-600 hover:text-institucional-800 hover:bg-institucional-50 rounded"
-                        title="Ver detalle"
-                      >
-                        <FaEye className="w-5 h-5" />
-                      </button>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                );
+              })
+            )}
+          </tbody>
+        </table>
 
-        {/* Paginación */}
+        {/* Paginación desktop */}
         <div className="px-4 py-3 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
           <p className="text-sm text-gray-700">
             Mostrando <span className="font-medium">{eventos.length}</span> de{' '}
@@ -787,6 +940,100 @@ export default function Auditoria() {
               className="px-3 py-1 text-sm border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
             >
               Siguiente
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Listado de Eventos — MOBILE / TABLET (<lg) */}
+      <div className="lg:hidden space-y-3">
+        {loading ? (
+          <div className="flex flex-col items-center py-10">
+            <FaSync className="w-7 h-7 animate-spin text-gray-300" />
+            <p className="mt-2 text-sm text-gray-400">Cargando eventos...</p>
+          </div>
+        ) : eventos.length === 0 ? (
+          <p className="text-center text-gray-400 text-sm py-10">Sin eventos</p>
+        ) : (
+          eventos.map((evento) => {
+            const style = getAccionStyle(evento.accion);
+            const modulo = normalizarModulo(evento.modelo, evento.accion, evento.endpoint);
+            const accionLabel = normalizarAccion(evento.accion);
+            const desc = descripcionEvento(evento);
+            return (
+              <div
+                key={evento.id}
+                className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 space-y-2"
+              >
+                {/* Top row: fecha + badges */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                    <FaClock className="w-3 h-3" />
+                    {new Date(evento.fecha).toLocaleString('es-MX', {
+                      day: '2-digit', month: '2-digit', year: '2-digit',
+                      hour: '2-digit', minute: '2-digit',
+                    })}
+                    <span className="text-gray-300">·</span>
+                    <span className="text-gray-400">{tiempoRelativo(evento.fecha)}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <ResultadoBadge resultado={evento.resultado} />
+                    <button
+                      onClick={() => verDetalle(evento)}
+                      className="p-1 text-institucional-500 hover:bg-institucional-50 rounded"
+                    >
+                      <FaEye className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Usuario */}
+                <div className="flex items-center gap-2 text-sm">
+                  <FaUser className="w-3.5 h-3.5 text-gray-300" />
+                  <span className="font-medium text-gray-800">{evento.usuario_nombre || 'Sistema'}</span>
+                  <span className="text-xs text-gray-400">{evento.rol_usuario || ''}</span>
+                </div>
+
+                {/* Acción + módulo */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border ${style.bg} ${style.text} ${style.border}`}>
+                    {accionLabel}
+                  </span>
+                  <span className="text-xs text-gray-500 flex items-center gap-1">
+                    <FaBox className="w-3 h-3 text-gray-300" /> {modulo}
+                    {evento.objeto_id ? ` #${evento.objeto_id}` : ''}
+                  </span>
+                </div>
+
+                {/* Descripción */}
+                {desc && (
+                  <p className="text-xs text-gray-500 bg-gray-50 rounded px-2 py-1 line-clamp-2">{desc}</p>
+                )}
+              </div>
+            );
+          })
+        )}
+
+        {/* Paginación mobile */}
+        <div className="flex items-center justify-between bg-white rounded-lg shadow-sm border border-gray-100 p-3">
+          <p className="text-xs text-gray-500">
+            {eventos.length} de {totalItems.toLocaleString()}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="px-2 py-1 text-xs border border-gray-300 rounded disabled:opacity-40 hover:bg-gray-50"
+            >
+              Ant
+            </button>
+            <span className="text-xs text-gray-500">{page}/{totalPages}</span>
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="px-2 py-1 text-xs border border-gray-300 rounded disabled:opacity-40 hover:bg-gray-50"
+            >
+              Sig
             </button>
           </div>
         </div>

@@ -1806,9 +1806,25 @@ export const reportesAPI = {
 
   // Medicamentos Controlados
   medicamentosControlados: (params) => apiClient.get('/reportes/medicamentos-controlados/', { params }),
+  exportarMedicamentosControladosExcel: (params) => apiClient.get('/reportes/medicamentos-controlados/', {
+    params: { ...params, formato: 'excel' },
+    responseType: 'blob'
+  }),
+  exportarMedicamentosControladosPDF: (params) => apiClient.get('/reportes/medicamentos-controlados/', {
+    params: { ...params, formato: 'pdf' },
+    responseType: 'blob'
+  }),
 
   // Auditoría de cambios en productos
   auditoriaProductos: (params) => apiClient.get('/reportes/auditoria-productos/', { params }),
+  exportarAuditoriaProductosExcel: (params) => apiClient.get('/reportes/auditoria-productos/', {
+    params: { ...params, formato: 'excel' },
+    responseType: 'blob'
+  }),
+  exportarAuditoriaProductosPDF: (params) => apiClient.get('/reportes/auditoria-productos/', {
+    params: { ...params, formato: 'pdf' },
+    responseType: 'blob'
+  }),
 };
 
 // Notificaciones

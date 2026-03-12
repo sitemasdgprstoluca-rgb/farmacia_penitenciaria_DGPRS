@@ -5237,5 +5237,149 @@ def generar_formato_c_consolidado(dispensaciones_qs, centro_nombre, fecha_inicio
 
 
 # =============================================================================
-# FIN DEL ARCHIVO - NO AGREGAR MÁS FUNCIONES AQUÍ
+# REPORTES: MEDICAMENTOS CONTROLADOS / AUDITORÍA PRODUCTOS
+# =============================================================================
+
+def generar_reporte_medicamentos_controlados(productos_data, filtros=None):
+    """
+    Genera reporte PDF de medicamentos controlados vs no controlados.
+    """
+    buffer = BytesIO()
+    colores_tema = _obtener_colores_tema()
+    fondo_path = _obtener_fondo_seguro(colores_tema)
+
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        topMargin=1.8 * inch,
+        bottomMargin=1.2 * inch,
+        leftMargin=0.6 * inch,
+        rightMargin=0.6 * inch,
+    )
+
+    elements = []
+    styles = _obtener_estilos_institucionales(colores_tema)
+
+    _crear_encabezado_con_logo(elements, styles, "REPORTE DE MEDICAMENTOS CONTROLADOS", colores_tema)
+
+    titulo = Paragraph("REPORTE DE MEDICAMENTOS CONTROLADOS", styles['TituloReporte'])
+    elements.append(titulo)
+    elements.append(Spacer(1, 0.15 * inch))
+
+    info_text = f"<b>Fecha de generación:</b> {(filtros or {}).get('fecha_generacion', '')}<br/>"
+    info_text += f"<b>Total productos:</b> {(filtros or {}).get('total_productos', len(productos_data))}<br/>"
+    info_text += f"<b>Controlados:</b> {(filtros or {}).get('total_controlados', 0)} | "
+    info_text += f"<b>No controlados:</b> {(filtros or {}).get('total_no_controlados', 0)}"
+    elements.append(Paragraph(info_text, styles['Normal']))
+    elements.append(Spacer(1, 0.2 * inch))
+
+    estilo_celda = ParagraphStyle(
+        'CeldaCtrl',
+        parent=styles['Normal'],
+        fontSize=7,
+        leading=9,
+        wordWrap='CJK',
+    )
+
+    data = [['#', 'Clave', 'Nombre', 'Presentación', 'Controlado', 'Inventario', 'Mínimo']]
+    for idx, item in enumerate(productos_data, 1):
+        data.append([
+            str(idx),
+            str(item.get('clave', '')),
+            Paragraph(str(item.get('nombre', ''))[:50], estilo_celda),
+            Paragraph(str(item.get('presentacion', ''))[:45], estilo_celda),
+            'Sí' if item.get('es_controlado') else 'No',
+            str(item.get('stock_actual', 0)),
+            str(item.get('stock_minimo', 0)),
+        ])
+
+    col_widths = [0.35 * inch, 0.6 * inch, 1.8 * inch, 1.6 * inch, 0.75 * inch, 0.75 * inch, 0.65 * inch]
+    table = _crear_tabla_institucional(data, col_widths, colores_tema=colores_tema)
+    elements.append(table)
+
+    def make_canvas(*args, **kwargs):
+        return FondoOficialCanvas(*args, fondo_path=fondo_path, titulo_reporte='MEDICAMENTOS CONTROLADOS', **kwargs)
+
+    doc.build(elements, canvasmaker=make_canvas)
+    buffer.seek(0)
+    logger.info(f"Reporte medicamentos controlados PDF generado: {len(productos_data)} productos")
+    return buffer
+
+
+def generar_reporte_auditoria_productos(resultados_data, filtros=None):
+    """
+    Genera reporte PDF de auditoría de cambios en productos.
+    """
+    buffer = BytesIO()
+    colores_tema = _obtener_colores_tema()
+    fondo_path = _obtener_fondo_seguro(colores_tema)
+
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        topMargin=1.8 * inch,
+        bottomMargin=1.2 * inch,
+        leftMargin=0.6 * inch,
+        rightMargin=0.6 * inch,
+    )
+
+    elements = []
+    styles = _obtener_estilos_institucionales(colores_tema)
+
+    _crear_encabezado_con_logo(elements, styles, "AUDITORÍA DE CAMBIOS EN PRODUCTOS", colores_tema)
+
+    titulo = Paragraph("AUDITORÍA DE CAMBIOS EN PRODUCTOS", styles['TituloReporte'])
+    elements.append(titulo)
+    elements.append(Spacer(1, 0.15 * inch))
+
+    info_text = f"<b>Fecha de generación:</b> {(filtros or {}).get('fecha_generacion', '')}<br/>"
+    info_text += f"<b>Total registros:</b> {(filtros or {}).get('total', len(resultados_data))}"
+    if (filtros or {}).get('fecha_inicio'):
+        info_text += f"<br/><b>Desde:</b> {filtros['fecha_inicio']}"
+    if (filtros or {}).get('fecha_fin'):
+        info_text += f"<br/><b>Hasta:</b> {filtros['fecha_fin']}"
+    if (filtros or {}).get('campo'):
+        info_text += f"<br/><b>Campo filtrado:</b> {filtros['campo']}"
+    elements.append(Paragraph(info_text, styles['Normal']))
+    elements.append(Spacer(1, 0.2 * inch))
+
+    estilo_celda = ParagraphStyle(
+        'CeldaAuditProd',
+        parent=styles['Normal'],
+        fontSize=7,
+        leading=9,
+        wordWrap='CJK',
+    )
+
+    data = [['Fecha', 'Usuario', 'Rol', 'Prod. ID', 'Acción', 'Cambios']]
+    for item in resultados_data:
+        cambios_str = '; '.join(
+            f"{ch['campo']}: {ch.get('valor_anterior', '—')} → {ch['valor_nuevo']}"
+            for ch in item.get('cambios', [])
+        )
+        fecha = str(item.get('fecha', ''))[:19].replace('T', ' ')
+        data.append([
+            fecha,
+            Paragraph(str(item.get('usuario', '')), estilo_celda),
+            str(item.get('rol', '')),
+            str(item.get('producto_id', '')),
+            str(item.get('accion', '')),
+            Paragraph(cambios_str[:120], estilo_celda),
+        ])
+
+    col_widths = [1.0 * inch, 0.85 * inch, 0.7 * inch, 0.6 * inch, 0.7 * inch, 2.4 * inch]
+    table = _crear_tabla_institucional(data, col_widths, colores_tema=colores_tema)
+    elements.append(table)
+
+    def make_canvas(*args, **kwargs):
+        return FondoOficialCanvas(*args, fondo_path=fondo_path, titulo_reporte='AUDITORÍA PRODUCTOS', **kwargs)
+
+    doc.build(elements, canvasmaker=make_canvas)
+    buffer.seek(0)
+    logger.info(f"Reporte auditoría productos PDF generado: {len(resultados_data)} registros")
+    return buffer
+
+
+# =============================================================================
+# FIN DEL ARCHIVO
 # =============================================================================

@@ -19,12 +19,17 @@ Nota: Por ahora se re-exporta desde views_legacy.py para mantener compatibilidad
 La migración completa del código se hará de forma incremental.
 """
 
+from io import BytesIO
+
 from django.db.models import Sum, Q
+from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment
 
 from core.models import Producto, AuditoriaLogs
 from inventario.views.base import is_farmacia_or_admin, has_global_read_access, get_user_centro
@@ -49,7 +54,7 @@ def reporte_medicamentos_controlados(request):
     """
     Análisis de Medicamentos Controlados.
     Retorna resumen y listado de productos controlados vs no controlados.
-    Filtros opcionales: ?centro=ID
+    Filtros opcionales: ?centro=ID&formato=json|excel|pdf
     """
     try:
         user = request.user
@@ -58,6 +63,8 @@ def reporte_medicamentos_controlados(request):
                 {'error': 'No tiene permisos para ver este reporte.'},
                 status=status.HTTP_403_FORBIDDEN,
             )
+
+        formato = request.query_params.get('formato', 'json').lower()
 
         filtrar_por_centro = not is_farmacia_or_admin(user)
         user_centro = get_user_centro(user) if filtrar_por_centro else None
@@ -101,17 +108,97 @@ def reporte_medicamentos_controlados(request):
         total_ctrl = controlados.count()
         total_no_ctrl = no_controlados.count()
 
-        return Response({
-            'resumen': {
+        resumen = {
+            'total_productos': total,
+            'total_controlados': total_ctrl,
+            'total_no_controlados': total_no_ctrl,
+            'porcentaje_controlados': round((total_ctrl / total * 100), 1) if total else 0,
+            'porcentaje_no_controlados': round((total_no_ctrl / total * 100), 1) if total else 0,
+        }
+
+        # ── JSON ──
+        if formato == 'json':
+            return Response({
+                'resumen': resumen,
+                'controlados': lista_controlados,
+                'no_controlados': lista_no_controlados,
+            })
+
+        # ── PDF ──
+        if formato == 'pdf':
+            from core.utils.pdf_reports import generar_reporte_medicamentos_controlados
+            todos = lista_controlados + lista_no_controlados
+            filtros = {
+                'fecha_generacion': timezone.now().strftime('%d/%m/%Y %H:%M'),
                 'total_productos': total,
                 'total_controlados': total_ctrl,
                 'total_no_controlados': total_no_ctrl,
-                'porcentaje_controlados': round((total_ctrl / total * 100), 1) if total else 0,
-                'porcentaje_no_controlados': round((total_no_ctrl / total * 100), 1) if total else 0,
-            },
-            'controlados': lista_controlados,
-            'no_controlados': lista_no_controlados,
-        })
+            }
+            pdf_buffer = generar_reporte_medicamentos_controlados(todos, filtros=filtros)
+            response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+            response['Content-Disposition'] = (
+                f"attachment; filename=Medicamentos_Controlados_{timezone.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            )
+            return response
+
+        # ── Excel ──
+        todos = lista_controlados + lista_no_controlados
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Medicamentos Controlados'
+
+        ws.merge_cells('A1:I1')
+        c = ws['A1']
+        c.value = 'REPORTE DE MEDICAMENTOS CONTROLADOS'
+        c.font = Font(bold=True, size=14, color='632842')
+        c.alignment = Alignment(horizontal='center', vertical='center')
+
+        ws.merge_cells('A2:I2')
+        c2 = ws['A2']
+        c2.value = f'Generado el {timezone.now().strftime("%d/%m/%Y %H:%M")} — Total: {total} | Controlados: {total_ctrl} ({resumen["porcentaje_controlados"]}%) | No Controlados: {total_no_ctrl} ({resumen["porcentaje_no_controlados"]}%)'
+        c2.font = Font(size=10, italic=True)
+        c2.alignment = Alignment(horizontal='center')
+
+        ws.append([])
+        headers = ['#', 'Clave', 'Nombre', 'Presentación', 'Sustancia Activa', 'Controlado', 'Inventario', 'Mínimo', 'Req. Receta']
+        ws.append(headers)
+
+        header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
+        header_font = Font(bold=True, color='FFFFFF', size=11)
+        for cell in ws[4]:
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+
+        for idx, item in enumerate(todos, 1):
+            ws.append([
+                idx,
+                item['clave'],
+                item['nombre'][:50],
+                item['presentacion'][:50],
+                item['sustancia_activa'][:40],
+                'Sí' if item['es_controlado'] else 'No',
+                item['stock_actual'],
+                item['stock_minimo'],
+                'Sí' if item.get('requiere_receta') else 'No',
+            ])
+
+        for col, width in zip('ABCDEFGHI', [6, 10, 40, 40, 35, 14, 12, 10, 12]):
+            ws.column_dimensions[col].width = width
+
+        excel_buffer = BytesIO()
+        wb.save(excel_buffer)
+        excel_buffer.seek(0)
+
+        response = HttpResponse(
+            excel_buffer.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        response['Content-Disposition'] = (
+            f'attachment; filename=Medicamentos_Controlados_{timezone.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+        )
+        return response
+
     except Exception as exc:
         return Response(
             {'error': 'Error al generar reporte de medicamentos controlados.', 'mensaje': str(exc)},
@@ -124,7 +211,7 @@ def reporte_medicamentos_controlados(request):
 def reporte_auditoria_productos(request):
     """
     Auditoría de cambios en productos - enfocado en campo es_controlado.
-    Filtros: ?fecha_inicio=YYYY-MM-DD&fecha_fin=YYYY-MM-DD&producto_id=N&campo=es_controlado
+    Filtros: ?fecha_inicio=YYYY-MM-DD&fecha_fin=YYYY-MM-DD&producto_id=N&campo=es_controlado&formato=json|excel|pdf
     """
     try:
         user = request.user
@@ -133,6 +220,8 @@ def reporte_auditoria_productos(request):
                 {'error': 'No tiene permisos para ver este reporte.'},
                 status=status.HTTP_403_FORBIDDEN,
             )
+
+        formato = request.query_params.get('formato', 'json').lower()
 
         logs = AuditoriaLogs.objects.filter(
             modelo__icontains='Producto',
@@ -196,10 +285,92 @@ def reporte_auditoria_productos(request):
                 'ip': log.ip_address or '',
             })
 
-        return Response({
-            'total': len(resultados),
-            'resultados': resultados,
-        })
+        # ── JSON ──
+        if formato == 'json':
+            return Response({
+                'total': len(resultados),
+                'resultados': resultados,
+            })
+
+        # ── PDF ──
+        if formato == 'pdf':
+            from core.utils.pdf_reports import generar_reporte_auditoria_productos
+            filtros = {
+                'fecha_generacion': timezone.now().strftime('%d/%m/%Y %H:%M'),
+                'total': len(resultados),
+            }
+            if fecha_inicio:
+                filtros['fecha_inicio'] = fecha_inicio
+            if fecha_fin:
+                filtros['fecha_fin'] = fecha_fin
+            if campo:
+                filtros['campo'] = campo
+            pdf_buffer = generar_reporte_auditoria_productos(resultados, filtros=filtros)
+            response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+            response['Content-Disposition'] = (
+                f"attachment; filename=Auditoria_Productos_{timezone.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            )
+            return response
+
+        # ── Excel ──
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Auditoría Productos'
+
+        ws.merge_cells('A1:G1')
+        c = ws['A1']
+        c.value = 'AUDITORÍA DE CAMBIOS EN PRODUCTOS'
+        c.font = Font(bold=True, size=14, color='632842')
+        c.alignment = Alignment(horizontal='center', vertical='center')
+
+        ws.merge_cells('A2:G2')
+        c2 = ws['A2']
+        c2.value = f'Generado el {timezone.now().strftime("%d/%m/%Y %H:%M")} — Total de registros: {len(resultados)}'
+        c2.font = Font(size=10, italic=True)
+        c2.alignment = Alignment(horizontal='center')
+
+        ws.append([])
+        headers = ['#', 'Fecha', 'Usuario', 'Rol', 'Producto ID', 'Acción', 'Cambios']
+        ws.append(headers)
+
+        header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
+        header_font = Font(bold=True, color='FFFFFF', size=11)
+        for cell in ws[4]:
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+
+        for idx, item in enumerate(resultados, 1):
+            cambios_str = '; '.join(
+                f"{ch['campo']}: {ch.get('valor_anterior', '—')} → {ch['valor_nuevo']}"
+                for ch in item['cambios']
+            )
+            ws.append([
+                idx,
+                item['fecha'][:19].replace('T', ' '),
+                item['usuario'],
+                item['rol'],
+                item['producto_id'],
+                item['accion'],
+                cambios_str[:100],
+            ])
+
+        for col, width in zip('ABCDEFG', [6, 22, 20, 16, 14, 16, 60]):
+            ws.column_dimensions[col].width = width
+
+        excel_buffer = BytesIO()
+        wb.save(excel_buffer)
+        excel_buffer.seek(0)
+
+        response = HttpResponse(
+            excel_buffer.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        response['Content-Disposition'] = (
+            f'attachment; filename=Auditoria_Productos_{timezone.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+        )
+        return response
+
     except Exception as exc:
         return Response(
             {'error': 'Error al generar auditoría de productos.', 'mensaje': str(exc)},

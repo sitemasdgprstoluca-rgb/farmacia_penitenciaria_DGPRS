@@ -528,6 +528,12 @@ const Reportes = () => {
       } else if (filtros.tipo === "parcialidades") {
         response = await reportesAPI.exportarParcialidadesExcel(params);
         filename = `historial_entregas_${new Date().toISOString().split("T")[0]}.xlsx`;
+      } else if (filtros.tipo === "medicamentos_controlados") {
+        response = await reportesAPI.exportarMedicamentosControladosExcel(params);
+        filename = `medicamentos_controlados_${new Date().toISOString().split("T")[0]}.xlsx`;
+      } else if (filtros.tipo === "auditoria_productos") {
+        response = await reportesAPI.exportarAuditoriaProductosExcel(params);
+        filename = `auditoria_productos_${new Date().toISOString().split("T")[0]}.xlsx`;
       } else {
         toast.error("Tipo de reporte no soportado", { id: toastId });
         return;
@@ -565,6 +571,10 @@ const Reportes = () => {
         response = await reportesAPI.exportarContratosPDF(params);
       } else if (filtros.tipo === "parcialidades") {
         response = await reportesAPI.exportarParcialidadesPDF(params);
+      } else if (filtros.tipo === "medicamentos_controlados") {
+        response = await reportesAPI.exportarMedicamentosControladosPDF(params);
+      } else if (filtros.tipo === "auditoria_productos") {
+        response = await reportesAPI.exportarAuditoriaProductosPDF(params);
       } else if (filtros.tipo === "control_mensual") {
         // Control Mensual - Formato Oficial A
         // Normalizar centro: 'todos' no es válido para control_mensual, usar 'central'
