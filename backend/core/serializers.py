@@ -782,6 +782,7 @@ class ProductoSerializer(serializers.ModelSerializer):
             'clave': {'required': True},
             'nombre': {'required': True},
             'presentacion': {'required': True},
+            'es_controlado': {'required': True},
             'descripcion': {'required': False, 'allow_null': True, 'allow_blank': True},
             'nombre_comercial': {'required': False, 'allow_null': True, 'allow_blank': True},
         }
@@ -955,6 +956,50 @@ class ProductoSerializer(serializers.ModelSerializer):
         """
         from .models import Movimiento
         return Movimiento.objects.filter(producto=obj).exists()
+
+    def validate_es_controlado(self, value):
+        """
+        Valida reglas de edición del campo es_controlado:
+        - Siempre obligatorio (no puede ser NULL).
+        - Si el producto tiene movimientos, solo se permite cambiar si el valor actual es NULL/indefinido.
+        """
+        if value is None:
+            raise serializers.ValidationError('Debe indicar si el medicamento es controlado o no.')
+        return value
+
+    def validate(self, attrs):
+        """
+        Validación cruzada: controlar edición de es_controlado en productos con movimientos.
+        """
+        attrs = super().validate(attrs)
+        instance = self.instance  # None en creación, Producto en edición
+        if instance and 'es_controlado' in attrs:
+            from .models import Movimiento
+            valor_actual = instance.es_controlado
+            valor_nuevo = attrs['es_controlado']
+            if valor_actual != valor_nuevo:
+                tiene_movimientos = Movimiento.objects.filter(producto=instance).exists()
+                if tiene_movimientos:
+                    # Excepción: permitir completar valor si antes era False (default) y se quiere definir correctamente
+                    # Bloquear solo cambios reales en productos con historial de movimientos
+                    # Se permite el cambio si el producto nunca tuvo el campo definido explícitamente
+                    # (es decir, tiene el valor default False pero nunca fue editado por un usuario)
+                    from .models import AuditoriaLogs
+                    from django.db.models import Q
+                    # Buscar en datos_nuevos de signals (registrar_auditoria escribe cambios ahí)
+                    # O en datos_anteriores del middleware (request body de PUT/PATCH)
+                    fue_definido_explicitamente = AuditoriaLogs.objects.filter(
+                        modelo__icontains='Producto',
+                        objeto_id=str(instance.pk),
+                    ).filter(
+                        Q(datos_nuevos__has_key='es_controlado') |
+                        Q(datos_anteriores__has_key='es_controlado')
+                    ).exists()
+                    if fue_definido_explicitamente:
+                        raise serializers.ValidationError({
+                            'es_controlado': 'No se puede modificar el campo "Medicamento Controlado" en un producto con movimientos registrados.'
+                        })
+        return attrs
 
     # ------------------------------------------------------------------
     # ISS-PROD-VAR: Campos de variante por presentación

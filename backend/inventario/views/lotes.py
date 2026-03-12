@@ -325,6 +325,14 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
         if numero_contrato_param:
             queryset = queryset.filter(numero_contrato=numero_contrato_param)
 
+        # Filtro: Tipo de medicamento (controlado / no controlado)
+        tipo_medicamento = self.request.query_params.get('tipo_medicamento')
+        if tipo_medicamento:
+            if tipo_medicamento == 'controlados':
+                queryset = queryset.filter(producto__es_controlado=True)
+            elif tipo_medicamento == 'no_controlados':
+                queryset = queryset.filter(producto__es_controlado=False)
+
         # ISS-FIX: Filtrar por rango de fechas (para exportación de trazabilidad)
         fecha_desde = self.request.query_params.get('fecha_desde')
         if fecha_desde:
@@ -1219,7 +1227,7 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
 
             # Headers claros y profesionales
             headers = [
-                'Clave', 'Producto', 'Presentación', 'Código de Lote', 'Fecha de Caducidad',
+                'Clave', 'Producto', 'Presentación', 'Controlado', 'Código de Lote', 'Fecha de Caducidad',
                 'Contrato Lote', 'Recibido Lote', 'Inventario Lote',
                 'Contrato Global', 'Inventario Global', 'Pendiente Global',
                 'Precio Unitario', 'Fecha de Entrega',
@@ -1239,6 +1247,7 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                 clave = lote.producto.clave if lote.producto else ''
                 nom_prod = lote.producto.nombre if lote.producto else 'Producto Desconocido'
                 presentacion = lote.producto.presentacion if lote.producto else ''
+                es_controlado_str = 'Sí' if (lote.producto and lote.producto.es_controlado) else 'No'
 
                 # Datos del lote individual
                 cant_contrato_lote = lote.cantidad_contrato or ''
@@ -1267,6 +1276,7 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                     clave,
                     nom_prod,
                     presentacion,
+                    es_controlado_str,
                     lote.numero_lote or '',
                     fecha_cad_str,
                     cant_contrato_lote,
@@ -1284,7 +1294,7 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                 ])
 
             # Ajustar anchos de columna
-            column_widths = [10, 40, 25, 15, 15, 15, 15, 12, 15, 12, 15, 15, 15, 25, 20, 20, 10]
+            column_widths = [10, 40, 25, 12, 15, 15, 15, 15, 12, 15, 12, 15, 15, 15, 25, 20, 20, 10]
             for col_idx, width in enumerate(column_widths, 1):
                 ws.column_dimensions[get_column_letter(col_idx)].width = width
 

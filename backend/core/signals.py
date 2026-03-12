@@ -528,7 +528,8 @@ def auditar_cambios_producto(sender, instance, created, **kwargs):
                 'descripcion': instance.descripcion,
                 'unidad_medida': instance.unidad_medida,
                 'stock_minimo': instance.stock_minimo,
-                'activo': instance.activo
+                'activo': instance.activo,
+                'es_controlado': instance.es_controlado,
             }
         )
         return
@@ -549,6 +550,8 @@ def auditar_cambios_producto(sender, instance, created, **kwargs):
         cambios['stock_minimo'] = (anterior.stock_minimo, instance.stock_minimo)
     if anterior.activo != instance.activo:
         cambios['activo'] = (anterior.activo, instance.activo)
+    if anterior.es_controlado != instance.es_controlado:
+        cambios['es_controlado'] = (anterior.es_controlado, instance.es_controlado)
 
     if cambios:
         registrar_auditoria(

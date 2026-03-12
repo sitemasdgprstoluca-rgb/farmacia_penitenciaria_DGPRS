@@ -65,6 +65,7 @@ const baseFilters = {
   soloSobreentregas: false,  // Filtro para reporte de parcialidades
   mesControlMensual: new Date().getMonth() + 1,
   anioControlMensual: new Date().getFullYear(),
+  campoAuditoria: '',
 };
 
 // Configuración de columnas por tipo de reporte
@@ -135,6 +136,25 @@ const COLUMNAS_CONFIG = {
     { key: 'centro', label: 'Centro', width: '150px' },
     { key: 'es_sobreentrega', label: 'Sobre-entrega', width: '100px', align: 'center' },
     { key: 'usuario', label: 'Registró', width: '100px' },
+  ],
+  medicamentos_controlados: [
+    { key: '#', label: '#', width: '50px' },
+    { key: 'clave', label: 'Clave', width: '80px' },
+    { key: 'nombre', label: 'Nombre', width: '200px' },
+    { key: 'presentacion', label: 'Presentación', width: '140px' },
+    { key: 'sustancia_activa', label: 'Sustancia Activa', width: '150px' },
+    { key: 'es_controlado', label: 'Controlado', width: '90px', align: 'center' },
+    { key: 'stock_actual', label: 'Inventario', width: '80px', align: 'right' },
+    { key: 'stock_minimo', label: 'Mínimo', width: '70px', align: 'right' },
+  ],
+  auditoria_productos: [
+    { key: '#', label: '#', width: '50px' },
+    { key: 'fecha', label: 'Fecha', width: '140px' },
+    { key: 'usuario', label: 'Usuario', width: '130px' },
+    { key: 'rol', label: 'Rol', width: '90px' },
+    { key: 'producto_id', label: 'Producto ID', width: '90px' },
+    { key: 'cambios_display', label: 'Cambios', width: '300px' },
+    { key: 'ip', label: 'IP', width: '110px' },
   ],
 };
 
@@ -314,6 +334,10 @@ const Reportes = () => {
       if (filtros.fechaInicio) params.fecha_inicio = filtros.fechaInicio;
       if (filtros.fechaFin) params.fecha_fin = filtros.fechaFin;
       if (filtros.soloSobreentregas) params.es_sobreentrega = 'true';
+    } else if (filtros.tipo === "auditoria_productos") {
+      if (filtros.fechaInicio) params.fecha_inicio = filtros.fechaInicio;
+      if (filtros.fechaFin) params.fecha_fin = filtros.fechaFin;
+      if (filtros.campoAuditoria) params.campo = filtros.campoAuditoria;
     }
     
     return params;
@@ -349,12 +373,29 @@ const Reportes = () => {
         response = await reportesAPI.contratos(params);
       } else if (filtros.tipo === "parcialidades") {
         response = await reportesAPI.parcialidades(params);
+      } else if (filtros.tipo === "medicamentos_controlados") {
+        response = await reportesAPI.medicamentosControlados(params);
+      } else if (filtros.tipo === "auditoria_productos") {
+        response = await reportesAPI.auditoriaProductos(params);
       } else {
         throw new Error("Tipo de reporte no soportado");
       }
 
       const payload = response.data || {};
-      const datosFull = payload.datos || [];
+      let datosFull;
+      
+      if (filtros.tipo === "medicamentos_controlados") {
+        // Combinar controlados y no controlados en una lista única
+        datosFull = [...(payload.controlados || []), ...(payload.no_controlados || [])];
+      } else if (filtros.tipo === "auditoria_productos") {
+        // Mapear resultados con cambios formateados para display
+        datosFull = (payload.resultados || []).map(r => ({
+          ...r,
+          cambios_display: (r.cambios || []).map(c => `${c.campo}: ${c.valor_anterior ?? '—'} → ${c.valor_nuevo ?? '—'}`).join('; '),
+        }));
+      } else {
+        datosFull = payload.datos || [];
+      }
       
       if (!Array.isArray(datosFull)) {
         console.warn('Datos no es un array:', datosFull);
@@ -580,6 +621,8 @@ const Reportes = () => {
     if (filtros.tipo === 'control_mensual') return <FaDatabase />;
     if (filtros.tipo === 'contratos') return <FaFileContract />;
     if (filtros.tipo === 'parcialidades') return <FaCubes />;
+    if (filtros.tipo === 'medicamentos_controlados') return <FaLock />;
+    if (filtros.tipo === 'auditoria_productos') return <FaClipboardList />;
     return <FaChartBar />;
   };
 
@@ -682,6 +725,22 @@ const Reportes = () => {
           style={{ backgroundColor: colors.bg, color: colors.text }}
         >
           {esSobre ? '⚠️ SÍ' : '✓ No'}
+        </span>
+      );
+    }
+    
+    // Renderizar es_controlado badge
+    if (col.key === 'es_controlado') {
+      const esCtrl = value === true;
+      const colors = esCtrl 
+        ? { bg: '#FEE2E2', text: '#991B1B' }
+        : { bg: '#D1FAE5', text: '#065F46' };
+      return (
+        <span 
+          className="px-2 py-1 rounded-full text-xs font-bold"
+          style={{ backgroundColor: colors.bg, color: colors.text }}
+        >
+          {esCtrl ? '🔒 Sí' : 'No'}
         </span>
       );
     }
@@ -962,6 +1021,37 @@ const Reportes = () => {
       );
     }
 
+    // Resumen para medicamentos controlados
+    if (filtros.tipo === 'medicamentos_controlados') {
+      return (
+        <div className="p-3 md:p-4 bg-gradient-to-r from-gray-50 to-white border-t">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 md:gap-3">
+            <div className="flex items-center gap-2 p-2 md:p-3 bg-blue-50 rounded-lg">
+              <FaBox className="text-lg md:text-2xl text-blue-600" />
+              <div>
+                <p className="text-[10px] md:text-xs text-blue-600 font-semibold">Total Productos</p>
+                <p className="text-base md:text-xl font-bold text-blue-800">{resumen.total_productos || 0}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 p-2 md:p-3 bg-red-50 rounded-lg">
+              <FaLock className="text-lg md:text-2xl text-red-600" />
+              <div>
+                <p className="text-[10px] md:text-xs text-red-600 font-semibold">Controlados</p>
+                <p className="text-base md:text-xl font-bold text-red-800">{resumen.total_controlados || 0} ({resumen.porcentaje_controlados || 0}%)</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 p-2 md:p-3 bg-green-50 rounded-lg">
+              <FaDatabase className="text-lg md:text-2xl text-green-600" />
+              <div>
+                <p className="text-[10px] md:text-xs text-green-600 font-semibold">No Controlados</p>
+                <p className="text-base md:text-xl font-bold text-green-800">{resumen.total_no_controlados || 0} ({resumen.porcentaje_no_controlados || 0}%)</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return null;
   };
 
@@ -971,7 +1061,7 @@ const Reportes = () => {
       <PageHeader
         icon={FaChartBar}
         title="Reportes"
-        subtitle={`${filtros.tipo === 'control_mensual' ? 'Control Mensual' : filtros.tipo === 'parcialidades' ? 'Historial de Entregas' : filtros.tipo.charAt(0).toUpperCase() + filtros.tipo.slice(1)} · Consulta y exporta informes clave`}
+        subtitle={`${filtros.tipo === 'control_mensual' ? 'Control Mensual' : filtros.tipo === 'parcialidades' ? 'Historial de Entregas' : filtros.tipo === 'medicamentos_controlados' ? 'Medicamentos Controlados' : filtros.tipo === 'auditoria_productos' ? 'Auditoría de Productos' : filtros.tipo.charAt(0).toUpperCase() + filtros.tipo.slice(1)} · Consulta y exporta informes clave`}
         actions={
           <button
             onClick={limpiarFiltros}
@@ -1003,6 +1093,8 @@ const Reportes = () => {
               <option value="contratos">📝 Contratos (Lotes y Consumo)</option>
               <option value="parcialidades">📦 Historial de Entregas</option>
               <option value="control_mensual">📊 Control Mensual (Formato A)</option>
+              <option value="medicamentos_controlados">🔒 Medicamentos Controlados</option>
+              <option value="auditoria_productos">📝 Auditoría de Productos</option>
             </select>
           </div>
 
@@ -1509,6 +1601,44 @@ const Reportes = () => {
                   de entradas, salidas y existencias de insumos médicos para el período seleccionado. Incluye movimientos del mes y 
                   totales acumulados.
                 </div>
+              </div>
+            </>
+          )}
+
+          {/* Auditoría de Productos - Filtros específicos */}
+          {filtros.tipo === "auditoria_productos" && (
+            <>
+              <div className="space-y-1.5">
+                <label className="label-elevated">Fecha inicio</label>
+                <input
+                  type="date"
+                  value={filtros.fechaInicio}
+                  onChange={(e) => handleFiltro("fechaInicio", e.target.value)}
+                  className="input-elevated"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="label-elevated">Fecha fin</label>
+                <input
+                  type="date"
+                  value={filtros.fechaFin}
+                  onChange={(e) => handleFiltro("fechaFin", e.target.value)}
+                  className="input-elevated"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="label-elevated">Campo específico</label>
+                <select
+                  value={filtros.campoAuditoria || ''}
+                  onChange={(e) => handleFiltro("campoAuditoria", e.target.value)}
+                  className="input-elevated"
+                >
+                  <option value="">Todos los campos</option>
+                  <option value="es_controlado">Medicamento Controlado</option>
+                  <option value="nombre">Nombre</option>
+                  <option value="presentacion">Presentación</option>
+                  <option value="activo">Estado (activo/inactivo)</option>
+                </select>
               </div>
             </>
           )}

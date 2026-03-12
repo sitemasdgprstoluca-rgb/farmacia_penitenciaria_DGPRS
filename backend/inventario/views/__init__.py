@@ -59,6 +59,8 @@ from inventario.views.reportes import (
     reporte_consumo,
     reporte_contratos,
     reporte_parcialidades,
+    reporte_medicamentos_controlados,
+    reporte_auditoria_productos,
 )
 
 # Helpers y utilidades desde base.py
@@ -111,6 +113,8 @@ __all__ = [
     'reporte_consumo',
     'reporte_contratos',
     'reporte_parcialidades',
+    'reporte_medicamentos_controlados',
+    'reporte_auditoria_productos',
     # Helpers
     'CustomPagination',
     'is_farmacia_or_admin',

@@ -589,6 +589,8 @@ const Productos = () => {
 
     stock: '',
 
+    tipo_medicamento: '',
+
   });
 
   // ESC para cerrar modales
@@ -757,6 +759,8 @@ const Productos = () => {
 
       if (filters.stock) params.stock_status = filters.stock;
 
+      if (filters.tipo_medicamento) params.tipo_medicamento = filters.tipo_medicamento;
+
 
 
       if (puede.verSoloActivos) {
@@ -842,6 +846,7 @@ const Productos = () => {
       estado: '',
       unidad: '',
       stock: '',
+      tipo_medicamento: '',
     });
     setCurrentPage(1);
     // Cerrar panel de filtros para indicar visualmente el reset
@@ -1837,7 +1842,14 @@ const Productos = () => {
 
                 <td className="px-2 py-2 text-xs font-semibold text-gray-800">{producto.clave || '-'}</td>
 
-                <td className="px-2 py-2 text-xs text-gray-600" title={producto.nombre}><span className="line-clamp-2 leading-tight">{producto.nombre}</span></td>
+                <td className="px-2 py-2 text-xs text-gray-600" title={producto.nombre}>
+                  <span className="line-clamp-2 leading-tight">
+                    {producto.nombre}
+                    {producto.es_controlado && (
+                      <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-100 text-red-700 align-middle" title="Medicamento Controlado">CTRL</span>
+                    )}
+                  </span>
+                </td>
 
                 <td className="px-2 py-2 text-xs text-gray-600"><span className="line-clamp-2 leading-tight">{producto.presentacion || producto.unidad_medida || <span className="text-gray-400 italic">-</span>}</span></td>
 
@@ -2146,6 +2158,16 @@ const Productos = () => {
                 </option>
               ))}
             </select>
+
+            <select
+              value={filters.tipo_medicamento}
+              onChange={(e) => handleFilterChange('tipo_medicamento', e.target.value)}
+              className="cc-filter-select"
+            >
+              <option value="">Tipo Med. ▾</option>
+              <option value="controlados">Controlados</option>
+              <option value="no_controlados">No Controlados</option>
+            </select>
           </>
         }
       />
@@ -2153,7 +2175,7 @@ const Productos = () => {
       {/* Panel de filtros expandido */}
       {showFiltersMenu && (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-6">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-7">
             <div className="lg:col-span-2">
               <label className="cc-filter-label">Búsqueda</label>
               <div className="cc-filter-input-wrap">
@@ -2204,6 +2226,18 @@ const Productos = () => {
                 {NIVELES_INVENTARIO.map((nivel) => (
                   <option key={nivel.value} value={nivel.value}>{nivel.label}</option>
                 ))}
+              </select>
+            </div>
+            <div>
+              <label className="cc-filter-label">Tipo Medicamento</label>
+              <select
+                value={filters.tipo_medicamento}
+                onChange={(e) => handleFilterChange('tipo_medicamento', e.target.value)}
+                className="cc-filter-select-full"
+              >
+                <option value="">Todos</option>
+                <option value="controlados">Controlados</option>
+                <option value="no_controlados">No Controlados</option>
               </select>
             </div>
             <div className="flex items-end">
@@ -2553,6 +2587,39 @@ const Productos = () => {
                   {formErrors.presentacion && <p className="text-[11px] text-red-600">{formErrors.presentacion}</p>}
                 </div>
               </div>
+
+              {/* Medicamento Controlado - OBLIGATORIO */}
+              <div className="mt-4">
+                <label className="label-elevated">Medicamento Controlado <span className="text-red-500">*</span></label>
+                <div className="flex items-center gap-4 mt-1">
+                  <label className={`flex items-center gap-2 px-4 py-2 rounded-lg border cursor-pointer transition ${formData.es_controlado === true ? 'border-red-400 bg-red-50 text-red-700 font-semibold' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'} ${editingProduct?.tiene_movimientos && editingProduct?.es_controlado !== undefined && editingProduct?.es_controlado !== null ? '!cursor-not-allowed !opacity-60' : ''}`}>
+                    <input
+                      type="radio"
+                      name="es_controlado"
+                      checked={formData.es_controlado === true}
+                      onChange={() => setFormData({ ...formData, es_controlado: true })}
+                      disabled={editingProduct?.tiene_movimientos && editingProduct?.es_controlado !== undefined && editingProduct?.es_controlado !== null}
+                      className="accent-red-600"
+                    />
+                    <span>Sí — Controlado</span>
+                  </label>
+                  <label className={`flex items-center gap-2 px-4 py-2 rounded-lg border cursor-pointer transition ${formData.es_controlado === false ? 'border-green-400 bg-green-50 text-green-700 font-semibold' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'} ${editingProduct?.tiene_movimientos && editingProduct?.es_controlado !== undefined && editingProduct?.es_controlado !== null ? '!cursor-not-allowed !opacity-60' : ''}`}>
+                    <input
+                      type="radio"
+                      name="es_controlado"
+                      checked={formData.es_controlado === false}
+                      onChange={() => setFormData({ ...formData, es_controlado: false })}
+                      disabled={editingProduct?.tiene_movimientos && editingProduct?.es_controlado !== undefined && editingProduct?.es_controlado !== null}
+                      className="accent-green-600"
+                    />
+                    <span>No — No controlado</span>
+                  </label>
+                </div>
+                {editingProduct?.tiene_movimientos && editingProduct?.es_controlado !== undefined && editingProduct?.es_controlado !== null && (
+                  <p className="text-[11px] text-amber-600 mt-1.5">🔒 Este campo no se puede modificar porque el producto ya tiene movimientos registrados.</p>
+                )}
+                {formErrors.es_controlado && <p className="text-[11px] text-red-600 mt-1">{formErrors.es_controlado}</p>}
+              </div>
               </div>
 
               {/* Datos Farmacéuticos (desplegable) */}
@@ -2616,19 +2683,13 @@ const Productos = () => {
                       </select>
                     </div>
                   </div>
-                  {/* Toggles: Requiere Receta y Es Controlado */}
+                  {/* Toggles: Requiere Receta */}
                   <div className="flex flex-wrap gap-6 pt-1">
                     <label className="flex items-center gap-3 cursor-pointer">
                       <div className={`toggle-switch ${formData.requiere_receta ? 'active' : ''}`} onClick={() => setFormData({ ...formData, requiere_receta: !formData.requiere_receta })}>
                         <div className="toggle-switch-knob"></div>
                       </div>
                       <span className="text-sm font-medium text-gray-700">Requiere Receta</span>
-                    </label>
-                    <label className="flex items-center gap-3 cursor-pointer">
-                      <div className={`toggle-switch ${formData.es_controlado ? 'active' : ''}`} onClick={() => setFormData({ ...formData, es_controlado: !formData.es_controlado })}>
-                        <div className="toggle-switch-knob"></div>
-                      </div>
-                      <span className="text-sm font-medium text-gray-700">Es Controlado</span>
                     </label>
                   </div>
                 </div>
@@ -2859,179 +2920,188 @@ const Productos = () => {
 
       {/* Modal de Lotes del Producto */}
       {lotesModalVisible && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 modal-overlay-elevated p-4">
-          <div className="w-full max-w-4xl modal-elevated max-h-[85vh] overflow-hidden">
-            <div className="modal-header-elevated sticky top-0">
-              <div className="min-w-0 flex-1">
-                <h3 className="text-xl font-bold flex items-center gap-2 tracking-wide">
-                  <div className="modal-icon-badge"><FaLayerGroup /></div>
-                  Lotes del Producto
-                </h3>
-                <p className="text-sm text-white/80 truncate">
-                  {lotesModalData?.producto?.clave} - {lotesModalData?.producto?.nombre}
-                </p>
-              </div>
-              <div className="text-right shrink-0 ml-4">
-                <div className="flex items-center gap-2">
-                  <span className="bg-white/15 backdrop-blur-sm px-3 py-1.5 rounded-lg text-sm font-bold">
-                    {lotesModalData?.total_lotes || lotesModalData?.lotes?.length || 0} lotes
-                  </span>
-                  <span className="bg-white/15 backdrop-blur-sm px-3 py-1.5 rounded-lg text-sm font-bold">
-                    Stock: {lotesModalData?.total_stock || 0}
-                  </span>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={(e) => e.target === e.currentTarget && cerrarLotesModal()}>
+          <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl max-h-[85vh] overflow-hidden" style={{ animation: 'modalSlideIn 0.25s ease-out' }}>
+            {/* Header degradado */}
+            <div className="relative px-6 py-5" style={{ background: 'linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #6B1839) 100%)' }}>
+              <button
+                onClick={cerrarLotesModal}
+                className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/25 text-white transition-all"
+              >
+                <FaTimes size={14} />
+              </button>
+              <div className="flex items-start gap-4 pr-10">
+                <div className="w-11 h-11 rounded-xl bg-white/15 backdrop-blur-sm flex items-center justify-center shrink-0">
+                  <FaLayerGroup className="text-white text-lg" />
                 </div>
+                <div className="min-w-0">
+                  <h3 className="text-xl font-bold text-white tracking-wide">Lotes del Producto</h3>
+                  <p className="text-sm text-white/75 mt-0.5 truncate">
+                    {lotesModalData?.producto?.clave} &bull; {lotesModalData?.producto?.nombre}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2.5 mt-4">
+                <span className="inline-flex items-center gap-1.5 bg-white/15 backdrop-blur-sm px-3.5 py-1.5 rounded-full text-sm font-semibold text-white">
+                  <FaLayerGroup size={11} />
+                  {lotesModalData?.total_lotes || lotesModalData?.lotes?.length || 0} Lote{(lotesModalData?.total_lotes || lotesModalData?.lotes?.length || 0) !== 1 ? 's' : ''}
+                </span>
+                <span className="inline-flex items-center gap-1.5 bg-white/15 backdrop-blur-sm px-3.5 py-1.5 rounded-full text-sm font-semibold text-white">
+                  <FaBoxOpen size={11} />
+                  Stock Total: {lotesModalData?.total_stock || 0}
+                </span>
               </div>
             </div>
-            <div className="overflow-y-auto max-h-[60vh]">
+
+            {/* Contenido */}
+            <div className="overflow-y-auto" style={{ maxHeight: 'calc(85vh - 200px)' }}>
               {lotesModalLoading ? (
-                <div className="flex flex-col items-center justify-center py-16">
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[var(--color-primary)]/10 to-[var(--color-primary)]/5 flex items-center justify-center mb-4">
-                    <div className="animate-spin rounded-full h-7 w-7 border-[3px] border-[var(--color-primary)]/20 border-t-[var(--color-primary)]"></div>
+                <div className="flex flex-col items-center justify-center py-20">
+                  <div className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center mb-3">
+                    <div className="animate-spin rounded-full h-6 w-6 border-[3px] border-gray-200 border-t-[var(--color-primary)]"></div>
                   </div>
-                  <span className="text-sm font-medium text-gray-500">Cargando lotes...</span>
+                  <span className="text-sm font-medium text-gray-400">Cargando lotes...</span>
                 </div>
               ) : lotesModalData?.lotes?.length ? (
-                <>
-                  {/* Desktop table */}
-                  <div className="hidden md:block p-4">
-                    <div className="overflow-x-auto rounded-xl border border-gray-100">
-                      <table className="w-full min-w-[650px]">
-                        <thead>
-                          <tr className="bg-gradient-to-r from-gray-50 to-gray-100/80">
-                            <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Lote</th>
-                            <th className="px-4 py-3 text-center text-[10px] font-bold uppercase tracking-wider text-gray-500">Cantidad</th>
-                            <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Caducidad</th>
-                            <th className="px-4 py-3 text-center text-[10px] font-bold uppercase tracking-wider text-gray-500">Días Rest.</th>
-                            <th className="px-4 py-3 text-center text-[10px] font-bold uppercase tracking-wider text-gray-500">Estado</th>
-                            <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Ubicación</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                          {lotesModalData.lotes.map((lote, idx) => {
-                            const semaforoConfig = {
-                              vencido: { bg: 'bg-red-50', text: 'text-red-700', label: 'VENCIDO', dot: 'bg-red-500' },
-                              critico: { bg: 'bg-orange-50', text: 'text-orange-700', label: 'CRÍTICO', dot: 'bg-orange-500' },
-                              proximo: { bg: 'bg-yellow-50', text: 'text-yellow-700', label: 'PRÓXIMO', dot: 'bg-yellow-500' },
-                              normal: { bg: 'bg-green-50', text: 'text-green-700', label: 'OK', dot: 'bg-green-500' },
-                              sin_fecha: { bg: 'bg-gray-50', text: 'text-gray-500', label: 'S/F', dot: 'bg-gray-400' },
-                            };
-                            const semaforo = semaforoConfig[lote.alerta_caducidad] || semaforoConfig.normal;
-                            return (
-                              <tr
-                                key={lote.id}
-                                className={`transition-colors hover:bg-gray-50/80 ${lote.alerta_caducidad === 'vencido' ? 'bg-red-50/40' : lote.alerta_caducidad === 'critico' ? 'bg-orange-50/40' : ''}`}
-                              >
-                                <td className="px-4 py-3.5">
-                                  <span className="text-sm font-mono font-semibold text-gray-800 bg-gray-100 px-2 py-0.5 rounded">{lote.numero_lote}</span>
-                                </td>
-                                <td className="px-4 py-3.5 text-center">
-                                  <span className="text-sm font-black text-gray-900">{lote.cantidad_actual}</span>
-                                </td>
-                                <td className="px-4 py-3.5 text-sm text-gray-600">
-                                  <div className="flex items-center gap-1.5">
-                                    <FaCalendarAlt className="text-gray-400 shrink-0" size={12} />
-                                    {lote.fecha_caducidad 
-                                      ? new Date(lote.fecha_caducidad).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' })
-                                      : 'Sin fecha'}
-                                  </div>
-                                </td>
-                                <td className="px-4 py-3.5 text-center">
-                                  {lote.dias_para_caducar !== null ? (
-                                    <span className={`text-sm font-bold ${lote.dias_para_caducar < 0 ? 'text-red-600' : lote.dias_para_caducar <= 30 ? 'text-orange-600' : lote.dias_para_caducar <= 90 ? 'text-yellow-600' : 'text-green-600'}`}>
-                                      {lote.dias_para_caducar < 0 ? `${Math.abs(lote.dias_para_caducar)} vencido` : `${lote.dias_para_caducar} días`}
-                                    </span>
-                                  ) : <span className="text-gray-400">-</span>}
-                                </td>
-                                <td className="px-4 py-3.5 text-center">
-                                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold ${semaforo.bg} ${semaforo.text}`}>
-                                    <span className={`w-2 h-2 rounded-full ${semaforo.dot}`}></span>
-                                    {semaforo.label}
+                <div className="p-5 space-y-3">
+                  {/* Tabla desktop */}
+                  <div className="hidden md:block rounded-xl border border-gray-200/80 shadow-sm overflow-hidden">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="bg-gray-50/80">
+                          <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400">Lote</th>
+                          <th className="px-4 py-3 text-center text-[10px] font-bold uppercase tracking-wider text-gray-400">Cantidad</th>
+                          <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400">Caducidad</th>
+                          <th className="px-4 py-3 text-center text-[10px] font-bold uppercase tracking-wider text-gray-400">Días Rest.</th>
+                          <th className="px-4 py-3 text-center text-[10px] font-bold uppercase tracking-wider text-gray-400">Estado</th>
+                          <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400">Ubicación</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {lotesModalData.lotes.map((lote) => {
+                          const semaforoConfig = {
+                            vencido: { bg: 'bg-red-50', text: 'text-red-600', label: 'VENCIDO', dot: 'bg-red-500' },
+                            critico: { bg: 'bg-orange-50', text: 'text-orange-600', label: 'CRÍTICO', dot: 'bg-orange-500' },
+                            proximo: { bg: 'bg-yellow-50', text: 'text-yellow-600', label: 'PRÓXIMO', dot: 'bg-yellow-500' },
+                            normal: { bg: 'bg-emerald-50', text: 'text-emerald-600', label: 'OK', dot: 'bg-emerald-500' },
+                            sin_fecha: { bg: 'bg-gray-50', text: 'text-gray-500', label: 'S/F', dot: 'bg-gray-400' },
+                          };
+                          const semaforo = semaforoConfig[lote.alerta_caducidad] || semaforoConfig.normal;
+                          return (
+                            <tr key={lote.id} className={`transition-colors hover:bg-gray-50/60 ${lote.alerta_caducidad === 'vencido' ? 'bg-red-50/30' : ''}`}>
+                              <td className="px-4 py-3.5">
+                                <span className="inline-flex items-center font-mono text-sm font-semibold text-gray-800 bg-gray-100 border border-gray-200 px-2.5 py-0.5 rounded-md">{lote.numero_lote}</span>
+                              </td>
+                              <td className="px-4 py-3.5 text-center">
+                                <span className="text-[15px] font-bold text-gray-900">{lote.cantidad_actual}</span>
+                              </td>
+                              <td className="px-4 py-3.5">
+                                <div className="flex items-center gap-1.5 text-sm text-gray-600">
+                                  <FaCalendarAlt className="text-gray-300 shrink-0" size={11} />
+                                  {lote.fecha_caducidad
+                                    ? new Date(lote.fecha_caducidad).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' })
+                                    : 'Sin fecha'}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3.5 text-center">
+                                {lote.dias_para_caducar !== null ? (
+                                  <span className={`text-sm font-bold ${lote.dias_para_caducar < 0 ? 'text-red-600' : lote.dias_para_caducar <= 30 ? 'text-orange-500' : lote.dias_para_caducar <= 90 ? 'text-yellow-500' : 'text-emerald-600'}`}>
+                                    {lote.dias_para_caducar < 0 ? `${Math.abs(lote.dias_para_caducar)} vencido` : `${lote.dias_para_caducar} días`}
                                   </span>
-                                </td>
-                                <td className="px-4 py-3.5 text-sm text-gray-600 max-w-[200px]">
-                                  <span className="block truncate" title={lote.centro_nombre || 'Almacén Central'}>
-                                    {lote.centro_nombre || 'Almacén Central'}
-                                  </span>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
+                                ) : <span className="text-gray-300">—</span>}
+                              </td>
+                              <td className="px-4 py-3.5 text-center">
+                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold ${semaforo.bg} ${semaforo.text}`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${semaforo.dot}`}></span>
+                                  {semaforo.label}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3.5 text-sm text-gray-500">
+                                <span className="truncate block max-w-[180px]" title={lote.centro_nombre || 'Almacén Central'}>
+                                  {lote.centro_nombre || 'Almacén Central'}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
-                  {/* Mobile cards */}
-                  <div className="md:hidden p-3 space-y-2.5">
-                    {lotesModalData.lotes.map((lote, idx) => {
+
+                  {/* Cards mobile */}
+                  <div className="md:hidden space-y-2.5">
+                    {lotesModalData.lotes.map((lote) => {
                       const semaforoConfig = {
-                        vencido: { bg: 'bg-red-50', text: 'text-red-700', label: 'VENCIDO', dot: 'bg-red-500' },
-                        critico: { bg: 'bg-orange-50', text: 'text-orange-700', label: 'CRÍTICO', dot: 'bg-orange-500' },
-                        proximo: { bg: 'bg-yellow-50', text: 'text-yellow-700', label: 'PRÓXIMO', dot: 'bg-yellow-500' },
-                        normal: { bg: 'bg-green-50', text: 'text-green-700', label: 'OK', dot: 'bg-green-500' },
+                        vencido: { bg: 'bg-red-50', text: 'text-red-600', label: 'VENCIDO', dot: 'bg-red-500' },
+                        critico: { bg: 'bg-orange-50', text: 'text-orange-600', label: 'CRÍTICO', dot: 'bg-orange-500' },
+                        proximo: { bg: 'bg-yellow-50', text: 'text-yellow-600', label: 'PRÓXIMO', dot: 'bg-yellow-500' },
+                        normal: { bg: 'bg-emerald-50', text: 'text-emerald-600', label: 'OK', dot: 'bg-emerald-500' },
                         sin_fecha: { bg: 'bg-gray-50', text: 'text-gray-500', label: 'S/F', dot: 'bg-gray-400' },
                       };
                       const semaforo = semaforoConfig[lote.alerta_caducidad] || semaforoConfig.normal;
                       return (
                         <div
                           key={lote.id}
-                          className={`rounded-xl border p-3.5 transition-shadow hover:shadow-md ${lote.alerta_caducidad === 'vencido' ? 'border-red-200 bg-red-50/30' : lote.alerta_caducidad === 'critico' ? 'border-orange-200 bg-orange-50/30' : 'border-gray-100 bg-white'}`}
+                          className={`rounded-xl border p-4 ${lote.alerta_caducidad === 'vencido' ? 'border-red-200 bg-red-50/20' : lote.alerta_caducidad === 'critico' ? 'border-orange-200 bg-orange-50/20' : 'border-gray-200 bg-white'}`}
                         >
-                          <div className="flex items-center justify-between mb-2.5">
-                            <span className="font-mono font-bold text-sm bg-gray-100 px-2 py-0.5 rounded text-gray-800">{lote.numero_lote}</span>
-                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold ${semaforo.bg} ${semaforo.text}`}>
-                              <span className={`w-2 h-2 rounded-full ${semaforo.dot}`}></span>
+                          <div className="flex items-center justify-between mb-3">
+                            <span className="font-mono font-bold text-sm bg-gray-100 border border-gray-200 px-2.5 py-0.5 rounded-md text-gray-800">{lote.numero_lote}</span>
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold ${semaforo.bg} ${semaforo.text}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${semaforo.dot}`}></span>
                               {semaforo.label}
                             </span>
                           </div>
                           <div className="grid grid-cols-3 gap-2 text-center">
-                            <div className="bg-gray-50 rounded-lg p-2">
-                              <p className="text-[10px] font-semibold text-gray-400 uppercase">Cant.</p>
-                              <p className="text-base font-black text-gray-900">{lote.cantidad_actual}</p>
+                            <div className="bg-gray-50 rounded-lg p-2.5">
+                              <p className="text-[10px] font-semibold text-gray-400 uppercase">Cantidad</p>
+                              <p className="text-base font-bold text-gray-900 mt-0.5">{lote.cantidad_actual}</p>
                             </div>
-                            <div className="bg-gray-50 rounded-lg p-2">
+                            <div className="bg-gray-50 rounded-lg p-2.5">
                               <p className="text-[10px] font-semibold text-gray-400 uppercase">Caduca</p>
-                              <p className="text-xs font-semibold text-gray-700">
-                                {lote.fecha_caducidad 
+                              <p className="text-xs font-semibold text-gray-700 mt-1">
+                                {lote.fecha_caducidad
                                   ? new Date(lote.fecha_caducidad).toLocaleDateString('es-MX', { month: 'short', day: 'numeric', year: '2-digit' })
                                   : 'S/F'}
                               </p>
                             </div>
-                            <div className="bg-gray-50 rounded-lg p-2">
+                            <div className="bg-gray-50 rounded-lg p-2.5">
                               <p className="text-[10px] font-semibold text-gray-400 uppercase">Días</p>
-                              <p className={`text-xs font-bold ${lote.dias_para_caducar !== null ? (lote.dias_para_caducar < 0 ? 'text-red-600' : lote.dias_para_caducar <= 30 ? 'text-orange-600' : lote.dias_para_caducar <= 90 ? 'text-yellow-600' : 'text-green-600') : 'text-gray-400'}`}>
-                                {lote.dias_para_caducar !== null ? (lote.dias_para_caducar < 0 ? `${Math.abs(lote.dias_para_caducar)} venc.` : lote.dias_para_caducar) : '-'}
+                              <p className={`text-xs font-bold mt-1 ${lote.dias_para_caducar !== null ? (lote.dias_para_caducar < 0 ? 'text-red-600' : lote.dias_para_caducar <= 30 ? 'text-orange-500' : lote.dias_para_caducar <= 90 ? 'text-yellow-500' : 'text-emerald-600') : 'text-gray-400'}`}>
+                                {lote.dias_para_caducar !== null ? (lote.dias_para_caducar < 0 ? `${Math.abs(lote.dias_para_caducar)} venc.` : lote.dias_para_caducar) : '—'}
                               </p>
                             </div>
                           </div>
-                          <p className="text-xs text-gray-500 mt-2 truncate" title={lote.centro_nombre || 'Almacén Central'}>
+                          <p className="text-xs text-gray-400 mt-2.5 truncate">
                             📍 {lote.centro_nombre || 'Almacén Central'}
                           </p>
                         </div>
                       );
                     })}
                   </div>
-                </>
+                </div>
               ) : (
-                <div className="py-16 text-center">
-                  <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-4">
-                    <FaBoxOpen className="text-2xl text-gray-400" />
+                <div className="py-20 text-center">
+                  <div className="w-14 h-14 rounded-2xl bg-gray-50 flex items-center justify-center mx-auto mb-4">
+                    <FaBoxOpen className="text-2xl text-gray-300" />
                   </div>
-                  <p className="text-sm font-semibold text-gray-600">Sin lotes disponibles</p>
+                  <p className="text-sm font-semibold text-gray-500">Sin lotes disponibles</p>
                   <p className="text-xs text-gray-400 mt-1">Este producto no tiene lotes con stock.</p>
                 </div>
               )}
             </div>
-            <div className="px-5 py-3.5 bg-gradient-to-r from-gray-50 to-white border-t flex justify-between items-center rounded-b-2xl">
-              <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-400 font-medium">
-                <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block"></span> &gt;90 días</span>
-                <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500 inline-block"></span> 31-90 días</span>
-                <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500 inline-block"></span> 1-30 días</span>
-                <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block"></span> Vencido</span>
+
+            {/* Footer */}
+            <div className="px-6 py-4 bg-gray-50/50 border-t border-gray-100 flex justify-between items-center">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-400 font-medium">
+                <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>+90 días</span>
+                <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-yellow-500 inline-block"></span>31-90 días</span>
+                <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-orange-500 inline-block"></span>1-30 días</span>
+                <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-500 inline-block"></span>Vencido</span>
               </div>
               <button
                 type="button"
                 onClick={cerrarLotesModal}
-                className="btn-elevated-primary"
+                className="px-5 py-2 rounded-xl text-sm font-semibold border border-gray-200 text-gray-600 hover:bg-gray-100 hover:border-gray-300 transition-all shadow-sm"
               >
                 Cerrar
               </button>

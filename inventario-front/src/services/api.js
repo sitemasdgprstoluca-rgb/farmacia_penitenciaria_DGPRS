@@ -1803,6 +1803,12 @@ export const reportesAPI = {
 
   // Precarga de datos
   precarga: () => apiClient.get('/reportes/precarga/'),
+
+  // Medicamentos Controlados
+  medicamentosControlados: (params) => apiClient.get('/reportes/medicamentos-controlados/', { params }),
+
+  // Auditoría de cambios en productos
+  auditoriaProductos: (params) => apiClient.get('/reportes/auditoria-productos/', { params }),
 };
 
 // Notificaciones

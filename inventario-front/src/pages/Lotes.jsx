@@ -182,6 +182,7 @@ const Lotes = () => {
   const [filtroActivo, setFiltroActivo] = useState(() => {
     return puedeVerGlobal ? '' : 'true';  // Centro/Medico: solo activos por defecto
   });
+  const [filtroTipoMedicamento, setFiltroTipoMedicamento] = useState('');
   // Usuarios sin permisos globales siempre deben filtrar por su centro
   // CORREGIDO: Usar contexto de autenticación (centroUsuario) en lugar de localStorage
   // para evitar desincronización en cambios de sesión
@@ -406,6 +407,7 @@ const Lotes = () => {
       if (filtroCaducidad) params.caducidad = filtroCaducidad;
       if (filtroConStock) params.con_stock = filtroConStock;
       if (filtroActivo) params.activo = filtroActivo;
+      if (filtroTipoMedicamento) params.tipo_medicamento = filtroTipoMedicamento;
       
       // TRAZABILIDAD: Admin/Farmacia ven lotes CONSOLIDADOS (únicos, sin duplicados)
       // Usuarios de centro ven solo sus lotes (no consolidados)
@@ -453,7 +455,7 @@ const Lotes = () => {
     } finally {
       setLoading(false);
     }
-  }, [applyMockLotes, currentPage, filtroActivo, filtroCaducidad, filtroConStock, filtroProducto, filtroCentro, pageSize, searchTerm, puedeVerGlobal, centroUsuario, errorSinCentro]);
+  }, [applyMockLotes, currentPage, filtroActivo, filtroCaducidad, filtroConStock, filtroProducto, filtroCentro, filtroTipoMedicamento, pageSize, searchTerm, puedeVerGlobal, centroUsuario, errorSinCentro]);
 
   // ── Sincronización multi-usuario en tiempo real ──────────────────────────
   // Los eventos de 'lote' (creación/actualización) y 'movimiento' (que afectan stock)
@@ -467,7 +469,7 @@ const Lotes = () => {
     }, searchTerm ? 300 : 0); // 300ms delay solo cuando hay búsqueda activa
 
     return () => clearTimeout(delayDebounceFn);
-  }, [currentPage, filtroActivo, filtroCaducidad, filtroConStock, filtroProducto, filtroCentro, pageSize, searchTerm, puedeVerGlobal, centroUsuario, errorSinCentro]);
+  }, [currentPage, filtroActivo, filtroCaducidad, filtroConStock, filtroProducto, filtroCentro, filtroTipoMedicamento, pageSize, searchTerm, puedeVerGlobal, centroUsuario, errorSinCentro]);
   // Nota: NO incluir cargarLotes como dependencia para evitar re-renders innecesarios
 
   // Escuchar evento de limpieza de inventario para refrescar Lotes
@@ -1212,6 +1214,7 @@ const Lotes = () => {
     setFiltroProducto('');
     setFiltroCaducidad('');
     setFiltroConStock('');
+    setFiltroTipoMedicamento('');
     // ISS-FIX: CENTRO/MEDICO mantienen filtro activo=true al limpiar
     setFiltroActivo(puedeVerGlobal ? '' : 'true');
     // Si no puede ver global, mantener filtro de su centro
@@ -1240,6 +1243,7 @@ const Lotes = () => {
       if (filtroCaducidad) params.caducidad = filtroCaducidad;
       if (filtroConStock) params.con_stock = filtroConStock;
       if (filtroActivo) params.activo = filtroActivo;
+      if (filtroTipoMedicamento) params.tipo_medicamento = filtroTipoMedicamento;
       // ISS-FIX: Usar misma lógica de centro que cargarLotes
       // Admin/farmacia: por defecto solo exportar Farmacia Central
       // Para exportar centros, usar Reportes > Inventario > elegir centro
@@ -1294,6 +1298,7 @@ const Lotes = () => {
       if (filtroCaducidad) params.caducidad = filtroCaducidad;
       if (filtroConStock) params.con_stock = filtroConStock;
       if (filtroActivo) params.activo = filtroActivo;
+      if (filtroTipoMedicamento) params.tipo_medicamento = filtroTipoMedicamento;
       // ISS-FIX: Usar misma lógica de centro que cargarLotes
       if (!puedeVerGlobal) {
         params.centro = centroUsuario?.toString() || filtroCentro || '';
@@ -1845,6 +1850,18 @@ const handleImportar = async (e) => {
                   </select>
                 </div>
               )}
+              <div>
+                <label className="cc-filter-label">Tipo Medicamento</label>
+                <select
+                  value={filtroTipoMedicamento}
+                  onChange={(e) => setFiltroTipoMedicamento(e.target.value)}
+                  className="cc-filter-select-full"
+                >
+                  <option value="">Todos</option>
+                  <option value="controlados">Controlados</option>
+                  <option value="no_controlados">No Controlados</option>
+                </select>
+              </div>
               <div className="flex items-end">
                 <button
                   type="button"

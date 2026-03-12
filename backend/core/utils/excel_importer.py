@@ -418,8 +418,12 @@ def importar_productos_desde_excel(archivo, usuario):
                 # ========== REQUIERE RECETA ==========
                 requiere_receta = _parse_bool(get_val('requiere_receta', 'No'))
                 
-                # ========== ES CONTROLADO ==========
-                es_controlado = _parse_bool(get_val('es_controlado', 'No'))
+                # ========== ES CONTROLADO (OBLIGATORIO) ==========
+                es_controlado_raw = get_val('es_controlado')
+                if es_controlado_raw is None or str(es_controlado_raw).strip() == '':
+                    resultado.agregar_error(fila_num, 'es_controlado', 'Campo obligatorio: Medicamento Controlado no definido')
+                    continue
+                es_controlado = _parse_bool(es_controlado_raw)
                 
                 # ========== ACTIVO/ESTADO ==========
                 # ISS-FIX: Por defecto activo=True, solo desactivar si explícitamente dice 'No' o 'Inactivo'

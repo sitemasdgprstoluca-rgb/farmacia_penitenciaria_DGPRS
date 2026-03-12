@@ -221,6 +221,14 @@ class ProductoViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                 Q(nombre__icontains=search)
             )
 
+        # Filtro: Tipo de medicamento (controlado / no controlado)
+        tipo_medicamento = self.request.query_params.get('tipo_medicamento')
+        if tipo_medicamento:
+            if tipo_medicamento == 'controlados':
+                queryset = queryset.filter(es_controlado=True)
+            elif tipo_medicamento == 'no_controlados':
+                queryset = queryset.filter(es_controlado=False)
+
         stock_status = self.request.query_params.get('stock_status')
         if stock_status:
             # ISS-FIX: Usar stock_calculado ya anotado (respeta el centro del usuario)

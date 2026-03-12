@@ -511,6 +511,11 @@ export const validarProducto = (producto, esEdicion = false) => {
     errores.categoria = `Categoría inválida. Opciones: ${categoriasValidas.join(', ')}`;
   }
   
+  // es_controlado es obligatorio (debe ser boolean explícito)
+  if (producto.es_controlado === undefined || producto.es_controlado === null || producto.es_controlado === '') {
+    errores.es_controlado = 'Debe indicar si el medicamento es controlado';
+  }
+  
   const valido = Object.keys(errores).length === 0;
   return {
     valido,
