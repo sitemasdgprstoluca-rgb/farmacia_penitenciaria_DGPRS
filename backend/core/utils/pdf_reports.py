@@ -5242,7 +5242,8 @@ def generar_formato_c_consolidado(dispensaciones_qs, centro_nombre, fecha_inicio
 
 def generar_reporte_medicamentos_controlados(productos_data, filtros=None):
     """
-    Genera reporte PDF de medicamentos controlados vs no controlados.
+    Genera reporte PDF de medicamentos controlados vs no controlados,
+    separados en dos secciones con encabezados claros.
     """
     buffer = BytesIO()
     colores_tema = _obtener_colores_tema()
@@ -5266,10 +5267,13 @@ def generar_reporte_medicamentos_controlados(productos_data, filtros=None):
     elements.append(titulo)
     elements.append(Spacer(1, 0.15 * inch))
 
+    total_ctrl = (filtros or {}).get('total_controlados', 0)
+    total_no_ctrl = (filtros or {}).get('total_no_controlados', 0)
+
     info_text = f"<b>Fecha de generación:</b> {(filtros or {}).get('fecha_generacion', '')}<br/>"
     info_text += f"<b>Total productos:</b> {(filtros or {}).get('total_productos', len(productos_data))}<br/>"
-    info_text += f"<b>Controlados:</b> {(filtros or {}).get('total_controlados', 0)} | "
-    info_text += f"<b>No controlados:</b> {(filtros or {}).get('total_no_controlados', 0)}"
+    info_text += f"<b>Controlados:</b> {total_ctrl} | "
+    info_text += f"<b>No controlados:</b> {total_no_ctrl}"
     elements.append(Paragraph(info_text, styles['Normal']))
     elements.append(Spacer(1, 0.2 * inch))
 
@@ -5281,28 +5285,97 @@ def generar_reporte_medicamentos_controlados(productos_data, filtros=None):
         wordWrap='CJK',
     )
 
-    data = [['#', 'Clave', 'Nombre', 'Presentación', 'Controlado', 'Inventario', 'Mínimo']]
-    for idx, item in enumerate(productos_data, 1):
-        data.append([
-            str(idx),
-            str(item.get('clave', '')),
-            Paragraph(str(item.get('nombre', ''))[:50], estilo_celda),
-            Paragraph(str(item.get('presentacion', ''))[:45], estilo_celda),
-            'Sí' if item.get('es_controlado') else 'No',
-            str(item.get('stock_actual', 0)),
-            str(item.get('stock_minimo', 0)),
-        ])
+    col_widths = [0.3 * inch, 0.55 * inch, 2.0 * inch, 1.7 * inch, 0.7 * inch, 0.6 * inch]
+    headers_row = ['#', 'Clave', 'Nombre', 'Presentación', 'Inventario', 'Mínimo']
 
-    col_widths = [0.35 * inch, 0.6 * inch, 1.8 * inch, 1.6 * inch, 0.75 * inch, 0.75 * inch, 0.65 * inch]
-    table = _crear_tabla_institucional(data, col_widths, colores_tema=colores_tema)
-    elements.append(table)
+    # Separar controlados y no controlados
+    controlados = [p for p in productos_data if p.get('es_controlado')]
+    no_controlados = [p for p in productos_data if not p.get('es_controlado')]
+
+    # ── Sección 1: Controlados ──
+    if controlados:
+        seccion_ctrl = ParagraphStyle(
+            'SeccionCtrl', parent=styles['Normal'],
+            fontSize=10, leading=13, textColor=colors.white,
+            fontName='Helvetica-Bold',
+        )
+        # Encabezado rojo para controlados
+        sec_data = [[Paragraph(
+            f"🔒 MEDICAMENTOS CONTROLADOS ({len(controlados)}) — Requieren control especial",
+            seccion_ctrl,
+        )]]
+        sec_table = Table(sec_data, colWidths=[sum(col_widths)])
+        sec_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#DC2626')),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        elements.append(sec_table)
+
+        data_ctrl = [headers_row]
+        for idx, item in enumerate(controlados, 1):
+            stock = item.get('stock_actual', 0)
+            data_ctrl.append([
+                str(idx),
+                str(item.get('clave', '')),
+                Paragraph(str(item.get('nombre', ''))[:50], estilo_celda),
+                Paragraph(str(item.get('presentacion', ''))[:45], estilo_celda),
+                str(stock),
+                str(item.get('stock_minimo', 0)),
+            ])
+        table_ctrl = _crear_tabla_institucional(data_ctrl, col_widths, colores_tema={
+            **colores_tema,
+            'encabezado': colors.HexColor('#991B1B'),
+            'primario': colors.HexColor('#DC2626'),
+        })
+        elements.append(table_ctrl)
+        elements.append(Spacer(1, 0.3 * inch))
+
+    # ── Sección 2: No Controlados ──
+    if no_controlados:
+        seccion_no_ctrl = ParagraphStyle(
+            'SeccionNoCtrl', parent=styles['Normal'],
+            fontSize=10, leading=13, textColor=colors.white,
+            fontName='Helvetica-Bold',
+        )
+        sec_data2 = [[Paragraph(
+            f"✓ MEDICAMENTOS NO CONTROLADOS ({len(no_controlados)}) — Uso general",
+            seccion_no_ctrl,
+        )]]
+        sec_table2 = Table(sec_data2, colWidths=[sum(col_widths)])
+        sec_table2.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#16A34A')),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        elements.append(sec_table2)
+
+        data_no_ctrl = [headers_row]
+        for idx, item in enumerate(no_controlados, 1):
+            stock = item.get('stock_actual', 0)
+            data_no_ctrl.append([
+                str(idx),
+                str(item.get('clave', '')),
+                Paragraph(str(item.get('nombre', ''))[:50], estilo_celda),
+                Paragraph(str(item.get('presentacion', ''))[:45], estilo_celda),
+                str(stock),
+                str(item.get('stock_minimo', 0)),
+            ])
+        table_no_ctrl = _crear_tabla_institucional(data_no_ctrl, col_widths, colores_tema={
+            **colores_tema,
+            'encabezado': colors.HexColor('#15803D'),
+            'primario': colors.HexColor('#16A34A'),
+        })
+        elements.append(table_no_ctrl)
 
     def make_canvas(*args, **kwargs):
         return FondoOficialCanvas(*args, fondo_path=fondo_path, titulo_reporte='MEDICAMENTOS CONTROLADOS', **kwargs)
 
     doc.build(elements, canvasmaker=make_canvas)
     buffer.seek(0)
-    logger.info(f"Reporte medicamentos controlados PDF generado: {len(productos_data)} productos")
+    logger.info(f"Reporte medicamentos controlados PDF generado: {len(controlados)} ctrl, {len(no_controlados)} no ctrl")
     return buffer
 
 

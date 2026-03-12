@@ -141,50 +141,81 @@ def reporte_medicamentos_controlados(request):
             )
             return response
 
-        # ── Excel ──
-        todos = lista_controlados + lista_no_controlados
+        # ── Excel (2 hojas: Controlados + No Controlados) ──
         wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = 'Medicamentos Controlados'
 
-        ws.merge_cells('A1:I1')
-        c = ws['A1']
-        c.value = 'REPORTE DE MEDICAMENTOS CONTROLADOS'
-        c.font = Font(bold=True, size=14, color='632842')
+        headers = ['#', 'Clave', 'Nombre', 'Presentación', 'Sustancia Activa', 'Inventario', 'Mínimo']
+        col_widths = [6, 10, 40, 40, 35, 12, 10]
+
+        # Hoja 1: Controlados
+        ws1 = wb.active
+        ws1.title = 'Controlados'
+
+        ws1.merge_cells('A1:G1')
+        c = ws1['A1']
+        c.value = f'MEDICAMENTOS CONTROLADOS ({total_ctrl})'
+        c.font = Font(bold=True, size=14, color='FFFFFF')
+        c.fill = PatternFill(start_color='DC2626', end_color='DC2626', fill_type='solid')
         c.alignment = Alignment(horizontal='center', vertical='center')
 
-        ws.merge_cells('A2:I2')
-        c2 = ws['A2']
-        c2.value = f'Generado el {timezone.now().strftime("%d/%m/%Y %H:%M")} — Total: {total} | Controlados: {total_ctrl} ({resumen["porcentaje_controlados"]}%) | No Controlados: {total_no_ctrl} ({resumen["porcentaje_no_controlados"]}%)'
+        ws1.merge_cells('A2:G2')
+        c2 = ws1['A2']
+        c2.value = f'Generado el {timezone.now().strftime("%d/%m/%Y %H:%M")} — Requieren control especial de inventario y dispensación'
         c2.font = Font(size=10, italic=True)
         c2.alignment = Alignment(horizontal='center')
 
-        ws.append([])
-        headers = ['#', 'Clave', 'Nombre', 'Presentación', 'Sustancia Activa', 'Controlado', 'Inventario', 'Mínimo', 'Req. Receta']
-        ws.append(headers)
+        ws1.append([])
+        ws1.append(headers)
 
-        header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
+        header_fill_red = PatternFill(start_color='991B1B', end_color='991B1B', fill_type='solid')
         header_font = Font(bold=True, color='FFFFFF', size=11)
-        for cell in ws[4]:
-            cell.fill = header_fill
+        for cell in ws1[4]:
+            cell.fill = header_fill_red
             cell.font = header_font
             cell.alignment = Alignment(horizontal='center', vertical='center')
 
-        for idx, item in enumerate(todos, 1):
-            ws.append([
-                idx,
-                item['clave'],
-                item['nombre'][:50],
-                item['presentacion'][:50],
-                item['sustancia_activa'][:40],
-                'Sí' if item['es_controlado'] else 'No',
-                item['stock_actual'],
-                item['stock_minimo'],
-                'Sí' if item.get('requiere_receta') else 'No',
+        for idx, item in enumerate(lista_controlados, 1):
+            ws1.append([
+                idx, item['clave'], item['nombre'][:50],
+                item['presentacion'][:50], item['sustancia_activa'][:40],
+                item['stock_actual'], item['stock_minimo'],
             ])
+        for col_letter, width in zip('ABCDEFG', col_widths):
+            ws1.column_dimensions[col_letter].width = width
 
-        for col, width in zip('ABCDEFGHI', [6, 10, 40, 40, 35, 14, 12, 10, 12]):
-            ws.column_dimensions[col].width = width
+        # Hoja 2: No Controlados
+        ws2 = wb.create_sheet('No Controlados')
+
+        ws2.merge_cells('A1:G1')
+        c3 = ws2['A1']
+        c3.value = f'MEDICAMENTOS NO CONTROLADOS ({total_no_ctrl})'
+        c3.font = Font(bold=True, size=14, color='FFFFFF')
+        c3.fill = PatternFill(start_color='16A34A', end_color='16A34A', fill_type='solid')
+        c3.alignment = Alignment(horizontal='center', vertical='center')
+
+        ws2.merge_cells('A2:G2')
+        c4 = ws2['A2']
+        c4.value = f'Generado el {timezone.now().strftime("%d/%m/%Y %H:%M")} — Medicamentos de uso general'
+        c4.font = Font(size=10, italic=True)
+        c4.alignment = Alignment(horizontal='center')
+
+        ws2.append([])
+        ws2.append(headers)
+
+        header_fill_green = PatternFill(start_color='15803D', end_color='15803D', fill_type='solid')
+        for cell in ws2[4]:
+            cell.fill = header_fill_green
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+
+        for idx, item in enumerate(lista_no_controlados, 1):
+            ws2.append([
+                idx, item['clave'], item['nombre'][:50],
+                item['presentacion'][:50], item['sustancia_activa'][:40],
+                item['stock_actual'], item['stock_minimo'],
+            ])
+        for col_letter, width in zip('ABCDEFG', col_widths):
+            ws2.column_dimensions[col_letter].width = width
 
         excel_buffer = BytesIO()
         wb.save(excel_buffer)

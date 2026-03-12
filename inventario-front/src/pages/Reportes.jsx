@@ -251,6 +251,7 @@ const Reportes = () => {
   
   const [filtros, setFiltros] = useState(initFiltros());
   const [datos, setDatos] = useState([]);
+  const [datosControlados, setDatosControlados] = useState({ controlados: [], noControlados: [] });
   const [resumen, setResumen] = useState(null);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -385,8 +386,11 @@ const Reportes = () => {
       let datosFull;
       
       if (filtros.tipo === "medicamentos_controlados") {
-        // Combinar controlados y no controlados en una lista única
-        datosFull = [...(payload.controlados || []), ...(payload.no_controlados || [])];
+        // Guardar separados para renderizado por secciones
+        const ctrl = payload.controlados || [];
+        const noCtrl = payload.no_controlados || [];
+        setDatosControlados({ controlados: ctrl, noControlados: noCtrl });
+        datosFull = [...ctrl, ...noCtrl];
       } else if (filtros.tipo === "auditoria_productos") {
         // Mapear resultados con cambios formateados para display
         datosFull = (payload.resultados || []).map(r => ({
@@ -1749,6 +1753,101 @@ const Reportes = () => {
               </div>
               <p className="text-lg font-semibold text-gray-600">No hay datos para mostrar</p>
               <p className="text-sm text-gray-400 mt-1">Intenta ajustar los filtros o selecciona otro tipo de reporte</p>
+            </div>
+          ) : filtros.tipo === 'medicamentos_controlados' ? (
+            /* ─── TABLA ESPECIAL: Medicamentos Controlados en 2 secciones ─── */
+            <div className="space-y-6">
+              {/* Sección 1: CONTROLADOS */}
+              {datosControlados.controlados.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 px-4 py-2.5 bg-red-600 rounded-t-lg">
+                    <FaLock className="text-white" />
+                    <h3 className="text-sm font-bold text-white">
+                      Medicamentos Controlados ({datosControlados.controlados.length})
+                    </h3>
+                    <span className="ml-auto text-xs text-white/80 font-medium">
+                      Requieren control especial de inventario y dispensación
+                    </span>
+                  </div>
+                  <div className="overflow-x-auto border border-red-200 border-t-0 rounded-b-lg">
+                    <table className="w-full text-xs md:text-sm">
+                      <thead>
+                        <tr className="bg-red-50">
+                          <th className="px-3 py-2 text-left text-[10px] font-bold text-red-700 uppercase w-[40px]">#</th>
+                          <th className="px-3 py-2 text-left text-[10px] font-bold text-red-700 uppercase w-[70px]">Clave</th>
+                          <th className="px-3 py-2 text-left text-[10px] font-bold text-red-700 uppercase">Nombre</th>
+                          <th className="px-3 py-2 text-left text-[10px] font-bold text-red-700 uppercase">Presentación</th>
+                          <th className="px-3 py-2 text-left text-[10px] font-bold text-red-700 uppercase">Sustancia Activa</th>
+                          <th className="px-3 py-2 text-right text-[10px] font-bold text-red-700 uppercase w-[80px]">Inventario</th>
+                          <th className="px-3 py-2 text-right text-[10px] font-bold text-red-700 uppercase w-[70px]">Mínimo</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-red-100">
+                        {datosControlados.controlados.map((p, idx) => (
+                          <tr key={p.id || idx} className="hover:bg-red-50/50">
+                            <td className="px-3 py-2 text-gray-500">{idx + 1}</td>
+                            <td className="px-3 py-2 font-mono text-gray-700">{p.clave}</td>
+                            <td className="px-3 py-2 font-medium text-gray-800">{p.nombre}</td>
+                            <td className="px-3 py-2 text-gray-600">{p.presentacion || '—'}</td>
+                            <td className="px-3 py-2 text-gray-600">{p.sustancia_activa || '—'}</td>
+                            <td className={`px-3 py-2 text-right font-bold ${p.stock_actual === 0 ? 'text-red-600' : 'text-gray-800'}`}>
+                              {(p.stock_actual || 0).toLocaleString()}
+                              {p.stock_actual === 0 && <span className="block text-[9px] text-red-500 font-normal">Sin stock</span>}
+                            </td>
+                            <td className="px-3 py-2 text-right text-gray-500">{p.stock_minimo}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Sección 2: NO CONTROLADOS */}
+              {datosControlados.noControlados.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 px-4 py-2.5 bg-green-600 rounded-t-lg">
+                    <FaDatabase className="text-white" />
+                    <h3 className="text-sm font-bold text-white">
+                      Medicamentos No Controlados ({datosControlados.noControlados.length})
+                    </h3>
+                    <span className="ml-auto text-xs text-white/80 font-medium">
+                      Medicamentos de uso general
+                    </span>
+                  </div>
+                  <div className="overflow-x-auto border border-green-200 border-t-0 rounded-b-lg">
+                    <table className="w-full text-xs md:text-sm">
+                      <thead>
+                        <tr className="bg-green-50">
+                          <th className="px-3 py-2 text-left text-[10px] font-bold text-green-700 uppercase w-[40px]">#</th>
+                          <th className="px-3 py-2 text-left text-[10px] font-bold text-green-700 uppercase w-[70px]">Clave</th>
+                          <th className="px-3 py-2 text-left text-[10px] font-bold text-green-700 uppercase">Nombre</th>
+                          <th className="px-3 py-2 text-left text-[10px] font-bold text-green-700 uppercase">Presentación</th>
+                          <th className="px-3 py-2 text-left text-[10px] font-bold text-green-700 uppercase">Sustancia Activa</th>
+                          <th className="px-3 py-2 text-right text-[10px] font-bold text-green-700 uppercase w-[80px]">Inventario</th>
+                          <th className="px-3 py-2 text-right text-[10px] font-bold text-green-700 uppercase w-[70px]">Mínimo</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-green-100">
+                        {datosControlados.noControlados.map((p, idx) => (
+                          <tr key={p.id || idx} className="hover:bg-green-50/30">
+                            <td className="px-3 py-2 text-gray-500">{idx + 1}</td>
+                            <td className="px-3 py-2 font-mono text-gray-700">{p.clave}</td>
+                            <td className="px-3 py-2 font-medium text-gray-800">{p.nombre}</td>
+                            <td className="px-3 py-2 text-gray-600">{p.presentacion || '—'}</td>
+                            <td className="px-3 py-2 text-gray-600">{p.sustancia_activa || '—'}</td>
+                            <td className={`px-3 py-2 text-right font-bold ${p.stock_actual === 0 ? 'text-red-600' : 'text-gray-800'}`}>
+                              {(p.stock_actual || 0).toLocaleString()}
+                              {p.stock_actual === 0 && <span className="block text-[9px] text-red-500 font-normal">Sin stock</span>}
+                            </td>
+                            <td className="px-3 py-2 text-right text-gray-500">{p.stock_minimo}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="table-soft overflow-x-auto">
