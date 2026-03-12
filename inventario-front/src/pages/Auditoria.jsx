@@ -168,32 +168,87 @@ const tiempoRelativo = (fechaStr) => {
   return fecha.toLocaleDateString('es-MX', { day: '2-digit', month: 'short' });
 };
 
-// Descripción legible y completa del evento
-const descripcionEvento = (evento) => {
-  const { accion, modelo, objeto_repr, datos_nuevos, cambios_resumen } = evento;
-  const upper = (accion || '').toUpperCase();
+// Humanizar nombre de campo para mostrar al usuario
+const humanizarCampo = (campo) => {
+  const MAP = {
+    es_controlado: 'Controlado', nombre: 'Nombre', descripcion: 'Descripción',
+    precio: 'Precio', stock: 'Stock', cantidad: 'Cantidad', estado: 'Estado',
+    activo: 'Activo', leida: 'Leída', fecha: 'Fecha', usuario: 'Usuario',
+    centro: 'Centro', lote: 'Lote', producto: 'Producto', observaciones: 'Observaciones',
+    motivo: 'Motivo', tipo: 'Tipo', prioridad: 'Prioridad', monto: 'Monto',
+    access: 'Token de acceso', refresh: 'Token de refresco',
+    presentacion: 'Presentación', concentracion: 'Concentración',
+    principio_activo: 'Principio activo', codigo_barras: 'Código de barras',
+    fecha_caducidad: 'Fecha de caducidad', fecha_entrada: 'Fecha entrada',
+    cantidad_disponible: 'Cantidad disponible', unidad_medida: 'Unidad de medida',
+    numero_lote: 'Número de lote', clave_medicamento: 'Clave medicamento',
+    rol_usuario: 'Rol de usuario', is_active: 'Activo', is_staff: 'Staff',
+    is_superuser: 'Super Admin', first_name: 'Nombre', last_name: 'Apellido',
+    email: 'Correo electrónico', username: 'Usuario',
+  };
+  return MAP[campo] || campo.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+};
 
+// Humanizar un valor para mostrar al usuario (ocultar tokens, booleans)
+const humanizarValor = (valor) => {
+  if (valor === null || valor === undefined) return '—';
+  if (valor === true || valor === 'true' || valor === 'True') return 'Sí';
+  if (valor === false || valor === 'false' || valor === 'False') return 'No';
+  const str = String(valor);
+  // Ocultar tokens JWT o cadenas muy largas (>60 chars)
+  if (str.length > 60 && (str.includes('eyJ') || str.includes('Token'))) return '(token generado)';
+  if (str.length > 80) return str.slice(0, 60) + '…';
+  return str;
+};
+
+// Descripción legible y específica del evento
+const descripcionEvento = (evento) => {
+  const { accion, modelo, objeto_repr, datos_nuevos, datos_anteriores, cambios_resumen } = evento;
+  const upper = (accion || '').toUpperCase();
+  const mod = normalizarModulo(modelo, accion, evento.endpoint);
+
+  // Sesión
   if (upper === 'LOGIN') return 'Inició sesión en el sistema';
   if (upper === 'LOGOUT') return 'Cerró sesión del sistema';
   if (upper === 'CAMBIO_PASSWORD' || upper.includes('PASSWORD')) return 'Cambió su contraseña';
 
+  // Cambios específicos con resumen
   if (cambios_resumen && cambios_resumen.length > 0) {
-    const c = cambios_resumen[0];
-    const extra = cambios_resumen.length > 1 ? ` (+${cambios_resumen.length - 1} más)` : '';
-    return `${c.campo}: ${c.antes ?? '—'} → ${c.despues ?? '—'}${extra}`;
+    const items = cambios_resumen.slice(0, 2).map(c =>
+      `${humanizarCampo(c.campo)}: ${humanizarValor(c.antes)} → ${humanizarValor(c.despues)}`
+    );
+    const extra = cambios_resumen.length > 2 ? ` y ${cambios_resumen.length - 2} más` : '';
+    const prefix = objeto_repr ? `${objeto_repr} — ` : '';
+    return `${prefix}${items.join(', ')}${extra}`;
+  }
+
+  // Datos nuevos con contexto
+  if (datos_nuevos && typeof datos_nuevos === 'object') {
+    const keys = Object.keys(datos_nuevos).filter(k => !['access', 'refresh', 'token'].includes(k));
+    // Para notificaciones
+    if (mod === 'Notificaciones') {
+      if (datos_nuevos.leida !== undefined) return `Marcó notificación como ${datos_nuevos.leida ? 'leída' : 'no leída'}`;
+      return `Generó una notificación`;
+    }
+    // Para creación/actualización con muchos campos
+    if (keys.length > 5) {
+      const nombre = datos_nuevos.nombre || datos_nuevos.descripcion || objeto_repr || '';
+      const verbo = ['CREAR', 'CREATE'].includes(upper) ? 'Creó' : 'Modificó';
+      return nombre ? `${verbo} ${mod.toLowerCase()}: ${nombre}` : `${verbo} ${keys.length} campos en ${mod}`;
+    }
+    if (keys.length > 0 && keys.length <= 5) {
+      const items = keys.slice(0, 2).map(k => `${humanizarCampo(k)}: ${humanizarValor(datos_nuevos[k])}`);
+      const extra = keys.length > 2 ? ` y ${keys.length - 2} más` : '';
+      return items.join(', ') + extra;
+    }
+    // Solo tiene tokens (login/refresh)
+    if (Object.keys(datos_nuevos).some(k => ['access', 'refresh'].includes(k))) {
+      return 'Renovó token de sesión';
+    }
   }
 
   if (objeto_repr) return objeto_repr;
 
-  if (datos_nuevos && typeof datos_nuevos === 'object') {
-    const keys = Object.keys(datos_nuevos);
-    if (keys.length > 0 && keys.length <= 2) {
-      return keys.map(k => `${k}: ${datos_nuevos[k]}`).join(', ');
-    }
-    if (keys.length > 2) return `${keys.length} campos modificados`;
-  }
-
-  const mod = normalizarModulo(modelo, accion, evento.endpoint);
   return `${normalizarAccion(accion)} en ${mod}`;
 };
 
@@ -244,24 +299,38 @@ const DetalleModal = ({ evento, onClose }) => {
         <div className="fixed inset-0 transition-opacity bg-gray-900/60 backdrop-blur-sm" onClick={onClose} />
         
         <div className="relative w-full max-w-3xl mx-auto bg-white rounded-xl shadow-2xl overflow-hidden">
-          {/* Header gradient */}
-          <div className="bg-gradient-to-r from-institucional-700 to-institucional-500 px-5 py-4 flex items-center justify-between">
+          {/* Header rojo */}
+          <div className="bg-gradient-to-r from-red-700 to-red-500 px-5 py-4 flex items-center justify-between">
             <div>
               <h3 className="text-base font-bold text-white">
-                Evento #{evento.id}
+                Detalle del Evento #{evento.id}
               </h3>
-              <p className="text-xs text-white/70 mt-0.5">
+              <p className="text-xs text-white/80 mt-0.5">
                 {new Date(evento.fecha).toLocaleString('es-MX', { dateStyle: 'full', timeStyle: 'medium' })}
                 {' · '}{tiempoRelativo(evento.fecha)}
               </p>
             </div>
-            <button onClick={onClose} className="text-white/70 hover:text-white p-1 rounded-md hover:bg-white/10 transition-colors">
+            <button onClick={onClose} className="text-white/80 hover:text-white p-1.5 rounded-md hover:bg-white/20 transition-colors">
               <FaTimes className="w-5 h-5" />
             </button>
           </div>
 
           <div className="p-5 space-y-5 max-h-[75vh] overflow-y-auto">
-            {/* Quién, Cuándo, Dónde */}
+            {/* Resumen del evento en lenguaje natural */}
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+              <p className="text-sm font-medium text-amber-900">
+                <span className="font-bold">{evento.usuario_nombre || 'Sistema'}</span>
+                {evento.rol_usuario ? <span className="text-amber-700"> ({evento.rol_usuario})</span> : ''}
+                {' realizó '}
+                <span className="font-bold">{normalizarAccion(evento.accion).toLowerCase()}</span>
+                {' en '}
+                <span className="font-bold">{normalizarModulo(evento.modelo, evento.accion, evento.endpoint)}</span>
+                {evento.centro_nombre ? <span className="text-amber-700"> — Centro: {evento.centro_nombre}</span> : ''}
+              </p>
+              <p className="text-xs text-amber-600 mt-1">{descripcionEvento(evento)}</p>
+            </div>
+
+            {/* Quién y resultado */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div className="bg-gray-50 rounded-lg p-3">
                 <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Usuario</p>
@@ -274,7 +343,7 @@ const DetalleModal = ({ evento, onClose }) => {
               </div>
               <div className="bg-gray-50 rounded-lg p-3">
                 <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Centro</p>
-                <p className="text-sm font-semibold text-gray-800 truncate" title={evento.centro_nombre}>{evento.centro_nombre || 'N/A'}</p>
+                <p className="text-sm font-semibold text-gray-800 truncate" title={evento.centro_nombre}>{evento.centro_nombre || 'Sin centro'}</p>
               </div>
               <div className="bg-gray-50 rounded-lg p-3">
                 <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Resultado</p>
@@ -282,47 +351,47 @@ const DetalleModal = ({ evento, onClose }) => {
               </div>
             </div>
 
-            {/* Qué hizo */}
+            {/* Qué hizo - con badge de acción */}
             <div className="bg-gray-50 rounded-lg p-4">
-              <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">Acción Realizada</p>
+              <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">¿Qué hizo?</p>
               <div className="flex items-center gap-3 flex-wrap">
                 <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold border ${aStyle.bg} ${aStyle.text} ${aStyle.border}`}>
                   {normalizarAccion(evento.accion)}
                 </span>
                 <span className="text-sm text-gray-600">
                   en <span className="font-semibold">{normalizarModulo(evento.modelo, evento.accion, evento.endpoint)}</span>
-                  {evento.objeto_id ? <> — <code className="text-xs bg-gray-200 px-1.5 py-0.5 rounded font-mono">ID {evento.objeto_id}</code></> : ''}
+                  {evento.objeto_id && /^\d+$/.test(evento.objeto_id) ? <> — <span className="text-xs bg-gray-200 px-1.5 py-0.5 rounded">Registro #{evento.objeto_id}</span></> : ''}
                 </span>
               </div>
               {evento.objeto_repr && (
-                <p className="text-xs text-gray-500 mt-2">{evento.objeto_repr}</p>
+                <p className="text-xs text-gray-500 mt-2">Elemento: {evento.objeto_repr}</p>
               )}
             </div>
 
             {/* Cambios Detectados — tabla visual */}
             {computedChanges.length > 0 && (
               <div>
-                <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">Cambios Detectados ({computedChanges.length})</p>
+                <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">¿Qué cambió? ({computedChanges.length} {computedChanges.length === 1 ? 'campo' : 'campos'})</p>
                 <div className="border border-gray-200 rounded-lg overflow-hidden">
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="bg-gray-50">
                         <th className="text-left px-3 py-2 text-gray-500 font-medium w-1/4">Campo</th>
-                        <th className="text-left px-3 py-2 text-red-400 font-medium">Antes</th>
+                        <th className="text-left px-3 py-2 text-red-400 font-medium">Valor Anterior</th>
                         <th className="w-6"></th>
-                        <th className="text-left px-3 py-2 text-green-500 font-medium">Después</th>
+                        <th className="text-left px-3 py-2 text-green-500 font-medium">Valor Nuevo</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {computedChanges.map((ch, idx) => (
                         <tr key={idx} className="hover:bg-gray-50/50">
-                          <td className="px-3 py-2 font-medium text-gray-700">{ch.campo}</td>
+                          <td className="px-3 py-2 font-medium text-gray-700">{humanizarCampo(ch.campo)}</td>
                           <td className="px-3 py-2 text-red-600 bg-red-50/40 break-all">
-                            {ch.antes !== null && ch.antes !== undefined ? String(ch.antes) : <span className="italic text-gray-300">vacío</span>}
+                            {ch.antes !== null && ch.antes !== undefined ? humanizarValor(ch.antes) : <span className="italic text-gray-300">vacío</span>}
                           </td>
                           <td className="text-center text-gray-300"><FaArrowRight className="w-3 h-3 mx-auto" /></td>
                           <td className="px-3 py-2 text-green-700 bg-green-50/40 break-all">
-                            {ch.despues !== null && ch.despues !== undefined ? String(ch.despues) : <span className="italic text-gray-300">vacío</span>}
+                            {ch.despues !== null && ch.despues !== undefined ? humanizarValor(ch.despues) : <span className="italic text-gray-300">vacío</span>}
                           </td>
                         </tr>
                       ))}
@@ -354,51 +423,41 @@ const DetalleModal = ({ evento, onClose }) => {
               </div>
             )}
 
-            {/* Contexto Técnico para responsabilidad */}
+            {/* Contexto Técnico */}
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">Contexto Técnico — Trazabilidad</p>
+              <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">Información de Conexión</p>
               <div className="bg-gray-50 rounded-lg p-3 grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
                 <div>
-                  <span className="text-gray-400">IP:</span>{' '}
+                  <span className="text-gray-400">Dirección IP:</span>{' '}
                   <span className="font-mono text-gray-700">{evento.ip_address || '—'}</span>
                 </div>
                 <div>
-                  <span className="text-gray-400">Método:</span>{' '}
+                  <span className="text-gray-400">Tipo solicitud:</span>{' '}
                   <span className="font-mono text-gray-700">{evento.metodo_http || '—'}</span>
                 </div>
                 <div>
-                  <span className="text-gray-400">Status:</span>{' '}
+                  <span className="text-gray-400">Código respuesta:</span>{' '}
                   <span className={`font-mono ${(evento.status_code || 0) >= 400 ? 'text-red-600 font-bold' : 'text-green-600'}`}>
                     {evento.status_code || '—'}
                   </span>
                 </div>
                 <div className="col-span-2 sm:col-span-3">
-                  <span className="text-gray-400">Endpoint:</span>{' '}
-                  <code className="text-[11px] bg-gray-200/60 px-1.5 py-0.5 rounded text-gray-700 break-all">{evento.endpoint || '—'}</code>
+                  <span className="text-gray-400">Ruta del sistema:</span>{' '}
+                  <span className="text-[11px] bg-gray-200/60 px-1.5 py-0.5 rounded text-gray-700 break-all">{evento.endpoint || '—'}</span>
                 </div>
                 {evento.request_id && (
                   <div className="col-span-2 sm:col-span-3">
-                    <span className="text-gray-400">Request ID:</span>{' '}
-                    <code className="text-[11px] text-gray-600 break-all">{evento.request_id}</code>
+                    <span className="text-gray-400">ID de solicitud:</span>{' '}
+                    <span className="text-[11px] text-gray-600 break-all">{evento.request_id}</span>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* User Agent */}
+            {/* Navegador */}
             {evento.user_agent && (
               <div className="text-[11px] text-gray-400 bg-gray-50 rounded-lg p-2 break-all">
-                <span className="font-medium text-gray-500">User-Agent:</span> {evento.user_agent}
-              </div>
-            )}
-
-            {/* Detalles Adicionales */}
-            {evento.detalles && Object.keys(evento.detalles).length > 0 && (
-              <div>
-                <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Detalles Adicionales</p>
-                <pre className="p-3 bg-gray-50 rounded-lg text-[11px] overflow-auto max-h-32 text-gray-600">
-                  {JSON.stringify(evento.detalles, null, 2)}
-                </pre>
+                <span className="font-medium text-gray-500">Navegador:</span> {evento.user_agent}
               </div>
             )}
           </div>
@@ -889,7 +948,7 @@ export default function Auditoria() {
                         {accionLabel}
                       </span>
                       <p className="text-[10px] text-gray-500 mt-0.5 truncate" title={modulo}>
-                        {modulo}{evento.objeto_id ? ` #${evento.objeto_id}` : ''}
+                        {modulo}{evento.objeto_id && /^\d+$/.test(evento.objeto_id) ? ` #${evento.objeto_id}` : ''}
                       </p>
                     </td>
                     {/* Descripción */}
@@ -1001,7 +1060,7 @@ export default function Auditoria() {
                   </span>
                   <span className="text-xs text-gray-500 flex items-center gap-1">
                     <FaBox className="w-3 h-3 text-gray-300" /> {modulo}
-                    {evento.objeto_id ? ` #${evento.objeto_id}` : ''}
+                    {evento.objeto_id && /^\d+$/.test(evento.objeto_id) ? ` #${evento.objeto_id}` : ''}
                   </span>
                 </div>
 
