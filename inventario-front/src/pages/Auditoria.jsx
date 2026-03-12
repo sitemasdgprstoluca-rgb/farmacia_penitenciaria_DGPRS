@@ -185,6 +185,16 @@ const humanizarCampo = (campo) => {
     rol_usuario: 'Rol de usuario', is_active: 'Activo', is_staff: 'Staff',
     is_superuser: 'Super Admin', first_name: 'Nombre', last_name: 'Apellido',
     email: 'Correo electrónico', username: 'Usuario',
+    // Campos de contexto de requisición
+    folio: 'Folio', centro_origen: 'Centro Origen', centro_destino: 'Centro Destino',
+    solicitante: 'Solicitante', estado_anterior: 'Estado Anterior', estado_nuevo: 'Estado Nuevo',
+    autorizo_admin_centro: 'Autorizó Admin Centro', autorizo_director: 'Autorizó Director',
+    recibio_farmacia: 'Recibió Farmacia', autorizo_farmacia: 'Autorizó Farmacia',
+    surtio: 'Surtió', lugar_entrega: 'Lugar de Entrega', fecha_entrega: 'Fecha Entrega',
+    firma_recepcion: 'Firma Recepción', fecha_surtido: 'Fecha Surtido',
+    motivo_rechazo: 'Motivo Rechazo', motivo_devolucion: 'Motivo Devolución',
+    motivo_vencimiento: 'Motivo Vencimiento', fecha_limite: 'Fecha Límite',
+    autorizador: 'Autorizador', total_productos: 'Total Productos',
   };
   return MAP[campo] || campo.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 };
@@ -211,6 +221,23 @@ const descripcionEvento = (evento) => {
   if (upper === 'LOGIN') return 'Inició sesión en el sistema';
   if (upper === 'LOGOUT') return 'Cerró sesión del sistema';
   if (upper === 'CAMBIO_PASSWORD' || upper.includes('PASSWORD')) return 'Cambió su contraseña';
+
+  // Requisiciones: Descripción enriquecida con contexto completo
+  if (upper.startsWith('CAMBIAR_ESTADO') && datos_nuevos?.folio) {
+    const d = datos_nuevos;
+    const ESTADOS_LEGIBLES = {
+      pendiente_admin: 'Pendiente Admin', pendiente_director: 'Pendiente Director',
+      enviada: 'Enviada', en_revision: 'En Revisión', autorizada: 'Autorizada',
+      en_surtido: 'En Surtido', surtida: 'Surtida', entregada: 'Entregada',
+      rechazada: 'Rechazada', devuelta: 'Devuelta', vencida: 'Vencida', cancelada: 'Cancelada',
+    };
+    const from = ESTADOS_LEGIBLES[d.estado_anterior] || d.estado_anterior || '?';
+    const to = ESTADOS_LEGIBLES[d.estado_nuevo] || d.estado_nuevo || '?';
+    let desc = `Requisición ${d.folio}: ${from} → ${to}`;
+    if (d.centro_origen) desc += ` · De: ${d.centro_origen}`;
+    if (d.total_productos) desc += ` · ${d.total_productos} producto(s)`;
+    return desc;
+  }
 
   // Cambios específicos con resumen
   if (cambios_resumen && cambios_resumen.length > 0) {
@@ -368,59 +395,238 @@ const DetalleModal = ({ evento, onClose }) => {
               )}
             </div>
 
-            {/* Cambios Detectados — tabla visual */}
-            {computedChanges.length > 0 && (
-              <div>
-                <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">¿Qué cambió? ({computedChanges.length} {computedChanges.length === 1 ? 'campo' : 'campos'})</p>
-                <div className="border border-gray-200 rounded-lg overflow-hidden">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="bg-gray-50">
-                        <th className="text-left px-3 py-2 text-gray-500 font-medium w-1/4">Campo</th>
-                        <th className="text-left px-3 py-2 text-red-400 font-medium">Valor Anterior</th>
-                        <th className="w-6"></th>
-                        <th className="text-left px-3 py-2 text-green-500 font-medium">Valor Nuevo</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {computedChanges.map((ch, idx) => (
-                        <tr key={idx} className="hover:bg-gray-50/50">
-                          <td className="px-3 py-2 font-medium text-gray-700">{humanizarCampo(ch.campo)}</td>
-                          <td className="px-3 py-2 text-red-600 bg-red-50/40 break-all">
-                            {ch.antes !== null && ch.antes !== undefined ? humanizarValor(ch.antes) : <span className="italic text-gray-300">vacío</span>}
-                          </td>
-                          <td className="text-center text-gray-300"><FaArrowRight className="w-3 h-3 mx-auto" /></td>
-                          <td className="px-3 py-2 text-green-700 bg-green-50/40 break-all">
-                            {ch.despues !== null && ch.despues !== undefined ? humanizarValor(ch.despues) : <span className="italic text-gray-300">vacío</span>}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
+            {/* ============ SECCIÓN ESPECIAL: Contexto de Requisición ============ */}
+            {(evento.accion || '').startsWith('cambiar_estado') && evento.datos_nuevos?.folio ? (() => {
+              const d = evento.datos_nuevos;
+              const productos = Array.isArray(d.productos) ? d.productos : [];
+              // Campos informativos (no mostrar en diff)
+              const CAMPOS_CONTEXTO = [
+                'folio', 'centro_origen', 'centro_destino', 'solicitante',
+                'autorizo_admin_centro', 'autorizo_director', 'recibio_farmacia',
+                'autorizo_farmacia', 'surtio', 'lugar_entrega', 'fecha_entrega',
+                'firma_recepcion', 'fecha_surtido', 'motivo_rechazo', 'motivo_devolucion',
+                'motivo_vencimiento', 'fecha_limite', 'autorizador', 'total_productos', 'productos',
+              ];
+              const actores = [
+                { label: 'Solicitante', val: d.solicitante },
+                { label: 'Autorizó Admin Centro', val: d.autorizo_admin_centro },
+                { label: 'Autorizó Director', val: d.autorizo_director },
+                { label: 'Recibió Farmacia', val: d.recibio_farmacia },
+                { label: 'Autorizó Farmacia', val: d.autorizo_farmacia },
+                { label: 'Surtió', val: d.surtio },
+                { label: 'Firma Recepción', val: d.firma_recepcion },
+              ].filter(a => a.val);
 
-            {/* Datos before/after en crudo (si no hubo cambios computados) */}
-            {computedChanges.length === 0 && (evento.datos_anteriores || evento.datos_nuevos) && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {evento.datos_anteriores && Object.keys(evento.datos_anteriores).length > 0 && (
+              // Campos restantes no cubiertos por la vista especial
+              const camposExtra = computedChanges.filter(c => !CAMPOS_CONTEXTO.includes(c.campo) && c.campo !== 'estado_anterior' && c.campo !== 'estado_nuevo');
+
+              return (
+                <>
+                  {/* Transición de estado */}
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <p className="text-[10px] uppercase tracking-wider text-blue-400 mb-2">Transición de Estado — Requisición</p>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <span className="text-sm font-bold bg-white border border-blue-200 px-3 py-1 rounded-lg text-blue-800">
+                        {d.folio}
+                      </span>
+                      <span className="inline-flex items-center gap-2 text-sm">
+                        <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 font-semibold">{d.estado_anterior || '—'}</span>
+                        <FaArrowRight className="w-3 h-3 text-gray-400" />
+                        <span className="px-2 py-0.5 rounded bg-green-100 text-green-700 font-semibold">{d.estado_nuevo || '—'}</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Info de la Requisición */}
                   <div>
-                    <p className="text-[10px] uppercase tracking-wider text-red-400 mb-1">Datos Anteriores</p>
-                    <pre className="p-3 bg-red-50 rounded-lg text-[11px] overflow-auto max-h-48 text-red-800">
-                      {JSON.stringify(evento.datos_anteriores, null, 2)}
-                    </pre>
+                    <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">Datos de la Requisición</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {d.centro_origen && (
+                        <div className="bg-gray-50 rounded-lg p-3">
+                          <p className="text-[10px] uppercase text-gray-400">Centro Origen</p>
+                          <p className="text-sm font-semibold text-gray-800">{d.centro_origen}</p>
+                        </div>
+                      )}
+                      {d.centro_destino && (
+                        <div className="bg-gray-50 rounded-lg p-3">
+                          <p className="text-[10px] uppercase text-gray-400">Centro Destino</p>
+                          <p className="text-sm font-semibold text-gray-800">{d.centro_destino}</p>
+                        </div>
+                      )}
+                      {d.lugar_entrega && (
+                        <div className="bg-gray-50 rounded-lg p-3">
+                          <p className="text-[10px] uppercase text-gray-400">Lugar Entrega</p>
+                          <p className="text-sm font-semibold text-gray-800">{d.lugar_entrega}</p>
+                        </div>
+                      )}
+                      {d.fecha_entrega && (
+                        <div className="bg-gray-50 rounded-lg p-3">
+                          <p className="text-[10px] uppercase text-gray-400">Fecha Entrega</p>
+                          <p className="text-sm font-semibold text-gray-800">{d.fecha_entrega}</p>
+                        </div>
+                      )}
+                      {d.fecha_surtido && (
+                        <div className="bg-gray-50 rounded-lg p-3">
+                          <p className="text-[10px] uppercase text-gray-400">Fecha Surtido</p>
+                          <p className="text-sm font-semibold text-gray-800">{d.fecha_surtido}</p>
+                        </div>
+                      )}
+                      {d.fecha_limite && (
+                        <div className="bg-gray-50 rounded-lg p-3">
+                          <p className="text-[10px] uppercase text-gray-400">Fecha Límite</p>
+                          <p className="text-sm font-semibold text-red-700">{d.fecha_limite}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Motivo rechazo/devolución/vencimiento */}
+                  {(d.motivo_rechazo || d.motivo_devolucion || d.motivo_vencimiento) && (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                      <p className="text-[10px] uppercase tracking-wider text-red-400 mb-1">
+                        {d.motivo_rechazo ? 'Motivo de Rechazo' : d.motivo_devolucion ? 'Motivo de Devolución' : 'Motivo de Vencimiento'}
+                      </p>
+                      <p className="text-sm text-red-800">{d.motivo_rechazo || d.motivo_devolucion || d.motivo_vencimiento}</p>
+                    </div>
+                  )}
+
+                  {/* Actores del flujo */}
+                  {actores.length > 0 && (
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">Participantes del Flujo ({actores.length})</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {actores.map((a, i) => (
+                          <div key={i} className="bg-indigo-50 border border-indigo-100 rounded-lg p-2.5">
+                            <p className="text-[10px] uppercase text-indigo-400">{a.label}</p>
+                            <p className="text-xs font-semibold text-indigo-800">{a.val}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Tabla de productos */}
+                  {productos.length > 0 && (
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">Productos ({productos.length})</p>
+                      <div className="border border-gray-200 rounded-lg overflow-hidden">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="bg-gray-50">
+                              <th className="text-left px-3 py-2 text-gray-500 font-medium">#</th>
+                              <th className="text-left px-3 py-2 text-gray-500 font-medium">Producto</th>
+                              <th className="text-right px-3 py-2 text-gray-500 font-medium">Solicitada</th>
+                              <th className="text-right px-3 py-2 text-gray-500 font-medium">Autorizada</th>
+                              <th className="text-right px-3 py-2 text-gray-500 font-medium">Surtida</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {productos.map((p, i) => (
+                              <tr key={i} className="hover:bg-gray-50/50">
+                                <td className="px-3 py-1.5 text-gray-400">{i + 1}</td>
+                                <td className="px-3 py-1.5 font-medium text-gray-700">{p.producto}</td>
+                                <td className="px-3 py-1.5 text-right text-gray-600">{p.solicitada ?? '—'}</td>
+                                <td className="px-3 py-1.5 text-right text-blue-600">{p.autorizada ?? '—'}</td>
+                                <td className="px-3 py-1.5 text-right text-green-600 font-semibold">{p.surtida ?? '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Campos extra no cubiertos por la vista especial */}
+                  {camposExtra.length > 0 && (
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">Otros Cambios ({camposExtra.length})</p>
+                      <div className="border border-gray-200 rounded-lg overflow-hidden">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="bg-gray-50">
+                              <th className="text-left px-3 py-2 text-gray-500 font-medium w-1/4">Campo</th>
+                              <th className="text-left px-3 py-2 text-red-400 font-medium">Anterior</th>
+                              <th className="w-6"></th>
+                              <th className="text-left px-3 py-2 text-green-500 font-medium">Nuevo</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {camposExtra.map((ch, idx) => (
+                              <tr key={idx} className="hover:bg-gray-50/50">
+                                <td className="px-3 py-2 font-medium text-gray-700">{humanizarCampo(ch.campo)}</td>
+                                <td className="px-3 py-2 text-red-600 bg-red-50/40 break-all">
+                                  {ch.antes !== null && ch.antes !== undefined ? humanizarValor(ch.antes) : <span className="italic text-gray-300">vacío</span>}
+                                </td>
+                                <td className="text-center text-gray-300"><FaArrowRight className="w-3 h-3 mx-auto" /></td>
+                                <td className="px-3 py-2 text-green-700 bg-green-50/40 break-all">
+                                  {ch.despues !== null && ch.despues !== undefined ? humanizarValor(ch.despues) : <span className="italic text-gray-300">vacío</span>}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })() : (
+              <>
+                {/* Cambios Detectados — tabla visual (genérica) */}
+                {computedChanges.length > 0 && (
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">¿Qué cambió? ({computedChanges.length} {computedChanges.length === 1 ? 'campo' : 'campos'})</p>
+                    <div className="border border-gray-200 rounded-lg overflow-hidden">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="bg-gray-50">
+                            <th className="text-left px-3 py-2 text-gray-500 font-medium w-1/4">Campo</th>
+                            <th className="text-left px-3 py-2 text-red-400 font-medium">Valor Anterior</th>
+                            <th className="w-6"></th>
+                            <th className="text-left px-3 py-2 text-green-500 font-medium">Valor Nuevo</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {computedChanges.map((ch, idx) => (
+                            <tr key={idx} className="hover:bg-gray-50/50">
+                              <td className="px-3 py-2 font-medium text-gray-700">{humanizarCampo(ch.campo)}</td>
+                              <td className="px-3 py-2 text-red-600 bg-red-50/40 break-all">
+                                {ch.antes !== null && ch.antes !== undefined ? humanizarValor(ch.antes) : <span className="italic text-gray-300">vacío</span>}
+                              </td>
+                              <td className="text-center text-gray-300"><FaArrowRight className="w-3 h-3 mx-auto" /></td>
+                              <td className="px-3 py-2 text-green-700 bg-green-50/40 break-all">
+                                {ch.despues !== null && ch.despues !== undefined ? humanizarValor(ch.despues) : <span className="italic text-gray-300">vacío</span>}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 )}
-                {evento.datos_nuevos && Object.keys(evento.datos_nuevos).length > 0 && (
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider text-green-500 mb-1">Datos Nuevos</p>
-                    <pre className="p-3 bg-green-50 rounded-lg text-[11px] overflow-auto max-h-48 text-green-800">
-                      {JSON.stringify(evento.datos_nuevos, null, 2)}
-                    </pre>
+
+                {/* Datos before/after en crudo (si no hubo cambios computados) */}
+                {computedChanges.length === 0 && (evento.datos_anteriores || evento.datos_nuevos) && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {evento.datos_anteriores && Object.keys(evento.datos_anteriores).length > 0 && (
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wider text-red-400 mb-1">Datos Anteriores</p>
+                        <pre className="p-3 bg-red-50 rounded-lg text-[11px] overflow-auto max-h-48 text-red-800">
+                          {JSON.stringify(evento.datos_anteriores, null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                    {evento.datos_nuevos && Object.keys(evento.datos_nuevos).length > 0 && (
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wider text-green-500 mb-1">Datos Nuevos</p>
+                        <pre className="p-3 bg-green-50 rounded-lg text-[11px] overflow-auto max-h-48 text-green-800">
+                          {JSON.stringify(evento.datos_nuevos, null, 2)}
+                        </pre>
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
+              </>
             )}
 
             {/* Contexto Técnico */}

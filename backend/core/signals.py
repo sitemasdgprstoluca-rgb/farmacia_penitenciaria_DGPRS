@@ -232,16 +232,81 @@ def auditar_cambios_requisicion(sender, instance, created, **kwargs):
     if not estado_anterior or estado_anterior == instance.estado:
         return
 
+    def _nombre_usuario(u):
+        if not u:
+            return None
+        nombre = u.get_full_name()
+        return f"{nombre} ({u.username})" if nombre else u.username
+
+    # ========== Contexto rico para trazabilidad completa ==========
     cambios = {
         'estado_anterior': estado_anterior,
         'estado_nuevo': instance.estado,
+        'folio': instance.numero,
     }
 
-    if instance.estado in ['autorizada', 'rechazada'] and instance.autorizador:
-        cambios['autorizador'] = instance.autorizador.username
+    # Centros involucrados
+    if instance.centro_origen:
+        cambios['centro_origen'] = instance.centro_origen.nombre
+    if instance.centro_destino:
+        cambios['centro_destino'] = instance.centro_destino.nombre
 
-    if instance.estado == 'rechazada' and instance.notas:
-        cambios['motivo_rechazo'] = instance.notas
+    # Solicitante original
+    cambios['solicitante'] = _nombre_usuario(instance.solicitante)
+
+    # Actores del flujo que ya participaron
+    if instance.administrador_centro:
+        cambios['autorizo_admin_centro'] = _nombre_usuario(instance.administrador_centro)
+    if instance.director_centro:
+        cambios['autorizo_director'] = _nombre_usuario(instance.director_centro)
+    if instance.receptor_farmacia:
+        cambios['recibio_farmacia'] = _nombre_usuario(instance.receptor_farmacia)
+    if instance.autorizador_farmacia:
+        cambios['autorizo_farmacia'] = _nombre_usuario(instance.autorizador_farmacia)
+    if instance.surtidor:
+        cambios['surtio'] = _nombre_usuario(instance.surtidor)
+
+    # Contexto específico por estado
+    if instance.estado == 'entregada':
+        cambios['lugar_entrega'] = instance.lugar_entrega or ''
+        if instance.fecha_entrega:
+            cambios['fecha_entrega'] = instance.fecha_entrega.strftime('%d/%m/%Y %H:%M')
+        cambios['firma_recepcion'] = _nombre_usuario(instance.usuario_firma_recepcion)
+
+    elif instance.estado == 'surtida':
+        if instance.fecha_surtido:
+            cambios['fecha_surtido'] = instance.fecha_surtido.strftime('%d/%m/%Y %H:%M')
+
+    elif instance.estado == 'rechazada':
+        cambios['motivo_rechazo'] = instance.motivo_rechazo or instance.notas or ''
+
+    elif instance.estado == 'devuelta':
+        cambios['motivo_devolucion'] = instance.motivo_devolucion or ''
+
+    elif instance.estado == 'vencida':
+        if instance.fecha_recoleccion_limite:
+            cambios['fecha_limite'] = instance.fecha_recoleccion_limite.strftime('%d/%m/%Y %H:%M')
+        cambios['motivo_vencimiento'] = instance.motivo_vencimiento or 'Fecha límite expirada'
+
+    elif instance.estado == 'autorizada' and instance.autorizador:
+        cambios['autorizador'] = _nombre_usuario(instance.autorizador)
+
+    # Productos de la requisición
+    try:
+        items = []
+        for d in instance.detalles.select_related('producto').all():
+            item = {'producto': d.producto.nombre if d.producto else '?'}
+            item['solicitada'] = d.cantidad_solicitada
+            if d.cantidad_autorizada is not None:
+                item['autorizada'] = d.cantidad_autorizada
+            if d.cantidad_surtida:
+                item['surtida'] = d.cantidad_surtida
+            items.append(item)
+        if items:
+            cambios['productos'] = items
+            cambios['total_productos'] = len(items)
+    except Exception:
+        pass
 
     registrar_auditoria(
         modelo='Requisicion',
