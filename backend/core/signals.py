@@ -321,14 +321,16 @@ def auditar_cambios_requisicion(sender, instance, created, **kwargs):
     
     # FLUJO V2: Notificaciones según estado
     
-    # Caso 1: Médico envía a Admin del Centro
+    # Caso 1: Médico envía a Admin del Centro (o reenvía después de correcciones)
     if instance.estado == 'pendiente_admin':
-        _notificar_admin_centro(instance)
+        es_reenvio = estado_anterior == 'devuelta'
+        _notificar_admin_centro(instance, es_reenvio=es_reenvio)
         return
     
-    # Caso 2: Admin envía a Director del Centro
+    # Caso 2: Admin envía a Director del Centro (o reenvía después de correcciones)
     if instance.estado == 'pendiente_director':
-        _notificar_director_centro(instance)
+        es_reenvio = estado_anterior == 'devuelta'
+        _notificar_director_centro(instance, es_reenvio=es_reenvio)
         return
     
     # Caso 3: Director envía a Farmacia (en_revision)
@@ -366,10 +368,14 @@ def auditar_cambios_requisicion(sender, instance, created, **kwargs):
         _notificar_solicitante(instance, tipo, titulo, mensaje)
 
 
-def _notificar_admin_centro(requisicion):
+def _notificar_admin_centro(requisicion, es_reenvio=False):
     """
     FLUJO V2: Notifica al Administrador del Centro cuando un médico envía una requisición.
     Incluye protección contra notificaciones duplicadas.
+    
+    Args:
+        requisicion: Instancia de Requisicion
+        es_reenvio: True si es un reenvío después de devolución (devuelta → pendiente_admin)
     """
     from .models import User, Notificacion
     
@@ -392,12 +398,23 @@ def _notificar_admin_centro(requisicion):
     
     solicitante_nombre = requisicion.solicitante.get_full_name() or requisicion.solicitante.username if requisicion.solicitante else 'Usuario'
     
+    # Mensaje diferente si es reenvío después de correcciones
+    if es_reenvio:
+        titulo = 'Requisición Reenviada con Correcciones'
+        mensaje = f'{solicitante_nombre} ha reenviado la requisición {requisicion.numero} con las correcciones solicitadas.'
+        motivo_texto = requisicion.notas or ''
+        if motivo_texto:
+            mensaje += f'\n\nObservaciones: {motivo_texto[:200]}'
+    else:
+        titulo = 'Nueva Requisición para Autorizar'
+        mensaje = f'{solicitante_nombre} ha enviado la requisición {requisicion.numero} para su autorización.'
+    
     notificaciones_creadas = 0
     for admin in admins_centro:
         # ISS-FIX: Verificar si ya existe una notificación similar
         notificacion_existente = Notificacion.objects.filter(
             usuario=admin,
-            titulo='Nueva Requisición para Autorizar',
+            titulo=titulo,
             datos__requisicion_id=requisicion.pk
         ).exists()
         
@@ -409,13 +426,14 @@ def _notificar_admin_centro(requisicion):
             Notificacion.objects.create(
                 usuario=admin,
                 tipo='info',
-                titulo='Nueva Requisición para Autorizar',
-                mensaje=f'{solicitante_nombre} ha enviado la requisición {requisicion.numero} para su autorización.',
+                titulo=titulo,
+                mensaje=mensaje,
                 datos={
                     'requisicion_id': requisicion.pk,
                     'numero': requisicion.numero,
                     'solicitante': requisicion.solicitante.username if requisicion.solicitante else None,
-                    'estado': 'pendiente_admin'
+                    'estado': 'pendiente_admin',
+                    'es_reenvio': es_reenvio
                 },
                 url=f'/requisiciones/{requisicion.pk}'
             )
@@ -427,10 +445,14 @@ def _notificar_admin_centro(requisicion):
     logger.info(f"Notificaciones creadas: {notificaciones_creadas} de {admins_centro.count()} admin(s) del centro {centro.nombre}")
 
 
-def _notificar_director_centro(requisicion):
+def _notificar_director_centro(requisicion, es_reenvio=False):
     """
     FLUJO V2: Notifica al Director del Centro cuando el admin autoriza una requisición.
     Incluye protección contra notificaciones duplicadas.
+    
+    Args:
+        requisicion: Instancia de Requisicion
+        es_reenvio: True si es un reenvío después de devolución (devuelta → pendiente_director)
     """
     from .models import User, Notificacion
     
@@ -451,12 +473,23 @@ def _notificar_director_centro(requisicion):
         logger.warning(f"No hay directores en el centro {centro.nombre} para notificar")
         return
     
+    # Mensaje diferente si es reenvío después de correcciones
+    if es_reenvio:
+        titulo = 'Requisición Reenviada con Correcciones'
+        mensaje = f'La requisición {requisicion.numero} ha sido reenviada con las correcciones solicitadas y requiere su autorización como Director.'
+        motivo_texto = requisicion.notas or ''
+        if motivo_texto:
+            mensaje += f'\n\nObservaciones: {motivo_texto[:200]}'
+    else:
+        titulo = 'Requisición Pendiente de Autorización'
+        mensaje = f'La requisición {requisicion.numero} requiere su autorización como Director.'
+    
     notificaciones_creadas = 0
     for director in directores_centro:
         # ISS-FIX: Verificar si ya existe una notificación similar
         notificacion_existente = Notificacion.objects.filter(
             usuario=director,
-            titulo='Requisición Pendiente de Autorización',
+            titulo=titulo,
             datos__requisicion_id=requisicion.pk
         ).exists()
         
@@ -468,13 +501,14 @@ def _notificar_director_centro(requisicion):
             Notificacion.objects.create(
                 usuario=director,
                 tipo='info',
-                titulo='Requisición Pendiente de Autorización',
-                mensaje=f'La requisición {requisicion.numero} requiere su autorización como Director.',
+                titulo=titulo,
+                mensaje=mensaje,
                 datos={
                     'requisicion_id': requisicion.pk,
                     'numero': requisicion.numero,
                     'solicitante': requisicion.solicitante.username if requisicion.solicitante else None,
-                    'estado': 'pendiente_director'
+                    'estado': 'pendiente_director',
+                    'es_reenvio': es_reenvio
                 },
                 url=f'/requisiciones/{requisicion.pk}'
             )

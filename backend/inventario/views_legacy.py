@@ -5455,10 +5455,11 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             # ISS-ROL-FIX: Incluir alias 'admin_centro' para compatibilidad
             elif rol in ['administrador_centro', 'admin_centro']:
                 # Puede ver: pendiente_admin (para autorizar) + todo lo que ya pasó esa etapa
-                # NO ve: borradores de otros
+                # NO ve: borradores de otros, pendiente_director (es del director)
+                # SÍ ve: devuelta (para dar seguimiento a correcciones que solicitó)
                 queryset = queryset.exclude(
                     Q(estado='borrador') & ~Q(solicitante=user)
-                )
+                ).exclude(estado='pendiente_director')
             
             # 3.3 Director Centro: Ve SOLO desde pendiente_director en adelante
             # FLUJO V2: Director NO debe ver pendiente_admin (eso es del Admin)
@@ -5466,12 +5467,11 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             elif rol in ['director_centro', 'director']:
                 # Estados que el director puede ver:
                 # - pendiente_director: para autorizar
+                # - devuelta: si él la devolvió, puede dar seguimiento
                 # - enviada, autorizada, parcial, surtida, entregada: ya autorizados
                 # - rechazada, cancelada, vencida: finalizados
-                # NO ve: borrador, pendiente_admin, devuelta (aún no llegó a su etapa)
-                # ISS-FIX: Agregar 'devuelta' a la exclusión - el director no debe ver
-                # requisiciones que fueron devueltas al médico para corrección
-                queryset = queryset.exclude(estado__in=['borrador', 'pendiente_admin', 'devuelta'])
+                # NO ve: borrador, pendiente_admin (etapas anteriores a su autorización)
+                queryset = queryset.exclude(estado__in=['borrador', 'pendiente_admin'])
             
             # 3.4 Centro genérico: Ve todas las requisiciones de su centro
             # ISS-FIX: Usuarios de centro deben ver todas las requisiciones de su centro
