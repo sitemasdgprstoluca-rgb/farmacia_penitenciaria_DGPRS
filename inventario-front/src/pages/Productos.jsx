@@ -879,28 +879,39 @@ const Productos = () => {
     // No validar campos protegidos en el frontend para evitar bloqueos
     const tieneProteccion = editingProduct?.tiene_lotes;
     
-    // Usar validador centralizado que conoce el contrato del backend
+    // Si tiene protección, NO validar campos obligatorios del backend
+    // Solo validar campos editables (descripcion, stock_minimo, imagen)
+    if (tieneProteccion) {
+      const errores = {};
+      
+      // Validar solo stock_minimo si está presente
+      if (data.stock_minimo !== undefined && data.stock_minimo !== null && data.stock_minimo !== '') {
+        const minimo = Number(data.stock_minimo);
+        if (isNaN(minimo)) {
+          errores.stock_minimo = 'El stock mínimo debe ser un número';
+        } else if (minimo < 0) {
+          errores.stock_minimo = 'El stock mínimo no puede ser negativo';
+        } else if (!Number.isInteger(minimo)) {
+          errores.stock_minimo = 'El stock mínimo debe ser un número entero';
+        }
+      }
+      
+      return errores;
+    }
+    
+    // Sin protección: validación completa
     const { valido, errores, primerError } = validarProducto(data, !!editingProduct);
     
-    // Si tiene protección, limpiar errores de campos protegidos (backend los valida)
-    if (tieneProteccion) {
-      delete errores.clave;
-      delete errores.nombre;
-      delete errores.unidad_medida;
-      delete errores.categoria;
-      delete errores.presentacion;
-    } else {
-      // Validación adicional local: unidad_medida debe ser de la lista
-      // Solo validar si los catálogos están cargados (UNIDADES tiene elementos)
-      if (data.unidad_medida && UNIDADES.length > 0 && !UNIDADES.includes(data.unidad_medida)) {
-        errores.unidad_medida = 'Seleccione una unidad válida';
-      }
+    // Validación adicional local: unidad_medida debe ser de la lista
+    // Solo validar si los catálogos están cargados (UNIDADES tiene elementos)
+    if (data.unidad_medida && UNIDADES.length > 0 && !UNIDADES.includes(data.unidad_medida)) {
+      errores.unidad_medida = 'Seleccione una unidad válida';
+    }
 
-      // Validación adicional local: categoria debe ser de la lista
-      // Solo validar si los catálogos están cargados (CATEGORIAS tiene elementos)
-      if (data.categoria && CATEGORIAS.length > 0 && !CATEGORIAS.includes(data.categoria)) {
-        errores.categoria = 'Seleccione una categoría válida';
-      }
+    // Validación adicional local: categoria debe ser de la lista
+    // Solo validar si los catálogos están cargados (CATEGORIAS tiene elementos)
+    if (data.categoria && CATEGORIAS.length > 0 && !CATEGORIAS.includes(data.categoria)) {
+      errores.categoria = 'Seleccione una categoría válida';
     }
 
     return errores;
