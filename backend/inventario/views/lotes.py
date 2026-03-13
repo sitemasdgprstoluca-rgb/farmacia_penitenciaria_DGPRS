@@ -1861,8 +1861,8 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
             
             # ISS-001 FIX: Subir archivo al almacenamiento ANTES de crear registro
             from inventario.services.storage_service import get_storage_service, StorageError
-            
-            storage = get_storage_service()
+
+            storage = get_storage_service('lotes-documentos')
             upload_result = storage.upload_file(
                 file_content=archivo,
                 file_path=archivo_path,
@@ -1900,7 +1900,7 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                     lote=lote,
                     tipo_documento=tipo_documento,
                     numero_documento=request.data.get('numero_documento', ''),
-                    archivo=archivo_path,
+                    archivo=upload_result.get('url', archivo_path),
                     nombre_archivo=nombre_archivo,
                     fecha_documento=fecha_documento,
                     notas=request.data.get('notas', ''),
@@ -1963,12 +1963,15 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                 )
             
             # ISS-002 FIX: Eliminar archivo del almacenamiento ANTES de borrar registro
-            from inventario.services.storage_service import get_storage_service
-            
-            archivo_path = documento.archivo
+            from inventario.services.storage_service import get_storage_service, extract_storage_path
+
+            archivo_url = documento.archivo
             nombre = documento.nombre_archivo
-            
-            storage = get_storage_service()
+
+            # Extraer path relativo desde la URL de Supabase
+            archivo_path = extract_storage_path(archivo_url, 'lotes-documentos')
+
+            storage = get_storage_service('lotes-documentos')
             delete_result = storage.delete_file(archivo_path)
             
             # ISS-002 FIX: Registrar resultado de eliminación de storage

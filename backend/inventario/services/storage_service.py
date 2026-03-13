@@ -453,23 +453,53 @@ class StorageService:
             return None
 
 
-# Instancia singleton para uso en toda la aplicación
-_storage_instance = None
+# Cache de instancias por bucket
+_storage_instances: Dict[str, StorageService] = {}
 
 
 def get_storage_service(bucket: str = None) -> StorageService:
     """
-    Obtiene instancia del servicio de almacenamiento.
-    
+    Obtiene instancia del servicio de almacenamiento para el bucket especificado.
+
     Args:
-        bucket: Bucket a usar (opcional)
-        
+        bucket: Bucket a usar (default: StorageService.DEFAULT_BUCKET)
+
     Returns:
         StorageService: Instancia del servicio
     """
-    global _storage_instance
-    
-    if _storage_instance is None or (bucket and bucket != _storage_instance.bucket):
-        _storage_instance = StorageService(bucket)
-    
-    return _storage_instance
+    global _storage_instances
+
+    bucket_key = bucket or StorageService.DEFAULT_BUCKET
+
+    if bucket_key not in _storage_instances:
+        _storage_instances[bucket_key] = StorageService(bucket_key)
+
+    return _storage_instances[bucket_key]
+
+
+def extract_storage_path(url: str, bucket_name: str) -> str:
+    """
+    Extrae el path relativo de un archivo desde su URL completa de Supabase Storage.
+
+    Ejemplo:
+        URL: https://xxx.supabase.co/storage/v1/object/public/productos-imagenes/2026/03/img.jpg
+        bucket_name: 'productos-imagenes'
+        Retorna: '2026/03/img.jpg'
+
+    Si la URL no contiene el bucket_name, retorna los últimos 3 segmentos como fallback.
+    Si la URL ya es un path relativo (no empieza con http), la retorna tal cual.
+    """
+    if not url:
+        return url
+
+    # Si ya es un path relativo (no una URL completa), retornar tal cual
+    if not url.startswith('http'):
+        return url
+
+    parts = url.split('/')
+    try:
+        bucket_idx = parts.index(bucket_name)
+        return '/'.join(parts[bucket_idx + 1:])
+    except ValueError:
+        # Fallback: tomar los últimos 3 segmentos (año/mes/archivo)
+        return '/'.join(parts[-3:]) if len(parts) >= 3 else '/'.join(parts[-2:])

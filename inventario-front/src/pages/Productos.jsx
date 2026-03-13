@@ -1081,70 +1081,72 @@ const Productos = () => {
       }
 
       // Preparar datos para enviar al backend
-      // Usar FormData si hay imagen, de lo contrario JSON normal
-      let dataToSend;
-      let hasImage = formData.imagen instanceof File;
+      // IMPORTANTE: NO incluir imagen aquí - se sube por separado
+      const imagenFile = formData.imagen instanceof File ? formData.imagen : null;
       
-      if (hasImage) {
-        dataToSend = new FormData();
-        dataToSend.append('clave', formData.clave || '');
-        dataToSend.append('nombre', formData.nombre);
-        dataToSend.append('nombre_comercial', formData.nombre_comercial || '');
-        dataToSend.append('descripcion', formData.descripcion || '');
-        dataToSend.append('unidad_medida', formData.unidad_medida);
-        dataToSend.append('categoria', formData.categoria || 'medicamento');
-        dataToSend.append('stock_minimo', parseInt(formData.stock_minimo, 10) || 0);
-        dataToSend.append('sustancia_activa', formData.sustancia_activa || '');
-        dataToSend.append('presentacion', formData.presentacion || '');
-        dataToSend.append('concentracion', formData.concentracion || '');
-        dataToSend.append('via_administracion', formData.via_administracion || '');
-        dataToSend.append('requiere_receta', formData.requiere_receta);
-        dataToSend.append('es_controlado', formData.es_controlado);
-        dataToSend.append('activo', formData.activo);
-        dataToSend.append('imagen', formData.imagen);
-      } else {
-        dataToSend = {
-          clave: formData.clave || '',
-          nombre: formData.nombre,
-          nombre_comercial: formData.nombre_comercial || '',
-          descripcion: formData.descripcion || '',
-          unidad_medida: formData.unidad_medida,
-          categoria: formData.categoria || 'medicamento',
-          stock_minimo: parseInt(formData.stock_minimo, 10) || 0,
-          sustancia_activa: formData.sustancia_activa || '',
-          presentacion: formData.presentacion || '',
-          concentracion: formData.concentracion || '',
-          via_administracion: formData.via_administracion || '',
-          requiere_receta: formData.requiere_receta,
-          es_controlado: formData.es_controlado,
-          activo: formData.activo,
-        };
+      // TRAZABILIDAD: Si producto tiene lotes, NO enviar campos protegidos
+      // El backend rechaza cambios en: clave, nombre, presentacion, unidad_medida, categoria
+      const tieneLotes = editingProduct?.tiene_lotes === true;
+      
+      const dataToSend = {
+        nombre_comercial: formData.nombre_comercial || '',
+        descripcion: formData.descripcion || '',
+        stock_minimo: parseInt(formData.stock_minimo, 10) || 0,
+        sustancia_activa: formData.sustancia_activa || '',
+        concentracion: formData.concentracion || '',
+        via_administracion: formData.via_administracion || '',
+        requiere_receta: formData.requiere_receta,
+        es_controlado: formData.es_controlado,
+        activo: formData.activo,
+      };
+      
+      // Campos protegidos: solo incluir si NO tiene lotes
+      if (!tieneLotes) {
+        dataToSend.clave = formData.clave || '';
+        dataToSend.nombre = formData.nombre;
+        dataToSend.unidad_medida = formData.unidad_medida;
+        dataToSend.categoria = formData.categoria || 'medicamento';
+        dataToSend.presentacion = formData.presentacion || '';
       }
 
+      let productoId = null;
+      let mensajeExito = '';
+
       if (editingProduct) {
-
-        await productosAPI.update(editingProduct.id, dataToSend, hasImage);
-
-        toast.success('Producto actualizado correctamente');
-
+        // Usar PATCH en vez de PUT para actualización parcial
+        await productosAPI.patch(editingProduct.id, dataToSend, false);
+        productoId = editingProduct.id;
+        mensajeExito = 'Producto actualizado correctamente';
       } else {
-
-        const resp = await productosAPI.create(dataToSend, hasImage);
+        const resp = await productosAPI.create(dataToSend, false);
+        productoId = resp?.data?.id;
         const varInfo = resp?.data?.variante_info;
         if (varInfo?.es_variante) {
           // ISS-PROD-VAR: Notificar código asignado cuando es variante nueva
-          toast(
-            `Código asignado: ${varInfo.codigo_asignado} (variante de ${varInfo.codigo_base} por presentación diferente)`,
-            { icon: 'ℹ️', duration: 10000 }
-          );
+          mensajeExito = `Código asignado: ${varInfo.codigo_asignado} (variante de ${varInfo.codigo_base} por presentación diferente)`;
         } else {
-          toast.success('Producto creado correctamente');
+          mensajeExito = 'Producto creado correctamente';
         }
-
       }
 
-      closeModal();
+      // Si hay imagen, subirla ahora que tenemos el ID del producto
+      if (imagenFile && productoId) {
+        const imgFormData = new FormData();
+        imgFormData.append('producto_id', productoId);
+        imgFormData.append('imagen', imagenFile);
+        imgFormData.append('es_principal', 'true');
+        
+        try {
+          await productosAPI.subirImagen(productoId, imgFormData);
+          mensajeExito += ' (con imagen)';
+        } catch (imgError) {
+          console.error('Error al subir imagen:', imgError);
+          toast.error('Producto guardado pero la imagen no se pudo subir. Intente agregarla después.');
+        }
+      }
 
+      toast.success(mensajeExito);
+      closeModal();
       fetchProductos();
 
     } catch (err) {

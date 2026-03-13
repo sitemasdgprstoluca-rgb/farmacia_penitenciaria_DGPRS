@@ -4089,6 +4089,7 @@ class LoteViewSet(viewsets.ModelViewSet):
             timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
             unique_name = f"{tipo_documento}_{timestamp}_{uuid.uuid4().hex[:8]}.pdf"
             archivo_path = f"lotes/documentos/{lote.id}/{unique_name}"
+            nombre_archivo = archivo.name  # Guardar nombre original del archivo
             
             # ISS-001 FIX: Subir archivo al almacenamiento ANTES de crear registro
             from inventario.services.storage_service import get_storage_service, StorageError
@@ -4131,7 +4132,7 @@ class LoteViewSet(viewsets.ModelViewSet):
                     lote=lote,
                     tipo_documento=tipo_documento,
                     numero_documento=request.data.get('numero_documento', ''),
-                    archivo=archivo_path,
+                    archivo=upload_result.get('url'),  # Guardar URL pública de Supabase, NO path
                     nombre_archivo=nombre_archivo,
                     fecha_documento=fecha_documento,
                     notas=request.data.get('notas', ''),

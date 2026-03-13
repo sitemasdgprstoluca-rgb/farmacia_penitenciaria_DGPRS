@@ -2755,9 +2755,9 @@ const handleImportar = async (e) => {
                         </p>
                       </div>
                       <div className="flex items-center gap-2 ml-2">
-                        {doc.archivo && (
+                        {(doc.archivo_url || doc.archivo) && (
                           <a
-                            href={doc.archivo}
+                            href={doc.archivo_url || doc.archivo}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="p-2 text-blue-600 hover:text-blue-800"

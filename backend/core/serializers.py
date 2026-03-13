@@ -1070,22 +1070,29 @@ class ProductoSerializer(serializers.ModelSerializer):
                     valor_actual = getattr(instance, campo)
                     
                     # Normalizar para comparación (manejar None y strings)
-                    if valor_nuevo is None:
-                        valor_nuevo = ''
-                    if valor_actual is None:
-                        valor_actual = ''
+                    # Convertir a string, strip, y uppercase para comparación robusta
+                    nuevo_norm = str(valor_nuevo or '').strip().upper()
+                    actual_norm = str(valor_actual or '').strip().upper()
                     
-                    # Comparar valores normalizados
-                    if str(valor_nuevo).strip().upper() != str(valor_actual).strip().upper():
+                    # Solo validar si hay cambio REAL en contenido
+                    if nuevo_norm != actual_norm:
                         errores[campo] = f'No se puede modificar {nombre} de un producto con lotes asociados'
         
         if errores:
             raise serializers.ValidationError(errores)
         
         # Remover campos protegidos del validated_data para evitar cambios accidentales
+        # IMPORTANTE: Solo remover si el valor cambió, para permitir PATCH con mismos valores
         if tiene_lotes:
             for campo in ['clave', 'nombre', 'presentacion', 'unidad_medida', 'categoria']:
-                validated_data.pop(campo, None)
+                if campo in validated_data:
+                    valor_nuevo = validated_data[campo]
+                    valor_actual = getattr(instance, campo)
+                    nuevo_norm = str(valor_nuevo or '').strip().upper()
+                    actual_norm = str(valor_actual or '').strip().upper()
+                    # Solo remover si son idénticos (evitar sobrescribir con valor igual)
+                    if nuevo_norm == actual_norm:
+                        validated_data.pop(campo, None)
         
         return super().update(instance, validated_data)
 
@@ -3133,19 +3140,46 @@ class ProductoImagenSerializer(serializers.ModelSerializer):
     Permite gestionar galeria de fotos por producto.
     """
     producto_nombre = serializers.CharField(source='producto.nombre', read_only=True)
+    imagen_url = serializers.SerializerMethodField()  # URL completa para visualización
     
     class Meta:
         model = ProductoImagen
         fields = [
-            'id', 'producto', 'producto_nombre', 'imagen', 
+            'id', 'producto', 'producto_nombre', 'imagen', 'imagen_url',
             'es_principal', 'orden', 'descripcion', 'created_at'
         ]
-        read_only_fields = ['created_at']
+        read_only_fields = ['created_at', 'imagen_url']
         extra_kwargs = {
             'es_principal': {'required': False, 'default': False},
             'orden': {'required': False, 'default': 0},
             'descripcion': {'required': False, 'allow_null': True, 'allow_blank': True},
         }
+    
+    def get_imagen_url(self, obj):
+        """
+        Devuelve URL completa de la imagen.
+        Si ya es una URL (http/https), la devuelve tal cual.
+        Si es un path relativo, construye la URL de Supabase Storage.
+        """
+        if not obj.imagen:
+            return None
+            
+        # Si ya es una URL completa, devolverla
+        if obj.imagen.startswith('http://') or obj.imagen.startswith('https://'):
+            return obj.imagen
+        
+        # Construir URL de Supabase Storage
+        from django.conf import settings
+        supabase_url = getattr(settings, 'SUPABASE_URL', None)
+        
+        if supabase_url:
+            # Formato: https://[PROJECT].supabase.co/storage/v1/object/public/[BUCKET]/[PATH]
+            bucket = 'productos-imagenes'
+            return f"{supabase_url}/storage/v1/object/public/{bucket}/{obj.imagen}"
+        
+        # Fallback: usar media URL local
+        media_url = getattr(settings, 'MEDIA_URL', '/media/')
+        return f"{media_url}{obj.imagen}"
 
 
 # =============================================================================
@@ -3160,16 +3194,17 @@ class LoteDocumentoSerializer(serializers.ModelSerializer):
     producto_nombre = serializers.CharField(source='lote.producto.nombre', read_only=True)
     created_by_nombre = serializers.SerializerMethodField()
     tipo_documento_display = serializers.CharField(source='get_tipo_documento_display', read_only=True)
+    archivo_url = serializers.SerializerMethodField()  # URL completa para descarga
     
     class Meta:
         model = LoteDocumento
         fields = [
             'id', 'lote', 'lote_numero', 'producto_nombre',
             'tipo_documento', 'tipo_documento_display', 'numero_documento',
-            'archivo', 'nombre_archivo', 'fecha_documento', 'notas',
+            'archivo', 'archivo_url', 'nombre_archivo', 'fecha_documento', 'notas',
             'created_at', 'created_by', 'created_by_nombre'
         ]
-        read_only_fields = ['created_at']
+        read_only_fields = ['created_at', 'archivo_url']
         extra_kwargs = {
             'tipo_documento': {'required': True},
             'archivo': {'required': True},
@@ -3184,6 +3219,33 @@ class LoteDocumentoSerializer(serializers.ModelSerializer):
         if obj.created_by:
             return obj.created_by.get_full_name() or obj.created_by.username
         return None
+    
+    def get_archivo_url(self, obj):
+        """
+        Devuelve URL completa del archivo.
+        Si ya es una URL (http/https), la devuelve tal cual.
+        Si es un path relativo, construye la URL de Supabase Storage.
+        """
+        if not obj.archivo:
+            return None
+            
+        # Si ya es una URL completa, devolverla
+        if obj.archivo.startswith('http://') or obj.archivo.startswith('https://'):
+            return obj.archivo
+        
+        # Construir URL de Supabase Storage
+        from django.conf import settings
+        supabase_url = getattr(settings, 'SUPABASE_URL', None)
+        
+        if supabase_url:
+            # Formato: https://[PROJECT].supabase.co/storage/v1/object/public/[BUCKET]/[PATH]
+            bucket = 'lotes-documentos'
+            return f"{supabase_url}/storage/v1/object/public/{bucket}/{obj.archivo}"
+        
+        # Fallback: usar media URL local
+        from django.conf import settings
+        media_url = getattr(settings, 'MEDIA_URL', '/media/')
+        return f"{media_url}{obj.archivo}"
     
     def validate_tipo_documento(self, value):
         """Validar que el tipo de documento sea valido."""

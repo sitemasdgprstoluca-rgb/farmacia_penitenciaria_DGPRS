@@ -1200,6 +1200,10 @@ export const productosAPI = {
   auditoria: (id) => apiClient.get(`/productos/${id}/auditoria/`),
   // ISS-FIX: Obtener lotes de un producto específico con semáforo de caducidad
   lotes: (id) => apiClient.get(`/productos/${id}/lotes/`),
+  // ISS-FIX: Subir imagen de producto a Supabase Storage
+  subirImagen: (productoId, formData) => apiClient.post(`/productos-imagenes/subir-imagen/`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
 };
 
 // Lotes

@@ -3032,7 +3032,7 @@ class ProductoImagenViewSet(viewsets.ModelViewSet):
             # Crear registro de imagen
             producto_imagen = ProductoImagen.objects.create(
                 producto_id=producto_id,
-                imagen=resultado['url'],
+                imagen=resultado['url'],  # URL pública de Supabase
                 es_principal=es_principal,
                 orden=max_orden + 1,
                 descripcion=descripcion
@@ -3079,9 +3079,9 @@ class ProductoImagenViewSet(viewsets.ModelViewSet):
             
             # Extraer path del archivo desde la URL
             try:
-                path_parts = producto_imagen.imagen.split('/')
-                file_path = '/'.join(path_parts[-2:])  # año/mes/archivo.ext
-                
+                from inventario.services.storage_service import extract_storage_path
+                file_path = extract_storage_path(producto_imagen.imagen, 'productos-imagenes')
+
                 storage = StorageService(bucket='productos-imagenes')
                 storage.delete_file(file_path)
                 
@@ -3272,9 +3272,9 @@ class LoteDocumentoViewSet(viewsets.ModelViewSet):
             
             # Extraer path del archivo desde la URL
             try:
-                path_parts = lote_documento.archivo.split('/')
-                file_path = '/'.join(path_parts[-2:])  # año/mes/archivo.pdf
-                
+                from inventario.services.storage_service import extract_storage_path
+                file_path = extract_storage_path(lote_documento.archivo, 'lotes-documentos')
+
                 storage = StorageService(bucket='lotes-documentos')
                 storage.delete_file(file_path)
                 
@@ -8455,9 +8455,8 @@ class DispensacionViewSet(viewsets.ModelViewSet):
             # Eliminar documento anterior si existe
             if dispensacion.documento_firmado_url:
                 try:
-                    # Extraer path del documento anterior
-                    old_path = dispensacion.documento_firmado_url.split('/')[-2:]
-                    old_path = '/'.join(old_path)
+                    from inventario.services.storage_service import extract_storage_path
+                    old_path = extract_storage_path(dispensacion.documento_firmado_url, 'dispensaciones-firmadas')
                     storage.delete_file(old_path)
                 except Exception as e:
                     logger.warning(f"No se pudo eliminar documento anterior: {e}")
@@ -8527,18 +8526,10 @@ class DispensacionViewSet(viewsets.ModelViewSet):
             from inventario.services.storage_service import StorageService
             
             storage = StorageService(bucket='dispensaciones-firmadas')
-            
-            # Extraer path del URL
-            # URL formato: https://...supabase.../storage/v1/object/public/bucket/path
-            path_parts = dispensacion.documento_firmado_url.split('/')
-            # Buscar la parte después de 'dispensaciones-firmadas/'
-            try:
-                bucket_idx = path_parts.index('dispensaciones-firmadas')
-                file_path = '/'.join(path_parts[bucket_idx+1:])
-            except (ValueError, IndexError):
-                # Fallback: asumir que el URL completo es válido
-                file_path = path_parts[-2] + '/' + path_parts[-1]
-            
+
+            from inventario.services.storage_service import extract_storage_path
+            file_path = extract_storage_path(dispensacion.documento_firmado_url, 'dispensaciones-firmadas')
+
             # Descargar archivo
             resultado = storage.download_file(file_path)
             
@@ -8581,15 +8572,10 @@ class DispensacionViewSet(viewsets.ModelViewSet):
             from inventario.services.storage_service import StorageService
             
             storage = StorageService(bucket='dispensaciones-firmadas')
-            
-            # Extraer path del URL
-            path_parts = dispensacion.documento_firmado_url.split('/')
-            try:
-                bucket_idx = path_parts.index('dispensaciones-firmadas')
-                file_path = '/'.join(path_parts[bucket_idx+1:])
-            except (ValueError, IndexError):
-                file_path = path_parts[-2] + '/' + path_parts[-1]
-            
+
+            from inventario.services.storage_service import extract_storage_path
+            file_path = extract_storage_path(dispensacion.documento_firmado_url, 'dispensaciones-firmadas')
+
             # Eliminar archivo
             old_url = dispensacion.documento_firmado_url
             resultado = storage.delete_file(file_path)
