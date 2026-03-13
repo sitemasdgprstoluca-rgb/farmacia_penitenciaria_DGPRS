@@ -178,21 +178,39 @@ class StorageService:
     ) -> Dict[str, Any]:
         """Sube archivo a Supabase Storage."""
         try:
-            # Subir a Supabase Storage
+            if len(content) == 0:
+                raise StorageError("El archivo está vacío (0 bytes)", operation='upload', path=file_path)
+
+            logger.info(
+                f"ISS-001: Subiendo a Supabase bucket='{self.bucket}' "
+                f"path='{file_path}' size={len(content)} type='{content_type}'"
+            )
+
+            # supabase-py v2: usar keys correctos para file_options
             response = self._client.storage.from_(self.bucket).upload(
                 path=file_path,
                 file=content,
                 file_options={
                     'content-type': content_type,
-                    'x-upsert': 'true'  # Sobrescribir si existe
+                    'contentType': content_type,
+                    'upsert': 'true',
+                    'x-upsert': 'true',
                 }
             )
-            
+
+            # Verificar respuesta de upload
+            if response and hasattr(response, 'json'):
+                resp_data = response.json() if callable(response.json) else response.json
+                if isinstance(resp_data, dict) and resp_data.get('error'):
+                    error_msg = resp_data.get('message', resp_data.get('error', 'Error desconocido'))
+                    logger.error(f"ISS-001: Supabase upload error response: {resp_data}")
+                    raise StorageError(error_msg, operation='upload', path=file_path)
+
             # Obtener URL pública
             url_response = self._client.storage.from_(self.bucket).get_public_url(file_path)
-            
-            logger.info(f"ISS-001: Archivo subido a Supabase: {file_path}")
-            
+
+            logger.info(f"ISS-001: Archivo subido a Supabase: {file_path} -> {url_response}")
+
             return {
                 'success': True,
                 'url': url_response,
@@ -201,9 +219,11 @@ class StorageService:
                 'hash': file_hash,
                 'storage': 'supabase'
             }
-            
+
+        except StorageError:
+            raise
         except Exception as e:
-            logger.error(f"ISS-001: Error Supabase upload: {e}")
+            logger.error(f"ISS-001: Error Supabase upload: {e}", exc_info=True)
             raise StorageError(str(e), operation='upload', path=file_path)
     
     def _upload_local(

@@ -6523,10 +6523,28 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             if foto_firma:
                 es_valido, error_msg = validar_archivo_imagen(foto_firma, max_size_mb=2)
                 if es_valido:
-                    requisicion.foto_firma_surtido = foto_firma
-                    requisicion.fecha_firma_surtido = timezone.now()
-                    requisicion.usuario_firma_surtido = request.user
-                    requisicion.save(update_fields=['foto_firma_surtido', 'fecha_firma_surtido', 'usuario_firma_surtido'])
+                    foto_firma.seek(0)
+                    try:
+                        from inventario.services.storage_service import get_storage_service
+                        from datetime import datetime
+                        storage = get_storage_service('requisiciones-firmadas')
+                        fecha_str = datetime.now().strftime('%Y/%m')
+                        ext = os.path.splitext(foto_firma.name)[1] or '.jpg'
+                        file_path = f'{fecha_str}/surtido_{requisicion.folio}{ext}'
+                        resultado = storage.upload_file(
+                            file_content=foto_firma.read(),
+                            file_path=file_path,
+                            content_type=foto_firma.content_type or 'image/jpeg'
+                        )
+                        if resultado['success']:
+                            requisicion.foto_firma_surtido = resultado['url']
+                            requisicion.fecha_firma_surtido = timezone.now()
+                            requisicion.usuario_firma_surtido = request.user
+                            requisicion.save(update_fields=['foto_firma_surtido', 'fecha_firma_surtido', 'usuario_firma_surtido'])
+                        else:
+                            logger.error(f"ISS-004: Error subiendo firma surtido {requisicion.folio}: {resultado.get('error')}")
+                    except Exception as e:
+                        logger.error(f"ISS-004: Error subiendo firma surtido {requisicion.folio}: {e}")
                 else:
                     logger.warning(f"ISS-004: Firma rechazada en surtir {requisicion.folio}: {error_msg}")
             
@@ -6746,6 +6764,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             
             # Validar foto de firma si se incluye
             foto_firma = request.FILES.get('foto_firma_recepcion') or request.FILES.get('foto_firma')
+            firma_subida = False
             if foto_firma:
                 # ISS-006: Validar imagen antes de guardar
                 es_valido, error_msg = validar_archivo_imagen(foto_firma, max_size_mb=2)
@@ -6753,14 +6772,33 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                     return Response({
                         'error': f'Error en foto de firma: {error_msg}'
                     }, status=status.HTTP_400_BAD_REQUEST)
-                
-                requisicion.foto_firma_recepcion = foto_firma
-            
+
+                foto_firma.seek(0)
+                try:
+                    from inventario.services.storage_service import get_storage_service
+                    from datetime import datetime
+                    storage = get_storage_service('requisiciones-firmadas')
+                    fecha_str = datetime.now().strftime('%Y/%m')
+                    ext = os.path.splitext(foto_firma.name)[1] or '.jpg'
+                    file_path = f'{fecha_str}/recepcion_{requisicion.folio}{ext}'
+                    resultado = storage.upload_file(
+                        file_content=foto_firma.read(),
+                        file_path=file_path,
+                        content_type=foto_firma.content_type or 'image/jpeg'
+                    )
+                    if resultado['success']:
+                        requisicion.foto_firma_recepcion = resultado['url']
+                        firma_subida = True
+                    else:
+                        logger.error(f"ISS-006: Error subiendo firma recepción {requisicion.folio}: {resultado.get('error')}")
+                except Exception as e:
+                    logger.error(f"ISS-006: Error subiendo firma recepción {requisicion.folio}: {e}")
+
             update_fields = [
                 'estado', 'fecha_entrega', 'lugar_entrega', 'notas',
                 'usuario_firma_recepcion_id', 'fecha_firma_recepcion'
             ]
-            if foto_firma:
+            if firma_subida:
                 update_fields.append('foto_firma_recepcion')
             
             requisicion.save(update_fields=update_fields)
@@ -6827,12 +6865,35 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             return Response({
                 'error': f'Error en foto de firma: {error_msg}'
             }, status=status.HTTP_400_BAD_REQUEST)
-        
-        requisicion.foto_firma_surtido = foto_firma
+
+        foto_firma.seek(0)
+        try:
+            from inventario.services.storage_service import get_storage_service
+            from datetime import datetime
+            storage = get_storage_service('requisiciones-firmadas')
+            fecha_str = datetime.now().strftime('%Y/%m')
+            ext = os.path.splitext(foto_firma.name)[1] or '.jpg'
+            file_path = f'{fecha_str}/surtido_{requisicion.folio}{ext}'
+            resultado = storage.upload_file(
+                file_content=foto_firma.read(),
+                file_path=file_path,
+                content_type=foto_firma.content_type or 'image/jpeg'
+            )
+            if not resultado['success']:
+                return Response({
+                    'error': f"Error al subir firma: {resultado.get('error', 'Error desconocido')}"
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as e:
+            logger.error(f"ISS-006: Error subiendo firma surtido {requisicion.folio}: {e}", exc_info=True)
+            return Response({
+                'error': 'Error al subir la firma al almacenamiento'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        requisicion.foto_firma_surtido = resultado['url']
         requisicion.fecha_firma_surtido = timezone.now()
         requisicion.usuario_firma_surtido = user
         requisicion.save(update_fields=['foto_firma_surtido', 'fecha_firma_surtido', 'usuario_firma_surtido'])
-        
+
         return Response({
             'mensaje': 'Firma de surtido subida correctamente',
             'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data
@@ -6887,17 +6948,35 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             return Response({
                 'error': f'Error en foto de firma: {error_msg}'
             }, status=status.HTTP_400_BAD_REQUEST)
-        
-        requisicion.foto_firma_recepcion = foto_firma
+
+        foto_firma.seek(0)
+        try:
+            from inventario.services.storage_service import get_storage_service
+            from datetime import datetime
+            storage = get_storage_service('requisiciones-firmadas')
+            fecha_str = datetime.now().strftime('%Y/%m')
+            ext = os.path.splitext(foto_firma.name)[1] or '.jpg'
+            file_path = f'{fecha_str}/recepcion_{requisicion.folio}{ext}'
+            resultado = storage.upload_file(
+                file_content=foto_firma.read(),
+                file_path=file_path,
+                content_type=foto_firma.content_type or 'image/jpeg'
+            )
+            if not resultado['success']:
+                return Response({
+                    'error': f"Error al subir firma: {resultado.get('error', 'Error desconocido')}"
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as e:
+            logger.error(f"ISS-006: Error subiendo firma recepción {requisicion.folio}: {e}", exc_info=True)
+            return Response({
+                'error': 'Error al subir la firma al almacenamiento'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        requisicion.foto_firma_recepcion = resultado['url']
         requisicion.fecha_firma_recepcion = timezone.now()
         requisicion.usuario_firma_recepcion = user
         requisicion.save(update_fields=['foto_firma_recepcion', 'fecha_firma_recepcion', 'usuario_firma_recepcion'])
-        
-        return Response({
-            'mensaje': 'Firma de recepción subida correctamente',
-            'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data
-        })
-        
+
         return Response({
             'mensaje': 'Firma de recepción subida correctamente',
             'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data
@@ -7775,14 +7854,32 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         # ISS-004 FIX (audit21): Validar imagen completa (MIME, magic bytes, extensión)
         foto_firma = request.FILES.get('foto_firma_recepcion') or request.FILES.get('foto_firma')
         update_fields = ['estado', 'fecha_entrega', 'lugar_entrega', 'notas']
-        
+
         if foto_firma:
             es_valido, error_msg = validar_archivo_imagen(foto_firma, max_size_mb=2)
             if es_valido:
-                requisicion.foto_firma_recepcion = foto_firma
-                requisicion.fecha_firma_recepcion = timezone.now()
-                requisicion.usuario_firma_recepcion = request.user
-                update_fields.extend(['foto_firma_recepcion', 'fecha_firma_recepcion', 'usuario_firma_recepcion'])
+                foto_firma.seek(0)
+                try:
+                    from inventario.services.storage_service import get_storage_service
+                    from datetime import datetime
+                    storage = get_storage_service('requisiciones-firmadas')
+                    fecha_str = datetime.now().strftime('%Y/%m')
+                    ext = os.path.splitext(foto_firma.name)[1] or '.jpg'
+                    file_path = f'{fecha_str}/recepcion_{requisicion.folio}{ext}'
+                    resultado = storage.upload_file(
+                        file_content=foto_firma.read(),
+                        file_path=file_path,
+                        content_type=foto_firma.content_type or 'image/jpeg'
+                    )
+                    if resultado['success']:
+                        requisicion.foto_firma_recepcion = resultado['url']
+                        requisicion.fecha_firma_recepcion = timezone.now()
+                        requisicion.usuario_firma_recepcion = request.user
+                        update_fields.extend(['foto_firma_recepcion', 'fecha_firma_recepcion', 'usuario_firma_recepcion'])
+                    else:
+                        logger.error(f"ISS-004: Error subiendo firma {requisicion.folio}: {resultado.get('error')}")
+                except Exception as e:
+                    logger.error(f"ISS-004: Error subiendo firma {requisicion.folio}: {e}")
             else:
                 logger.warning(f"ISS-004: Firma rechazada en confirmar_entrega {requisicion.folio}: {error_msg}")
         
