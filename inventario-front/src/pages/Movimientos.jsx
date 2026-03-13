@@ -2892,7 +2892,7 @@ const Movimientos = () => {
                                                 );
                                               })()}
                                               
-                                              {/* Salidas/Dispensaciones */}}
+                                              {/* Salidas/Dispensaciones */}
                                               {(() => {
                                                 const salidas = (grupo.salidas || grupo.items || []).filter(m => m.tipo === 'salida');
                                                 if (salidas.length === 0) return null;
