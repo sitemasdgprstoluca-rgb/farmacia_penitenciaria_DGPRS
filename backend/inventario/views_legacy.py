@@ -6176,23 +6176,29 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                     }, status=status.HTTP_400_BAD_REQUEST)
                 
                 # Validar permisos de centro
+                # ISS-FIX: Farmacia puede cancelar requisiciones sin importar el centro
+                # Solo usuarios de centro están restringidos a su propio centro
                 centro_user = self._user_centro(request.user)
-                if not request.user.is_superuser:
+                rol = _get_rol_efectivo(request.user)
+                es_farmacia = is_farmacia_or_admin(request.user)
+                
+                if not request.user.is_superuser and not es_farmacia:
+                    # Solo usuarios de centro deben validar ownership por centro
                     req_centro_id = requisicion.centro_origen_id or requisicion.centro_destino_id
                     if not centro_user or req_centro_id != centro_user.id:
                         return Response({
                             'error': 'No puedes cancelar requisiciones de otro centro'
                         }, status=status.HTTP_403_FORBIDDEN)
                     
-                    # ISS-SEC-005: Solo el solicitante, farmacia, o roles de autorización pueden cancelar
-                    rol = _get_rol_efectivo(request.user)
-                    roles_pueden_cancelar = ['farmacia', 'admin', 'director_centro', 'director', 'administrador_centro', 'admin_centro']
+                    # ISS-SEC-005: Solo el solicitante o roles de autorización pueden cancelar
+                    roles_pueden_cancelar = ['director_centro', 'director', 'administrador_centro', 'admin_centro']
                     es_solicitante = requisicion.solicitante_id == request.user.id
-                    es_rol_autorizado = is_farmacia_or_admin(request.user) or rol in roles_pueden_cancelar
+                    es_rol_autorizado = rol in roles_pueden_cancelar
                     
                     if not es_solicitante and not es_rol_autorizado:
                         return Response({
-                            'error': 'Solo el solicitante o roles autorizados pueden cancelar esta requisición'
+                            'error': 'Solo el solicitante o roles autorizados (Admin/Director) pueden cancelar esta requisición',
+                            'rol_actual': rol
                         }, status=status.HTTP_403_FORBIDDEN)
                 
                 # ISS-FIX: Motivo obligatorio para cancelación (mínimo 10 caracteres)
@@ -7426,20 +7432,27 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         
         # ISS-AUDIT-002 FIX: Validar stock disponible ANTES de autorizar
         # Esto previene sobre-autorización de stock comprometido por otras requisiciones
+        # ACTUALIZACIÓN: Validación reforzada - NO permitir autorización si hay stock insuficiente
         try:
             from inventario.services.requisicion_service import RequisicionService, StockInsuficienteError
             service = RequisicionService(requisicion, request.user)
             # Usar bloqueo para validación precisa del stock disponible
             service.validar_stock_disponible(usar_bloqueo=True)
         except StockInsuficienteError as e:
+            logger.error(f"STOCK INSUFICIENTE al autorizar requisición {requisicion.numero}: {e}")
             return Response({
                 'error': 'Stock insuficiente para autorizar la requisición',
                 'detalles_stock': e.detalles_stock,
                 'mensaje': str(e)
             }, status=status.HTTP_409_CONFLICT)
         except Exception as e:
-            logger.warning(f"ISS-AUDIT-002: Error al validar stock: {e}")
-            # No bloquear si hay error de validación, pero registrar
+            logger.error(f"ISS-AUDIT-002: Error CRÍTICO al validar stock para requisición {requisicion.numero}: {e}", exc_info=True)
+            # NO continuar si hay error en la validación - es crítico
+            return Response({
+                'error': 'Error al validar disponibilidad de stock',
+                'detalle': 'No se puede autorizar sin verificar stock disponible. Contacte al administrador.',
+                'error_tecnico': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         # CRÍTICO: Validar fecha límite de recolección
         fecha_recoleccion_str = request.data.get('fecha_recoleccion_limite')
@@ -7509,28 +7522,33 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 motivo_ajuste = (item_data.get('motivo_ajuste') or '').strip()
                 
                 # 🔒 VALIDACIÓN CRÍTICA: No permitir autorizar más de lo disponible en farmacia
-                # Calcular stock disponible del producto en farmacia (centro CIA)
+                # Las requisiciones se surten desde FARMACIA CENTRAL (lotes sin centro asignado)
                 from django.db.models import Sum
-                try:
-                    centro_farmacia = Centro.objects.filter(es_farmacia=True).first()
-                    if centro_farmacia and item.producto:
-                        stock_farmacia = Lote.objects.filter(
-                            producto=item.producto,
-                            centro=centro_farmacia,
-                            activo=True
-                        ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
-                        
-                        # No permitir autorizar más de lo disponible
-                        if cant_int > stock_farmacia:
-                            return Response({
-                                'error': f'Stock insuficiente para {producto_clave}',
-                                'detalle': f'Solicitó autorizar {cant_int} unidades, pero solo hay {stock_farmacia} disponibles en farmacia',
-                                'stock_disponible': stock_farmacia,
-                                'producto': producto_clave
-                            }, status=status.HTTP_400_BAD_REQUEST)
-                except Exception as e:
-                    logger.warning(f"Error al validar stock para {producto_clave}: {e}")
-                    # Continuar pero registrar el error
+                from django.utils import timezone
+                
+                if item.producto:
+                    # Calcular stock disponible en FARMACIA CENTRAL (centro = NULL)
+                    # Solo considerar lotes activos y NO vencidos
+                    today = timezone.now().date()
+                    stock_farmacia = Lote.objects.filter(
+                        producto=item.producto,
+                        centro__isnull=True,  # Farmacia Central
+                        activo=True,
+                        fecha_caducidad__gte=today  # No vencidos
+                    ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
+                    
+                    producto_clave = item.producto.clave if item.producto else f'ID {item_id}'
+                    
+                    # BLOQUEO ABSOLUTO: No permitir autorizar más de lo disponible
+                    if cant_int > stock_farmacia:
+                        return Response({
+                            'error': f'STOCK INSUFICIENTE PARA {producto_clave}',
+                            'detalle': f'Intentó autorizar {cant_int} unidades, pero solo hay {stock_farmacia} disponibles en Farmacia Central',
+                            'stock_disponible': stock_farmacia,
+                            'cantidad_solicitada': item.cantidad_solicitada,
+                            'producto_clave': producto_clave,
+                            'producto_nombre': item.producto.nombre if item.producto else ''
+                        }, status=status.HTTP_400_BAD_REQUEST)
                 
                 # Validar motivo si cantidad reducida
                 if cant_int < item.cantidad_solicitada and len(motivo_ajuste) < 3:

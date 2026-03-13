@@ -408,7 +408,31 @@ const RequisicionDetalle = () => {
       setModoAutorizar(false);
       cargarRequisicion();
     } catch (error) {
-      toast.error(error.response?.data?.error || 'Error al autorizar');
+      console.error('Error al autorizar requisición:', error.response?.data);
+      
+      // Manejo específico de error de stock insuficiente
+      if (error.response?.status === 400 || error.response?.status === 409) {
+        const errorData = error.response.data;
+        
+        // Si hay detalles de stock insuficiente, mostrar error detallado
+        if (errorData.stock_disponible !== undefined || errorData.detalle) {
+          const mensaje = `❌ ${errorData.error}\n\n${errorData.detalle || ''}`;
+          toast.error(mensaje, { duration: 8000 });
+          
+          // Si hay info del producto, loguearlo para debugging
+          if (errorData.producto_clave) {
+            console.error('Stock insuficiente:', {
+              producto: errorData.producto_clave,
+              disponible: errorData.stock_disponible,
+              solicitado: errorData.cantidad_solicitada
+            });
+          }
+        } else {
+          toast.error(errorData.error || 'Error al validar stock disponible');
+        }
+      } else {
+        toast.error(error.response?.data?.error || 'Error al autorizar');
+      }
     } finally {
       setProcesando(false);
     }
