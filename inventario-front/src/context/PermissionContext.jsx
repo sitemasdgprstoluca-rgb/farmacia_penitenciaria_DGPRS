@@ -939,7 +939,7 @@ export function PermissionProvider({ children }) {
     }
 
     // SIEMPRE cargar usuario fresco del servidor para tener permisos actualizados
-    cargarUsuario();
+    cargarUsuario().catch(() => {}); // Errores manejados internamente en cargarUsuario
   }, [cargarUsuario]);
 
   const verificarPermiso = (permiso) => permisos[permiso] || false;

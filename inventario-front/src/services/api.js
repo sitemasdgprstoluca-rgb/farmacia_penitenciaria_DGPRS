@@ -574,6 +574,9 @@ apiClient.interceptors.response.use(
       error.code === 'ECONNABORTED' || 
       error.code === 'ERR_NETWORK' || 
       error.code === 'ECONNREFUSED' ||
+      error.code === 'ERR_CONNECTION_CLOSED' ||
+      error.code === 'ERR_CONNECTION_RESET' ||
+      error.code === 'ERR_CONNECTION_REFUSED' ||
       error.message?.includes('timeout') ||
       error.message?.includes('Network Error')
     );
@@ -630,6 +633,9 @@ apiClient.interceptors.response.use(
       if (shouldLog && !originalRequest.url?.includes('/is-alive/')) {
         toastDebounce.error('El servidor está iniciando. Esto puede tomar unos segundos.');
       }
+      // Asegurar que el error tenga isAxiosError para que el handler global lo suprima
+      if (!error.isAxiosError) error.isAxiosError = true;
+      if (!error.code) error.code = 'ERR_NETWORK';
       return Promise.reject(error);
     }
     
@@ -771,6 +777,8 @@ apiClient.interceptors.response.use(
       // ISS-FIX: No mostrar errores 500 al usuario, solo loguear en consola
       console.error('[API] Error interno del servidor:', status, serverMessage || error.message);
     }
+    // Asegurar isAxiosError para que el handler global de unhandledrejection lo suprima
+    if (!error.isAxiosError) error.isAxiosError = true;
     return Promise.reject(error);
   }
 );
@@ -1523,6 +1531,8 @@ const loginWithRetry = async (credentials, retryCount = 0) => {
       error.code === 'ECONNABORTED' || 
       error.code === 'ERR_NETWORK' || 
       error.code === 'ECONNREFUSED' ||
+      error.code === 'ERR_CONNECTION_CLOSED' ||
+      error.code === 'ERR_CONNECTION_RESET' ||
       error.message?.includes('timeout') ||
       error.message?.includes('Network Error')
     );

@@ -26,9 +26,11 @@ def table_exists(schema_editor, table_name):
         )
         return cursor.fetchone()[0]
     elif vendor == 'sqlite':
+        # Usar interpolación directa: table_name son constantes internas de la migración
+        # (no input de usuario), así evitamos el bug del wrapper de debug de Django 5.2
+        # que falla al formatear queries con placeholders '?' de SQLite.
         cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-            [table_name]
+            f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'"
         )
         return cursor.fetchone() is not None
     else:
@@ -55,10 +57,10 @@ def create_index_if_not_exists(schema_editor, table_name, index_name, columns):
         sql = f'CREATE INDEX IF NOT EXISTS "{index_name}" ON "{table_name}" ({columns_sql})'
         schema_editor.execute(sql)
     elif vendor == 'sqlite':
-        # SQLite: verificar si existe primero (usa ? para parámetros)
+        # SQLite: verificar si existe primero. Interpolación directa (nombres constantes
+        # de la migración) para evitar bug del wrapper debug de Django 5.2 con '?'.
         cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='index' AND name=?",
-            [index_name]
+            f"SELECT name FROM sqlite_master WHERE type='index' AND name='{index_name}'"
         )
         if not cursor.fetchone():
             sql = f'CREATE INDEX "{index_name}" ON "{table_name}" ({columns_sql})'

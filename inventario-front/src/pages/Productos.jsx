@@ -2764,34 +2764,33 @@ const Productos = () => {
 
       {auditoriaVisible && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 modal-overlay-elevated p-4" onClick={(e) => e.target === e.currentTarget && cerrarAuditoria()}>
-          <div className="w-full max-w-2xl modal-elevated flex flex-col max-h-[90vh]">
+          <div className="w-full max-w-2xl bg-white rounded-2xl modal-elevated flex flex-col max-h-[90vh]" style={{ boxShadow: '0 10px 30px rgba(0,0,0,0.08), 0 25px 50px -12px rgba(147,32,67,0.2)' }}>
 
-            {/* Cabecera */}
-            <div className="modal-header-elevated shrink-0">
-              <div>
-                <h3 className="text-lg font-bold flex items-center gap-2 tracking-wide">
-                  <div className="modal-icon-badge"><FaHistory /></div>
-                  Historial de auditoría
-                </h3>
-                <p className="text-sm text-white/70 mt-0.5">
-                  {auditoriaData?.producto?.clave && (
-                    <span className="font-mono mr-1 bg-white/20 px-1.5 py-0.5 rounded text-xs">{auditoriaData.producto.clave}</span>
-                  )}
-                  {auditoriaData?.producto?.nombre || 'Producto'}
-                </p>
+            {/* Cabecera moderna */}
+            <div className="flex items-center justify-between gap-4 px-6 py-5 rounded-t-2xl shrink-0 text-white" style={{ background: 'linear-gradient(135deg, var(--color-primary, #9F2241) 0%, var(--color-primary-hover, #7B1D3A) 100%)' }}>
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center shrink-0 shadow-inner">
+                  <FaHistory className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold tracking-wide leading-tight">Historial de auditoría</h3>
+                  <p className="text-sm text-white/75 mt-0.5 uppercase tracking-wider font-medium">
+                    {auditoriaData?.producto?.nombre || 'Producto'}
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={cerrarAuditoria}
-                className="mt-0.5 p-1.5 rounded-lg hover:bg-white/20 transition-colors"
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-white/15 hover:bg-white/30 transition-colors shrink-0"
                 title="Cerrar"
               >
-                <FaTimes className="w-4 h-4" />
+                <FaTimes className="w-3.5 h-3.5" />
               </button>
             </div>
 
             {/* Contenido */}
-            <div className="overflow-y-auto px-6 py-5 space-y-3 flex-1">
+            <div className="overflow-y-auto px-6 py-6 flex-1" style={{ background: '#f8f9fb' }}>
               {auditoriaLoading ? (
                 <div className="flex flex-col items-center justify-center py-12 gap-3 text-gray-400">
                   <div className="animate-spin rounded-full h-8 w-8 border-2 border-[#632842] border-t-transparent" />
@@ -2800,9 +2799,9 @@ const Productos = () => {
               ) : auditoriaData?.historial?.length ? (
                 <div className="relative">
                   {/* Línea de tiempo vertical */}
-                  <span className="absolute left-[19px] top-4 bottom-4 w-0.5 bg-gray-200 rounded" />
+                  <span className="absolute left-[15px] top-5 bottom-5 w-0.5 bg-gray-200 rounded-full" />
 
-                  <div className="space-y-4">
+                  <div className="space-y-5">
                     {auditoriaData.historial.map((log, idx) => {
                       const tipo = (log.accion_tipo || log.accion || 'otro').toLowerCase();
                       const est = ACCION_ESTILOS[tipo] || ACCION_ESTILOS.otro;
@@ -2813,51 +2812,55 @@ const Productos = () => {
                             v !== null && v !== undefined && v !== '' &&
                             !['id','created_at','updated_at','timestamp'].includes(k))
                         : [];
+                      const numEvento = auditoriaData.historial.length - idx;
 
                       return (
                         <div key={log.id || idx} className="relative flex gap-4 items-start">
-                          {/* Punto en la línea */}
-                          <div className={`relative z-10 w-10 h-10 rounded-full flex items-center justify-center shrink-0 border-2 border-white shadow-sm ${est.punto}`}>
-                            <span className="text-white text-xs font-bold">{auditoriaData.historial.length - idx}</span>
+                          {/* Círculo numerado en la línea */}
+                          <div className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center shrink-0 border-2 border-white shadow-md ${est.punto}`}>
+                            <span className="text-white text-xs font-bold">{numEvento}</span>
                           </div>
 
-                          {/* Tarjeta */}
-                          <div className={`flex-1 rounded-xl border ${est.border} ${est.bg} px-4 py-3 shadow-sm`}>
+                          {/* Tarjeta del evento */}
+                          <div className="flex-1 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.04)' }}>
                             {/* Cabecera de la tarjeta */}
-                            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                              <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-white/70 ${est.text}`}>
-                                {log.accion_display || log.accion || 'Cambio'}
-                              </span>
-                              <span className="text-xs text-gray-500">{formatFecha(log.fecha)}</span>
+                            <div className="flex items-center justify-between gap-2 px-5 pt-4 pb-3 border-b border-gray-50">
+                              <div className="flex items-center gap-2">
+                                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${est.punto}`}>{numEvento}</span>
+                                <span className="font-semibold text-gray-800 text-sm">
+                                  {log.accion_display || log.accion || 'Cambio'}
+                                </span>
+                              </div>
+                              <span className="text-xs text-gray-400 whitespace-nowrap">{formatFecha(log.fecha)}</span>
                             </div>
 
                             {/* Usuario */}
-                            <p className="text-xs text-gray-600 flex items-center gap-1 mb-3">
-                              <span className="inline-block w-4 h-4 rounded-full bg-[#632842]/10 text-[#632842] text-center leading-4 font-bold text-[10px]">U</span>
-                              <span className="font-medium text-gray-700">{log.usuario_nombre || 'Sistema'}</span>
-                            </p>
+                            <div className="flex items-center gap-2 px-5 py-2.5">
+                              <span className="w-6 h-6 rounded-full bg-[#9F2241]/10 text-[#9F2241] flex items-center justify-center font-bold text-[11px] shrink-0">U</span>
+                              <span className="text-sm font-medium text-gray-600">{log.usuario_nombre || 'Sistema'}</span>
+                            </div>
 
-                            {/* Campos modificados (para actualizaciones) */}
+                            {/* Cambios realizados (actualizaciones) */}
                             {diff.length > 0 && (
-                              <div className="space-y-2">
-                                <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Cambios realizados</p>
-                                <div className="grid gap-1.5">
+                              <div className="px-5 pb-4">
+                                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">Cambios realizados</p>
+                                <div className="divide-y divide-gray-50">
                                   {diff.map(({ campo, antes, despues }) => (
-                                    <div key={campo} className="bg-white/80 rounded-lg px-3 py-2 text-xs">
-                                      <span className="font-semibold text-gray-700 block mb-1">
+                                    <div key={campo} className="flex items-center justify-between py-2 gap-3">
+                                      <span className="text-sm text-gray-500 flex-1 min-w-0 truncate">
                                         {LABELS_CAMPO[campo] || campo.replace(/_/g, ' ')}
                                       </span>
-                                      <div className="flex items-center gap-2 flex-wrap">
+                                      <div className="flex items-center gap-1.5 shrink-0">
                                         {antes !== undefined && antes !== null && antes !== '' && (
-                                          <span className="inline-flex items-center gap-1 bg-red-50 text-red-700 border border-red-200 px-2 py-0.5 rounded">
-                                            <span className="text-[9px] font-bold uppercase tracking-wider">Antes</span>
-                                            <span>{formatearValorAudit(campo, antes)}</span>
+                                          <span className="inline-flex items-center text-xs bg-red-50 text-red-600 border border-red-100 px-2 py-0.5 rounded-full">
+                                            − {formatearValorAudit(campo, antes)}
                                           </span>
                                         )}
-                                        <span className="text-gray-300 text-base">→</span>
-                                        <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded">
-                                          <span className="text-[9px] font-bold uppercase tracking-wider">Nuevo</span>
-                                          <span>{formatearValorAudit(campo, despues)}</span>
+                                        {antes !== undefined && antes !== null && antes !== '' && (
+                                          <span className="text-gray-300 text-xs">→</span>
+                                        )}
+                                        <span className="inline-flex items-center text-xs bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-full font-medium">
+                                          + {formatearValorAudit(campo, despues)}
                                         </span>
                                       </div>
                                     </div>
@@ -2866,15 +2869,19 @@ const Productos = () => {
                               </div>
                             )}
 
-                            {/* Campos del registro inicial (para creación) */}
+                            {/* Campos del registro inicial (creación) */}
                             {esCreacion && camposIniciales.length > 0 && (
-                              <div className="space-y-1.5">
-                                <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Datos registrados</p>
-                                <div className="grid grid-cols-2 gap-1.5">
+                              <div className="px-5 pb-4">
+                                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">Cambios realizados</p>
+                                <div className="divide-y divide-gray-50">
                                   {camposIniciales.map(([campo, valor]) => (
-                                    <div key={campo} className="bg-white/80 rounded-lg px-3 py-1.5 text-xs">
-                                      <span className="text-gray-500 block text-[10px]">{LABELS_CAMPO[campo] || campo.replace(/_/g, ' ')}</span>
-                                      <span className="font-medium text-gray-800">{formatearValorAudit(campo, valor)}</span>
+                                    <div key={campo} className="flex items-center justify-between py-2 gap-3">
+                                      <span className="text-sm text-gray-500 flex-1 min-w-0 truncate">
+                                        {LABELS_CAMPO[campo] || campo.replace(/_/g, ' ')}
+                                      </span>
+                                      <span className="inline-flex items-center text-xs bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-full font-medium shrink-0">
+                                        + {formatearValorAudit(campo, valor)}
+                                      </span>
                                     </div>
                                   ))}
                                 </div>
@@ -2883,7 +2890,7 @@ const Productos = () => {
 
                             {/* Sin detalles disponibles */}
                             {diff.length === 0 && !esCreacion && (
-                              <p className="text-xs text-gray-400 italic">Sin detalles adicionales registrados.</p>
+                              <p className="text-xs text-gray-400 italic px-5 pb-4">Sin detalles adicionales registrados.</p>
                             )}
                           </div>
                         </div>
@@ -2900,8 +2907,8 @@ const Productos = () => {
             </div>
 
             {/* Pie */}
-            <div className="shrink-0 px-6 py-3 border-t bg-gray-50/80 rounded-b-2xl flex items-center justify-between">
-              <span className="text-xs text-gray-400">
+            <div className="shrink-0 px-6 py-4 border-t border-gray-100 bg-white rounded-b-2xl flex items-center justify-between">
+              <span className="text-sm text-gray-400">
                 {auditoriaData?.historial?.length
                   ? `${auditoriaData.historial.length} registro${auditoriaData.historial.length !== 1 ? 's' : ''} en el historial`
                   : ''}
@@ -2909,7 +2916,7 @@ const Productos = () => {
               <button
                 type="button"
                 onClick={cerrarAuditoria}
-                className="btn-elevated-cancel"
+                className="px-5 py-2 bg-gray-800 hover:bg-gray-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm"
               >
                 Cerrar
               </button>

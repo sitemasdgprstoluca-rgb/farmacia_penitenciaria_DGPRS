@@ -976,7 +976,7 @@ export const ThemeProvider = ({ children }) => {
 
   // Cargar tema al montar el componente
   useEffect(() => {
-    cargarTema();
+    cargarTema().catch(() => {}); // Errores manejados internamente
   }, [cargarTema]);
 
   // Escuchar evento de login exitoso para recargar tema con auth disponible
@@ -985,7 +985,7 @@ export const ThemeProvider = ({ children }) => {
     const handleLoginSuccess = () => {
       devLog('[ThemeContext] Login detectado, recargando tema con autenticación...');
       // Forzar recarga desde servidor (ignorar caché) para obtener tema más actualizado
-      cargarTema(true);
+      cargarTema(true).catch(() => {}); // Errores manejados internamente
     };
 
     // Escuchar evento personalizado de login exitoso

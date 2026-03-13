@@ -177,7 +177,8 @@ function Notificaciones() {
     
     const notif = notificaciones.find((n) => n.id === id);
     try {
-      await notificacionesAPI.delete(id);
+      // ConfirmModal ya actuó como confirmación del usuario
+      await notificacionesAPI.delete(id, { confirmed: true });
       setNotificaciones((prev) => prev.filter((n) => n.id !== id));
       setTotal((prev) => Math.max(prev - 1, 0));
       // Si era no leída, decrementar contador

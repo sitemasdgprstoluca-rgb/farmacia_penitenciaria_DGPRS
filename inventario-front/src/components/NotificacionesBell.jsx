@@ -24,6 +24,42 @@ const NotificacionesBell = ({ externalCount, onCountChange }) => {
   const dropdownRef = useRef(null);
   const botonRef = useRef(null);
 
+  // IDs descartados desde la campana (dismiss local, sin borrar del backend).
+  // Se persisten en localStorage por usuario para sobrevivir recargas.
+  const dismissKey = user?.id ? `bell_dismissed_${user.id}` : null;
+  const [dismissed, setDismissed] = useState(() => {
+    if (!dismissKey) return new Set();
+    try {
+      const raw = localStorage.getItem(dismissKey);
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  // Sincronizar dismissed con localStorage cuando cambia
+  useEffect(() => {
+    if (!dismissKey) return;
+    try {
+      localStorage.setItem(dismissKey, JSON.stringify([...dismissed]));
+    } catch { /* cuota excedida, ignorar */ }
+  }, [dismissed, dismissKey]);
+
+  // Limpiar dismissed cuando el usuario cambia (logout / cambio de cuenta)
+  useEffect(() => {
+    if (user?.id) {
+      const key = `bell_dismissed_${user.id}`;
+      try {
+        const raw = localStorage.getItem(key);
+        setDismissed(raw ? new Set(JSON.parse(raw)) : new Set());
+      } catch {
+        setDismissed(new Set());
+      }
+    } else {
+      setDismissed(new Set());
+    }
+  }, [user?.id]);
+
   // Usar contador externo si se proporciona (desde Layout)
   const displayCount = externalCount !== undefined ? externalCount : sinLeer;
 
@@ -131,24 +167,16 @@ const NotificacionesBell = ({ externalCount, onCountChange }) => {
     }
   };
 
-  const eliminar = async (id) => {
-    if (actionLoading) return; // Evitar acción si hay otra en curso
-    setActionLoading(id);
+  // Quitar notificación de la campana (dismiss local).
+  // NO borra el registro del backend → sigue visible en el historial.
+  const descartarDesdeCampana = (id) => {
     const notif = notificaciones.find((n) => n.id === id);
-    try {
-      await notificacionesAPI.delete(id);
-      setNotificaciones((prev) => prev.filter((n) => n.id !== id));
-      // Si era no leída, decrementar contador y sincronizar
-      if (notif && !notif.leida) {
-        const nuevoContador = Math.max(sinLeer - 1, 0);
-        setSinLeer(nuevoContador);
-        // Sincronizar contador externo (Layout)
-        if (onCountChange) onCountChange(nuevoContador);
-      }
-    } catch (err) {
-      toast.error(err.response?.data?.detail || "No se pudo eliminar");
-    } finally {
-      setActionLoading(null);
+    setDismissed((prev) => new Set([...prev, id]));
+    // Si era no leída, descontar del badge
+    if (notif && !notif.leida) {
+      const nuevoContador = Math.max(sinLeer - 1, 0);
+      setSinLeer(nuevoContador);
+      if (onCountChange) onCountChange(nuevoContador);
     }
   };
 
@@ -232,7 +260,7 @@ const NotificacionesBell = ({ externalCount, onCountChange }) => {
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
             <div>
               <p className="text-sm font-semibold text-gray-900">Notificaciones</p>
-              <p className="text-xs text-gray-500">{sinLeer} sin leer</p>
+              <p className="text-xs text-gray-500">{sinLeer} sin leer · <span className="cursor-pointer text-primary-600 hover:underline" onClick={() => { setAbierto(false); navigate('/notificaciones'); }}>Ver historial</span></p>
             </div>
             {sinLeer > 0 && (
               <button
@@ -252,10 +280,10 @@ const NotificacionesBell = ({ externalCount, onCountChange }) => {
                 Cargando notificaciones...
               </div>
             )}
-            {!cargando && !notificaciones.length && (
+            {!cargando && !notificaciones.filter((n) => !dismissed.has(n.id)).length && (
               <div className="px-4 py-8 text-center text-gray-500 text-sm">No hay notificaciones</div>
             )}
-            {!cargando && notificaciones.map((notif) => {
+            {!cargando && notificaciones.filter((n) => !dismissed.has(n.id)).map((notif) => {
               // Determinar si la notificación tiene un enlace navegable
               const tieneEnlace = notif.url || notif.datos?.requisicion_id;
               
@@ -302,12 +330,11 @@ const NotificacionesBell = ({ externalCount, onCountChange }) => {
                       </button>
                     )}
                     <button
-                      onClick={() => eliminar(notif.id)}
-                      disabled={actionLoading === notif.id}
-                      className="text-gray-400 hover:text-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Eliminar"
+                      onClick={() => descartarDesdeCampana(notif.id)}
+                      className="text-gray-400 hover:text-red-600"
+                      title="Quitar de la campana (queda en historial)"
                     >
-                      {actionLoading === notif.id ? <div className="animate-spin rounded-full h-3 w-3 border-2 border-gray-400 border-t-transparent inline-block" /> : 'x'}
+                      ✕
                     </button>
                   </div>
                 </div>
