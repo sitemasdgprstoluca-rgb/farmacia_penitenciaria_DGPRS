@@ -879,12 +879,14 @@ const Productos = () => {
     const { valido, errores, primerError } = validarProducto(data, !!editingProduct);
     
     // Validación adicional local: unidad_medida debe ser de la lista
-    if (data.unidad_medida && !UNIDADES.includes(data.unidad_medida)) {
+    // Solo validar si los catálogos están cargados (UNIDADES tiene elementos)
+    if (data.unidad_medida && UNIDADES.length > 0 && !UNIDADES.includes(data.unidad_medida)) {
       errores.unidad_medida = 'Seleccione una unidad válida';
     }
 
     // Validación adicional local: categoria debe ser de la lista
-    if (data.categoria && !CATEGORIAS.includes(data.categoria)) {
+    // Solo validar si los catálogos están cargados (CATEGORIAS tiene elementos)
+    if (data.categoria && CATEGORIAS.length > 0 && !CATEGORIAS.includes(data.categoria)) {
       errores.categoria = 'Seleccione una categoría válida';
     }
 
