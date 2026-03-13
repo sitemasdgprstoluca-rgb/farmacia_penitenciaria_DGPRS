@@ -558,6 +558,8 @@ apiClient.interceptors.response.use(
     if (response.status >= 400) {
       const error = new Error(response.data?.detail || response.data?.error || `Error ${response.status}`);
       error.response = response;
+      error.config = response.config;   // necesario para que el interceptor 401 pueda hacer refresh
+      error.isAxiosError = true;        // necesario para que unhandledrejection lo suprima
       return Promise.reject(error);
     }
     return response;
