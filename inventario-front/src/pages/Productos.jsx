@@ -875,19 +875,32 @@ const Productos = () => {
 
   // ISS-003 FIX: Validación alineada con el backend
   const validarFormulario = (data) => {
+    // Si es edición y tiene lotes, los campos protegidos ya están validados por el backend
+    // No validar campos protegidos en el frontend para evitar bloqueos
+    const tieneProteccion = editingProduct?.tiene_lotes;
+    
     // Usar validador centralizado que conoce el contrato del backend
     const { valido, errores, primerError } = validarProducto(data, !!editingProduct);
     
-    // Validación adicional local: unidad_medida debe ser de la lista
-    // Solo validar si los catálogos están cargados (UNIDADES tiene elementos)
-    if (data.unidad_medida && UNIDADES.length > 0 && !UNIDADES.includes(data.unidad_medida)) {
-      errores.unidad_medida = 'Seleccione una unidad válida';
-    }
+    // Si tiene protección, limpiar errores de campos protegidos (backend los valida)
+    if (tieneProteccion) {
+      delete errores.clave;
+      delete errores.nombre;
+      delete errores.unidad_medida;
+      delete errores.categoria;
+      delete errores.presentacion;
+    } else {
+      // Validación adicional local: unidad_medida debe ser de la lista
+      // Solo validar si los catálogos están cargados (UNIDADES tiene elementos)
+      if (data.unidad_medida && UNIDADES.length > 0 && !UNIDADES.includes(data.unidad_medida)) {
+        errores.unidad_medida = 'Seleccione una unidad válida';
+      }
 
-    // Validación adicional local: categoria debe ser de la lista
-    // Solo validar si los catálogos están cargados (CATEGORIAS tiene elementos)
-    if (data.categoria && CATEGORIAS.length > 0 && !CATEGORIAS.includes(data.categoria)) {
-      errores.categoria = 'Seleccione una categoría válida';
+      // Validación adicional local: categoria debe ser de la lista
+      // Solo validar si los catálogos están cargados (CATEGORIAS tiene elementos)
+      if (data.categoria && CATEGORIAS.length > 0 && !CATEGORIAS.includes(data.categoria)) {
+        errores.categoria = 'Seleccione una categoría válida';
+      }
     }
 
     return errores;
