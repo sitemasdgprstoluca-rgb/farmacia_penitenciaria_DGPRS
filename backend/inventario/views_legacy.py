@@ -5452,15 +5452,17 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 pass  # El filtro por centro ya se aplicó arriba
             
             # 3.2 Administrador Centro: Ve desde pendiente_admin en adelante
-            # FLUJO V2: Admin NO ve borradores de otros ni pendiente_director (eso es del director)
+            # FLUJO V2: Admin ve borradores propios + todo desde pendiente_admin
             # ISS-ROL-FIX: Incluir alias 'admin_centro' para compatibilidad
+            # ISS-FIX-404: Admin DEBE ver pendiente_director para seguimiento después de autorizar
             elif rol in ['administrador_centro', 'admin_centro']:
-                # Puede ver: pendiente_admin (para autorizar) + todo lo que ya pasó esa etapa
-                # NO ve: borradores de otros, pendiente_director (es del director)
+                # Puede ver: pendiente_admin (para autorizar) + pendiente_director (seguimiento)
+                # + todo lo que ya pasó esas etapas
+                # NO ve: borradores de otros
                 # SÍ ve: devuelta (para dar seguimiento a correcciones que solicitó)
                 queryset = queryset.exclude(
                     Q(estado='borrador') & ~Q(solicitante=user)
-                ).exclude(estado='pendiente_director')
+                )
             
             # 3.3 Director Centro: Ve SOLO desde pendiente_director en adelante
             # FLUJO V2: Director NO debe ver pendiente_admin (eso es del Admin)
