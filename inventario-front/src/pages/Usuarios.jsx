@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { usuariosAPI, centrosAPI } from '../services/api';
 import { toast } from 'react-hot-toast';
-import { FaPlus, FaEdit, FaTrash, FaKey, FaUsers, FaTimes, FaDownload, FaFileUpload, FaSearch, FaFilter, FaChevronDown, FaShieldAlt, FaSpinner, FaToggleOn, FaToggleOff, FaEye, FaEyeSlash } from 'react-icons/fa';
+import { FaPlus, FaEdit, FaTrash, FaKey, FaUsers, FaTimes, FaDownload, FaFileUpload, FaSearch, FaFilter, FaChevronDown, FaShieldAlt, FaSpinner, FaToggleOn, FaToggleOff, FaEye, FaEyeSlash, FaBan } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import { COLORS } from '../constants/theme';
 import { usePermissions } from '../hooks/usePermissions';
