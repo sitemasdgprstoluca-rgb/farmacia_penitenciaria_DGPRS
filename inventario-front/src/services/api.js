@@ -756,7 +756,8 @@ apiClient.interceptors.response.use(
       toastDebounce.error(serverMessage || handler.message);
       
       // ISS-005: Ejecutar acción configurada
-      if (handler.action === 'reload') {
+      // No recargar si es un error de stock (detalles_stock) - dejar que el componente lo maneje
+      if (handler.action === 'reload' && !error.response?.data?.detalles_stock) {
         // Dar tiempo al usuario para leer el mensaje antes de recargar
         setTimeout(() => {
           window.location.reload();
