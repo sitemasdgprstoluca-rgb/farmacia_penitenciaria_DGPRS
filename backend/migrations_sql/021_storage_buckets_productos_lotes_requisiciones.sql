@@ -13,11 +13,11 @@ INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
 VALUES (
   'productos-imagenes',
   'productos-imagenes',
-  false,  -- No público, requiere autenticación
+  true,  -- Público para descargas, RLS controla escritura
   5242880,  -- 5 MB máximo por archivo
   ARRAY['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']::text[]
 )
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET public = true;
 
 -- Política RLS: Permitir lectura a usuarios autenticados
 DROP POLICY IF EXISTS "productos_read_policy" ON storage.objects;
@@ -45,11 +45,11 @@ INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
 VALUES (
   'lotes-documentos',
   'lotes-documentos',
-  false,  -- No público, requiere autenticación
+  true,  -- Público para descargas, RLS controla escritura
   20971520,  -- 20 MB máximo por archivo
   ARRAY['application/pdf']::text[]
 )
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET public = true;
 
 -- Política RLS: Permitir lectura a usuarios autenticados
 DROP POLICY IF EXISTS "lotes_read_policy" ON storage.objects;
@@ -77,11 +77,11 @@ INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
 VALUES (
   'requisiciones-firmadas',
   'requisiciones-firmadas',
-  false,  -- No público, requiere autenticación
+  true,  -- Público para descargas, RLS controla escritura
   10485760,  -- 10 MB máximo por archivo
   ARRAY['application/pdf', 'image/jpeg', 'image/jpg', 'image/png']::text[]
 )
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET public = true;
 
 -- Política RLS: Permitir lectura a usuarios autenticados
 DROP POLICY IF EXISTS "requisiciones_read_policy" ON storage.objects;
