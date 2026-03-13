@@ -558,7 +558,7 @@ REST_FRAMEWORK = {
         'anon': config('THROTTLE_RATE_ANON', default='200/hour'),
         'user': config('THROTTLE_RATE_USER', default='1000/hour'),
         'import': config('THROTTLE_RATE_IMPORT', default='50/day'),
-        'login': config('THROTTLE_RATE_LOGIN', default='5/min'),  # ✅ Rate limit para login
+        'login': config('THROTTLE_RATE_LOGIN', default='20/min'),  # ✅ Rate limit para login
         'password_change': config('THROTTLE_RATE_PASSWORD_CHANGE', default='3/min'),  # ✅ Rate limit para cambio de password
     },
 }
@@ -669,6 +669,7 @@ IMPORT_ALLOWED_EXTENSIONS = ['.xlsx', '.xls']
 _cors_render_domains = [
     'https://farmacia-penitenciaria-front.onrender.com',
     'https://farmacia-penitenciaria.onrender.com',
+    'https://farmacia-penitenciaria-front-ggkp.onrender.com',
 ]
 
 # Dominios de desarrollo local

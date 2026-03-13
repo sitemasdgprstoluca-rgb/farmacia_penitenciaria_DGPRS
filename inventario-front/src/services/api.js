@@ -375,10 +375,8 @@ const apiClient = axios.create({
   },
   withCredentials: true, // IMPORTANTE: Enviar cookies en cada request
   timeout: 60000, // ISS-FIX: 60 segundos de timeout para cold starts de Render
-  // ISS-FIX: Suprimir errores de red automáticos en producción
-  validateStatus: function (status) {
-    return status < 600; // No lanzar error automático, manejarlo en interceptor
-  },
+  // ISS-FIX: Usar validateStatus por defecto de Axios (solo 2xx es éxito)
+  // para que 4xx/5xx pasen al error interceptor donde se maneja 401 refresh y 429 retry
 });
 
 // Cliente público para endpoints que NO requieren autenticación
@@ -553,17 +551,7 @@ apiClient.interceptors.request.use(
 );
 
 apiClient.interceptors.response.use(
-  (response) => {
-    // ISS-FIX: Retornar error explícito para códigos 4xx y 5xx
-    if (response.status >= 400) {
-      const error = new Error(response.data?.detail || response.data?.error || `Error ${response.status}`);
-      error.response = response;
-      error.config = response.config;   // necesario para que el interceptor 401 pueda hacer refresh
-      error.isAxiosError = true;        // necesario para que unhandledrejection lo suprima
-      return Promise.reject(error);
-    }
-    return response;
-  },
+  (response) => response,
   async (error) => {
     const originalRequest = error.config;
     const status = error.response?.status;
@@ -643,7 +631,10 @@ apiClient.interceptors.response.use(
     
     // Intentar refresh automático en caso de 401
     // ISS-003: No intentar refresh si el logout está en progreso
-    if (status === 401 && !originalRequest._retry && !isLogoutInProgress()) {
+    // ISS-FIX: No intentar refresh si el usuario no existe (token inválido/stale)
+    const errorCode = error.response?.data?.code;
+    const isUserGone = errorCode === 'user_not_found' || errorCode === 'user_inactive';
+    if (status === 401 && !originalRequest._retry && !isLogoutInProgress() && !isUserGone) {
       if (isRefreshing) {
         // Si ya se está refrescando, encolar la petición
         return new Promise((resolve, reject) => {
