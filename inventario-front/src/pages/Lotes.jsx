@@ -2786,21 +2786,26 @@ const handleImportar = async (e) => {
                 </div>
               )}
               
-              {/* Input de subida - DESHABILITADO (Mejora de almacenamiento pendiente) */}
+              {/* Input de subida de documentos */}
               {puede.subirDocumento && (
                 <div className="border-t pt-4">
-                  <label className="block text-sm font-semibold text-gray-400 mb-2">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
                     Agregar nuevo documento
                   </label>
-                  <div className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 cursor-not-allowed opacity-60">
-                    <span className="text-sm text-gray-400">Seleccionar archivo PDF</span>
-                  </div>
-                  <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-lg">
-                    <p className="text-xs text-amber-700 flex items-center gap-1">
-                      <span className="font-semibold">⏳ Funcionalidad pendiente:</span>
-                      En espera de mejora de almacenamiento para esta funcionalidad.
-                    </p>
-                  </div>
+                  <label className="flex items-center gap-2 px-4 py-3 border-2 border-dashed border-primary rounded-lg bg-primary/5 hover:bg-primary/10 cursor-pointer transition-colors">
+                    <FaFileUpload className="text-primary" />
+                    <span className="text-sm text-primary font-medium">Seleccionar archivo PDF</span>
+                    <input
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      className="hidden"
+                      onChange={handleSubirDocumento}
+                      disabled={actionLoading === selectedLoteDoc.id}
+                    />
+                  </label>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Solo archivos PDF • Máximo 10MB
+                  </p>
                 </div>
               )}
             </div>

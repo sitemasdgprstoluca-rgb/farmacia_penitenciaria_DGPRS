@@ -2705,21 +2705,61 @@ const Productos = () => {
                 </div>
               </div>
 
-              {/* Campo de imagen del producto - DESHABILITADO */}
-              <div className="section-elevated opacity-60">
-                <label className="label-elevated !text-gray-400">Imagen del producto</label>
-                <div className="mt-1 flex items-center gap-4 cursor-not-allowed">
-                  <div className="flex items-center gap-2 rounded-xl border-2 border-dashed border-gray-300 px-4 py-3 bg-gray-50/50">
-                    <FaFileUpload className="text-gray-400" />
-                    <span className="text-sm text-gray-400">Seleccionar imagen</span>
-                  </div>
+              {/* Campo de imagen del producto */}
+              <div className="section-elevated">
+                <label className="label-elevated">Imagen del producto</label>
+                <div className="mt-1 flex items-center gap-4">
+                  {formData.imagenPreview && (
+                    <div className="relative">
+                      <img
+                        src={formData.imagenPreview}
+                        alt="Preview"
+                        className="h-20 w-20 object-cover rounded-lg border-2 border-gray-200"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, imagen: null, imagenPreview: null }))}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 text-xs"
+                        title="Quitar imagen"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+                  <label className="flex items-center gap-2 rounded-xl border-2 border-dashed border-primary px-4 py-3 bg-primary/5 hover:bg-primary/10 cursor-pointer transition-colors">
+                    <FaFileUpload className="text-primary" />
+                    <span className="text-sm text-primary font-medium">
+                      {formData.imagenPreview ? 'Cambiar imagen' : 'Seleccionar imagen'}
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                          if (file.size > 5 * 1024 * 1024) {
+                            toast.error('La imagen no puede superar los 5MB');
+                            return;
+                          }
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            setFormData(prev => ({
+                              ...prev,
+                              imagen: file,
+                              imagenPreview: reader.result
+                            }));
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                      disabled={savingProduct}
+                    />
+                  </label>
                 </div>
-                <div className="mt-2 p-2.5 bg-amber-50 border border-amber-200 rounded-xl">
-                  <p className="text-[11px] text-amber-700 flex items-center gap-1">
-                    <span className="font-bold">⏳ Funcionalidad pendiente:</span>
-                    En espera de mejora de almacenamiento para esta funcionalidad.
-                  </p>
-                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Formatos: JPG, PNG, GIF, WebP • Máximo 5MB
+                </p>
               </div>
 
               <div className="flex justify-end gap-3 pt-3 border-t border-gray-100">

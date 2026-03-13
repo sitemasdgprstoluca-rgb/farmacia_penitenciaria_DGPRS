@@ -2946,6 +2946,168 @@ class ProductoImagenViewSet(viewsets.ModelViewSet):
         imagen.save()
         
         return Response({'mensaje': 'Imagen establecida como principal'})
+    
+    @action(detail=False, methods=['post'], url_path='subir-imagen')
+    def subir_imagen(self, request):
+        """
+        Subir imagen a Supabase Storage y crear registro en ProductoImagen.
+        Endpoint: POST /api/productos-imagenes/subir-imagen/
+        Body: producto_id, imagen (file), es_principal (bool), descripcion
+        """
+        try:
+            from inventario.services.storage_service import StorageService
+            from core.models import ProductoImagen, Producto
+            
+            # Validar datos
+            producto_id = request.data.get('producto_id')
+            imagen_file = request.FILES.get('imagen')
+            es_principal = request.data.get('es_principal', 'false').lower() == 'true'
+            descripcion = request.data.get('descripcion', '')
+            
+            if not producto_id or not imagen_file:
+                return Response(
+                    {'error': 'Se requiere producto_id e imagen'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Verificar que el producto existe
+            try:
+                producto = Producto.objects.get(id=producto_id)
+            except Producto.DoesNotExist:
+                return Response(
+                    {'error': 'Producto no encontrado'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Validar tipo de archivo (imágenes)
+            allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
+            if imagen_file.content_type not in allowed_types:
+                return Response(
+                    {'error': f'Tipo de archivo no permitido. Solo: {", ".join(allowed_types)}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Validar tamaño (máximo 5MB)
+            if imagen_file.size > 5 * 1024 * 1024:
+                return Response(
+                    {'error': 'El archivo no puede exceder 5MB'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Crear servicio de storage para bucket de imágenes de productos
+            storage = StorageService(bucket='productos-imagenes')
+            
+            # Generar ruta única para el archivo
+            fecha_str = datetime.now().strftime('%Y/%m')
+            ext = imagen_file.name.split('.')[-1]
+            file_path = f'{fecha_str}/producto_{producto.clave}_{imagen_file.name}'
+            
+            # Subir archivo
+            resultado = storage.upload_file(
+                file_content=imagen_file.read(),
+                file_path=file_path,
+                content_type=imagen_file.content_type,
+                metadata={
+                    'producto_id': producto.id,
+                    'producto_clave': producto.clave,
+                    'usuario': request.user.username
+                }
+            )
+            
+            if not resultado['success']:
+                return Response(
+                    {'error': resultado.get('error', 'Error al subir el archivo')},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            
+            # Si es principal, quitar es_principal de otras imágenes
+            if es_principal:
+                ProductoImagen.objects.filter(producto_id=producto_id).update(es_principal=False)
+            
+            # Obtener siguiente orden
+            max_orden = ProductoImagen.objects.filter(producto_id=producto_id).aggregate(
+                max_orden=Coalesce(Sum('orden'), 0)
+            )['max_orden']
+            
+            # Crear registro de imagen
+            producto_imagen = ProductoImagen.objects.create(
+                producto_id=producto_id,
+                imagen=resultado['url'],
+                es_principal=es_principal,
+                orden=max_orden + 1,
+                descripcion=descripcion
+            )
+            
+            from core.serializers import ProductoImagenSerializer
+            serializer = ProductoImagenSerializer(producto_imagen)
+            
+            return Response({
+                'message': 'Imagen subida exitosamente',
+                'imagen': serializer.data
+            })
+            
+        except ImportError as e:
+            logger.error(f"Error de importación en subir_imagen: {e}", exc_info=True)
+            return Response(
+                {'error': 'Servicio de almacenamiento no disponible'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        except Exception as e:
+            logger.error(f"Error al subir imagen de producto: {e}", exc_info=True)
+            return Response(
+              {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+           )
+    
+    @action(detail=True, methods=['delete'], url_path='eliminar-imagen')
+    def eliminar_imagen(self, request, pk=None):
+        """
+        Eliminar imagen de Supabase Storage y registro en BD.
+        Endpoint: DELETE /api/productos-imagenes/{id}/eliminar-imagen/
+        """
+        try:
+            from inventario.services.storage_service import StorageService
+            from core.models import ProductoImagen
+            
+            producto_imagen = self.get_object()
+            
+            if not producto_imagen.imagen:
+                return Response(
+                    {'error': 'No hay imagen para eliminar'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Extraer path del archivo desde la URL
+            try:
+                path_parts = producto_imagen.imagen.split('/')
+                file_path = '/'.join(path_parts[-2:])  # año/mes/archivo.ext
+                
+                storage = StorageService(bucket='productos-imagenes')
+                storage.delete_file(file_path)
+                
+                logger.info(f"Imagen eliminada de Storage: {file_path}")
+            except Exception as e:
+                logger.warning(f"No se pudo eliminar de Storage: {e}")
+            
+            # Eliminar registro de BD
+            producto_imagen.delete()
+            
+            return Response({
+                'message': 'Imagen eliminada exitosamente'
+            })
+            
+        except ImportError as e:
+            logger.error(f"Error de importación en eliminar_imagen: {e}", exc_info=True)
+            return Response(
+                {'error': 'Servicio de almacenamiento no disponible'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        except Exception as e:
+            logger.error(f"Error al eliminar imagen de producto: {e}", exc_info=True)
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 # =============================================================================
@@ -2982,6 +3144,163 @@ class LoteDocumentoViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
         logger.info(f"Documento de lote creado por {self.request.user.username}")
+    
+    @action(detail=False, methods=['post'], url_path='subir-documento')
+    def subir_documento(self, request):
+        """
+        Subir documento PDF a Supabase Storage y crear registro en LoteDocumento.
+        Endpoint: POST /api/lotes-documentos/subir-documento/
+        Body: lote_id, archivo (file), tipo_documento, numero_documento, fecha_documento, notas
+        """
+        try:
+            from inventario.services.storage_service import StorageService
+            from core.models import LoteDocumento, Lote
+            
+            # Validar datos
+            lote_id = request.data.get('lote_id')
+            archivo_file = request.FILES.get('archivo')
+            tipo_documento = request.data.get('tipo_documento', 'otro')
+            numero_documento = request.data.get('numero_documento', '')
+            fecha_documento = request.data.get('fecha_documento', None)
+            notas = request.data.get('notas', '')
+            
+            if not lote_id or not archivo_file:
+                return Response(
+                    {'error': 'Se requiere lote_id y archivo'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Verificar que el lote existe
+            try:
+                lote = Lote.objects.get(id=lote_id)
+            except Lote.DoesNotExist:
+                return Response(
+                    {'error': 'Lote no encontrado'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Validar tipo de archivo (solo PDFs)
+            if archivo_file.content_type not in ['application/pdf']:
+                return Response(
+                    {'error': 'Solo se permiten archivos PDF'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Validar tamaño (máximo 20MB)
+            if archivo_file.size > 20 * 1024 * 1024:
+                return Response(
+                    {'error': 'El archivo no puede exceder 20MB'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Crear servicio de storage
+            storage = StorageService(bucket='lotes-documentos')
+            
+            # Generar ruta única
+            fecha_str = datetime.now().strftime('%Y/%m')
+            file_path = f'{fecha_str}/lote_{lote.numero_lote}_{tipo_documento}_{archivo_file.name}'
+            
+            # Subir archivo
+            resultado = storage.upload_file(
+                file_content=archivo_file.read(),
+                file_path=file_path,
+                content_type='application/pdf',
+                metadata={
+                    'lote_id': lote.id,
+                    'lote_numero': lote.numero_lote,
+                    'tipo_documento': tipo_documento,
+                    'usuario': request.user.username
+                }
+            )
+            
+            if not resultado['success']:
+                return Response(
+                    {'error': resultado.get('error', 'Error al subir el archivo')},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            
+            # Crear registro de documento
+            lote_documento = LoteDocumento.objects.create(
+                lote_id=lote_id,
+                tipo_documento=tipo_documento,
+                numero_documento=numero_documento,
+                archivo=resultado['url'],
+                nombre_archivo=archivo_file.name,
+                fecha_documento=fecha_documento,
+                notas=notas,
+                created_by=request.user
+            )
+            
+            from core.serializers import LoteDocumentoSerializer
+            serializer = LoteDocumentoSerializer(lote_documento)
+            
+            return Response({
+                'message': 'Documento subido exitosamente',
+                'documento': serializer.data
+            })
+            
+        except ImportError as e:
+            logger.error(f"Error de importación en subir_documento: {e}", exc_info=True)
+            return Response(
+                {'error': 'Servicio de almacenamiento no disponible'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        except Exception as e:
+            logger.error(f"Error al subir documento de lote: {e}", exc_info=True)
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=True, methods=['delete'], url_path='eliminar-documento')
+    def eliminar_documento(self, request, pk=None):
+        """
+        Eliminar documento de Supabase Storage y registro en BD.
+        Endpoint: DELETE /api/lotes-documentos/{id}/eliminar-documento/
+        """
+        try:
+            from inventario.services.storage_service import StorageService
+            from core.models import LoteDocumento
+            
+            lote_documento = self.get_object()
+            
+            if not lote_documento.archivo:
+                return Response(
+                    {'error': 'No hay archivo para eliminar'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Extraer path del archivo desde la URL
+            try:
+                path_parts = lote_documento.archivo.split('/')
+                file_path = '/'.join(path_parts[-2:])  # año/mes/archivo.pdf
+                
+                storage = StorageService(bucket='lotes-documentos')
+                storage.delete_file(file_path)
+                
+                logger.info(f"Documento eliminado de Storage: {file_path}")
+            except Exception as e:
+                logger.warning(f"No se pudo eliminar de Storage: {e}")
+            
+            # Eliminar registro de BD
+            lote_documento.delete()
+            
+            return Response({
+                'message': 'Documento eliminado exitosamente'
+            })
+            
+        except ImportError as e:
+            logger.error(f"Error de importación en eliminar_documento: {e}", exc_info=True)
+            return Response(
+                {'error': 'Servicio de almacenamiento no disponible'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        except Exception as e:
+            logger.error(f"Error al eliminar documento de lote: {e}", exc_info=True)
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 # =============================================================================
