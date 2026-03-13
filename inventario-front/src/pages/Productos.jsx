@@ -365,6 +365,8 @@ const DEFAULT_FORM = {
   activo: true,
   imagen: null,
   imagenPreview: null,
+  unidad_minima: 'pieza',
+  factor_conversion: 1,
 };
 
 // ISS-003 FIX (audit27): Constantes removidas - ahora se obtienen del hook useCatalogos
@@ -424,6 +426,8 @@ const LABELS_CAMPO = {
   marca: 'Marca',
   laboratorio: 'Laboratorio',
   fabricante: 'Fabricante',
+  unidad_minima: 'Unidad mínima dispensación',
+  factor_conversion: 'Factor de conversión',
 };
 
 const formatearValorAudit = (campo, valor) => {
@@ -948,6 +952,8 @@ const Productos = () => {
         activo: producto.activo ?? true,
         imagen: null,
         imagenPreview: producto.imagen || null,
+        unidad_minima: producto.unidad_minima || 'pieza',
+        factor_conversion: producto.factor_conversion ?? 1,
       });
     } else {
       setEditingProduct(null);
@@ -1104,6 +1110,8 @@ const Productos = () => {
         requiere_receta: formData.requiere_receta,
         es_controlado: formData.es_controlado,
         activo: formData.activo,
+        unidad_minima: formData.unidad_minima || 'pieza',
+        factor_conversion: parseInt(formData.factor_conversion, 10) || 1,
       };
       
       // Campos protegidos: solo incluir si NO tiene lotes
@@ -2014,14 +2022,17 @@ const Productos = () => {
 
                     )}
 
-                    <button
-                      type="button"
-                      title={producto.imagen ? 'Ver / cambiar imagen' : 'Subir imagen'}
-                      onClick={() => abrirImagenModal(producto)}
-                      className={`${producto.imagen ? 'text-emerald-600 hover:text-emerald-800' : 'text-gray-400 hover:text-gray-600'}`}
-                    >
-                      <FaCamera />
-                    </button>
+                    {/* ISS-FIX: Solo mostrar botón cámara si tiene imagen (todos pueden ver) o puede editar (solo farmacia/admin pueden subir) */}
+                    {(producto.imagen || puede.editar) && (
+                      <button
+                        type="button"
+                        title={puede.editar ? (producto.imagen ? 'Ver / cambiar imagen' : 'Subir imagen') : 'Ver imagen'}
+                        onClick={() => abrirImagenModal(producto)}
+                        className={`${producto.imagen ? 'text-emerald-600 hover:text-emerald-800' : 'text-gray-400 hover:text-gray-600'}`}
+                      >
+                        <FaCamera />
+                      </button>
+                    )}
 
                     {puede.cambiarEstado && (
 
@@ -2670,6 +2681,48 @@ const Productos = () => {
                 </div>
               </div>
 
+              {/* Dispensación: Unidad Mínima y Factor de Conversión */}
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 mt-4">
+                <div>
+                  <label className="label-elevated">Unidad mínima de dispensación</label>
+                  <select
+                    value={formData.unidad_minima}
+                    onChange={(e) => setFormData({ ...formData, unidad_minima: e.target.value })}
+                    className="input-elevated"
+                  >
+                    <option value="pieza">Pieza</option>
+                    <option value="tableta">Tableta</option>
+                    <option value="cápsula">Cápsula</option>
+                    <option value="mililitro">Mililitro</option>
+                    <option value="sobre">Sobre</option>
+                    <option value="ampolleta">Ampolleta</option>
+                    <option value="gramo">Gramo</option>
+                    <option value="dosis">Dosis</option>
+                    <option value="parche">Parche</option>
+                    <option value="supositorio">Supositorio</option>
+                    <option value="óvulo">Óvulo</option>
+                    <option value="gota">Gota</option>
+                  </select>
+                  <p className="text-[11px] text-gray-500 mt-1">La unidad más pequeña que se entrega al paciente</p>
+                </div>
+                <div>
+                  <label className="label-elevated">Factor de conversión</label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={formData.factor_conversion}
+                    onChange={(e) => setFormData({ ...formData, factor_conversion: e.target.value })}
+                    className="input-elevated"
+                  />
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    {parseInt(formData.factor_conversion) > 1
+                      ? `1 ${formData.presentacion || 'presentación'} = ${formData.factor_conversion} ${formData.unidad_minima}(s)`
+                      : 'Cuántas unidades mínimas tiene 1 presentación (ej: 1 caja = 22 tabletas → 22)'}
+                  </p>
+                </div>
+              </div>
+
               {/* Medicamento Controlado - OBLIGATORIO */}
               <div className="mt-4">
                 <label className="label-elevated">Medicamento Controlado <span className="text-red-500">*</span></label>
@@ -3259,23 +3312,31 @@ const Productos = () => {
               </div>
             )}
 
-            {/* Botón para subir/cambiar imagen */}
-            <label className="flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-primary px-4 py-3 bg-primary/5 hover:bg-primary/10 cursor-pointer transition-colors w-full">
-              <FaCamera className="text-primary" />
-              <span className="text-sm text-primary font-medium">
-                {imagenUploading ? 'Subiendo...' : (imagenModalProducto.imagen ? 'Cambiar imagen' : 'Subir imagen')}
-              </span>
-              <input
-                type="file"
-                accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
-                className="hidden"
-                onChange={handleSubirImagenModal}
-                disabled={imagenUploading}
-              />
-            </label>
-            <p className="text-xs text-gray-400 mt-2 text-center">
-              JPG, PNG, GIF, WebP - Max 5MB
-            </p>
+            {/* Botón para subir/cambiar imagen - Solo farmacia/admin pueden modificar */}
+            {puede.editar ? (
+              <>
+                <label className="flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-primary px-4 py-3 bg-primary/5 hover:bg-primary/10 cursor-pointer transition-colors w-full">
+                  <FaCamera className="text-primary" />
+                  <span className="text-sm text-primary font-medium">
+                    {imagenUploading ? 'Subiendo...' : (imagenModalProducto.imagen ? 'Cambiar imagen' : 'Subir imagen')}
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                    className="hidden"
+                    onChange={handleSubirImagenModal}
+                    disabled={imagenUploading}
+                  />
+                </label>
+                <p className="text-xs text-gray-400 mt-2 text-center">
+                  JPG, PNG, GIF, WebP - Max 5MB
+                </p>
+              </>
+            ) : (
+              <p className="text-xs text-gray-500 mt-2 text-center italic">
+                Solo el personal de farmacia puede modificar las imágenes
+              </p>
+            )}
           </div>
         </div>
       )}

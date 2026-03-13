@@ -624,6 +624,15 @@ class Producto(models.Model):
     es_controlado = models.BooleanField(default=False)
     activo = models.BooleanField(default=True)
     imagen = models.CharField(max_length=255, blank=True, null=True)
+    # Dispensación por unidad mínima
+    unidad_minima = models.CharField(
+        max_length=50, default='pieza',
+        help_text='Unidad real de dispensación: tableta, capsula, ml, ampolleta, dosis, sobre, pieza'
+    )
+    factor_conversion = models.IntegerField(
+        default=1,
+        help_text='Cuántas unidades mínimas por presentación. Ej: caja de 22 tabletas = 22'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -1101,6 +1110,11 @@ class Lote(models.Model):
         db_column='created_by_id',
     )
     activo = models.BooleanField(default=True)
+    # Presentaciones originales compradas (ej: 3 cajas)
+    cantidad_presentaciones_inicial = models.IntegerField(
+        null=True, blank=True,
+        help_text='Unidades en presentación comercial compradas. Ej: 3 cajas'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -3908,6 +3922,10 @@ class DetalleDispensacion(models.Model):
     
     # Observaciones
     notas = models.TextField(blank=True, null=True)
+    
+    # Unidad en que se entregó al paciente
+    unidad_dispensada = models.CharField(max_length=50, blank=True, null=True,
+        help_text='Unidad real en que se entregó: tableta, capsula, ml, etc.')
     
     # Auditoría
     created_at = models.DateTimeField(auto_now_add=True)

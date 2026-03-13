@@ -83,7 +83,6 @@ def reporte_medicamentos_controlados(request):
         no_controlados = productos.filter(es_controlado=False)
 
         def _build_producto_row(prod):
-            from django.db.models import Avg, Min
             
             lotes_q = prod.lotes.filter(activo=True, cantidad_actual__gt=0)
             if filtrar_por_centro and user_centro:
@@ -378,6 +377,93 @@ def reporte_auditoria_productos(request):
     Auditoría de cambios en productos - enfocado en campo es_controlado.
     Filtros: ?fecha_inicio=YYYY-MM-DD&fecha_fin=YYYY-MM-DD&producto_id=N&campo=es_controlado&formato=json|excel|pdf
     """
+    # Mapeo de nombres técnicos → legibles para personas no técnicas
+    CAMPO_LABELS = {
+        'nombre': 'Nombre del producto',
+        'nombre_comercial': 'Nombre comercial',
+        'clave': 'Clave del producto',
+        'descripcion': 'Descripción',
+        'unidad_medida': 'Unidad de medida',
+        'categoria': 'Categoría',
+        'presentacion': 'Presentación',
+        'sustancia_activa': 'Sustancia activa',
+        'concentracion': 'Concentración',
+        'via_administracion': 'Vía de administración',
+        'stock_minimo': 'Stock mínimo',
+        'stock_actual': 'Stock actual',
+        'precio_unitario': 'Precio unitario',
+        'es_controlado': 'Medicamento controlado',
+        'requiere_receta': 'Requiere receta',
+        'activo': 'Estado del producto',
+        'tiene_lotes': 'Tiene lotes registrados',
+        'tiene_movimientos': 'Tiene movimientos',
+        'marca': 'Marca',
+        'laboratorio': 'Laboratorio',
+        'created_at': 'Fecha de creación',
+        'updated_at': 'Última actualización',
+        'unidad_minima': 'Unidad mínima de dispensación',
+        'factor_conversion': 'Factor de conversión',
+        'imagen': 'Imagen del producto',
+    }
+    VALOR_LABELS = {
+        True: 'Sí',
+        False: 'No',
+        'true': 'Sí',
+        'false': 'No',
+        'medicamento': 'Medicamento',
+        'material_curacion': 'Material de curación',
+        'insumo': 'Insumo',
+        'equipo': 'Equipo',
+        'otro': 'Otro',
+    }
+    ROL_LABELS = {
+        'farmacia': 'Farmacia',
+        'admin': 'Administrador',
+        'admin_sistema': 'Administrador del Sistema',
+        'medico': 'Médico',
+        'director': 'Director',
+        'centro': 'Centro',
+        'superuser': 'Super Administrador',
+    }
+
+    # Campos internos que no aportan al usuario final
+    CAMPOS_OCULTOS = {
+        'id', 'created_by', 'updated_by', 'created_by_id', 'updated_by_id',
+        'modified_by', 'modified_by_id',
+    }
+
+    def humanizar_valor(val):
+        """Convierte un valor técnico a texto legible."""
+        if val is None:
+            return 'Sin dato'
+        if isinstance(val, bool) or val in ('true', 'false', True, False):
+            return VALOR_LABELS.get(val, str(val))
+        if isinstance(val, str) and val in VALOR_LABELS:
+            return VALOR_LABELS[val]
+        if isinstance(val, str) and 'T' in val and len(val) > 19:
+            # ISO datetime → formato legible
+            try:
+                from datetime import datetime as dt
+                parsed = dt.fromisoformat(val.replace('+00:00', '+00:00').split('+')[0])
+                return parsed.strftime('%d/%m/%Y %H:%M')
+            except Exception:
+                pass
+        return str(val)
+
+    def generar_narrativa(cambios_humanizados):
+        """Genera una descripción narrativa de los cambios."""
+        if not cambios_humanizados:
+            return 'Sin cambios detectados'
+        partes = []
+        for ch in cambios_humanizados:
+            campo = ch['campo_label']
+            anterior = ch['valor_anterior_label']
+            nuevo = ch['valor_nuevo_label']
+            if anterior == 'Sin dato':
+                partes.append(f'Se estableció {campo} como "{nuevo}"')
+            else:
+                partes.append(f'Se cambió {campo} de "{anterior}" a "{nuevo}"')
+        return '. '.join(partes) + '.'
     try:
         user = request.user
         if not has_global_read_access(user):
@@ -411,6 +497,20 @@ def reporte_auditoria_productos(request):
         if producto_id:
             logs = logs.filter(objeto_id=str(producto_id))
 
+        # Pre-cargar nombres de productos para resolución rápida
+        producto_ids = set()
+        for log in logs[:500]:
+            if log.objeto_id:
+                try:
+                    producto_ids.add(int(log.objeto_id))
+                except (ValueError, TypeError):
+                    pass
+        producto_nombres = {}
+        if producto_ids:
+            from core.models import Producto
+            for p in Producto.objects.filter(id__in=producto_ids).only('id', 'nombre', 'clave'):
+                producto_nombres[str(p.id)] = f"{p.nombre} ({p.clave})" if p.clave else p.nombre
+
         resultados = []
         for log in logs[:500]:
             datos_ant = log.datos_anteriores or {}
@@ -418,20 +518,31 @@ def reporte_auditoria_productos(request):
 
             # Detectar cambios campo por campo
             cambios = []
+            cambios_humanizados = []
             campos_a_revisar = set(list(datos_ant.keys()) + list(datos_new.keys()))
             for c in campos_a_revisar:
+                if c in CAMPOS_OCULTOS:
+                    continue
                 val_ant = datos_ant.get(c)
                 val_new = datos_new.get(c)
                 if val_ant != val_new and val_new is not None:
-                    cambios.append({
+                    cambio = {
                         'campo': c,
                         'valor_anterior': val_ant,
                         'valor_nuevo': val_new,
+                    }
+                    cambios.append(cambio)
+                    cambios_humanizados.append({
+                        'campo': c,
+                        'campo_label': CAMPO_LABELS.get(c, c.replace('_', ' ').capitalize()),
+                        'valor_anterior_label': humanizar_valor(val_ant),
+                        'valor_nuevo_label': humanizar_valor(val_new),
                     })
 
             # Si se pide filtrar por un campo específico, solo incluir si ese campo cambió
             if campo:
                 cambios = [ch for ch in cambios if ch['campo'] == campo]
+                cambios_humanizados = [ch for ch in cambios_humanizados if ch['campo'] == campo]
                 if not cambios:
                     continue
 
@@ -439,14 +550,28 @@ def reporte_auditoria_productos(request):
             if log.usuario:
                 usuario_nombre = log.usuario.get_full_name() or log.usuario.username
 
+            # Formato de fecha legible
+            fecha_legible = log.timestamp.strftime('%d/%m/%Y %H:%M') if log.timestamp else ''
+
+            # Nombre del producto
+            producto_nombre = producto_nombres.get(log.objeto_id, f'Producto #{log.objeto_id}')
+
+            # Rol legible
+            rol_legible = ROL_LABELS.get(log.rol_usuario, log.rol_usuario or '')
+
             resultados.append({
                 'id': log.id,
                 'fecha': log.timestamp.isoformat(),
+                'fecha_legible': fecha_legible,
                 'usuario': usuario_nombre,
                 'rol': log.rol_usuario or '',
+                'rol_legible': rol_legible,
                 'producto_id': log.objeto_id,
+                'producto_nombre': producto_nombre,
                 'accion': log.accion,
                 'cambios': cambios,
+                'cambios_humanizados': cambios_humanizados,
+                'descripcion': generar_narrativa(cambios_humanizados),
                 'ip': log.ip_address or '',
             })
 
@@ -495,7 +620,7 @@ def reporte_auditoria_productos(request):
         c2.alignment = Alignment(horizontal='center')
 
         ws.append([])
-        headers = ['#', 'Fecha', 'Usuario', 'Rol', 'Producto ID', 'Acción', 'Cambios']
+        headers = ['#', 'Fecha', 'Usuario', 'Rol', 'Producto', 'Descripción del cambio']
         ws.append(headers)
 
         header_fill = PatternFill(start_color='632842', end_color='632842', fill_type='solid')
@@ -506,21 +631,16 @@ def reporte_auditoria_productos(request):
             cell.alignment = Alignment(horizontal='center', vertical='center')
 
         for idx, item in enumerate(resultados, 1):
-            cambios_str = '; '.join(
-                f"{ch['campo']}: {ch.get('valor_anterior', '—')} → {ch['valor_nuevo']}"
-                for ch in item['cambios']
-            )
             ws.append([
                 idx,
-                item['fecha'][:19].replace('T', ' '),
+                item.get('fecha_legible', item['fecha'][:19].replace('T', ' ')),
                 item['usuario'],
-                item['rol'],
-                item['producto_id'],
-                item['accion'],
-                cambios_str[:100],
+                item.get('rol_legible', item['rol']),
+                item.get('producto_nombre', item['producto_id']),
+                item.get('descripcion', ''),
             ])
 
-        for col, width in zip('ABCDEFG', [6, 22, 20, 16, 14, 16, 60]):
+        for col, width in zip('ABCDEF', [6, 20, 22, 18, 30, 70]):
             ws.column_dimensions[col].width = width
 
         excel_buffer = BytesIO()

@@ -196,12 +196,12 @@ PERMISOS_POR_ROL = {
         'devolverRequisicion': True,
         # Permisos de notificaciones
         'gestionarNotificaciones': False,
-        # PERMISOS DE DISPENSACIONES - Admin Centro solo VE (auditoría)
+        # PERMISOS DE DISPENSACIONES - Admin Centro puede VER y cancelar (supervisión)
         'verDispensaciones': True,
         'crearDispensacion': False,
         'editarDispensacion': False,
         'dispensar': False,
-        'cancelarDispensacion': False,
+        'cancelarDispensacion': True,
     },
     # FLUJO V2: Rol de Director del Centro (segunda autorización)
     'DIRECTOR_CENTRO': {
@@ -238,12 +238,12 @@ PERMISOS_POR_ROL = {
         'devolverRequisicion': True,
         # Permisos de notificaciones
         'gestionarNotificaciones': False,
-        # PERMISOS DE DISPENSACIONES - Director solo VE (auditoría)
+        # PERMISOS DE DISPENSACIONES - Director puede VER y cancelar (supervisión)
         'verDispensaciones': True,
         'crearDispensacion': False,
         'editarDispensacion': False,
         'dispensar': False,
-        'cancelarDispensacion': False,
+        'cancelarDispensacion': True,
     },
     'CENTRO': {
         'verDashboard': True,
@@ -279,12 +279,12 @@ PERMISOS_POR_ROL = {
         'devolverRequisicion': False,
         # Permisos de notificaciones
         'gestionarNotificaciones': False,
-        # PERMISOS DE DISPENSACIONES - Centro genérico solo VE (auditoría)
+        # PERMISOS DE DISPENSACIONES - Centro puede operar en su centro
         'verDispensaciones': True,
-        'crearDispensacion': False,
-        'editarDispensacion': False,
-        'dispensar': False,
-        'cancelarDispensacion': False,
+        'crearDispensacion': True,
+        'editarDispensacion': True,
+        'dispensar': True,
+        'cancelarDispensacion': True,
     },
     'VISTA': {
         'verDashboard': True,
@@ -765,6 +765,7 @@ class ProductoSerializer(serializers.ModelSerializer):
             'categoria', 'sustancia_activa', 'presentacion', 'concentracion',
             'via_administracion', 'requiere_receta', 'es_controlado',
             'stock_minimo', 'stock_actual', 'activo', 'imagen',
+            'unidad_minima', 'factor_conversion',  # Dispensación por unidad mínima
             'lotes_activos', 'marca', 'tiene_lotes', 'tiene_movimientos',
             # ISS-PROD-VAR
             'codigo_base', 'es_variante_flag', 'variantes_asociadas',
@@ -785,6 +786,8 @@ class ProductoSerializer(serializers.ModelSerializer):
             'es_controlado': {'required': True},
             'descripcion': {'required': False, 'allow_null': True, 'allow_blank': True},
             'nombre_comercial': {'required': False, 'allow_null': True, 'allow_blank': True},
+            'unidad_minima': {'required': False},
+            'factor_conversion': {'required': False, 'min_value': 1},
         }
     
     def get_unidad_base(self, obj):
@@ -1194,6 +1197,9 @@ class LoteSerializer(serializers.ModelSerializer):
     total_parcialidades = serializers.SerializerMethodField(help_text='Suma de cantidades de todas las parcialidades')
     num_entregas = serializers.SerializerMethodField(help_text='Número de entregas parciales registradas')
     ultima_fecha_entrega = serializers.SerializerMethodField(help_text='Fecha de la última entrega registrada')
+    # Dispensación por unidad mínima: info del producto para conversión
+    unidad_minima = serializers.CharField(source='producto.unidad_minima', read_only=True, default='pieza')
+    factor_conversion = serializers.IntegerField(source='producto.factor_conversion', read_only=True, default=1)
     
     class Meta:
         model = Lote
@@ -1217,6 +1223,8 @@ class LoteSerializer(serializers.ModelSerializer):
             'documentos', 'tiene_documentos', 'tiene_movimientos',
             # Parcialidades (historial de entregas)
             'parcialidades', 'total_parcialidades', 'num_entregas', 'ultima_fecha_entrega',
+            # Dispensación: conversión de unidades
+            'unidad_minima', 'factor_conversion',
             'created_at', 'updated_at',
             # AUDITORÍA
             'creado_por_nombre', 'modificado_por_nombre',
@@ -3688,6 +3696,9 @@ class DetalleDispensacionSerializer(serializers.ModelSerializer):
     lote_caducidad = serializers.SerializerMethodField()
     completo = serializers.BooleanField(read_only=True)
     producto_sustituto_nombre = serializers.SerializerMethodField()
+    unidad_minima = serializers.SerializerMethodField()
+    factor_conversion = serializers.SerializerMethodField()
+    presentacion = serializers.SerializerMethodField()
     
     class Meta:
         model = DetalleDispensacion
@@ -3697,7 +3708,8 @@ class DetalleDispensacionSerializer(serializers.ModelSerializer):
             'cantidad_prescrita', 'cantidad_dispensada', 'completo',
             'dosis', 'frecuencia', 'duracion_tratamiento', 'via_administracion', 'horarios',
             'estado', 'producto_sustituto', 'producto_sustituto_nombre', 'motivo_sustitucion',
-            'notas', 'created_at'
+            'notas', 'unidad_dispensada', 'unidad_minima', 'factor_conversion', 'presentacion',
+            'created_at'
         ]
         read_only_fields = ['id', 'created_at']
     
@@ -3715,6 +3727,15 @@ class DetalleDispensacionSerializer(serializers.ModelSerializer):
     
     def get_producto_sustituto_nombre(self, obj):
         return obj.producto_sustituto.nombre if obj.producto_sustituto else None
+    
+    def get_unidad_minima(self, obj):
+        return getattr(obj.producto, 'unidad_minima', 'pieza') if obj.producto else None
+    
+    def get_factor_conversion(self, obj):
+        return getattr(obj.producto, 'factor_conversion', 1) if obj.producto else 1
+    
+    def get_presentacion(self, obj):
+        return obj.producto.presentacion if obj.producto else None
     
     def validate_cantidad_prescrita(self, value):
         if value <= 0:

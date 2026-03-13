@@ -180,13 +180,23 @@ const RequisicionDetalle = () => {
   }, [id, cargarRequisicion]);
 
   // Detectar modo edición desde URL y activar cuando requisición carga
-  // SEGURIDAD: Validar permisos antes de activar modo edición
+  // SEGURIDAD: Validar permisos Y que sea el solicitante antes de activar modo edición
   useEffect(() => {
     if (modoEditarURL && requisicion && ['borrador', 'devuelta'].includes(requisicion.estado)) {
       // Verificar permiso antes de activar modo edición
       if (!permisos?.editarRequisicion) {
         toast.error('No tienes permisos para editar requisiciones');
-        // Limpiar parámetro de URL
+        searchParams.delete('modo');
+        setSearchParams(searchParams);
+        return;
+      }
+      // ISS-FIX: Verificar que sea el solicitante original o superuser
+      const _solId = requisicion?.solicitante_id ||
+                     requisicion?.solicitante?.id ||
+                     (typeof requisicion?.solicitante === 'number' ? requisicion.solicitante : null);
+      const _esSol = _solId && user?.id && String(_solId) === String(user?.id);
+      if (!_esSol && !user?.is_superuser) {
+        // No es el solicitante, no activar edición y limpiar URL
         searchParams.delete('modo');
         setSearchParams(searchParams);
         return;
@@ -194,7 +204,7 @@ const RequisicionDetalle = () => {
       iniciarEdicionProductos();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modoEditarURL, requisicion?.id, requisicion?.estado, permisos?.editarRequisicion]);
+  }, [modoEditarURL, requisicion?.id, requisicion?.estado, permisos?.editarRequisicion, user?.id]);
 
   // FLUJO V2: Usa helpers compartidos para colores de badge y labels
   const getEstadoBadge = (estado) => getEstadoBadgeClasses(estado);
@@ -272,9 +282,8 @@ const RequisicionDetalle = () => {
     
     // Mostrar warning si intenta exceder el stock
     if (cantidadIngresada > stockDisponible) {
-      mostrarAlerta(
-        `⚠️ No puede autorizar más de lo disponible en stock (${stockDisponible} unidades)`,
-        'warning'
+      toast.error(
+        `No puede autorizar más de lo disponible en stock (${stockDisponible} unidades)`
       );
     }
     
@@ -753,9 +762,19 @@ const RequisicionDetalle = () => {
       toast.error('No tienes permisos para editar requisiciones');
       return;
     }
-    
+
     if (!requisicion || !['borrador', 'devuelta'].includes(requisicion.estado)) {
       toast.error('Solo se puede editar en estado borrador o devuelta');
+      return;
+    }
+
+    // ISS-FIX: Solo el solicitante original (o superuser) puede editar
+    const _solId = requisicion?.solicitante_id ||
+                   requisicion?.solicitante?.id ||
+                   (typeof requisicion?.solicitante === 'number' ? requisicion.solicitante : null);
+    const _esSol = _solId && user?.id && String(_solId) === String(user?.id);
+    if (!_esSol && !user?.is_superuser) {
+      toast.error('Solo el médico solicitante puede editar esta requisición');
       return;
     }
     

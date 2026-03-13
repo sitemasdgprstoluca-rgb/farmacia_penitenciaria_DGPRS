@@ -5452,23 +5452,27 @@ def generar_reporte_auditoria_productos(resultados_data, filtros=None):
         wordWrap='CJK',
     )
 
-    data = [['Fecha', 'Usuario', 'Rol', 'Prod. ID', 'Acción', 'Cambios']]
+    data = [['Fecha', 'Responsable', 'Rol', 'Producto', 'Descripción del cambio']]
     for item in resultados_data:
-        cambios_str = '; '.join(
-            f"{ch['campo']}: {ch.get('valor_anterior', '—')} → {ch['valor_nuevo']}"
-            for ch in item.get('cambios', [])
-        )
-        fecha = str(item.get('fecha', ''))[:19].replace('T', ' ')
+        # Usar descripción narrativa humanizada si está disponible
+        descripcion = item.get('descripcion', '')
+        if not descripcion:
+            descripcion = '; '.join(
+                f"{ch['campo']}: {ch.get('valor_anterior', '—')} → {ch['valor_nuevo']}"
+                for ch in item.get('cambios', [])
+            )
+        fecha = item.get('fecha_legible', str(item.get('fecha', ''))[:19].replace('T', ' '))
+        producto = item.get('producto_nombre', str(item.get('producto_id', '')))
+        rol = item.get('rol_legible', str(item.get('rol', '')))
         data.append([
             fecha,
             Paragraph(str(item.get('usuario', '')), estilo_celda),
-            str(item.get('rol', '')),
-            str(item.get('producto_id', '')),
-            str(item.get('accion', '')),
-            Paragraph(cambios_str[:120], estilo_celda),
+            rol,
+            Paragraph(str(producto), estilo_celda),
+            Paragraph(descripcion[:200], estilo_celda),
         ])
 
-    col_widths = [1.0 * inch, 0.85 * inch, 0.7 * inch, 0.6 * inch, 0.7 * inch, 2.4 * inch]
+    col_widths = [0.9 * inch, 0.85 * inch, 0.7 * inch, 1.2 * inch, 2.6 * inch]
     table = _crear_tabla_institucional(data, col_widths, colores_tema=colores_tema)
     elements.append(table)
 

@@ -7444,6 +7444,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         })
 
     @action(detail=True, methods=['post'], url_path='autorizar-farmacia')
+    @transaction.atomic
     def autorizar_farmacia(self, request, pk=None):
         """
         FLUJO V2: Farmacia Central autoriza la requisición y asigna fecha límite de recolección.
@@ -8840,7 +8841,7 @@ def dashboard_graficas(request):
         ).values('mes').annotate(
             total=Count('id'),
             completadas=Count('id', filter=Q(estado__in=['surtida', 'entregada', 'parcial'])),
-            rechazadas=Count('id', filter=Q(estado__in=['rechazada', 'devuelta', 'cancelada'])),
+            rechazadas=Count('id', filter=Q(estado__in=['rechazada', 'devuelta', 'cancelada', 'vencida'])),
         ).order_by('mes')
         
         requisiciones_por_mes = []
@@ -8864,7 +8865,7 @@ def dashboard_graficas(request):
             ).values('mes').annotate(
                 total=Count('id'),
                 completadas=Count('id', filter=Q(estado__in=['surtida', 'entregada', 'parcial'])),
-                rechazadas=Count('id', filter=Q(estado__in=['rechazada', 'devuelta', 'cancelada'])),
+                rechazadas=Count('id', filter=Q(estado__in=['rechazada', 'devuelta', 'cancelada', 'vencida'])),
             ).order_by('mes')
             for item in req_all_qs:
                 if item['mes']:
@@ -8881,7 +8882,7 @@ def dashboard_graficas(request):
         total_req = requisiciones_qs.count()
         completadas_total = requisiciones_qs.filter(estado__in=['surtida', 'entregada', 'parcial']).count()
         urgentes_total = requisiciones_qs.filter(es_urgente=True).count()
-        rechazadas_total = requisiciones_qs.filter(estado__in=['rechazada', 'devuelta']).count()
+        rechazadas_total = requisiciones_qs.filter(estado__in=['rechazada', 'devuelta', 'cancelada', 'vencida']).count()
         en_proceso = requisiciones_qs.filter(estado__in=[
             'borrador', 'pendiente_admin', 'pendiente_director', 'enviada', 
             'en_revision', 'autorizada', 'en_surtido'
@@ -8905,7 +8906,7 @@ def dashboard_graficas(request):
                 total=Count('id'),
                 completadas=Count('id', filter=Q(estado__in=['surtida', 'entregada', 'parcial'])),
                 en_proceso=Count('id', filter=Q(estado__in=['borrador', 'pendiente_admin', 'pendiente_director', 'enviada', 'en_revision', 'autorizada', 'en_surtido'])),
-                rechazadas=Count('id', filter=Q(estado__in=['rechazada', 'devuelta'])),
+                rechazadas=Count('id', filter=Q(estado__in=['rechazada', 'devuelta', 'cancelada', 'vencida'])),
                 urgentes=Count('id', filter=Q(es_urgente=True)),
             )
             .order_by('-total')[:10]

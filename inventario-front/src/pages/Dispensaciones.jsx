@@ -394,6 +394,16 @@ const Dispensaciones = () => {
     }
   };
 
+  // Obtener info de conversión del producto seleccionado
+  const productoSeleccionado = productos.find(p => p.id == currentDetalle.producto);
+  const unidadMinima = productoSeleccionado?.unidad_minima || 'pieza';
+  const factorConversion = productoSeleccionado?.factor_conversion || 1;
+  const presentacionProducto = productoSeleccionado?.presentacion || productoSeleccionado?.unidad_medida || '';
+
+  // Obtener info del lote seleccionado
+  const loteSeleccionado = lotes.find(l => l.id == currentDetalle.lote);
+  const stockEnUnidadesMinimas = loteSeleccionado ? (loteSeleccionado.cantidad_actual || 0) : 0;
+
   const addDetalle = () => {
     if (!currentDetalle.producto) {
       toast.error('Seleccione un producto');
@@ -406,19 +416,22 @@ const Dispensaciones = () => {
     // ISS-SEC FIX: Validar que cantidad sea entero positivo (no decimales)
     const cantidadNum = Number(currentDetalle.cantidad_prescrita);
     if (!cantidadNum || cantidadNum <= 0 || !Number.isInteger(cantidadNum)) {
-      toast.error('Ingrese una cantidad entera válida (sin decimales)');
+      toast.error(`Ingrese una cantidad entera válida de ${unidadMinima}(s)`);
       return;
     }
     
     const producto = productos.find(p => p.id == currentDetalle.producto);
     const lote = lotes.find(l => l.id == currentDetalle.lote);
     
-    // Usar cantidad_actual en lugar de cantidad_disponible
+    // Stock en unidades mínimas (cantidad_actual ya refleja unidades mínimas)
     const stockDisponible = lote?.cantidad_actual || 0;
     if (cantidadNum > stockDisponible) {
-      toast.error(`Stock insuficiente. Disponible: ${stockDisponible}`);
+      toast.error(`Stock insuficiente. Disponible: ${stockDisponible} ${unidadMinima}(s)`);
       return;
     }
+    
+    const fc = producto?.factor_conversion || 1;
+    const um = producto?.unidad_minima || 'pieza';
     
     setFormData(prev => ({
       ...prev,
@@ -427,6 +440,9 @@ const Dispensaciones = () => {
         producto_nombre: producto?.nombre,
         lote_numero: lote?.numero_lote,
         stock_disponible: stockDisponible,
+        unidad_minima: um,
+        factor_conversion: fc,
+        unidad_dispensada: um,
       }]
     }));
     
@@ -664,6 +680,7 @@ const Dispensaciones = () => {
           frecuencia: d.frecuencia || null,
           duracion_tratamiento: d.duracion_tratamiento || null,
           notas: d.indicaciones || null,
+          unidad_dispensada: d.unidad_dispensada || d.unidad_minima || null,
         }))
       };
       
@@ -1645,19 +1662,22 @@ const Dispensaciones = () => {
                         <option value="">Seleccionar</option>
                         {lotes.map(lote => (
                           <option key={lote.id} value={lote.id}>
-                            {lote.numero_lote} (Disp: {lote.cantidad_actual || 0})
+                            {lote.numero_lote} (Disp: {lote.cantidad_actual || 0} {unidadMinima}s)
                           </option>
                         ))}
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Cantidad</label>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        Cantidad ({unidadMinima}s)
+                      </label>
                       <input
                         type="number"
                         name="cantidad_prescrita"
                         value={currentDetalle.cantidad_prescrita}
                         onChange={handleDetalleChange}
                         min="1"
+                        max={stockEnUnidadesMinimas || undefined}
                         className="w-full px-2 py-1.5 border rounded text-sm focus:ring-2 focus:ring-guinda"
                       />
                     </div>
@@ -1671,6 +1691,35 @@ const Dispensaciones = () => {
                       </button>
                     </div>
                   </div>
+                  
+                  {/* Info de conversión de unidades */}
+                  {currentDetalle.producto && factorConversion > 1 && (
+                    <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700">
+                      <strong>Conversión:</strong> 1 {presentacionProducto || 'presentación'} = {factorConversion} {unidadMinima}(s)
+                      {loteSeleccionado && (
+                        <span className="ml-3">
+                          | Stock: <strong>{stockEnUnidadesMinimas}</strong> {unidadMinima}(s)
+                          {factorConversion > 1 && (
+                            <span> ({Math.floor(stockEnUnidadesMinimas / factorConversion)} {presentacionProducto || 'presentaciones'} completas)</span>
+                          )}
+                        </span>
+                      )}
+                      {currentDetalle.cantidad_prescrita > 0 && (
+                        <span className="ml-3">
+                          | Prescrito: <strong>{currentDetalle.cantidad_prescrita}</strong> {unidadMinima}(s)
+                          {factorConversion > 1 && (
+                            <span> = {(currentDetalle.cantidad_prescrita / factorConversion).toFixed(1)} {presentacionProducto || 'presentaciones'}</span>
+                          )}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {/* Stock info simple cuando no hay conversión */}
+                  {currentDetalle.producto && factorConversion <= 1 && loteSeleccionado && (
+                    <div className="mt-2 p-2 bg-gray-100 border border-gray-200 rounded text-xs text-gray-600">
+                      Stock disponible: <strong>{stockEnUnidadesMinimas}</strong> {unidadMinima}(s)
+                    </div>
+                  )}
                   
                   <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mt-3">
                     <div>
@@ -1729,6 +1778,7 @@ const Dispensaciones = () => {
                           <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Producto</th>
                           <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Lote</th>
                           <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Cantidad</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Unidad</th>
                           <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Dosis</th>
                           <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Acciones</th>
                         </tr>
@@ -1739,6 +1789,7 @@ const Dispensaciones = () => {
                             <td className="px-3 py-2 text-sm">{det.producto_nombre}</td>
                             <td className="px-3 py-2 text-sm font-mono">{det.lote_numero}</td>
                             <td className="px-3 py-2 text-sm text-center">{det.cantidad_prescrita}</td>
+                            <td className="px-3 py-2 text-sm text-gray-600">{det.unidad_minima || 'pieza'}</td>
                             <td className="px-3 py-2 text-sm">
                               {det.dosis && <span>{det.dosis}</span>}
                               {det.frecuencia && <span className="text-gray-500"> - {det.frecuencia}</span>}
@@ -1853,6 +1904,7 @@ const Dispensaciones = () => {
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Lote</th>
                         <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Prescrita</th>
                         <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Dispensada</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Unidad</th>
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Dosis</th>
                       </tr>
                     </thead>
@@ -1863,6 +1915,7 @@ const Dispensaciones = () => {
                           <td className="px-3 py-2 text-sm font-mono">{det.lote_numero || '-'}</td>
                           <td className="px-3 py-2 text-sm text-center">{det.cantidad_prescrita}</td>
                           <td className="px-3 py-2 text-sm text-center">{det.cantidad_dispensada || 0}</td>
+                          <td className="px-3 py-2 text-sm text-gray-600">{det.unidad_dispensada || det.unidad_minima || 'pieza'}</td>
                           <td className="px-3 py-2 text-sm">
                             {det.dosis} {det.frecuencia && `- ${det.frecuencia}`}
                           </td>

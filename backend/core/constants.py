@@ -20,6 +20,22 @@ UNIDADES_MEDIDA = [
     ('GR', 'Gramo'),
 ]
 
+# Unidades mínimas de dispensación (lo que realmente se entrega al paciente)
+UNIDADES_MINIMAS = [
+    ('pieza', 'Pieza'),
+    ('tableta', 'Tableta'),
+    ('cápsula', 'Cápsula'),
+    ('mililitro', 'Mililitro'),
+    ('sobre', 'Sobre'),
+    ('ampolleta', 'Ampolleta'),
+    ('gramo', 'Gramo'),
+    ('dosis', 'Dosis'),
+    ('parche', 'Parche'),
+    ('supositorio', 'Supositorio'),
+    ('óvulo', 'Óvulo'),
+    ('gota', 'Gota'),
+]
+
 # ISS-024 FIX (audit9): Lista de códigos válidos para validación rápida
 UNIDADES_VALIDAS = {u[0] for u in UNIDADES_MEDIDA}
 

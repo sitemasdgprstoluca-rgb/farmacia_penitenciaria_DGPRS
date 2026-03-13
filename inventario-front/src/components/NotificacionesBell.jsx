@@ -169,14 +169,18 @@ const NotificacionesBell = ({ externalCount, onCountChange }) => {
 
   // Quitar notificación de la campana (dismiss local).
   // NO borra el registro del backend → sigue visible en el historial.
-  const descartarDesdeCampana = (id) => {
+  // ISS-FIX: También marcar como leída en el backend para evitar desincronización del contador
+  const descartarDesdeCampana = async (id) => {
     const notif = notificaciones.find((n) => n.id === id);
     setDismissed((prev) => new Set([...prev, id]));
-    // Si era no leída, descontar del badge
+    // Si era no leída, marcar como leída en backend y descontar del badge
     if (notif && !notif.leida) {
       const nuevoContador = Math.max(sinLeer - 1, 0);
       setSinLeer(nuevoContador);
       if (onCountChange) onCountChange(nuevoContador);
+      try {
+        await notificacionesAPI.marcarLeida(id);
+      } catch { /* silencioso */ }
     }
   };
 
@@ -194,6 +198,13 @@ const NotificacionesBell = ({ externalCount, onCountChange }) => {
       if (marcadas > 0) {
         toast.success(`${marcadas} notificaciones marcadas`);
       }
+      // ISS-FIX: Recargar contador del backend para asegurar sincronización
+      try {
+        const countRes = await notificacionesAPI.noLeidasCount();
+        const backendCount = countRes.data?.no_leidas ?? 0;
+        setSinLeer(backendCount);
+        if (onCountChange) onCountChange(backendCount);
+      } catch { /* silencioso */ }
     } catch (err) {
       toast.error(err.response?.data?.detail || "No se pudieron marcar todas");
     } finally {

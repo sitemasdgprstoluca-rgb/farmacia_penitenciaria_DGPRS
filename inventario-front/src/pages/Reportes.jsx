@@ -142,19 +142,18 @@ const COLUMNAS_CONFIG = {
     { key: 'clave', label: 'Clave', width: '80px' },
     { key: 'nombre', label: 'Nombre', width: '200px' },
     { key: 'presentacion', label: 'Presentación', width: '140px' },
-    { key: 'sustancia_activa', label: 'Sustancia Activa', width: '150px' },
-    { key: 'es_controlado', label: 'Controlado', width: '90px', align: 'center' },
-    { key: 'stock_actual', label: 'Inventario', width: '80px', align: 'right' },
-    { key: 'stock_minimo', label: 'Mínimo', width: '70px', align: 'right' },
+    { key: 'precio_promedio', label: 'Precio Prom.', width: '100px', align: 'right' },
+    { key: 'stock_actual', label: 'Stock', width: '80px', align: 'right' },
+    { key: 'lote_caducidad', label: 'Lote/Caducidad', width: '180px' },
+    { key: 'valor_total', label: 'Valor Total', width: '110px', align: 'right' },
   ],
   auditoria_productos: [
-    { key: '#', label: '#', width: '50px' },
-    { key: 'fecha', label: 'Fecha', width: '140px' },
-    { key: 'usuario', label: 'Usuario', width: '130px' },
-    { key: 'rol', label: 'Rol', width: '90px' },
-    { key: 'producto_id', label: 'Producto ID', width: '90px' },
-    { key: 'cambios_display', label: 'Cambios', width: '300px' },
-    { key: 'ip', label: 'IP', width: '110px' },
+    { key: '#', label: '#', width: '40px' },
+    { key: 'fecha_legible', label: 'Fecha', width: '120px' },
+    { key: 'usuario', label: 'Responsable', width: '140px' },
+    { key: 'rol_legible', label: 'Rol', width: '100px' },
+    { key: 'producto_nombre', label: 'Producto', width: '180px' },
+    { key: 'descripcion', label: 'Descripción del cambio', width: '400px' },
   ],
 };
 
@@ -397,10 +396,13 @@ const Reportes = () => {
         });
         datosFull = [...ctrl, ...noCtrl];
       } else if (filtros.tipo === "auditoria_productos") {
-        // Mapear resultados con cambios formateados para display
+        // Mapear resultados con datos humanizados del backend
         datosFull = (payload.resultados || []).map(r => ({
           ...r,
-          cambios_display: (r.cambios || []).map(c => `${c.campo}: ${c.valor_anterior ?? '—'} → ${c.valor_nuevo ?? '—'}`).join('; '),
+          fecha_legible: r.fecha_legible || r.fecha?.slice(0, 16).replace('T', ' '),
+          producto_nombre: r.producto_nombre || `Producto #${r.producto_id}`,
+          rol_legible: r.rol_legible || r.rol,
+          descripcion: r.descripcion || (r.cambios || []).map(c => `${c.campo}: ${c.valor_anterior ?? '—'} → ${c.valor_nuevo ?? '—'}`).join('; '),
         }));
       } else {
         datosFull = payload.datos || [];
@@ -760,6 +762,46 @@ const Reportes = () => {
           style={{ backgroundColor: colors.bg, color: colors.text }}
         >
           {esCtrl ? '🔒 Sí' : 'No'}
+        </span>
+      );
+    }
+    
+    // Auditoría: descripción narrativa de cambios
+    if (col.key === 'descripcion' && filtros.tipo === 'auditoria_productos') {
+      const cambiosH = fila.cambios_humanizados || [];
+      if (cambiosH.length === 0) return <span className="text-gray-400 italic text-xs">{value || 'Sin cambios detectados'}</span>;
+      return (
+        <div className="space-y-1">
+          {cambiosH.map((ch, i) => (
+            <div key={i} className="text-xs leading-relaxed">
+              <span className="font-semibold text-gray-700">{ch.campo_label}:</span>{' '}
+              {ch.valor_anterior_label === 'Sin dato' ? (
+                <span>se estableció como <span className="font-medium text-emerald-700">"{ch.valor_nuevo_label}"</span></span>
+              ) : (
+                <span>
+                  de <span className="line-through text-red-500">{ch.valor_anterior_label}</span>{' '}
+                  a <span className="font-medium text-emerald-700">{ch.valor_nuevo_label}</span>
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      );
+    }
+    
+    // Auditoría: rol legible con badge
+    if (col.key === 'rol_legible' && filtros.tipo === 'auditoria_productos') {
+      const rolColors = {
+        'Farmacia': { bg: '#EDE9FE', text: '#5B21B6' },
+        'Administrador': { bg: '#DBEAFE', text: '#1E40AF' },
+        'Administrador del Sistema': { bg: '#FEE2E2', text: '#991B1B' },
+        'Médico': { bg: '#D1FAE5', text: '#065F46' },
+        'Director': { bg: '#FEF3C7', text: '#92400E' },
+      };
+      const c = rolColors[value] || { bg: '#F3F4F6', text: '#374151' };
+      return (
+        <span className="px-2 py-1 rounded-full text-xs font-bold" style={{ backgroundColor: c.bg, color: c.text }}>
+          {value || '-'}
         </span>
       );
     }
@@ -1907,7 +1949,7 @@ const Reportes = () => {
                       </thead>
                       <tbody className="divide-y divide-blue-100">
                         {datosControlados.analisisPorCentro.map((centro, idx) => {
-                          const porcentaje = resumen.valor_total_controlados > 0 
+                          const porcentaje = resumen?.valor_total_controlados > 0 
                             ? (centro.valor_total_controlados / resumen.valor_total_controlados * 100) 
                             : 0;
                           
@@ -1952,7 +1994,7 @@ const Reportes = () => {
                             {datosControlados.analisisPorCentro.reduce((sum, c) => sum + c.total_stock_controlados, 0).toLocaleString()}
                           </td>
                           <td className="px-3 py-2 text-right text-green-800 font-bold">
-                            ${resumen.valor_total_controlados.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                            ${(resumen?.valor_total_controlados || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
                           </td>
                           <td className="px-3 py-2 text-right text-blue-900">100.0%</td>
                         </tr>

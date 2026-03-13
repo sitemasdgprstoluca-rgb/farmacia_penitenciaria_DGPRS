@@ -46,9 +46,9 @@ from core.serializers import (
     MovimientoCajaChicaSerializer, HistorialCompraCajaChicaSerializer
 )
 from core.permissions import (
-    IsFarmaciaRole, IsCentroUser, CanAuthorizeRequisicion, CanViewNotifications, 
+    IsFarmaciaRole, IsCentroUser, CanAuthorizeRequisicion, CanViewNotifications,
     CanViewProfile, IsVistaRole, IsSuperuserOnly, CanManageDispensaciones,
-    CanManageComprasCajaChica
+    CanManageComprasCajaChica, _infer_role_from_user
 )
 # ISS-SEC: Mixin de confirmación obligatoria
 from core.mixins import ConfirmationRequiredMixin
@@ -6140,6 +6140,7 @@ class CatalogosView(APIView):
     def get(self, request, catalogo=None):
         from core.constants import (
             UNIDADES_MEDIDA,
+            UNIDADES_MINIMAS,
             CATEGORIAS_PRODUCTO,
             ESTADOS_REQUISICION,
             TIPOS_MOVIMIENTO,
@@ -6163,6 +6164,7 @@ class CatalogosView(APIView):
         # Construir respuesta según el catálogo solicitado
         catalogos = {
             'unidades_medida': [{'value': u[0], 'label': u[1]} for u in UNIDADES_MEDIDA],
+            'unidades_minimas': [{'value': u[0], 'label': u[1]} for u in UNIDADES_MINIMAS],
             'categorias': [{'value': c[0], 'label': c[1]} for c in CATEGORIAS_PRODUCTO],
             'vias_administracion': [{'value': v[0], 'label': v[1]} for v in VIAS_ADMINISTRACION],
             'estados_requisicion': [{'value': e[0], 'label': e[1]} for e in ESTADOS_REQUISICION],
@@ -7816,10 +7818,19 @@ class DispensacionViewSet(viewsets.ModelViewSet):
         """
         Actualiza una dispensación.
         ISS-FIX: Solo el creador puede editar (o admin/farmacia).
+        ISS-ROL: Administrador_centro y director_centro NO pueden editar.
         """
         dispensacion = self.get_object()
         user = request.user
-        
+
+        # ISS-ROL: Roles de supervisión no pueden editar dispensaciones
+        rol_inferido = _infer_role_from_user(user)
+        if not user.is_superuser and rol_inferido in {'administrador_centro', 'director_centro'}:
+            return Response(
+                {'detail': 'Los roles de supervisión no pueden editar dispensaciones.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         # Solo el creador, admin o farmacia pueden editar
         if not (user.is_superuser or user.rol in ['admin', 'admin_sistema', 'farmacia']):
             if dispensacion.created_by_id != user.id:
@@ -7827,13 +7838,13 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                     {'error': 'Solo el usuario que creó esta dispensación puede editarla'},
                     status=status.HTTP_403_FORBIDDEN
                 )
-        
+
         return super().update(request, *args, **kwargs)
     
     def create(self, request, *args, **kwargs):
         """
         Crea una dispensación con sus detalles en una sola operación.
-        
+
         Recibe:
         - paciente: ID del paciente
         - centro: ID del centro (opcional, se toma del usuario)
@@ -7844,6 +7855,16 @@ class DispensacionViewSet(viewsets.ModelViewSet):
         - observaciones: Observaciones adicionales
         - detalles: Lista de productos a dispensar
         """
+        # ISS-ROL: Solo médico, centro genérico y admin pueden CREAR dispensaciones
+        # Administrador_centro y director_centro solo pueden VER y CANCELAR (supervisión)
+        user = request.user
+        rol_inferido = _infer_role_from_user(user)
+        if not user.is_superuser and rol_inferido in {'administrador_centro', 'director_centro'}:
+            return Response(
+                {'detail': 'Los roles de supervisión (administrador/director de centro) no pueden crear dispensaciones. Solo pueden ver y cancelar.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         try:
             with transaction.atomic():
                 user = request.user
@@ -7919,6 +7940,7 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                         frecuencia=detalle_data.get('frecuencia'),
                         duracion_tratamiento=detalle_data.get('duracion_tratamiento'),
                         notas=detalle_data.get('notas'),
+                        unidad_dispensada=detalle_data.get('unidad_dispensada'),
                     )
                     detalles_creados.append(detalle.id)
                 
@@ -8029,14 +8051,23 @@ class DispensacionViewSet(viewsets.ModelViewSet):
         """
         Procesa la dispensación de medicamentos.
         Actualiza el estado y descuenta del inventario.
-        
+
         Si se envían detalles específicos, usa esas cantidades.
         Si no se envían detalles, dispensa las cantidades prescritas automáticamente.
-        
+
         Parámetro opcional 'forzar_parcial': Si es True, dispensa lo disponible aunque sea menos de lo prescrito.
         """
+        # ISS-ROL: Solo médico, centro genérico y admin pueden ejecutar la dispensación
+        user = request.user
+        rol_inferido = _infer_role_from_user(user)
+        if not user.is_superuser and rol_inferido in {'administrador_centro', 'director_centro'}:
+            return Response(
+                {'detail': 'Los roles de supervisión no pueden ejecutar dispensaciones. Solo pueden cancelar.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         dispensacion = self.get_object()
-        
+
         if dispensacion.estado in ['dispensada', 'cancelada']:
             return Response(
                 {'error': f'La dispensación ya está {dispensacion.estado}'},
@@ -8245,6 +8276,9 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                     # En dispensaciones parciales/reintentos, no sobrescribir
                     cantidad_previa = detalle.cantidad_dispensada or 0
                     detalle.cantidad_dispensada = cantidad_previa + cantidad
+                    # Registrar unidad mínima con la que se dispensó
+                    if not detalle.unidad_dispensada:
+                        detalle.unidad_dispensada = getattr(detalle.producto, 'unidad_minima', 'pieza') or 'pieza'
                     # Determinar estado basado en TOTAL acumulado vs prescrito
                     detalle.estado = 'dispensado' if detalle.cantidad_dispensada >= detalle.cantidad_prescrita else 'parcial'
                     detalle.save()
@@ -8305,7 +8339,8 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                     'dispensacion': serializer.data,
                     'mensaje': f'Dispensación {"completada" if dispensacion.estado == "dispensada" else "parcial"} exitosamente',
                     'total_dispensado': total_dispensado,
-                    'total_prescrito': total_prescrito
+                    'total_prescrito': total_prescrito,
+                    'unidades': 'unidades mínimas',
                 })
                 
         except Exception as e:

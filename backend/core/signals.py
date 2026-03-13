@@ -110,9 +110,14 @@ def _verificar_stock_bajo_producto(producto):
         
         # Obtener usuarios de farmacia
         # Roles de farmacia según ROLES_USUARIO en constants.py
+        # ISS-FIX: También incluir superusers y staff con campo rol vacío
+        from django.db.models import Q
         usuarios_farmacia = User.objects.filter(
-            rol__in=['farmacia', 'admin', 'admin_sistema', 'admin_farmacia', 'superusuario'],
-            is_active=True
+            Q(is_active=True) & (
+                Q(rol__in=['farmacia', 'admin', 'admin_sistema', 'admin_farmacia', 'superusuario']) |
+                Q(is_superuser=True) |
+                Q(is_staff=True)
+            )
         )
         
         for usuario in usuarios_farmacia:
@@ -358,9 +363,10 @@ def auditar_cambios_requisicion(sender, instance, created, **kwargs):
                      f'La requisición {instance.numero} ha sido entregada al centro.'),
         'cancelada': ('warning', 'Requisición CANCELADA', 
                       f'Su requisición {instance.numero} ha sido cancelada.'),
-        # FLUJO V2: Notificar devoluciones
-        'devuelta': ('warning', 'Requisición DEVUELTA', 
-                     f'Su requisición {instance.numero} ha sido devuelta para correcciones.'),
+        # FLUJO V2: Notificar devoluciones con motivo
+        'devuelta': ('warning', 'Requisición DEVUELTA para Correcciones',
+                     f'Su requisición {instance.numero} ha sido devuelta para correcciones.'
+                     + (f'\n\nMotivo: {instance.motivo_devolucion[:200]}' if instance.motivo_devolucion else '')),
     }
 
     if instance.estado in mensajes_para_solicitante:
@@ -386,10 +392,13 @@ def _notificar_admin_centro(requisicion, es_reenvio=False):
     
     # Buscar usuarios con rol de administrador en el mismo centro
     # Roles válidos: administrador_centro (FLUJO V2) o admin (legacy)
+    # ISS-FIX: También incluir usuarios con perm_autorizar_admin=True cuyo campo rol esté vacío
+    from django.db.models import Q
     admins_centro = User.objects.filter(
-        centro=centro,
-        rol__in=['administrador_centro', 'admin_centro', 'admin'],
-        is_active=True
+        Q(centro=centro, is_active=True) & (
+            Q(rol__in=['administrador_centro', 'admin_centro', 'admin']) |
+            Q(perm_autorizar_admin=True)
+        )
     )
     
     if not admins_centro.exists():
@@ -411,17 +420,19 @@ def _notificar_admin_centro(requisicion, es_reenvio=False):
     
     notificaciones_creadas = 0
     for admin in admins_centro:
-        # ISS-FIX: Verificar si ya existe una notificación similar
-        notificacion_existente = Notificacion.objects.filter(
-            usuario=admin,
-            titulo=titulo,
-            datos__requisicion_id=requisicion.pk
-        ).exists()
-        
-        if notificacion_existente:
-            logger.debug(f"Notificación ya existe para admin {admin.username} - requisición {requisicion.numero}")
-            continue
-        
+        # ISS-FIX: Solo verificar duplicados para envío inicial, no para reenvíos
+        # Cada reenvío después de devolución debe generar una nueva notificación
+        if not es_reenvio:
+            notificacion_existente = Notificacion.objects.filter(
+                usuario=admin,
+                titulo=titulo,
+                datos__requisicion_id=requisicion.pk
+            ).exists()
+
+            if notificacion_existente:
+                logger.debug(f"Notificación ya existe para admin {admin.username} - requisición {requisicion.numero}")
+                continue
+
         try:
             Notificacion.objects.create(
                 usuario=admin,
@@ -463,10 +474,13 @@ def _notificar_director_centro(requisicion, es_reenvio=False):
     
     # Buscar usuarios con rol de director en el mismo centro
     # Roles válidos: director_centro (FLUJO V2) o director (legacy)
+    # ISS-FIX: También incluir usuarios con perm_autorizar_director=True cuyo campo rol esté vacío
+    from django.db.models import Q
     directores_centro = User.objects.filter(
-        centro=centro,
-        rol__in=['director_centro', 'director'],
-        is_active=True
+        Q(centro=centro, is_active=True) & (
+            Q(rol__in=['director_centro', 'director']) |
+            Q(perm_autorizar_director=True)
+        )
     )
     
     if not directores_centro.exists():
@@ -486,17 +500,18 @@ def _notificar_director_centro(requisicion, es_reenvio=False):
     
     notificaciones_creadas = 0
     for director in directores_centro:
-        # ISS-FIX: Verificar si ya existe una notificación similar
-        notificacion_existente = Notificacion.objects.filter(
-            usuario=director,
-            titulo=titulo,
-            datos__requisicion_id=requisicion.pk
-        ).exists()
-        
-        if notificacion_existente:
-            logger.debug(f"Notificación ya existe para director {director.username} - requisición {requisicion.numero}")
-            continue
-        
+        # ISS-FIX: Solo verificar duplicados para envío inicial, no para reenvíos
+        if not es_reenvio:
+            notificacion_existente = Notificacion.objects.filter(
+                usuario=director,
+                titulo=titulo,
+                datos__requisicion_id=requisicion.pk
+            ).exists()
+
+            if notificacion_existente:
+                logger.debug(f"Notificación ya existe para director {director.username} - requisición {requisicion.numero}")
+                continue
+
         try:
             Notificacion.objects.create(
                 usuario=director,
@@ -529,9 +544,14 @@ def _notificar_farmacia_nueva_requisicion(requisicion):
     
     # Obtener usuarios de farmacia y admin que deben recibir notificaciones
     # Roles de farmacia según ROLES_USUARIO en constants.py
+    # ISS-FIX: También incluir superusers y staff con campo rol vacío
+    from django.db.models import Q
     usuarios_farmacia = User.objects.filter(
-        rol__in=['farmacia', 'admin', 'admin_sistema', 'admin_farmacia', 'superusuario'],
-        is_active=True
+        Q(is_active=True) & (
+            Q(rol__in=['farmacia', 'admin', 'admin_sistema', 'admin_farmacia', 'superusuario']) |
+            Q(is_superuser=True) |
+            Q(is_staff=True)
+        )
     )
     
     centro_nombre = requisicion.centro_origen.nombre if requisicion.centro_origen else 'Centro desconocido'
@@ -583,17 +603,22 @@ def _notificar_solicitante(requisicion, tipo, titulo, mensaje):
         return
     
     try:
+        datos_notif = {
+            'requisicion_id': requisicion.pk,
+            'numero': requisicion.numero,
+            'estado': requisicion.estado,
+            'autorizador': requisicion.autorizador.username if requisicion.autorizador else None
+        }
+        # ISS-FIX: Incluir motivo de devolución para que el médico sepa qué corregir
+        if requisicion.estado == 'devuelta' and requisicion.motivo_devolucion:
+            datos_notif['motivo_devolucion'] = requisicion.motivo_devolucion[:500]
+
         Notificacion.objects.create(
             usuario=requisicion.solicitante,
             tipo=tipo,
             titulo=titulo,
             mensaje=mensaje,
-            datos={
-                'requisicion_id': requisicion.pk,
-                'numero': requisicion.numero,
-                'estado': requisicion.estado,
-                'autorizador': requisicion.autorizador.username if requisicion.autorizador else None
-            },
+            datos=datos_notif,
             url=f'/requisiciones/{requisicion.pk}'
         )
         logger.info(f"Notificación enviada a {requisicion.solicitante.username}: {titulo}")
