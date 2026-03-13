@@ -32,3 +32,24 @@ gunicorn==22.0.0
 
 # Database adapters
 psycopg2-binary==2.9.10
+dj-database-url==2.1.0
+
+# ISS-001/002: Supabase Storage para documentos e imágenes
+supabase>=2.0.0
+
+# Configuración de entorno
+python-decouple==3.8
+
+# Archivos estáticos en producción
+whitenoise==6.6.0
+
+# Documentación API
+drf-spectacular==0.27.1
+pyyaml==6.0.1
+uritemplate==4.1.1
+
+# Email (Resend)
+resend==2.0.0
+
+# HTTP requests
+requests>=2.32.0

@@ -92,21 +92,29 @@ class StorageService:
         """Inicializa el cliente de Supabase Storage."""
         try:
             from supabase import create_client
-            
+
             url = settings.SUPABASE_URL
             key = settings.SUPABASE_KEY
-            
+
+            # Detectar tipo de key para logging
+            key_type = 'service_role' if key and ('service_role' in key or len(key) > 200) else 'anon/unknown'
+            logger.info(
+                f"ISS-001: Inicializando Supabase Storage - "
+                f"URL={url[:40]}... bucket='{self.bucket}' key_type={key_type}"
+            )
+
             self._client = create_client(url, key)
-            logger.info(f"ISS-001: Supabase Storage inicializado para bucket '{self.bucket}'")
-            
+            logger.info(f"ISS-001: Supabase Storage inicializado OK para bucket '{self.bucket}'")
+
         except ImportError:
             logger.error(
-                "ISS-001: Paquete 'supabase' no instalado. "
+                "ISS-001: CRÍTICO - Paquete 'supabase' NO INSTALADO. "
+                "Los archivos se guardarán localmente (NO persistente en Render). "
                 "Instalar con: pip install supabase"
             )
             self._use_supabase = False
         except Exception as e:
-            logger.error(f"ISS-001: Error inicializando Supabase: {e}")
+            logger.error(f"ISS-001: Error inicializando Supabase: {e}", exc_info=True)
             self._use_supabase = False
     
     def upload_file(
@@ -183,33 +191,56 @@ class StorageService:
 
             logger.info(
                 f"ISS-001: Subiendo a Supabase bucket='{self.bucket}' "
-                f"path='{file_path}' size={len(content)} type='{content_type}'"
+                f"path='{file_path}' size={len(content)} type='{content_type}' "
+                f"use_supabase={self._use_supabase} client={'OK' if self._client else 'NONE'}"
             )
 
-            # supabase-py v2: usar keys correctos para file_options
+            if not self._client:
+                raise StorageError(
+                    "Cliente Supabase no inicializado. Verificar SUPABASE_URL y SUPABASE_KEY.",
+                    operation='upload', path=file_path
+                )
+
+            # storage3 usa file_options como headers HTTP directamente
+            # 'content-type' y 'x-upsert' son headers HTTP válidos
             response = self._client.storage.from_(self.bucket).upload(
                 path=file_path,
                 file=content,
                 file_options={
                     'content-type': content_type,
-                    'contentType': content_type,
-                    'upsert': 'true',
                     'x-upsert': 'true',
                 }
             )
 
-            # Verificar respuesta de upload
+            # Verificar respuesta - storage3 puede devolver dict, Response, o str
+            logger.info(f"ISS-001: Upload response type={type(response).__name__}")
+
+            # Si es un httpx.Response, verificar status code
+            if hasattr(response, 'status_code'):
+                if response.status_code >= 400:
+                    error_text = response.text if hasattr(response, 'text') else str(response)
+                    logger.error(f"ISS-001: Supabase HTTP {response.status_code}: {error_text}")
+                    raise StorageError(
+                        f"HTTP {response.status_code}: {error_text}",
+                        operation='upload', path=file_path
+                    )
+
+            # Si tiene .json (httpx.Response o similar)
             if response and hasattr(response, 'json'):
                 resp_data = response.json() if callable(response.json) else response.json
-                if isinstance(resp_data, dict) and resp_data.get('error'):
-                    error_msg = resp_data.get('message', resp_data.get('error', 'Error desconocido'))
-                    logger.error(f"ISS-001: Supabase upload error response: {resp_data}")
-                    raise StorageError(error_msg, operation='upload', path=file_path)
+                if isinstance(resp_data, dict):
+                    if resp_data.get('error'):
+                        error_msg = resp_data.get('message', resp_data.get('error', 'Error desconocido'))
+                        logger.error(f"ISS-001: Supabase upload error: {resp_data}")
+                        raise StorageError(error_msg, operation='upload', path=file_path)
+                    if resp_data.get('statusCode') and int(resp_data.get('statusCode', 200)) >= 400:
+                        logger.error(f"ISS-001: Supabase upload error: {resp_data}")
+                        raise StorageError(str(resp_data), operation='upload', path=file_path)
 
             # Obtener URL pública
             url_response = self._client.storage.from_(self.bucket).get_public_url(file_path)
 
-            logger.info(f"ISS-001: Archivo subido a Supabase: {file_path} -> {url_response}")
+            logger.info(f"ISS-001: Archivo subido exitosamente a Supabase: {file_path} -> {url_response}")
 
             return {
                 'success': True,
@@ -234,14 +265,19 @@ class StorageService:
         metadata: Dict[str, Any],
         file_hash: str
     ) -> Dict[str, Any]:
-        """Sube archivo a almacenamiento local (fallback)."""
+        """Sube archivo a almacenamiento local (fallback). NO persistente en Render."""
         try:
+            logger.warning(
+                f"ISS-001: FALLBACK LOCAL - Guardando '{file_path}' localmente. "
+                f"Esto NO es persistente en Render. Instalar paquete 'supabase' y configurar "
+                f"SUPABASE_URL/SUPABASE_KEY para almacenamiento permanente."
+            )
             # Usar Django's default_storage
             saved_path = default_storage.save(file_path, ContentFile(content))
             url = default_storage.url(saved_path)
-            
-            logger.info(f"ISS-001: Archivo guardado localmente: {saved_path}")
-            
+
+            logger.info(f"ISS-001: Archivo guardado localmente: {saved_path} -> {url}")
+
             return {
                 'success': True,
                 'url': url,
@@ -523,3 +559,87 @@ def extract_storage_path(url: str, bucket_name: str) -> str:
     except ValueError:
         # Fallback: tomar los últimos 3 segmentos (año/mes/archivo)
         return '/'.join(parts[-3:]) if len(parts) >= 3 else '/'.join(parts[-2:])
+
+
+def diagnostico_storage() -> Dict[str, Any]:
+    """
+    Diagnóstico completo del servicio de almacenamiento.
+    Úsalo desde: GET /api/diagnostico-storage/
+    """
+    resultado = {
+        'supabase_url_configurado': bool(getattr(settings, 'SUPABASE_URL', '')),
+        'supabase_key_configurado': bool(getattr(settings, 'SUPABASE_KEY', '')),
+        'supabase_url_preview': (getattr(settings, 'SUPABASE_URL', '') or '')[:50] + '...',
+        'supabase_key_tipo': 'no configurado',
+        'paquete_supabase_instalado': False,
+        'paquete_storage3_instalado': False,
+        'buckets_test': {},
+    }
+
+    # Verificar tipo de key
+    key = getattr(settings, 'SUPABASE_KEY', '') or ''
+    if 'service_role' in key:
+        resultado['supabase_key_tipo'] = 'service_role (correcto para backend)'
+    elif key.startswith('eyJ'):
+        resultado['supabase_key_tipo'] = 'JWT (podría ser anon - verificar permisos de buckets)'
+    elif key:
+        resultado['supabase_key_tipo'] = f'desconocido (primeros 20 chars: {key[:20]}...)'
+
+    # Verificar paquetes
+    try:
+        import supabase
+        resultado['paquete_supabase_instalado'] = True
+        resultado['supabase_version'] = getattr(supabase, '__version__', 'desconocida')
+    except ImportError:
+        resultado['paquete_supabase_instalado'] = False
+        resultado['error_critico'] = 'Paquete supabase NO instalado. pip install supabase'
+
+    try:
+        import storage3
+        resultado['paquete_storage3_instalado'] = True
+        resultado['storage3_version'] = getattr(storage3, '__version__', 'desconocida')
+    except ImportError:
+        resultado['paquete_storage3_instalado'] = False
+
+    # Test de upload por bucket
+    buckets = ['productos-imagenes', 'lotes-documentos', 'requisiciones-firmadas', 'dispensaciones-firmadas']
+    for bucket_name in buckets:
+        try:
+            service = StorageService(bucket_name)
+            resultado['buckets_test'][bucket_name] = {
+                'use_supabase': service._use_supabase,
+                'client_ok': service._client is not None,
+            }
+            if service._use_supabase and service._client:
+                # Intentar subir un archivo de prueba pequeño
+                test_content = b'test-diagnostico'
+                test_path = '_diagnostico/test.txt'
+                try:
+                    resp = service._client.storage.from_(bucket_name).upload(
+                        path=test_path,
+                        file=test_content,
+                        file_options={
+                            'content-type': 'text/plain',
+                            'x-upsert': 'true',
+                        }
+                    )
+                    resultado['buckets_test'][bucket_name]['upload_ok'] = True
+                    resultado['buckets_test'][bucket_name]['upload_response_type'] = type(resp).__name__
+
+                    # Verificar URL
+                    url = service._client.storage.from_(bucket_name).get_public_url(test_path)
+                    resultado['buckets_test'][bucket_name]['url_ejemplo'] = url
+
+                    # Limpiar archivo de prueba
+                    try:
+                        service._client.storage.from_(bucket_name).remove([test_path])
+                    except Exception:
+                        pass
+
+                except Exception as upload_err:
+                    resultado['buckets_test'][bucket_name]['upload_ok'] = False
+                    resultado['buckets_test'][bucket_name]['upload_error'] = str(upload_err)
+        except Exception as e:
+            resultado['buckets_test'][bucket_name] = {'error': str(e)}
+
+    return resultado

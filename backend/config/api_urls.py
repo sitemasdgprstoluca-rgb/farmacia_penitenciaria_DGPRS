@@ -168,7 +168,25 @@ urlpatterns = [
     
     # ADMIN: Limpieza de datos (solo superusuarios)
     path('admin/limpiar-datos/', AdminLimpiarDatosView.as_view(), name='admin-limpiar-datos'),
+
+    # Diagnóstico de Storage (solo superusuarios)
+    path('diagnostico-storage/', diagnostico_storage_view, name='diagnostico-storage'),
 ]
+
+# Diagnóstico de Storage - vista inline para superusuarios
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAdminUser
+from rest_framework.response import Response as DRFResponse
+
+@api_view(['GET'])
+@permission_classes([IsAdminUser])
+def diagnostico_storage_view(request):
+    """Diagnóstico completo del servicio de almacenamiento. Solo superusuarios."""
+    try:
+        from inventario.services.storage_service import diagnostico_storage
+        return DRFResponse(diagnostico_storage())
+    except Exception as e:
+        return DRFResponse({'error': str(e)}, status=500)
 
 # SOLO EN DESARROLLO: Endpoint de autologin automatico
 if settings.DEBUG:
