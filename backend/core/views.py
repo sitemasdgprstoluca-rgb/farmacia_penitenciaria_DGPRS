@@ -8066,6 +8066,260 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
+    @action(detail=True, methods=['post'])
+    def subir_documento_firmado(self, request, pk=None):
+        """
+        Sube un documento PDF firmado para la dispensación.
+        
+        Usage:
+            POST /api/dispensaciones/{id}/subir_documento_firmado/
+            Content-Type: multipart/form-data
+            Body: {
+                'archivo': <PDF file>
+            }
+        """
+        dispensacion = self.get_object()
+        
+        # Validar que se envió un archivo
+        if 'archivo' not in request.FILES:
+            return Response(
+                {'error': 'Debe enviar un archivo PDF con el nombre "archivo"'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        archivo = request.FILES['archivo']
+        
+        # Validar tipo de archivo
+        if not archivo.name.lower().endswith('.pdf'):
+            return Response(
+                {'error': 'Solo se permiten archivos PDF'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validar tamaño (máximo 10MB)
+        max_size = 10 * 1024 * 1024  # 10MB
+        if archivo.size > max_size:
+            return Response(
+                {'error': f'El archivo es muy grande. Tamaño máximo: 10MB'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            from inventario.services.storage_service import StorageService
+            from datetime import datetime
+            
+            # Crear servicio de storage para bucket de dispensaciones
+            storage = StorageService(bucket='dispensaciones-firmadas')
+            
+            # Generar ruta única para el archivo
+            fecha_str = datetime.now().strftime('%Y/%m')
+            file_path = f'{fecha_str}/{dispensacion.folio}_{archivo.name}'
+            
+            # Subir archivo
+            resultado = storage.upload_file(
+                file_content=archivo.read(),
+                file_path=file_path,
+                content_type='application/pdf',
+                metadata={
+                    'dispensacion_id': dispensacion.id,
+                    'folio': dispensacion.folio,
+                    'usuario': request.user.username
+                }
+            )
+            
+            if not resultado['success']:
+                return Response(
+                    {'error': resultado.get('error', 'Error al subir el archivo')},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            
+            # Eliminar documento anterior si existe
+            if dispensacion.documento_firmado_url:
+                try:
+                    # Extraer path del documento anterior
+                    old_path = dispensacion.documento_firmado_url.split('/')[-2:]
+                    old_path = '/'.join(old_path)
+                    storage.delete_file(old_path)
+                except Exception as e:
+                    logger.warning(f"No se pudo eliminar documento anterior: {e}")
+            
+            # Actualizar dispensación con información del documento
+            dispensacion.documento_firmado_url = resultado['url']
+            dispensacion.documento_firmado_nombre = archivo.name
+            dispensacion.documento_firmado_fecha = timezone.now()
+            dispensacion.documento_firmado_por = request.user
+            dispensacion.documento_firmado_tamano = archivo.size
+            dispensacion.save()
+            
+            # Registrar en historial
+            try:
+                HistorialDispensacion.objects.create(
+                    dispensacion=dispensacion,
+                    accion='subir_documento',
+                    estado_anterior=dispensacion.estado,
+                    estado_nuevo=dispensacion.estado,
+                    usuario=request.user,
+                    detalles={
+                        'archivo': archivo.name,
+                        'tamano': archivo.size,
+                        'url': resultado['url']
+                    },
+                    ip_address=request.META.get('REMOTE_ADDR', '')
+                )
+            except Exception as hist_error:
+                logger.warning(f"No se pudo crear historial al subir documento: {hist_error}")
+            
+            serializer = self.get_serializer(dispensacion)
+            return Response({
+                'message': 'Documento firmado subido exitosamente',
+                'dispensacion': serializer.data
+            })
+            
+        except ImportError as e:
+            logger.error(f"Error de importación en subir_documento_firmado: {e}", exc_info=True)
+            return Response(
+                {'error': 'Servicio de almacenamiento no disponible'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        except Exception as e:
+            logger.error(f"Error subiendo documento firmado: {e}", exc_info=True)
+            return Response(
+                {'error': f'Error al subir el documento: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=True, methods=['get'])
+    def descargar_documento_firmado(self, request, pk=None):
+        """
+        Descarga el documento PDF firmado de la dispensación.
+        
+        Usage:
+            GET /api/dispensaciones/{id}/descargar_documento_firmado/
+        """
+        dispensacion = self.get_object()
+        
+        if not dispensacion.documento_firmado_url:
+            return Response(
+                {'error': 'Esta dispensación no tiene documento firmado'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        try:
+            from inventario.services.storage_service import StorageService
+            
+            storage = StorageService(bucket='dispensaciones-firmadas')
+            
+            # Extraer path del URL
+            # URL formato: https://...supabase.../storage/v1/object/public/bucket/path
+            path_parts = dispensacion.documento_firmado_url.split('/')
+            # Buscar la parte después de 'dispensaciones-firmadas/'
+            try:
+                bucket_idx = path_parts.index('dispensaciones-firmadas')
+                file_path = '/'.join(path_parts[bucket_idx+1:])
+            except (ValueError, IndexError):
+                # Fallback: asumir que el URL completo es válido
+                file_path = path_parts[-2] + '/' + path_parts[-1]
+            
+            # Descargar archivo
+            resultado = storage.download_file(file_path)
+            
+            if not resultado['success']:
+                return Response(
+                    {'error': 'No se pudo descargar el documento'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Retornar archivo
+            response = HttpResponse(resultado['content'], content_type='application/pdf')
+            filename = dispensacion.documento_firmado_nombre or f'dispensacion_{dispensacion.folio}.pdf'
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error descargando documento firmado: {e}", exc_info=True)
+            return Response(
+                {'error': 'Error al descargar el documento'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=True, methods=['delete'])
+    def eliminar_documento_firmado(self, request, pk=None):
+        """
+        Elimina el documento PDF firmado de la dispensación.
+        
+        Usage:
+            DELETE /api/dispensaciones/{id}/eliminar_documento_firmado/
+        """
+        dispensacion = self.get_object()
+        
+        if not dispensacion.documento_firmado_url:
+            return Response(
+                {'error': 'Esta dispensación no tiene documento firmado'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        try:
+            from inventario.services.storage_service import StorageService
+            
+            storage = StorageService(bucket='dispensaciones-firmadas')
+            
+            # Extraer path del URL
+            path_parts = dispensacion.documento_firmado_url.split('/')
+            try:
+                bucket_idx = path_parts.index('dispensaciones-firmadas')
+                file_path = '/'.join(path_parts[bucket_idx+1:])
+            except (ValueError, IndexError):
+                file_path = path_parts[-2] + '/' + path_parts[-1]
+            
+            # Eliminar archivo
+            old_url = dispensacion.documento_firmado_url
+            resultado = storage.delete_file(file_path)
+            
+            if resultado['success']:
+                # Limpiar campos de la dispensación
+                dispensacion.documento_firmado_url = None
+                dispensacion.documento_firmado_nombre = None
+                dispensacion.documento_firmado_fecha = None
+                dispensacion.documento_firmado_por = None
+                dispensacion.documento_firmado_tamano = None
+                dispensacion.save()
+                
+                # Registrar en historial
+                try:
+                    HistorialDispensacion.objects.create(
+                        dispensacion=dispensacion,
+                        accion='eliminar_documento',
+                        estado_anterior=dispensacion.estado,
+                        estado_nuevo=dispensacion.estado,
+                        usuario=request.user,
+                        detalles={'url_anterior': old_url},
+                        ip_address=request.META.get('REMOTE_ADDR', '')
+                    )
+                except Exception as hist_error:
+                    logger.warning(f"No se pudo crear historial al eliminar documento: {hist_error}")
+                
+                return Response({'message': 'Documento firmado eliminado exitosamente'})
+            else:
+                # Archivo no existe en storage, pero limpiar referencias de todas formas
+                dispensacion.documento_firmado_url = None
+                dispensacion.documento_firmado_nombre = None
+                dispensacion.documento_firmado_fecha = None
+                dispensacion.documento_firmado_por = None
+                dispensacion.documento_firmado_tamano = None
+                dispensacion.save()
+                
+                return Response({
+                    'message': 'Referencias eliminadas (archivo no encontrado en storage)',
+                    'warning': resultado.get('error', 'Archivo no encontrado')
+                })
+            
+        except Exception as e:
+            logger.error(f"Error eliminando documento firmado: {e}", exc_info=True)
+            return Response(
+                {'error': 'Error al eliminar el documento'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
     @action(detail=True, methods=['get'])
     def historial(self, request, pk=None):
         """Obtiene el historial de cambios de una dispensación"""

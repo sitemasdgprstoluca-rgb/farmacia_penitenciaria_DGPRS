@@ -2118,6 +2118,20 @@ export const dispensacionesAPI = {
   exportarPdf: (id) => apiClient.get(`/dispensaciones/${id}/exportar_pdf/`, { 
     responseType: 'blob' 
   }),
+  // Gestión de documentos firmados
+  subirDocumentoFirmado: (id, file) => {
+    const formData = new FormData();
+    formData.append('archivo', file);
+    return apiClient.post(`/dispensaciones/${id}/subir_documento_firmado/`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
+  descargarDocumentoFirmado: (id) => apiClient.get(`/dispensaciones/${id}/descargar_documento_firmado/`, {
+    responseType: 'blob'
+  }),
+  eliminarDocumentoFirmado: (id) => apiClient.delete(`/dispensaciones/${id}/eliminar_documento_firmado/`),
   // Exportar Control Mensual CPRS (Formato A oficial)
   exportarControlMensualCPRS: (params) => apiClient.get('/dispensaciones/control-mensual-cprs/', {
     params,

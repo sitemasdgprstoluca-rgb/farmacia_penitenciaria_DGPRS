@@ -25,6 +25,9 @@ import {
   FaFileAlt,
   FaSpinner,
   FaUserShield,
+  FaUpload,
+  FaDownload,
+  FaCheckCircle,
 } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import Pagination from '../components/Pagination';
@@ -807,6 +810,53 @@ const Dispensaciones = () => {
     }
   };
 
+  const handleSubirDocumentoFirmado = async (dispensacion, file) => {
+    if (!file) return;
+    
+    const toastId = toast.loading('Subiendo documento firmado...');
+    try {
+      const response = await dispensacionesAPI.subirDocumentoFirmado(dispensacion.id, file);
+      toast.success('Documento firmado subido correctamente', { id: toastId });
+      // Recargar la lista para actualizar el estado
+      fetchDispensaciones();
+    } catch (error) {
+      console.error('Error al subir documento:', error);
+      const errorMsg = error.response?.data?.error || 'Error al subir el documento';
+      toast.error(errorMsg, { id: toastId });
+    }
+  };
+
+  const handleDescargarDocumentoFirmado = async (dispensacion) => {
+    const win = abrirPdfEnNavegador();
+    if (!win) return;
+    
+    try {
+      const response = await dispensacionesAPI.descargarDocumentoFirmado(dispensacion.id);
+      
+      if (abrirPdfEnNavegador(response.data, win)) {
+        toast.success('Documento descargado correctamente');
+      }
+    } catch (error) {
+      console.error('Error al descargar documento:', error);
+      toast.error('Error al descargar el documento firmado');
+    }
+  };
+
+  const handleEliminarDocumentoFirmado = async (dispensacion) => {
+    if (!confirm('¿Está seguro de eliminar el documento firmado? Esta acción no se puede deshacer.')) {
+      return;
+    }
+    
+    try {
+      await dispensacionesAPI.eliminarDocumentoFirmado(dispensacion.id);
+      toast.success('Documento firmado eliminado');
+      fetchDispensaciones();
+    } catch (error) {
+      console.error('Error al eliminar documento:', error);
+      toast.error('Error al eliminar el documento firmado');
+    }
+  };
+
   const handleShowHistorial = async (dispensacion) => {
     try {
       const response = await dispensacionesAPI.historial(dispensacion.id);
@@ -1103,7 +1153,7 @@ const Dispensaciones = () => {
               </div>
               
               {/* Acciones */}
-              <div className="flex items-center justify-end gap-3 mt-3 pt-2">
+              <div className="flex items-center justify-end gap-3 mt-3 pt-2 flex-wrap">
                 <button
                   onClick={() => handleOpenDetail(disp)}
                   className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
@@ -1137,6 +1187,50 @@ const Dispensaciones = () => {
                   >
                     <FaBan size={18} />
                   </button>
+                )}
+                {/* Gestión de documentos firmados en móvil */}
+                {disp.estado === 'dispensada' && (
+                  <>
+                    {disp.tiene_documento_firmado ? (
+                      <>
+                        <button
+                          onClick={() => handleDescargarDocumentoFirmado(disp)}
+                          className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
+                          title={`Descargar documento firmado (${disp.documento_firmado_nombre || 'PDF'})`}
+                        >
+                          <FaCheckCircle size={18} />
+                        </button>
+                        {puedeEditar && (
+                          <button
+                            onClick={() => handleEliminarDocumentoFirmado(disp)}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                            title="Eliminar documento firmado"
+                          >
+                            <FaTrash size={18} />
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      puedeEditar && (
+                        <label
+                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg cursor-pointer"
+                          title="Subir documento firmado (PDF)"
+                        >
+                          <FaUpload size={18} />
+                          <input
+                            type="file"
+                            accept="application/pdf"
+                            className="hidden"
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                handleSubirDocumentoFirmado(disp, e.target.files[0]);
+                              }
+                            }}
+                          />
+                        </label>
+                      )
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -1248,11 +1342,56 @@ const Dispensaciones = () => {
                           </button>
                         )}
                         
+                        {/* Gestión de documentos firmados */}
+                        {disp.estado === 'dispensada' && (
+                          <>
+                            {disp.tiene_documento_firmado ? (
+                              <>
+                                <button
+                                  onClick={() => handleDescargarDocumentoFirmado(disp)}
+                                  className="text-green-600 hover:text-green-800 p-1"
+                                  title={`Descargar documento firmado (${disp.documento_firmado_nombre || 'PDF'})`}
+                                >
+                                  <FaCheckCircle />
+                                </button>
+                                {puedeEditar && (
+                                  <button
+                                    onClick={() => handleEliminarDocumentoFirmado(disp)}
+                                    className="text-red-600 hover:text-red-800 p-1"
+                                    title="Eliminar documento firmado"
+                                  >
+                                    <FaTrash />
+                                  </button>
+                                )}
+                              </>
+                            ) : (
+                              puedeEditar && (
+                                <label
+                                  className="text-blue-600 hover:text-blue-800 p-1 cursor-pointer"
+                                  title="Subir documento firmado (PDF)"
+                                >
+                                  <FaUpload />
+                                  <input
+                                    type="file"
+                                    accept="application/pdf"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                      if (e.target.files && e.target.files[0]) {
+                                        handleSubirDocumentoFirmado(disp, e.target.files[0]);
+                                      }
+                                    }}
+                                  />
+                                </label>
+                              )
+                            )}
+                          </>
+                        )}
+                        
                         {disp.estado === 'dispensada' && (
                           <button
                             onClick={() => handleExportPdf(disp)}
                             className="text-red-600 hover:text-red-800 p-1"
-                            title="Descargar Formato C"
+                            title="Generar Formato C (temporal)"
                           >
                             <FaFilePdf />
                           </button>

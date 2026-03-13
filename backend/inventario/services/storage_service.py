@@ -340,6 +340,94 @@ class StorageService:
             logger.error(f"Error verificando existencia de '{file_path}': {e}")
             return False
     
+    def download_file(self, file_path: str) -> Dict[str, Any]:
+        """
+        Descarga un archivo del almacenamiento.
+        
+        Args:
+            file_path: Ruta del archivo a descargar
+            
+        Returns:
+            dict: {
+                'success': bool,
+                'content': bytes (si éxito),
+                'path': str,
+                'size': int (si éxito),
+                'error': str (si falla)
+            }
+        """
+        try:
+            if self._use_supabase:
+                return self._download_supabase(file_path)
+            else:
+                return self._download_local(file_path)
+                
+        except Exception as e:
+            logger.error(f"Error descargando archivo '{file_path}': {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'path': file_path
+            }
+    
+    def _download_supabase(self, file_path: str) -> Dict[str, Any]:
+        """Descarga archivo de Supabase Storage."""
+        try:
+            response = self._client.storage.from_(self.bucket).download(file_path)
+            
+            logger.info(f"Archivo descargado de Supabase: {file_path}")
+            
+            return {
+                'success': True,
+                'content': response,
+                'path': file_path,
+                'size': len(response) if response else 0,
+                'storage': 'supabase'
+            }
+            
+        except Exception as e:
+            logger.error(f"Error Supabase download: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'path': file_path,
+                'storage': 'supabase'
+            }
+    
+    def _download_local(self, file_path: str) -> Dict[str, Any]:
+        """Descarga archivo de almacenamiento local."""
+        try:
+            if default_storage.exists(file_path):
+                with default_storage.open(file_path, 'rb') as f:
+                    content = f.read()
+                
+                logger.info(f"Archivo descargado localmente: {file_path}")
+                
+                return {
+                    'success': True,
+                    'content': content,
+                    'path': file_path,
+                    'size': len(content),
+                    'storage': 'local'
+                }
+            else:
+                logger.warning(f"Archivo no existe para descargar: {file_path}")
+                return {
+                    'success': False,
+                    'error': 'Archivo no encontrado',
+                    'path': file_path,
+                    'storage': 'local'
+                }
+                
+        except Exception as e:
+            logger.error(f"Error local download: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'path': file_path,
+                'storage': 'local'
+            }
+    
     def get_url(self, file_path: str, expires_in: int = 3600) -> Optional[str]:
         """
         Obtiene URL de acceso a un archivo.

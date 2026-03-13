@@ -3676,6 +3676,7 @@ class DispensacionSerializer(serializers.ModelSerializer):
     dispensado_por_nombre = serializers.SerializerMethodField()
     autorizado_por_nombre = serializers.SerializerMethodField()
     created_by_nombre = serializers.SerializerMethodField()
+    documento_firmado_por_nombre = serializers.SerializerMethodField()
     detalles = DetalleDispensacionSerializer(many=True, read_only=True)
     total_items = serializers.SerializerMethodField()
     total_dispensado = serializers.SerializerMethodField()
@@ -3683,6 +3684,7 @@ class DispensacionSerializer(serializers.ModelSerializer):
     porcentaje_completado = serializers.FloatField(read_only=True)
     tipo_dispensacion_display = serializers.SerializerMethodField()
     estado_display = serializers.SerializerMethodField()
+    tiene_documento_firmado = serializers.SerializerMethodField()
     # Validación: médico prescriptor es obligatorio
     medico_prescriptor = serializers.CharField(required=True, allow_blank=False, max_length=200)
     
@@ -3697,11 +3699,18 @@ class DispensacionSerializer(serializers.ModelSerializer):
             'dispensado_por', 'dispensado_por_nombre',
             'autorizado_por', 'autorizado_por_nombre',
             'firma_paciente', 'firma_dispensador',
+            'documento_firmado_url', 'documento_firmado_nombre', 'documento_firmado_fecha',
+            'documento_firmado_por', 'documento_firmado_por_nombre', 'documento_firmado_tamano',
+            'tiene_documento_firmado',
             'observaciones', 'motivo_cancelacion',
             'created_at', 'updated_at', 'created_by', 'created_by_nombre',
             'detalles', 'total_items', 'total_dispensado', 'total_prescrito', 'porcentaje_completado'
         ]
-        read_only_fields = ['id', 'folio', 'created_at', 'updated_at', 'created_by', 'fecha_dispensacion']
+        read_only_fields = [
+            'id', 'folio', 'created_at', 'updated_at', 'created_by', 'fecha_dispensacion',
+            'documento_firmado_url', 'documento_firmado_nombre', 'documento_firmado_fecha',
+            'documento_firmado_por', 'documento_firmado_tamano'
+        ]
     
     def get_paciente_nombre(self, obj):
         return obj.paciente.nombre_completo if obj.paciente else None
@@ -3729,6 +3738,14 @@ class DispensacionSerializer(serializers.ModelSerializer):
         if obj.created_by:
             return f"{obj.created_by.first_name} {obj.created_by.last_name}".strip() or obj.created_by.username
         return None
+    
+    def get_documento_firmado_por_nombre(self, obj):
+        if obj.documento_firmado_por:
+            return f"{obj.documento_firmado_por.first_name} {obj.documento_firmado_por.last_name}".strip() or obj.documento_firmado_por.username
+        return None
+    
+    def get_tiene_documento_firmado(self, obj):
+        return bool(obj.documento_firmado_url)
     
     def get_total_items(self, obj):
         return obj.get_total_items()

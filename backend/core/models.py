@@ -3773,6 +3773,20 @@ class Dispensacion(models.Model):
     firma_paciente = models.CharField(max_length=255, blank=True, null=True)
     firma_dispensador = models.CharField(max_length=255, blank=True, null=True)
     
+    # Documento firmado (PDF subido por el usuario)
+    documento_firmado_url = models.TextField(blank=True, null=True)
+    documento_firmado_nombre = models.CharField(max_length=255, blank=True, null=True)
+    documento_firmado_fecha = models.DateTimeField(blank=True, null=True)
+    documento_firmado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='documentos_dispensacion_subidos',
+        db_column='documento_firmado_por_id'
+    )
+    documento_firmado_tamano = models.IntegerField(blank=True, null=True)
+    
     # Observaciones
     observaciones = models.TextField(blank=True, null=True)
     motivo_cancelacion = models.TextField(blank=True, null=True)
