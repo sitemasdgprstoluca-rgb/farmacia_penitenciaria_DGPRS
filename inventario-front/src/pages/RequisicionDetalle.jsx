@@ -38,6 +38,7 @@ import {
   FaSearch,
   FaSave,
   FaMinus,
+  FaUserShield,
 } from 'react-icons/fa';
 import { COLORS } from '../constants/theme';
 
@@ -423,21 +424,17 @@ const RequisicionDetalle = () => {
       if (error.response?.status === 400 || error.response?.status === 409) {
         const errorData = error.response.data;
         
-        // Si hay detalles de stock insuficiente, mostrar error detallado
-        if (errorData.stock_disponible !== undefined || errorData.detalle) {
+        // Si hay detalles de stock insuficiente con lista de productos
+        if (errorData.detalles_stock && Array.isArray(errorData.detalles_stock)) {
+          const lineas = errorData.detalles_stock.map(d => 
+            `• ${d.producto || d.producto_clave || 'Producto'}: disponible ${d.stock_disponible ?? '?'}, solicitado ${d.cantidad_solicitada ?? d.cantidad_autorizada ?? '?'}`
+          ).join('\n');
+          toast.error(`❌ ${errorData.error || 'Stock insuficiente'}\n\n${lineas}`, { duration: 10000 });
+        } else if (errorData.stock_disponible !== undefined || errorData.detalle) {
           const mensaje = `❌ ${errorData.error}\n\n${errorData.detalle || ''}`;
           toast.error(mensaje, { duration: 8000 });
-          
-          // Si hay info del producto, loguearlo para debugging
-          if (errorData.producto_clave) {
-            console.error('Stock insuficiente:', {
-              producto: errorData.producto_clave,
-              disponible: errorData.stock_disponible,
-              solicitado: errorData.cantidad_solicitada
-            });
-          }
         } else {
-          toast.error(errorData.error || 'Error al validar stock disponible');
+          toast.error(errorData.error || errorData.mensaje || 'Error al validar stock disponible');
         }
       } else {
         toast.error(error.response?.data?.error || 'Error al autorizar');
@@ -1038,10 +1035,21 @@ const RequisicionDetalle = () => {
   // ISS-DB-002: Estados alineados con BD Supabase
   // ISS-FLUJO-FIX: Farmacia solo puede autorizar en 'en_revision' (después de recibir)
   // El flujo correcto es: enviada → recibir → en_revision → revisar cantidades → autorizar
-  const puedeAutorizar = requisicion?.estado === 'en_revision' && esFarmacia && permisos?.autorizarRequisicion;
+  // ISS-OWNERSHIP: Verificar si otro usuario de farmacia ya está gestionando esta requisición
+  const receptorId = requisicion?.receptor_farmacia || requisicion?.receptor_farmacia_id;
+  const receptorNombre = requisicion?.receptor_farmacia_nombre;
+  const autorizadorId = requisicion?.autorizador_farmacia || requisicion?.autorizador_farmacia_id;
+  const autorizadorNombre = requisicion?.autorizador_farmacia_nombre;
+  const esReceptor = !receptorId || user?.is_superuser || String(receptorId) === String(user?.id);
+  const esAutorizador = !autorizadorId || user?.is_superuser || String(autorizadorId) === String(user?.id);
+  // Otro usuario de farmacia está gestionando (no soy yo)
+  const otroGestiona = esFarmacia && receptorId && !esReceptor;
+  const otroAutorizo = esFarmacia && autorizadorId && !esAutorizador;
+
+  const puedeAutorizar = requisicion?.estado === 'en_revision' && esFarmacia && permisos?.autorizarRequisicion && esReceptor;
   const puedeRechazar = ['enviada', 'en_revision'].includes(requisicion?.estado) && esFarmacia && permisos?.rechazarRequisicion;
   // ISS-FIX-SURTIR: Solo desde 'autorizada' - surtir SIEMPRE termina en 'entregada'
-  const puedeSurtir = requisicion?.estado === 'autorizada' && esFarmacia && permisos?.surtirRequisicion;
+  const puedeSurtir = requisicion?.estado === 'autorizada' && esFarmacia && permisos?.surtirRequisicion && esAutorizador;
   
   // ISS-FIX-SURTIR: Ya no hay estado intermedio 'surtida' - el surtido va directo a 'entregada'
   // puedeMarcarRecibida ya no es necesario porque el surtido completa automáticamente
@@ -1274,6 +1282,38 @@ const RequisicionDetalle = () => {
           </div>
         )}
       </div>
+
+      {/* ISS-OWNERSHIP: Banner de aviso si otro usuario de farmacia está gestionando */}
+      {otroGestiona && requisicion?.estado === 'en_revision' && (
+        <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 mb-6 shadow">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-amber-100">
+              <FaUserShield className="text-xl text-amber-600" />
+            </div>
+            <div>
+              <h3 className="font-bold text-amber-800">Requisición asignada a otro usuario</h3>
+              <p className="text-sm text-amber-700">
+                Esta requisición fue recibida por <strong>{receptorNombre || `Usuario #${receptorId}`}</strong> y solo esa persona puede autorizarla.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+      {otroAutorizo && requisicion?.estado === 'autorizada' && (
+        <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 mb-6 shadow">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-amber-100">
+              <FaUserShield className="text-xl text-amber-600" />
+            </div>
+            <div>
+              <h3 className="font-bold text-amber-800">Requisición asignada a otro usuario</h3>
+              <p className="text-sm text-amber-700">
+                Esta requisición fue autorizada por <strong>{autorizadorNombre || `Usuario #${autorizadorId}`}</strong> y solo esa persona puede surtirla.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Banner de acción para requisiciones pendientes - SOLO FARMACIA/ADMIN */}
       {puedeAutorizar && !modoAutorizar && (

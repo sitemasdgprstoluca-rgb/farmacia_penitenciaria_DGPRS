@@ -6460,7 +6460,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         
         # DEBUG: Log inicio de surtido
         logger.info(f"SURTIR: Iniciando surtido para requisición pk={pk}, usuario={request.user.username}")
-        
+
         try:
             requisicion = self.get_object()
             logger.info(f"SURTIR: Requisición obtenida: {requisicion.folio}, estado={requisicion.estado}")
@@ -6471,6 +6471,24 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 'detalle': str(e),
                 'tipo_error': type(e).__name__
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # ISS-OWNERSHIP: Solo el usuario que autorizó (o superuser/admin) puede surtir
+        # Esto garantiza que un solo usuario de farmacia gestione la requisición de inicio a fin
+        if requisicion.autorizador_farmacia_id and not request.user.is_superuser:
+            if not is_farmacia_or_admin(request.user):
+                pass  # No es farmacia, el servicio lo bloqueará
+            elif requisicion.autorizador_farmacia_id != request.user.id:
+                autorizador_nombre = ''
+                try:
+                    aut = requisicion.autorizador_farmacia
+                    autorizador_nombre = f"{aut.first_name} {aut.last_name}".strip() or aut.username
+                except Exception:
+                    autorizador_nombre = f'Usuario #{requisicion.autorizador_farmacia_id}'
+                return Response({
+                    'error': f'Esta requisición fue autorizada por {autorizador_nombre}. Solo esa persona puede surtirla.',
+                    'autorizador_farmacia': autorizador_nombre,
+                    'autorizador_farmacia_id': requisicion.autorizador_farmacia_id
+                }, status=status.HTTP_403_FORBIDDEN)
         
         # ISS-FIX-FECHA-VENCIDA: Verificación adicional de fecha límite antes de surtir
         # Si la fecha ya venció, marcar como vencida y retornar error
@@ -7392,11 +7410,20 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
     def recibir_farmacia(self, request, pk=None):
         """
         FLUJO V2: Farmacia Central recibe la requisición para revisión.
-        
+
         Transición: enviada → en_revision
         Permiso requerido: puede_recibir_farmacia (rol: farmacia)
         """
-        requisicion = self.get_object()
+        # ISS-CONCURRENCY: Bloquear requisición para prevenir doble recepción
+        try:
+            requisicion = Requisicion.objects.select_for_update(nowait=False).get(pk=pk)
+        except Requisicion.DoesNotExist:
+            return Response({'error': 'Requisición no encontrada'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                'error': 'Error al acceder a la requisición. Puede que otro usuario la esté procesando.',
+                'detalle': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         estado_actual = (requisicion.estado or '').lower()
         
         if estado_actual != 'enviada':
@@ -7456,29 +7483,47 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         
         IMPORTANTE: Debe incluir 'fecha_recoleccion_limite' en el request.
         """
+        # ISS-CONCURRENCY: Bloquear la requisición con select_for_update para prevenir
+        # que múltiples usuarios de farmacia autoricen simultáneamente
         try:
-            requisicion = Requisicion.objects.get(pk=pk)
+            requisicion = Requisicion.objects.select_for_update(nowait=False).get(pk=pk)
         except Requisicion.DoesNotExist:
             return Response({
                 'error': f'No se encontró la requisición con ID {pk}'
             }, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            logger.error(f"Error al obtener requisición {pk}: {e}", exc_info=True)
+            logger.error(f"Error al obtener/bloquear requisición {pk}: {e}", exc_info=True)
             return Response({
-                'error': 'Error al acceder a la requisición',
+                'error': 'Error al acceder a la requisición. Puede que otro usuario la esté procesando.',
                 'detalle': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
+
         estado_actual = (requisicion.estado or '').lower()
-        
+
         # ISS-FLUJO-FIX: Solo permitir autorizar desde 'en_revision'
-        # El flujo correcto es: enviada → recibir → en_revision → autorizar
+        # Re-validar estado DESPUÉS del bloqueo para detectar cambios concurrentes
         if estado_actual != 'en_revision':
             return Response({
                 'error': 'Solo se pueden autorizar requisiciones en EN_REVISION. Debe recibir la requisición primero.',
                 'estado_actual': requisicion.estado,
                 'flujo_correcto': 'enviada → recibir → en_revision → autorizar'
             }, status=status.HTTP_400_BAD_REQUEST)
+
+        # ISS-OWNERSHIP: Validar que el usuario que autoriza sea quien recibió la requisición
+        # Esto previene que múltiples usuarios de farmacia trabajen en la misma requisición
+        if requisicion.receptor_farmacia_id and not request.user.is_superuser:
+            if requisicion.receptor_farmacia_id != request.user.id:
+                receptor_nombre = ''
+                try:
+                    receptor = requisicion.receptor_farmacia
+                    receptor_nombre = f"{receptor.first_name} {receptor.last_name}".strip() or receptor.username
+                except Exception:
+                    receptor_nombre = f'Usuario #{requisicion.receptor_farmacia_id}'
+                return Response({
+                    'error': f'Esta requisición fue recibida por {receptor_nombre}. Solo esa persona puede autorizarla.',
+                    'receptor_farmacia': receptor_nombre,
+                    'receptor_farmacia_id': requisicion.receptor_farmacia_id
+                }, status=status.HTTP_403_FORBIDDEN)
         
         if not self._validar_transicion(estado_actual, 'autorizada'):
             return Response({
@@ -7509,7 +7554,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 'error': 'Stock insuficiente para autorizar la requisición',
                 'detalles_stock': e.detalles_stock,
                 'mensaje': str(e)
-            }, status=status.HTTP_409_CONFLICT)
+            }, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             logger.error(f"ISS-AUDIT-002: Error CRÍTICO al validar stock para requisición {requisicion.numero}: {e}", exc_info=True)
             # NO continuar si hay error en la validación - es crítico
