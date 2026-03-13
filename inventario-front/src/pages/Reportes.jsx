@@ -251,7 +251,7 @@ const Reportes = () => {
   
   const [filtros, setFiltros] = useState(initFiltros());
   const [datos, setDatos] = useState([]);
-  const [datosControlados, setDatosControlados] = useState({ controlados: [], noControlados: [] });
+  const [datosControlados, setDatosControlados] = useState({ controlados: [], noControlados: [], analisisPorCentro: [] });
   const [resumen, setResumen] = useState(null);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -389,7 +389,12 @@ const Reportes = () => {
         // Guardar separados para renderizado por secciones
         const ctrl = payload.controlados || [];
         const noCtrl = payload.no_controlados || [];
-        setDatosControlados({ controlados: ctrl, noControlados: noCtrl });
+        const analisisCentro = payload.analisis_por_centro || [];
+        setDatosControlados({ 
+          controlados: ctrl, 
+          noControlados: noCtrl,
+          analisisPorCentro: analisisCentro
+        });
         datosFull = [...ctrl, ...noCtrl];
       } else if (filtros.tipo === "auditoria_productos") {
         // Mapear resultados con cambios formateados para display
@@ -1051,21 +1056,36 @@ const Reportes = () => {
               <FaLock className="text-lg md:text-2xl text-red-600" />
               <div>
                 <p className="text-[10px] md:text-xs text-red-600 font-semibold">Controlados</p>
-                <p className="text-base md:text-xl font-bold text-red-800">{resumen.total_controlados || 0} ({resumen.porcentaje_controlados || 0}%)</p>
+                <p className="text-base md:text-xl font-bold text-red-800">{resumen.total_controlados || 0}</p>
+                <p className="text-[9px] md:text-[10px] text-red-500 font-medium">
+                  ${(resumen.valor_total_controlados || 0).toLocaleString()}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-2 p-2 md:p-3 bg-green-50 rounded-lg">
               <FaDatabase className="text-lg md:text-2xl text-green-600" />
               <div>
                 <p className="text-[10px] md:text-xs text-green-600 font-semibold">No Controlados</p>
-                <p className="text-base md:text-xl font-bold text-green-800">{resumen.total_no_controlados || 0} ({resumen.porcentaje_no_controlados || 0}%)</p>
+                <p className="text-base md:text-xl font-bold text-green-800">{resumen.total_no_controlados || 0}</p>
+                <p className="text-[9px] md:text-[10px] text-green-500 font-medium">
+                  ${(resumen.valor_total_no_controlados || 0).toLocaleString()}
+                </p>
+              </div>
+            </div>
+            <div className="col-span-2 sm:col-span-3 flex items-center gap-2 p-2 md:p-3 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg border border-purple-200">
+              <FaDollarSign className="text-lg md:text-2xl text-purple-600" />
+              <div>
+                <p className="text-[10px] md:text-xs text-purple-600 font-semibold">Valor Total Global</p>
+                <p className="text-xl md:text-2xl font-bold text-purple-800">
+                  ${(resumen.valor_total_global || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
               </div>
             </div>
           </div>
         </div>
       );
     }
-
+              
     return null;
   };
 
@@ -1777,9 +1797,10 @@ const Reportes = () => {
                           <th className="px-3 py-2 text-left text-[10px] font-bold text-red-700 uppercase w-[70px]">Clave</th>
                           <th className="px-3 py-2 text-left text-[10px] font-bold text-red-700 uppercase">Nombre</th>
                           <th className="px-3 py-2 text-left text-[10px] font-bold text-red-700 uppercase">Presentación</th>
-                          <th className="px-3 py-2 text-left text-[10px] font-bold text-red-700 uppercase">Sustancia Activa</th>
-                          <th className="px-3 py-2 text-right text-[10px] font-bold text-red-700 uppercase w-[80px]">Inventario</th>
-                          <th className="px-3 py-2 text-right text-[10px] font-bold text-red-700 uppercase w-[70px]">Mínimo</th>
+                          <th className="px-3 py-2 text-right text-[10px] font-bold text-red-700 uppercase w-[90px]">Precio</th>
+                          <th className="px-3 py-2 text-right text-[10px] font-bold text-red-700 uppercase w-[80px]">Stock</th>
+                          <th className="px-3 py-2 text-left text-[10px] font-bold text-red-700 uppercase w-[180px]">Lote/Caducidad</th>
+                          <th className="px-3 py-2 text-right text-[10px] font-bold text-red-700 uppercase w-[100px]">Valor Total</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-red-100">
@@ -1789,12 +1810,17 @@ const Reportes = () => {
                             <td className="px-3 py-2 font-mono text-gray-700">{p.clave}</td>
                             <td className="px-3 py-2 font-medium text-gray-800">{p.nombre}</td>
                             <td className="px-3 py-2 text-gray-600">{p.presentacion || '—'}</td>
-                            <td className="px-3 py-2 text-gray-600">{p.sustancia_activa || '—'}</td>
+                            <td className="px-3 py-2 text-right text-green-700 font-semibold">
+                              ${(p.precio_promedio || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                            </td>
                             <td className={`px-3 py-2 text-right font-bold ${p.stock_actual === 0 ? 'text-red-600' : 'text-gray-800'}`}>
                               {(p.stock_actual || 0).toLocaleString()}
                               {p.stock_actual === 0 && <span className="block text-[9px] text-red-500 font-normal">Sin stock</span>}
                             </td>
-                            <td className="px-3 py-2 text-right text-gray-500">{p.stock_minimo}</td>
+                            <td className="px-3 py-2 text-gray-600 text-xs">{p.lote_caducidad || '—'}</td>
+                            <td className="px-3 py-2 text-right font-bold text-blue-700">
+                              ${(p.valor_total || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -1823,9 +1849,10 @@ const Reportes = () => {
                           <th className="px-3 py-2 text-left text-[10px] font-bold text-green-700 uppercase w-[70px]">Clave</th>
                           <th className="px-3 py-2 text-left text-[10px] font-bold text-green-700 uppercase">Nombre</th>
                           <th className="px-3 py-2 text-left text-[10px] font-bold text-green-700 uppercase">Presentación</th>
-                          <th className="px-3 py-2 text-left text-[10px] font-bold text-green-700 uppercase">Sustancia Activa</th>
-                          <th className="px-3 py-2 text-right text-[10px] font-bold text-green-700 uppercase w-[80px]">Inventario</th>
-                          <th className="px-3 py-2 text-right text-[10px] font-bold text-green-700 uppercase w-[70px]">Mínimo</th>
+                          <th className="px-3 py-2 text-right text-[10px] font-bold text-green-700 uppercase w-[90px]">Precio</th>
+                          <th className="px-3 py-2 text-right text-[10px] font-bold text-green-700 uppercase w-[80px]">Stock</th>
+                          <th className="px-3 py-2 text-left text-[10px] font-bold text-green-700 uppercase w-[180px]">Lote/Caducidad</th>
+                          <th className="px-3 py-2 text-right text-[10px] font-bold text-green-700 uppercase w-[100px]">Valor Total</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-green-100">
@@ -1835,15 +1862,101 @@ const Reportes = () => {
                             <td className="px-3 py-2 font-mono text-gray-700">{p.clave}</td>
                             <td className="px-3 py-2 font-medium text-gray-800">{p.nombre}</td>
                             <td className="px-3 py-2 text-gray-600">{p.presentacion || '—'}</td>
-                            <td className="px-3 py-2 text-gray-600">{p.sustancia_activa || '—'}</td>
+                            <td className="px-3 py-2 text-right text-green-700 font-semibold">
+                              ${(p.precio_promedio || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                            </td>
                             <td className={`px-3 py-2 text-right font-bold ${p.stock_actual === 0 ? 'text-red-600' : 'text-gray-800'}`}>
                               {(p.stock_actual || 0).toLocaleString()}
                               {p.stock_actual === 0 && <span className="block text-[9px] text-red-500 font-normal">Sin stock</span>}
                             </td>
-                            <td className="px-3 py-2 text-right text-gray-500">{p.stock_minimo}</td>
+                            <td className="px-3 py-2 text-gray-600 text-xs">{p.lote_caducidad || '—'}</td>
+                            <td className="px-3 py-2 text-right font-bold text-blue-700">
+                              ${(p.valor_total || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+              
+              {/* Sección 3: ANÁLISIS POR CENTRO (solo si hay datos) */}
+              {datosControlados.analisisPorCentro && datosControlados.analisisPorCentro.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 rounded-t-lg">
+                    <FaChartBar className="text-white" />
+                    <h3 className="text-sm font-bold text-white">
+                      Análisis Económico por Centro — Medicamentos Controlados
+                    </h3>
+                    <span className="ml-auto text-xs text-white/80 font-medium">
+                      Distribución de valor e inventario
+                    </span>
+                  </div>
+                  <div className="overflow-x-auto border border-blue-200 border-t-0 rounded-b-lg">
+                    <table className="w-full text-xs md:text-sm">
+                      <thead>
+                        <tr className="bg-blue-50">
+                          <th className="px-3 py-2 text-left text-[10px] font-bold text-blue-700 uppercase w-[40px]">#</th>
+                          <th className="px-3 py-2 text-left text-[10px] font-bold text-blue-700 uppercase">Centro</th>
+                          <th className="px-3 py-2 text-right text-[10px] font-bold text-blue-700 uppercase w-[100px]">Productos</th>
+                          <th className="px-3 py-2 text-right text-[10px] font-bold text-blue-700 uppercase w-[100px]">Stock Total</th>
+                          <th className="px-3 py-2 text-right text-[10px] font-bold text-blue-700 uppercase w-[140px]">Valor Total</th>
+                          <th className="px-3 py-2 text-right text-[10px] font-bold text-blue-700 uppercase w-[100px]">% del Total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-blue-100">
+                        {datosControlados.analisisPorCentro.map((centro, idx) => {
+                          const porcentaje = resumen.valor_total_controlados > 0 
+                            ? (centro.valor_total_controlados / resumen.valor_total_controlados * 100) 
+                            : 0;
+                          
+                          return (
+                            <tr key={centro.centro_id} className="hover:bg-blue-50/30">
+                              <td className="px-3 py-2 text-gray-500">{idx + 1}</td>
+                              <td className="px-3 py-2 font-medium text-gray-800">{centro.centro_nombre}</td>
+                              <td className="px-3 py-2 text-right text-gray-700">
+                                {centro.total_productos_controlados}
+                              </td>
+                              <td className="px-3 py-2 text-right font-semibold text-gray-800">
+                                {centro.total_stock_controlados.toLocaleString()}
+                              </td>
+                              <td className="px-3 py-2 text-right font-bold text-green-700">
+                                ${centro.valor_total_controlados.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  <div className="flex-1 max-w-[60px] h-2 bg-gray-200 rounded-full overflow-hidden">
+                                    <div 
+                                      className="h-full bg-blue-500 rounded-full transition-all" 
+                                      style={{ width: `${Math.min(porcentaje, 100)}%` }}
+                                    />
+                                  </div>
+                                  <span className="text-xs font-bold text-blue-600 min-w-[45px]">
+                                    {porcentaje.toFixed(1)}%
+                                  </span>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr className="bg-blue-100 font-bold">
+                          <td className="px-3 py-2"></td>
+                          <td className="px-3 py-2 text-blue-900">TOTAL GENERAL</td>
+                          <td className="px-3 py-2 text-right text-blue-900">
+                            {datosControlados.analisisPorCentro.reduce((sum, c) => sum + c.total_productos_controlados, 0)}
+                          </td>
+                          <td className="px-3 py-2 text-right text-blue-900">
+                            {datosControlados.analisisPorCentro.reduce((sum, c) => sum + c.total_stock_controlados, 0).toLocaleString()}
+                          </td>
+                          <td className="px-3 py-2 text-right text-green-800 font-bold">
+                            ${resumen.valor_total_controlados.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="px-3 py-2 text-right text-blue-900">100.0%</td>
+                        </tr>
+                      </tfoot>
                     </table>
                   </div>
                 </div>

@@ -5269,11 +5269,15 @@ def generar_reporte_medicamentos_controlados(productos_data, filtros=None):
 
     total_ctrl = (filtros or {}).get('total_controlados', 0)
     total_no_ctrl = (filtros or {}).get('total_no_controlados', 0)
+    valor_total_ctrl = (filtros or {}).get('valor_total_controlados', 0)
+    valor_total_no_ctrl = (filtros or {}).get('valor_total_no_controlados', 0)
+    valor_total_global = (filtros or {}).get('valor_total_global', 0)
 
     info_text = f"<b>Fecha de generación:</b> {(filtros or {}).get('fecha_generacion', '')}<br/>"
     info_text += f"<b>Total productos:</b> {(filtros or {}).get('total_productos', len(productos_data))}<br/>"
-    info_text += f"<b>Controlados:</b> {total_ctrl} | "
-    info_text += f"<b>No controlados:</b> {total_no_ctrl}"
+    info_text += f"<b>Controlados:</b> {total_ctrl} (${valor_total_ctrl:,.2f}) | "
+    info_text += f"<b>No controlados:</b> {total_no_ctrl} (${valor_total_no_ctrl:,.2f})<br/>"
+    info_text += f"<b>Valor Total Global:</b> ${valor_total_global:,.2f}"
     elements.append(Paragraph(info_text, styles['Normal']))
     elements.append(Spacer(1, 0.2 * inch))
 
@@ -5285,8 +5289,8 @@ def generar_reporte_medicamentos_controlados(productos_data, filtros=None):
         wordWrap='CJK',
     )
 
-    col_widths = [0.3 * inch, 0.55 * inch, 2.0 * inch, 1.7 * inch, 0.7 * inch, 0.6 * inch]
-    headers_row = ['#', 'Clave', 'Nombre', 'Presentación', 'Inventario', 'Mínimo']
+    col_widths = [0.25*inch, 0.5*inch, 1.6*inch, 1.2*inch, 0.7*inch, 0.6*inch, 1.0*inch, 0.7*inch]
+    headers_row = ['#', 'Clave', 'Nombre', 'Presentación', 'Precio', 'Stock', 'Lote/Caducidad', 'Valor']
 
     # Separar controlados y no controlados
     controlados = [p for p in productos_data if p.get('es_controlado')]
@@ -5301,7 +5305,7 @@ def generar_reporte_medicamentos_controlados(productos_data, filtros=None):
         )
         # Encabezado rojo para controlados
         sec_data = [[Paragraph(
-            f"🔒 MEDICAMENTOS CONTROLADOS ({len(controlados)}) — Requieren control especial",
+            f"🔒 MEDICAMENTOS CONTROLADOS ({len(controlados)}) — Análisis Económico",
             seccion_ctrl,
         )]]
         sec_table = Table(sec_data, colWidths=[sum(col_widths)])
@@ -5314,16 +5318,28 @@ def generar_reporte_medicamentos_controlados(productos_data, filtros=None):
         elements.append(sec_table)
 
         data_ctrl = [headers_row]
+        total_valor_ctrl = 0
         for idx, item in enumerate(controlados, 1):
             stock = item.get('stock_actual', 0)
+            precio = item.get('precio_promedio', 0)
+            valor = item.get('valor_total', 0)
+            total_valor_ctrl += valor
+            lote_cad = item.get('lote_caducidad', '—')
+            
             data_ctrl.append([
                 str(idx),
                 str(item.get('clave', '')),
-                Paragraph(str(item.get('nombre', ''))[:50], estilo_celda),
-                Paragraph(str(item.get('presentacion', ''))[:45], estilo_celda),
+                Paragraph(str(item.get('nombre', ''))[:40], estilo_celda),
+                Paragraph(str(item.get('presentacion', ''))[:35], estilo_celda),
+                f"${precio:.2f}",
                 str(stock),
-                str(item.get('stock_minimo', 0)),
+                Paragraph(str(lote_cad)[:30], estilo_celda),
+                f"${valor:,.0f}",
             ])
+        
+        # Fila de total
+        data_ctrl.append(['', '', '', '', '', 'TOTAL:', '', f"${total_valor_ctrl:,.2f}"])
+        
         table_ctrl = _crear_tabla_institucional(data_ctrl, col_widths, colores_tema={
             **colores_tema,
             'encabezado': colors.HexColor('#991B1B'),
@@ -5353,16 +5369,28 @@ def generar_reporte_medicamentos_controlados(productos_data, filtros=None):
         elements.append(sec_table2)
 
         data_no_ctrl = [headers_row]
+        total_valor_no_ctrl = 0
         for idx, item in enumerate(no_controlados, 1):
             stock = item.get('stock_actual', 0)
+            precio = item.get('precio_promedio', 0)
+            valor = item.get('valor_total', 0)
+            total_valor_no_ctrl += valor
+            lote_cad = item.get('lote_caducidad', '—')
+            
             data_no_ctrl.append([
                 str(idx),
                 str(item.get('clave', '')),
-                Paragraph(str(item.get('nombre', ''))[:50], estilo_celda),
-                Paragraph(str(item.get('presentacion', ''))[:45], estilo_celda),
+                Paragraph(str(item.get('nombre', ''))[:40], estilo_celda),
+                Paragraph(str(item.get('presentacion', ''))[:35], estilo_celda),
+                f"${precio:.2f}",
                 str(stock),
-                str(item.get('stock_minimo', 0)),
+                Paragraph(str(lote_cad)[:30], estilo_celda),
+                f"${valor:,.0f}",
             ])
+        
+        # Fila de total
+        data_no_ctrl.append(['', '', '', '', '', 'TOTAL:', '', f"${total_valor_no_ctrl:,.2f}"])
+        
         table_no_ctrl = _crear_tabla_institucional(data_no_ctrl, col_widths, colores_tema={
             **colores_tema,
             'encabezado': colors.HexColor('#15803D'),
