@@ -1350,6 +1350,7 @@ class LoteParcialidad(models.Model):
     
     class Meta:
         db_table = 'lote_parcialidades'
+        managed = False  # Tabla en Supabase
         ordering = ['-fecha_entrega', '-created_at']
         verbose_name = 'Parcialidad de Lote'
         verbose_name_plural = 'Parcialidades de Lotes'
@@ -2863,17 +2864,15 @@ class DetalleHojaRecoleccion(models.Model):
     """
     Detalle de Hoja de Recolección - Supabase
     
-    Campos en Supabase (según crear_bd_desarrollo.sql):
-    id, hoja_recoleccion_id, orden, recolectado, fecha_recoleccion, notas, created_at
-    
-    ISS-DB-ALIGN: Alineado con esquema real de BD
-    NOTA: requisicion_id removido del modelo porque no existe en la BD de producción
+    Campos en Supabase (producción):
+    id, hoja_id, lote_id, cantidad_recolectar, cantidad_recolectada, motivo, observaciones, created_at
     """
-    hoja = models.ForeignKey(HojaRecoleccion, on_delete=models.CASCADE, related_name='detalles', db_column='hoja_recoleccion_id')
-    orden = models.IntegerField(default=0)
-    recolectado = models.BooleanField(default=False)
-    fecha_recoleccion = models.DateTimeField(null=True, blank=True)
-    notas = models.TextField(blank=True, null=True)
+    hoja = models.ForeignKey(HojaRecoleccion, on_delete=models.CASCADE, related_name='detalles', db_column='hoja_id')
+    lote = models.ForeignKey('Lote', on_delete=models.CASCADE, related_name='detalles_recoleccion', db_column='lote_id')
+    cantidad_recolectar = models.IntegerField()
+    cantidad_recolectada = models.IntegerField(default=0)
+    motivo = models.CharField(max_length=50, default='caducidad')
+    observaciones = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

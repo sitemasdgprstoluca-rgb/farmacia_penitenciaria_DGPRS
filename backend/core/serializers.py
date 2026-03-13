@@ -3046,24 +3046,24 @@ class TemaGlobalPublicoSerializer(serializers.ModelSerializer):
 class DetalleHojaRecoleccionSerializer(serializers.ModelSerializer):
     """
     Serializer para DetalleHojaRecoleccion.
-    ISS-FIX: Actualizado para usar campos reales del modelo según crear_bd_desarrollo.sql:
-    hoja_recoleccion_id, requisicion_id, orden, recolectado, fecha_recoleccion, notas
+    Alineado con esquema de producción en Supabase:
+    hoja_id, lote_id, cantidad_recolectar, cantidad_recolectada, motivo, observaciones
     """
-    requisicion_folio = serializers.CharField(source='requisicion.folio', read_only=True, allow_null=True)
+    lote_numero = serializers.CharField(source='lote.numero_lote', read_only=True, allow_null=True)
+    producto_nombre = serializers.CharField(source='lote.producto.nombre', read_only=True, allow_null=True)
     
     class Meta:
         model = DetalleHojaRecoleccion
         fields = [
-            'id', 'hoja', 'requisicion', 'requisicion_folio',
-            'orden', 'recolectado', 'fecha_recoleccion',
-            'notas', 'created_at'
+            'id', 'hoja', 'lote', 'lote_numero', 'producto_nombre',
+            'cantidad_recolectar', 'cantidad_recolectada',
+            'motivo', 'observaciones', 'created_at'
         ]
         read_only_fields = ['created_at']
         extra_kwargs = {
-            'orden': {'required': False, 'default': 0},
-            'recolectado': {'required': False, 'default': False},
-            'notas': {'required': False, 'allow_null': True, 'allow_blank': True},
-            'fecha_recoleccion': {'required': False, 'allow_null': True},
+            'cantidad_recolectada': {'required': False, 'default': 0},
+            'motivo': {'required': False, 'default': 'caducidad'},
+            'observaciones': {'required': False, 'allow_null': True, 'allow_blank': True},
         }
 
 
