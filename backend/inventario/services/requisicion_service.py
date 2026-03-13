@@ -852,10 +852,14 @@ class RequisicionService:
         )
         
         # ISS-007 FIX: Aplicar bloqueo si se requiere
+        # IMPORTANTE: select_for_update() NO es compatible con GROUP BY (PostgreSQL).
+        # Estrategia: bloquear los lotes primero (sin aggregation), luego agregar por separado.
         if usar_bloqueo and not revalidacion_post_lock:
-            stock_farmacia_query = stock_farmacia_query.select_for_update(nowait=False)
-        
-        # Agregación por producto_id
+            # Paso 1: Bloquear todos los lotes relevantes (sin GROUP BY)
+            # Esto adquiere row-level locks que se mantienen hasta el fin de la transacción
+            list(stock_farmacia_query.select_for_update(nowait=False).values_list('id', flat=True))
+
+        # Paso 2: Agregación por producto_id (sin select_for_update, los locks ya están adquiridos)
         stock_por_producto = {
             item['producto_id']: item['total']
             for item in stock_farmacia_query.values('producto_id').annotate(
