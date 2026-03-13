@@ -168,9 +168,6 @@ urlpatterns = [
     
     # ADMIN: Limpieza de datos (solo superusuarios)
     path('admin/limpiar-datos/', AdminLimpiarDatosView.as_view(), name='admin-limpiar-datos'),
-
-    # Diagnóstico de Storage (solo superusuarios)
-    path('diagnostico-storage/', diagnostico_storage_view, name='diagnostico-storage'),
 ]
 
 # Diagnóstico de Storage - vista inline para superusuarios
@@ -187,6 +184,10 @@ def diagnostico_storage_view(request):
         return DRFResponse(diagnostico_storage())
     except Exception as e:
         return DRFResponse({'error': str(e)}, status=500)
+
+urlpatterns.append(
+    path('diagnostico-storage/', diagnostico_storage_view, name='diagnostico-storage'),
+)
 
 # SOLO EN DESARROLLO: Endpoint de autologin automatico
 if settings.DEBUG:
