@@ -1066,3 +1066,22 @@ def invalidar_cache_donacion_save(sender, instance, **kwargs):
 def invalidar_cache_donacion_delete(sender, instance, **kwargs):
     """Invalida caché del dashboard cuando se elimina una donación."""
     _invalidar_cache_dashboard_signal()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Realtime: publicar evento cuando se crea una notificación
+# ─────────────────────────────────────────────────────────────────────────────
+
+@receiver(post_save, sender=Notificacion)
+def publicar_notificacion_realtime(sender, instance, created, **kwargs):
+    """
+    Publica un evento realtime cada vez que se crea una notificación,
+    para que el frontend la muestre instantáneamente sin polling.
+    """
+    if not created or _TESTING:
+        return
+    try:
+        from inventario.utils.realtime import on_commit_publish
+        on_commit_publish('created', 'notificacion', instance.id)
+    except Exception as exc:
+        logger.warning('[realtime] Error publicando notificación %s: %s', instance.id, exc)

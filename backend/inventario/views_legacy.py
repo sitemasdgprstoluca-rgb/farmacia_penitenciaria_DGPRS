@@ -6822,7 +6822,10 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 update_fields.append('foto_firma_recepcion')
             
             requisicion.save(update_fields=update_fields)
-        
+
+        on_commit_publish('confirmed', 'requisicion', requisicion.id)
+        on_commit_publish('created', 'notificacion', requisicion.id)
+
         response_data = {
             'mensaje': 'Requisición marcada como recibida',
             'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data,
@@ -7400,6 +7403,9 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             datos_adicionales={'observaciones': observaciones}
         )
         
+        on_commit_publish('autorizado', 'requisicion', requisicion.id)
+        on_commit_publish('created', 'notificacion', requisicion.id)
+
         return Response({
             'mensaje': 'Requisición autorizada por director, enviada a farmacia central',
             'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data
@@ -7465,6 +7471,9 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             datos_adicionales={'observaciones': observaciones}
         )
         
+        on_commit_publish('updated', 'requisicion', requisicion.id)
+        on_commit_publish('created', 'notificacion', requisicion.id)
+
         return Response({
             'mensaje': 'Requisición recibida en farmacia, en revisión',
             'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data
@@ -7714,6 +7723,9 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             }
         )
         
+        on_commit_publish('autorizado', 'requisicion', requisicion.id)
+        on_commit_publish('created', 'notificacion', requisicion.id)
+
         return Response({
             'mensaje': f'Requisición autorizada. Fecha límite de recolección: {fecha_recoleccion.strftime("%Y-%m-%d %H:%M")}',
             'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data,
@@ -7780,6 +7792,9 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             motivo=motivo.strip()
         )
         
+        on_commit_publish('updated', 'requisicion', requisicion.id)
+        on_commit_publish('created', 'notificacion', requisicion.id)
+
         return Response({
             'mensaje': 'Requisición devuelta al médico para correcciones',
             'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data,
@@ -7837,6 +7852,9 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             datos_adicionales={'es_reenvio': True, 'observaciones': observaciones}
         )
         
+        on_commit_publish('enviado', 'requisicion', requisicion.id)
+        on_commit_publish('created', 'notificacion', requisicion.id)
+
         return Response({
             'mensaje': 'Requisición reenviada para autorización',
             'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data
@@ -7980,13 +7998,16 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         requisicion.fecha_vencimiento = timezone.now()
         requisicion.motivo_vencimiento = motivo
         requisicion.save(update_fields=['estado', 'fecha_vencimiento', 'motivo_vencimiento'])
-        
+
         self._registrar_historial(
             requisicion, estado_anterior, 'vencida',
             request.user, 'vencer', request,
             motivo=motivo
         )
-        
+
+        on_commit_publish('updated', 'requisicion', requisicion.id)
+        on_commit_publish('created', 'notificacion', requisicion.id)
+
         return Response({
             'mensaje': 'Requisición marcada como vencida',
             'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data

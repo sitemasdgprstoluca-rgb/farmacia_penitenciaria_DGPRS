@@ -4,6 +4,7 @@ import { toast } from "react-hot-toast";
 import { notificacionesAPI } from "../services/api";
 import { usePermissions } from "../hooks/usePermissions";
 import { hasAccessToken } from "../services/tokenManager";
+import { useRealtimeSync } from "../hooks/useRealtimeSync";
 
 const BELL_PAGE_SIZE = 10; // Límite de notificaciones en el dropdown
 
@@ -118,6 +119,12 @@ const NotificacionesBell = ({ externalCount, onCountChange }) => {
       setCargando(false);
     }
   }, [user, tienePermiso, onCountChange]);
+
+  // Realtime: recargar contador instantáneamente cuando llega una notificación nueva
+  useRealtimeSync('notificacion', cargarContador, {
+    debounceMs: 300,
+    enabled: !!user && !!tienePermiso,
+  });
 
   useEffect(() => {
     // No iniciar polling sin permiso
