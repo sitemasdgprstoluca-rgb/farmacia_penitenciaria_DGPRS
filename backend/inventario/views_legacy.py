@@ -5930,7 +5930,6 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         # ISS-003: Revalidar stock disponible en FARMACIA CENTRAL antes de autorizar
         # El stock pudo haber cambiado desde que se creó/envió la requisición
         errores_stock = []
-        advertencias_stock = []
         
         # ISS-004 FIX: Bloquear detalles también para evitar modificaciones
         detalles_bloqueados = DetalleRequisicion.objects.select_for_update().filter(
@@ -5957,23 +5956,13 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 stock_farmacia = item.producto.get_stock_farmacia_central()
                 
                 if stock_farmacia < cant_autorizada:
-                    if stock_farmacia == 0:
-                        errores_stock.append({
-                            'producto': item.producto.clave,
-                            'descripcion': item.producto.descripcion[:50],
-                            'solicitado': cant_autorizada,
-                            'disponible_farmacia': stock_farmacia,
-                            'mensaje': 'Sin stock en farmacia central'
-                        })
-                    else:
-                        advertencias_stock.append({
-                            'producto': item.producto.clave,
-                            'descripcion': item.producto.descripcion[:50],
-                            'solicitado': cant_autorizada,
-                            'disponible_farmacia': stock_farmacia,
-                            'sugerido': stock_farmacia,
-                            'mensaje': f'Stock insuficiente, disponible: {stock_farmacia}'
-                        })
+                    errores_stock.append({
+                        'producto': item.producto.clave,
+                        'nombre': item.producto.nombre[:80],
+                        'solicitado': cant_autorizada,
+                        'disponible_farmacia': stock_farmacia,
+                        'mensaje': f'Stock insuficiente. Disponible: {stock_farmacia}, solicitado: {cant_autorizada}'
+                    })
             
             item.cantidad_autorizada = cant_autorizada
             
@@ -5993,13 +5982,11 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             
             item.save()
         
-        # ISS-003: Si hay productos sin stock, rechazar autorización o advertir
+        # ISS-003: Si hay productos con stock insuficiente, rechazar autorización
         if errores_stock:
-            # Productos con 0 stock - no permitir autorización
             return Response({
-                'error': 'No se puede autorizar: productos sin stock en farmacia central',
-                'detalles': errores_stock,
-                'advertencias': advertencias_stock
+                'error': 'No se puede autorizar: la cantidad autorizada excede el stock disponible en farmacia central. Ajuste las cantidades.',
+                'detalles': errores_stock
             }, status=status.HTTP_400_BAD_REQUEST)
         
         # Determinar estado final
@@ -6041,12 +6028,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             'total_solicitado': total_solicitado,
             'total_autorizado': total_autorizado
         }
-        
-        # ISS-003: Incluir advertencias si hay stock parcial
-        if advertencias_stock:
-            response_data['advertencias'] = advertencias_stock
-            response_data['mensaje'] += ' (con advertencias de stock)'
-        
+
         return Response(response_data)
 
     @action(detail=True, methods=['post'])
