@@ -3029,7 +3029,7 @@ class ProductoImagen(models.Model):
         related_name='imagenes',
         db_column='producto_id'
     )
-    imagen = models.CharField(max_length=255)  # URL o path de la imagen
+    imagen = models.CharField(max_length=500)  # URL completa de Supabase Storage
     es_principal = models.BooleanField(default=False)
     orden = models.IntegerField(default=0)
     descripcion = models.CharField(max_length=255, blank=True, null=True)
@@ -3091,8 +3091,8 @@ class LoteDocumento(models.Model):
         default='otro'
     )
     numero_documento = models.CharField(max_length=100, blank=True, null=True)
-    archivo = models.CharField(max_length=255)  # URL o path del archivo
-    nombre_archivo = models.CharField(max_length=255, blank=True, null=True)
+    archivo = models.CharField(max_length=500)  # URL completa de Supabase Storage
+    nombre_archivo = models.CharField(max_length=500, blank=True, null=True)
     fecha_documento = models.DateField(blank=True, null=True)
     notas = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
