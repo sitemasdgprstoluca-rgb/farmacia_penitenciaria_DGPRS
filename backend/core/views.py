@@ -3037,10 +3037,15 @@ class ProductoImagenViewSet(viewsets.ModelViewSet):
                 orden=max_orden + 1,
                 descripcion=descripcion
             )
-            
+
+            # Actualizar campo imagen del producto principal
+            if es_principal or not producto.imagen:
+                producto.imagen = resultado['url']
+                producto.save(update_fields=['imagen'])
+
             from core.serializers import ProductoImagenSerializer
             serializer = ProductoImagenSerializer(producto_imagen)
-            
+
             return Response({
                 'message': 'Imagen subida exitosamente',
                 'imagen': serializer.data

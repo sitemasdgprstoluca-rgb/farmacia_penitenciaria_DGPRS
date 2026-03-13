@@ -1841,7 +1841,11 @@ class LoteViewSet(ConfirmationRequiredMixin, viewsets.ModelViewSet):
                     {'error': error_msg},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
+            # Resetear posición del archivo después de la validación (consume el archivo)
+            if hasattr(archivo, 'seek'):
+                archivo.seek(0)
+
             # Validar tipo de documento
             tipo_documento = request.data.get('tipo_documento', 'otro')
             tipos_validos = ['factura', 'contrato', 'remision', 'otro']

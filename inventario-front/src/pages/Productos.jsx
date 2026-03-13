@@ -28,7 +28,11 @@ import {
 
   FaLayerGroup,
 
-  FaCalendarAlt
+  FaCalendarAlt,
+
+  FaCamera,
+
+  FaImage
 
 } from 'react-icons/fa';
 
@@ -569,6 +573,11 @@ const Productos = () => {
   const [lotesModalLoading, setLotesModalLoading] = useState(false);
   const [lotesModalData, setLotesModalData] = useState(null);
 
+  // Estado para modal de imagen de producto
+  const [imagenModalVisible, setImagenModalVisible] = useState(false);
+  const [imagenModalProducto, setImagenModalProducto] = useState(null);
+  const [imagenUploading, setImagenUploading] = useState(false);
+
   const [currentPage, setCurrentPage] = useState(1);
 
   const [totalPages, setTotalPages] = useState(1);
@@ -1081,9 +1090,6 @@ const Productos = () => {
       }
 
       // Preparar datos para enviar al backend
-      // IMPORTANTE: NO incluir imagen aquí - se sube por separado
-      const imagenFile = formData.imagen instanceof File ? formData.imagen : null;
-      
       // TRAZABILIDAD: Si producto tiene lotes, NO enviar campos protegidos
       // El backend rechaza cambios en: clave, nombre, presentacion, unidad_medida, categoria
       const tieneLotes = editingProduct?.tiene_lotes === true;
@@ -1126,22 +1132,6 @@ const Productos = () => {
           mensajeExito = `Código asignado: ${varInfo.codigo_asignado} (variante de ${varInfo.codigo_base} por presentación diferente)`;
         } else {
           mensajeExito = 'Producto creado correctamente';
-        }
-      }
-
-      // Si hay imagen, subirla ahora que tenemos el ID del producto
-      if (imagenFile && productoId) {
-        const imgFormData = new FormData();
-        imgFormData.append('producto_id', productoId);
-        imgFormData.append('imagen', imagenFile);
-        imgFormData.append('es_principal', 'true');
-        
-        try {
-          await productosAPI.subirImagen(productoId, imgFormData);
-          mensajeExito += ' (con imagen)';
-        } catch (imgError) {
-          console.error('Error al subir imagen:', imgError);
-          toast.error('Producto guardado pero la imagen no se pudo subir. Intente agregarla después.');
         }
       }
 
@@ -1553,6 +1543,61 @@ const Productos = () => {
   };
 
 
+
+  // Abrir modal de imagen de producto
+  const abrirImagenModal = (producto) => {
+    setImagenModalProducto(producto);
+    setImagenModalVisible(true);
+  };
+
+  // Subir imagen desde el modal de imagen
+  const handleSubirImagenModal = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('La imagen no puede superar los 5MB');
+      return;
+    }
+
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Solo se permiten imágenes JPG, PNG, GIF o WebP');
+      return;
+    }
+
+    setImagenUploading(true);
+    try {
+      const imgFormData = new FormData();
+      imgFormData.append('producto_id', imagenModalProducto.id);
+      imgFormData.append('imagen', file);
+      imgFormData.append('es_principal', 'true');
+
+      const resp = await productosAPI.subirImagen(imagenModalProducto.id, imgFormData);
+      toast.success('Imagen subida exitosamente');
+
+      // Mostrar preview inmediato con la URL del response o FileReader
+      const newUrl = resp?.data?.imagen?.imagen_url || resp?.data?.imagen?.imagen;
+      if (newUrl) {
+        setImagenModalProducto(prev => ({ ...prev, imagen: newUrl }));
+      } else {
+        // Fallback: preview local
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setImagenModalProducto(prev => ({ ...prev, imagen: reader.result }));
+        };
+        reader.readAsDataURL(file);
+      }
+
+      // Refrescar lista para obtener la URL actualizada
+      await fetchProductos();
+    } catch (err) {
+      console.error('Error al subir imagen:', err);
+      toast.error('Error al subir la imagen');
+    } finally {
+      setImagenUploading(false);
+    }
+  };
 
   const verAuditoriaProducto = async (producto) => {
 
@@ -1968,6 +2013,15 @@ const Productos = () => {
                       </button>
 
                     )}
+
+                    <button
+                      type="button"
+                      title={producto.imagen ? 'Ver / cambiar imagen' : 'Subir imagen'}
+                      onClick={() => abrirImagenModal(producto)}
+                      className={`${producto.imagen ? 'text-emerald-600 hover:text-emerald-800' : 'text-gray-400 hover:text-gray-600'}`}
+                    >
+                      <FaCamera />
+                    </button>
 
                     {puede.cambiarEstado && (
 
@@ -2733,62 +2787,7 @@ const Productos = () => {
                 </div>
               </div>
 
-              {/* Campo de imagen del producto */}
-              <div className="section-elevated">
-                <label className="label-elevated">Imagen del producto</label>
-                <div className="mt-1 flex items-center gap-4">
-                  {formData.imagenPreview && (
-                    <div className="relative">
-                      <img
-                        src={formData.imagenPreview}
-                        alt="Preview"
-                        className="h-20 w-20 object-cover rounded-lg border-2 border-gray-200"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setFormData(prev => ({ ...prev, imagen: null, imagenPreview: null }))}
-                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 text-xs"
-                        title="Quitar imagen"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  )}
-                  <label className="flex items-center gap-2 rounded-xl border-2 border-dashed border-primary px-4 py-3 bg-primary/5 hover:bg-primary/10 cursor-pointer transition-colors">
-                    <FaFileUpload className="text-primary" />
-                    <span className="text-sm text-primary font-medium">
-                      {formData.imagenPreview ? 'Cambiar imagen' : 'Seleccionar imagen'}
-                    </span>
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files[0];
-                        if (file) {
-                          if (file.size > 5 * 1024 * 1024) {
-                            toast.error('La imagen no puede superar los 5MB');
-                            return;
-                          }
-                          const reader = new FileReader();
-                          reader.onloadend = () => {
-                            setFormData(prev => ({
-                              ...prev,
-                              imagen: file,
-                              imagenPreview: reader.result
-                            }));
-                          };
-                          reader.readAsDataURL(file);
-                        }
-                      }}
-                      disabled={savingProduct}
-                    />
-                  </label>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  Formatos: JPG, PNG, GIF, WebP • Máximo 5MB
-                </p>
-              </div>
+              {/* Nota: La imagen se gestiona desde el icono de cámara en la columna Acciones */}
 
               <div className="flex justify-end gap-3 pt-3 border-t border-gray-100">
 
@@ -3225,6 +3224,61 @@ const Productos = () => {
         onConfirm={executeWithConfirmation}
         onCancel={cancelConfirmation}
       />
+
+      {/* Modal de imagen de producto */}
+      {imagenModalVisible && imagenModalProducto && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setImagenModalVisible(false)}>
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                <FaImage className="text-primary" />
+                Imagen del producto
+              </h3>
+              <button onClick={() => setImagenModalVisible(false)} className="text-gray-400 hover:text-gray-600">
+                <FaTimes size={18} />
+              </button>
+            </div>
+
+            <p className="text-sm text-gray-500 mb-3">
+              <span className="font-semibold">{imagenModalProducto.clave}</span> - {imagenModalProducto.nombre}
+            </p>
+
+            {/* Vista previa de imagen */}
+            {imagenModalProducto.imagen ? (
+              <div className="mb-4 flex justify-center">
+                <img
+                  src={imagenModalProducto.imagen}
+                  alt={imagenModalProducto.nombre}
+                  className="max-h-64 max-w-full object-contain rounded-lg border border-gray-200 shadow-sm"
+                />
+              </div>
+            ) : (
+              <div className="mb-4 flex flex-col items-center justify-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                <FaImage className="text-gray-300 text-4xl mb-2" />
+                <p className="text-sm text-gray-400">Sin imagen</p>
+              </div>
+            )}
+
+            {/* Botón para subir/cambiar imagen */}
+            <label className="flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-primary px-4 py-3 bg-primary/5 hover:bg-primary/10 cursor-pointer transition-colors w-full">
+              <FaCamera className="text-primary" />
+              <span className="text-sm text-primary font-medium">
+                {imagenUploading ? 'Subiendo...' : (imagenModalProducto.imagen ? 'Cambiar imagen' : 'Subir imagen')}
+              </span>
+              <input
+                type="file"
+                accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                className="hidden"
+                onChange={handleSubirImagenModal}
+                disabled={imagenUploading}
+              />
+            </label>
+            <p className="text-xs text-gray-400 mt-2 text-center">
+              JPG, PNG, GIF, WebP - Max 5MB
+            </p>
+          </div>
+        </div>
+      )}
 
     </div>
 
