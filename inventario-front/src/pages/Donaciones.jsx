@@ -1008,6 +1008,7 @@ const Donaciones = () => {
         toast.success('Inventario exportado a PDF correctamente');
       }
     } catch (err) {
+      try { if (win && !win._fallback && !win.closed) win.close(); } catch { /* */ }
       console.error('Error exportando inventario PDF:', err);
       toast.error('Error al exportar inventario a PDF');
     } finally {

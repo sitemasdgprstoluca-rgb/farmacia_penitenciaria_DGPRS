@@ -523,6 +523,7 @@ const Dispensaciones = () => {
       toast.success(`✅ Control Mensual generado`, { id: toastId });
       setReporteModal(prev => ({ ...prev, show: false }));
     } catch (error) {
+      try { if (win && !win._fallback && !win.closed) win.close(); } catch { /* */ }
       console.error('Error al generar Control Mensual:', error);
       const msg = error.response?.data?.error || error.response?.data?.detail || error.message || 'Error al generar reporte';
       toast.error(`❌ ${msg}`, { id: toastId });
@@ -559,6 +560,7 @@ const Dispensaciones = () => {
       toast.success('✅ Formato C Consolidado generado', { id: toastId });
       setFormatoCModal(prev => ({ ...prev, show: false }));
     } catch (error) {
+      try { if (win && !win._fallback && !win.closed) win.close(); } catch { /* */ }
       console.error('Error al generar Formato C Consolidado:', error);
       const msg = error.response?.data?.error || error.response?.data?.detail || error.message || 'Error al generar reporte';
       toast.error(`❌ ${msg}`, { id: toastId });
@@ -822,6 +824,7 @@ const Dispensaciones = () => {
         toast.success('PDF generado correctamente');
       }
     } catch (error) {
+      try { if (win && !win._fallback && !win.closed) win.close(); } catch { /* */ }
       console.error('Error al generar PDF:', error);
       toast.error('Error al generar PDF');
     }
@@ -854,6 +857,7 @@ const Dispensaciones = () => {
         toast.success('Documento descargado correctamente');
       }
     } catch (error) {
+      try { if (win && !win._fallback && !win.closed) win.close(); } catch { /* */ }
       console.error('Error al descargar documento:', error);
       toast.error('Error al descargar el documento firmado');
     }

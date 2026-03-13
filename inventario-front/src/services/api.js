@@ -1450,26 +1450,26 @@ export const requisicionesAPI = {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
   
-  // Descarga de PDFs
+  // Descarga de PDFs (timeout extendido a 90s para generación con ReportLab)
   downloadPDFAceptacion: (id) => apiClient.get(`/requisiciones/${id}/hoja-recoleccion/`, {
-    responseType: 'blob'
+    responseType: 'blob', timeout: 90000
   }),
   downloadPDFRechazo: (id) => apiClient.get(`/requisiciones/${id}/pdf-rechazo/`, {
-    responseType: 'blob'
+    responseType: 'blob', timeout: 90000
   }),
   // ISS-HOJA-V2: Hoja de consulta para centro (con sello SURTIDA, sin firmas)
   downloadHojaConsulta: (id) => apiClient.get(`/requisiciones/${id}/hoja-consulta/`, {
-    responseType: 'blob'
+    responseType: 'blob', timeout: 90000
   }),
-  
+
   // Recibo de Salida del Almacén (Formato Oficial al surtir)
   downloadReciboSalida: (id) => apiClient.get(`/requisiciones/${id}/exportar-recibo-salida/`, {
-    responseType: 'blob'
+    responseType: 'blob', timeout: 90000
   }),
 
   // Compatibilidad hacia atras
   getHojaRecoleccion: (id) => apiClient.get(`/requisiciones/${id}/hoja-recoleccion/`, {
-    responseType: 'blob'
+    responseType: 'blob', timeout: 90000
   }),
 };
 
@@ -1895,7 +1895,7 @@ export const hojasRecoleccionAPI = {
   // Obtener detalle de una hoja
   getById: (id) => apiClient.get(`/hojas-recoleccion/${id}/`),
   // Descargar PDF de la hoja
-  descargarPDF: (id) => apiClient.get(`/hojas-recoleccion/${id}/pdf/`, { responseType: 'blob' }),
+  descargarPDF: (id) => apiClient.get(`/hojas-recoleccion/${id}/pdf/`, { responseType: 'blob', timeout: 90000 }),
   // Farmacia verifica que la hoja coincide con lo impreso
   verificar: (id) => apiClient.post(`/hojas-recoleccion/${id}/verificar/`),
   // Verificar integridad (hash)

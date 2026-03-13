@@ -254,24 +254,27 @@ def generar_hoja_recoleccion(requisicion):
     # El centro que aparece en el encabezado del documento
     centro_documento = requisicion.centro_origen or requisicion.centro_destino
     
-    # Pre-calcular existencias por producto en el centro del documento
-    # Suma de todos los lotes activos del producto en ese centro
+    # Pre-calcular existencias de TODOS los productos en una sola consulta
+    # Evita N+1 queries (antes: 1 query por producto, ahora: 1 query total)
     from core.models import Lote
     from django.db.models import Sum
-    
-    def calcular_existencia_producto_centro(producto_id, centro_id):
-        """Calcula la existencia total de un producto en un centro específico."""
-        if not centro_id:
-            return 0
-        filtros = {
-            'producto_id': producto_id,
-            'centro_id': centro_id,
-            'activo': True,
-            'cantidad_actual__gt': 0
-        }
-        resultado = Lote.objects.filter(**filtros).aggregate(total=Sum('cantidad_actual'))
-        return resultado['total'] or 0
-    
+
+    existencias_por_producto = {}
+    if centro_documento:
+        producto_ids = list(
+            requisicion.detalles.values_list('producto_id', flat=True)
+        )
+        if producto_ids:
+            existencias_por_producto = {
+                row['producto_id']: row['total']
+                for row in Lote.objects.filter(
+                    producto_id__in=producto_ids,
+                    centro_id=centro_documento.id,
+                    activo=True,
+                    cantidad_actual__gt=0,
+                ).values('producto_id').annotate(total=Sum('cantidad_actual'))
+            }
+
     # Procesar cada detalle de la requisición directamente
     # Cada detalle tiene: producto, lote (opcional), cantidad_solicitada, cantidad_autorizada
     for detalle in requisicion.detalles.all().select_related('producto', 'lote'):
@@ -280,18 +283,18 @@ def generar_hoja_recoleccion(requisicion):
         # USAR NOMBRE DEL PRODUCTO, NO DESCRIPCIÓN
         nombre = str(producto.nombre or '')
         presentacion = str(getattr(producto, 'presentacion', '') or getattr(producto, 'unidad_medida', '') or '')
-        
+
         # Datos del lote desde el detalle de la requisición
         lote = detalle.lote
         lote_numero = ''
-        
+
         if lote:
             lote_numero = str(lote.numero_lote or '')
-        
-        # EXISTENCIA: Stock total del PRODUCTO en el CENTRO del documento (no solo del lote)
+
+        # EXISTENCIA: Stock total del PRODUCTO en el CENTRO (precalculado en 1 query)
         existencia = ''
         if centro_documento:
-            stock_centro = calcular_existencia_producto_centro(producto.id, centro_documento.id)
+            stock_centro = existencias_por_producto.get(producto.id, 0)
             existencia = str(stock_centro)
         
         cantidad_solicitada = str(detalle.cantidad_solicitada) if detalle.cantidad_solicitada else ''

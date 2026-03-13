@@ -606,6 +606,7 @@ const Reportes = () => {
       abrirPdfEnNavegador(response, win);
       toast.success(`✅ PDF generado`, { id: toastId });
     } catch (err) {
+      try { if (win && !win._fallback && !win.closed) win.close(); } catch { /* */ }
       const msg = err.response?.data?.detail || err.message || "Error al exportar PDF";
       toast.error(`❌ ${msg}`, { id: toastId });
     } finally {

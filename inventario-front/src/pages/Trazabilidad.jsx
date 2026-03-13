@@ -423,6 +423,7 @@ const Trazabilidad = () => {
         abrirPdfEnNavegador(response, win);
         toast.success('PDF global generado exitosamente');
       } catch (error) {
+        try { if (win && !win._fallback && !win.closed) win.close(); } catch { /* */ }
         console.error('Error al exportar PDF global:', error);
         toast.error(error.response?.data?.error || 'Error al generar PDF');
       } finally {
@@ -464,6 +465,7 @@ const Trazabilidad = () => {
       abrirPdfEnNavegador(response, win);
       toast.success('PDF generado exitosamente');
     } catch (error) {
+      try { if (win && !win._fallback && !win.closed) win.close(); } catch { /* */ }
       console.error('Error al exportar PDF:', error);
       if (error.response?.status === 403) {
         toast.error('No tienes permiso para exportar');
@@ -585,6 +587,7 @@ const Trazabilidad = () => {
       abrirPdfEnNavegador(response, win);
       toast.success('📋 Formato B (Tarjeta Entradas/Salidas) generado exitosamente');
     } catch (error) {
+      try { if (win && !win._fallback && !win.closed) win.close(); } catch { /* */ }
       console.error('Error al exportar Formato B:', error);
       if (error.response?.status === 403) {
         toast.error('No tienes permiso para exportar');

@@ -1316,6 +1316,7 @@ const Lotes = () => {
         toast.success('PDF de inventario generado correctamente');
       }
     } catch (error) {
+      try { if (win && !win._fallback && !win.closed) win.close(); } catch { /* */ }
       toast.error('Error al generar PDF');
     } finally {
       setExportPdfLoading(false);

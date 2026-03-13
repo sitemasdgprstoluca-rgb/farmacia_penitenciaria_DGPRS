@@ -1354,6 +1354,7 @@ const Movimientos = () => {
       abrirPdfEnNavegador(response, win);
       toast.success("PDF generado");
     } catch (err) {
+      try { if (win && !win._fallback && !win.closed) win.close(); } catch { /* */ }
       toast.error(err.response?.data?.detail || "No se pudo generar el PDF");
     } finally {
       setExporting(null);
@@ -1371,6 +1372,7 @@ const Movimientos = () => {
       abrirPdfEnNavegador(response.data || response, win);
       toast.success("Recibo generado", { id: "recibo" });
     } catch (err) {
+      try { if (win && !win._fallback && !win.closed) win.close(); } catch { /* */ }
       const errorMsg = err.response?.data?.error || err.response?.data?.detail || err.message || "No se pudo generar el recibo";
       toast.error(errorMsg, { id: "recibo" });
       console.error("Error generando recibo:", err);
@@ -1388,6 +1390,7 @@ const Movimientos = () => {
       abrirPdfEnNavegador(response.data || response, win);
       toast.success("Comprobante generado", { id: "recibo-final" });
     } catch (err) {
+      try { if (win && !win._fallback && !win.closed) win.close(); } catch { /* */ }
       const errorMsg = err.response?.data?.error || err.response?.data?.detail || err.message || "No se pudo generar el comprobante";
       toast.error(errorMsg, { id: "recibo-final" });
       console.error("Error generando comprobante:", err);
@@ -1404,6 +1407,7 @@ const Movimientos = () => {
       abrirPdfEnNavegador(response.data, win);
       toast.success("Hoja de entrega lista", { id: "hoja-grupo" });
     } catch (err) {
+      try { if (win && !win._fallback && !win.closed) win.close(); } catch { /* */ }
       toast.error("No se pudo generar la hoja de entrega", { id: "hoja-grupo" });
       console.error("Error generando hoja:", err);
     }
@@ -1419,11 +1423,12 @@ const Movimientos = () => {
       abrirPdfEnNavegador(response.data, win);
       toast.success("Comprobante de entrega listo", { id: "comp-grupo" });
     } catch (err) {
+      try { if (win && !win._fallback && !win.closed) win.close(); } catch { /* */ }
       toast.error("No se pudo generar el comprobante", { id: "comp-grupo" });
       console.error("Error generando comprobante:", err);
     }
   };
-  
+
   // Confirmar entrega de grupo de salida masiva
   const [confirmandoGrupo, setConfirmandoGrupo] = useState(null);
   

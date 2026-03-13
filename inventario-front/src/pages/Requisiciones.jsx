@@ -1747,6 +1747,8 @@ const Requisiciones = () => {
       abrirPdfEnNavegador(response.data, win);
       toast.success('PDF generado correctamente');
     } catch (error) {
+      // Cerrar ventana pre-abierta para no dejar about:blank colgado
+      try { if (win && !win._fallback && !win.closed) win.close(); } catch { /* */ }
       console.error('Error al descargar PDF:', error);
       const message = error.response?.data?.error || error.message || 'Error al descargar PDF';
       toast.error(message);
