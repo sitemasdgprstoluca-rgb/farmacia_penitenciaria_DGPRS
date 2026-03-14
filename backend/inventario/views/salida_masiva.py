@@ -994,12 +994,22 @@ def subir_evidencia_entrega(request, grupo_salida):
         movimientos = Movimiento.objects.filter(
             motivo__contains=f'[{grupo_salida}]',
             tipo='salida'
-        )
+        ).select_related('usuario')
         if not movimientos.exists():
             return Response({
                 'error': True,
                 'message': 'No se encontraron movimientos para este grupo de salida'
             }, status=status.HTTP_404_NOT_FOUND)
+
+        # ISS-OWNERSHIP: Solo el usuario que creó la salida (o admin) puede subir evidencia
+        primer_mov = movimientos.first()
+        if not request.user.is_superuser and primer_mov.usuario_id and primer_mov.usuario_id != request.user.id:
+            creador = primer_mov.usuario
+            creador_nombre = f"{creador.first_name} {creador.last_name}".strip() or creador.username if creador else f'Usuario #{primer_mov.usuario_id}'
+            return Response({
+                'error': True,
+                'message': f'Esta salida fue creada por {creador_nombre}. Solo esa persona puede subir la evidencia.'
+            }, status=status.HTTP_403_FORBIDDEN)
 
         # Subir a Supabase Storage
         from inventario.services.storage_service import get_storage_service

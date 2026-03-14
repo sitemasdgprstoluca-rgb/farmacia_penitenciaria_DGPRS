@@ -7030,6 +7030,19 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 'estado_actual': requisicion.estado
             }, status=status.HTTP_400_BAD_REQUEST)
 
+        # ISS-OWNERSHIP: Solo el usuario de farmacia que gestionó la req puede subir evidencia
+        if not request.user.is_superuser:
+            owner_id = requisicion.autorizador_farmacia_id or requisicion.receptor_farmacia_id
+            if owner_id and owner_id != request.user.id:
+                try:
+                    owner = requisicion.autorizador_farmacia or requisicion.receptor_farmacia
+                    owner_nombre = f"{owner.first_name} {owner.last_name}".strip() or owner.username
+                except Exception:
+                    owner_nombre = f'Usuario #{owner_id}'
+                return Response({
+                    'error': f'Esta requisición fue gestionada por {owner_nombre}. Solo esa persona puede subir la evidencia.',
+                }, status=status.HTTP_403_FORBIDDEN)
+
         archivo = request.FILES.get('documento_entrega')
         if not archivo:
             return Response({
