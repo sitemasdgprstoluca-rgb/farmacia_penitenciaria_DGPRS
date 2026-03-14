@@ -6085,13 +6085,28 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         centro_user = self._user_centro(request.user)
         roles_centro = ['director_centro', 'director', 'administrador_centro', 'admin_centro']
         requisicion_centro_id = requisicion.centro_origen_id or requisicion.centro_destino_id
-        
+
         if rol_normalizado in roles_centro:
             if not centro_user or requisicion_centro_id != centro_user.id:
                 return Response({
                     'error': 'No puedes rechazar requisiciones de otro centro'
                 }, status=status.HTTP_403_FORBIDDEN)
-        
+
+        # ISS-OWNERSHIP: En en_revision el receptor "toma posesión" de la requisición.
+        # Solo él (o superusuario) puede rechazarla o autorizarla.
+        if estado_actual == 'en_revision' and requisicion.receptor_farmacia_id and not request.user.is_superuser:
+            if requisicion.receptor_farmacia_id != request.user.id:
+                try:
+                    receptor = requisicion.receptor_farmacia
+                    receptor_nombre = f"{receptor.first_name} {receptor.last_name}".strip() or receptor.username
+                except Exception:
+                    receptor_nombre = f'Usuario #{requisicion.receptor_farmacia_id}'
+                return Response({
+                    'error': f'Esta requisición fue recibida por {receptor_nombre}. Solo esa persona puede rechazarla o autorizarla.',
+                    'receptor_farmacia': receptor_nombre,
+                    'receptor_farmacia_id': requisicion.receptor_farmacia_id
+                }, status=status.HTTP_403_FORBIDDEN)
+
         # ISS-SEC-RECHAZO: Motivo obligatorio (mínimo 10 caracteres)
         motivo = (
             request.data.get('observaciones') or 

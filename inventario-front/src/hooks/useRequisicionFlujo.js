@@ -270,27 +270,34 @@ export function useRequisicionFlujo() {
    */
   const getAccionesDisponibles = useCallback((requisicion) => {
     if (!requisicion) return [];
-    
+
     const estadoActual = requisicion.estado?.toLowerCase();
-    
+
     // Estados finales no tienen acciones
     if (ESTADOS_FINALES.includes(estadoActual)) {
       return [];
     }
-    
+
+    // ISS-OWNERSHIP: En en_revision la requisición pertenece al receptor.
+    // Solo él (o superusuario) puede rechazarla o autorizarla.
+    const receptorId = requisicion.receptor_farmacia || requisicion.receptor_farmacia_id;
+    const esReceptorLocal = !receptorId || esSuperuser || String(receptorId) === String(user?.id);
+
     const acciones = [];
-    
+
     Object.entries(ACCIONES_FLUJO).forEach(([key, config]) => {
-      if (puedeEjecutarAccion(key, estadoActual)) {
-        acciones.push({
-          key,
-          ...config,
-        });
+      if (!puedeEjecutarAccion(key, estadoActual)) return;
+
+      // Bloquear rechazar/autorizar_farmacia si no es el receptor en en_revision
+      if (estadoActual === 'en_revision' && (key === 'rechazar' || key === 'autorizar_farmacia') && !esReceptorLocal) {
+        return;
       }
+
+      acciones.push({ key, ...config });
     });
-    
+
     return acciones;
-  }, [puedeEjecutarAccion]);
+  }, [puedeEjecutarAccion, user, esSuperuser]);
   
   /**
    * Ejecuta una acción del flujo

@@ -1058,7 +1058,14 @@ const RequisicionDetalle = () => {
   // y muestra el nombre del receptor si no coincide (403). Así cualquier farmacia
   // puede entrar al modo revisión; el rechazo definitivo viene del servidor.
   const puedeAutorizar = requisicion?.estado === 'en_revision' && esFarmacia && permisos?.autorizarRequisicion;
-  const puedeRechazar = ['enviada', 'en_revision'].includes(requisicion?.estado) && esFarmacia && permisos?.rechazarRequisicion;
+  // En enviada: cualquier farmacia puede rechazar (nadie ha tomado posesión aún).
+  // En en_revision: solo el receptor puede rechazar (mismo criterio que autorizar).
+  const puedeRechazar =
+    esFarmacia && permisos?.rechazarRequisicion &&
+    (
+      requisicion?.estado === 'enviada' ||
+      (requisicion?.estado === 'en_revision' && esReceptor)
+    );
   // ISS-FIX-SURTIR: Solo desde 'autorizada' - surtir SIEMPRE termina en 'entregada'
   // esAutorizador no se verifica aquí: el backend no tiene ownership check en surtir,
   // cualquier farmacia con permiso puede surtir una requisición autorizada.
@@ -1320,9 +1327,9 @@ const RequisicionDetalle = () => {
                     Solo el usuario receptor puede confirmar la autorización. Tu rol en esta etapa:
                   </p>
                   <ul className="text-xs text-amber-700 space-y-1 mb-4">
-                    <li className="flex items-center gap-1.5"><FaCheck className="text-green-600 shrink-0" /> Puedes revisar y ajustar las cantidades propuestas</li>
-                    <li className="flex items-center gap-1.5"><FaCheck className="text-green-600 shrink-0" /> Puedes <strong>rechazarla</strong> directamente si detectas un error (botón "Rechazar" al pie)</li>
-                    <li className="flex items-center gap-1.5"><FaTimes className="text-red-500 shrink-0" /> No podrás confirmar la autorización (la realiza {receptorNombre || 'el receptor'})</li>
+                    <li className="flex items-center gap-1.5"><FaCheck className="text-green-600 shrink-0" /> Puedes revisar las cantidades (solo lectura)</li>
+                    <li className="flex items-center gap-1.5"><FaTimes className="text-red-500 shrink-0" /> No puedes rechazarla — esa acción también es exclusiva del receptor</li>
+                    <li className="flex items-center gap-1.5"><FaTimes className="text-red-500 shrink-0" /> No puedes autorizarla — la confirma {receptorNombre || 'el receptor'}</li>
                   </ul>
                   <button
                     onClick={iniciarAutorizacion}
