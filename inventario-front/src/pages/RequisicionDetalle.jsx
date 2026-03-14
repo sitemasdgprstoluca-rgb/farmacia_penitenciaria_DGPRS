@@ -423,25 +423,29 @@ const RequisicionDetalle = () => {
       cargarRequisicion();
     } catch (error) {
       console.error('Error al autorizar requisición:', error.response?.data);
-      
-      // Manejo específico de error de stock insuficiente
-      if (error.response?.status === 400 || error.response?.status === 409) {
-        const errorData = error.response.data;
-        
-        // Si hay detalles de stock insuficiente con lista de productos
-        if (errorData.detalles_stock && Array.isArray(errorData.detalles_stock)) {
+      const status = error.response?.status;
+      const errorData = error.response?.data;
+
+      if (status === 403) {
+        // Ownership check: el backend indica quién es el receptor
+        const msg = errorData?.error || 'No tienes permiso para autorizar esta requisición';
+        toast.error(msg, { duration: 7000 });
+        // Recargar para reflejar el nombre del receptor en el banner
+        cargarRequisicion();
+      } else if (status === 400 || status === 409) {
+        // Stock insuficiente u otro error de validación
+        if (errorData?.detalles_stock && Array.isArray(errorData.detalles_stock)) {
           const lineas = errorData.detalles_stock.map(d =>
             `• ${d.producto || d.producto_clave || 'Producto'}: disponible ${d.disponible ?? d.stock_disponible ?? '?'}, requerido ${d.requerido ?? d.cantidad_autorizada ?? d.cantidad_solicitada ?? '?'}`
           ).join('\n');
           toast.error(`❌ ${errorData.error || 'Stock insuficiente'}\n\n${lineas}`, { duration: 10000 });
-        } else if (errorData.stock_disponible !== undefined || errorData.detalle) {
-          const mensaje = `❌ ${errorData.error}\n\n${errorData.detalle || ''}`;
-          toast.error(mensaje, { duration: 8000 });
+        } else if (errorData?.stock_disponible !== undefined || errorData?.detalle) {
+          toast.error(`❌ ${errorData.error}\n\n${errorData.detalle || ''}`, { duration: 8000 });
         } else {
-          toast.error(errorData.error || errorData.mensaje || 'Error al validar stock disponible');
+          toast.error(errorData?.error || errorData?.mensaje || 'Error al validar stock disponible');
         }
       } else {
-        toast.error(error.response?.data?.error || 'Error al autorizar');
+        toast.error(errorData?.error || 'Error al autorizar');
       }
     } finally {
       setProcesando(false);
@@ -1056,7 +1060,9 @@ const RequisicionDetalle = () => {
   const puedeAutorizar = requisicion?.estado === 'en_revision' && esFarmacia && permisos?.autorizarRequisicion;
   const puedeRechazar = ['enviada', 'en_revision'].includes(requisicion?.estado) && esFarmacia && permisos?.rechazarRequisicion;
   // ISS-FIX-SURTIR: Solo desde 'autorizada' - surtir SIEMPRE termina en 'entregada'
-  const puedeSurtir = requisicion?.estado === 'autorizada' && esFarmacia && permisos?.surtirRequisicion && esAutorizador;
+  // esAutorizador no se verifica aquí: el backend no tiene ownership check en surtir,
+  // cualquier farmacia con permiso puede surtir una requisición autorizada.
+  const puedeSurtir = requisicion?.estado === 'autorizada' && esFarmacia && permisos?.surtirRequisicion;
   
   // ISS-FIX-SURTIR: Ya no hay estado intermedio 'surtida' - el surtido va directo a 'entregada'
   // puedeMarcarRecibida ya no es necesario porque el surtido completa automáticamente
@@ -1290,60 +1296,134 @@ const RequisicionDetalle = () => {
         )}
       </div>
 
-      {/* ISS-OWNERSHIP: Banner de aviso si otro usuario de farmacia está gestionando */}
-      {otroGestiona && requisicion?.estado === 'en_revision' && (
-        <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 mb-6 shadow">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-amber-100">
-              <FaUserShield className="text-xl text-amber-600" />
-            </div>
-            <div>
-              <h3 className="font-bold text-amber-800">Requisición asignada a otro usuario</h3>
-              <p className="text-sm text-amber-700">
-                Esta requisición fue recibida por <strong>{receptorNombre || `Usuario #${receptorId}`}</strong> y solo esa persona puede autorizarla.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-      {otroAutorizo && requisicion?.estado === 'autorizada' && (
-        <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 mb-6 shadow">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-amber-100">
-              <FaUserShield className="text-xl text-amber-600" />
-            </div>
-            <div>
-              <h3 className="font-bold text-amber-800">Requisición asignada a otro usuario</h3>
-              <p className="text-sm text-amber-700">
-                Esta requisición fue autorizada por <strong>{autorizadorNombre || `Usuario #${autorizadorId}`}</strong> y solo esa persona puede surtirla.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ── Banner contextual de autorización ── SOLO FARMACIA/ADMIN ────────── */}
+      {puedeAutorizar && !modoAutorizar && (() => {
+        // Pre-calcular ítems con stock insuficiente (cantidad solicitada > disponible)
+        const itemsStockInsuficiente = detallesEditables.filter(d => {
+          const stock = d.stock_disponible ?? d.lote_stock ?? 0;
+          return (d.cantidad_solicitada || 0) > stock;
+        });
 
-      {/* Banner de acción para requisiciones pendientes - SOLO FARMACIA/ADMIN */}
-      {puedeAutorizar && !modoAutorizar && (
-        <div className="bg-gray-50 border border-gray-300 rounded-xl p-4 mb-6 shadow">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-theme-primary/10">
-                <FaClipboardList className="text-xl text-theme-primary" />
-              </div>
-              <div>
-                <h3 className="font-bold text-gray-800">Requisición Pendiente de Revisión</h3>
-                <p className="text-sm text-gray-600">
-                  Revisa las cantidades solicitadas, ajusta según el inventario y acepta o rechaza.
-                </p>
+        if (otroGestiona) {
+          // ── Caso: otro usuario de farmacia recibió la requisición ──────────
+          return (
+            <div className="border border-amber-300 bg-amber-50 rounded-xl p-5 mb-6 shadow-sm">
+              <div className="flex items-start gap-4">
+                <div className="p-2 rounded-lg bg-amber-100 shrink-0 mt-0.5">
+                  <FaUserShield className="text-xl text-amber-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-bold text-amber-800 text-sm mb-1">
+                    Recibida por: <span className="font-semibold">{receptorNombre || `Usuario #${receptorId}`}</span>
+                  </h3>
+                  <p className="text-xs text-amber-700 mb-3">
+                    Solo el usuario receptor puede confirmar la autorización. Tu rol en esta etapa:
+                  </p>
+                  <ul className="text-xs text-amber-700 space-y-1 mb-4">
+                    <li className="flex items-center gap-1.5"><FaCheck className="text-green-600 shrink-0" /> Puedes revisar y ajustar las cantidades propuestas</li>
+                    <li className="flex items-center gap-1.5"><FaCheck className="text-green-600 shrink-0" /> Puedes <strong>rechazarla</strong> directamente si detectas un error (botón "Rechazar" al pie)</li>
+                    <li className="flex items-center gap-1.5"><FaTimes className="text-red-500 shrink-0" /> No podrás confirmar la autorización (la realiza {receptorNombre || 'el receptor'})</li>
+                  </ul>
+                  <button
+                    onClick={iniciarAutorizacion}
+                    disabled={procesando}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm rounded-lg disabled:opacity-50 font-medium transition-colors"
+                  >
+                    <FaEdit /> Revisar Cantidades
+                  </button>
+                </div>
               </div>
             </div>
-            <button
-              onClick={iniciarAutorizacion}
-              disabled={procesando}
-              className="flex items-center gap-2 px-5 py-3 text-white rounded-lg disabled:opacity-50 font-semibold hover:opacity-90 transition-opacity bg-theme-primary"
-            >
-              <FaEdit /> Revisar Cantidades
-            </button>
+          );
+        }
+
+        if (itemsStockInsuficiente.length > 0) {
+          // ── Caso: hay ítems con stock insuficiente ────────────────────────
+          return (
+            <div className="border border-blue-300 bg-blue-50 rounded-xl p-5 mb-6 shadow-sm">
+              <div className="flex items-start gap-4">
+                <div className="p-2 rounded-lg bg-blue-100 shrink-0 mt-0.5">
+                  <FaExclamationTriangle className="text-xl text-blue-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-bold text-blue-800 text-sm mb-1">
+                    Revisión necesaria — {itemsStockInsuficiente.length} producto{itemsStockInsuficiente.length > 1 ? 's' : ''} con stock insuficiente
+                  </h3>
+                  <p className="text-xs text-blue-700 mb-2">
+                    Deberás ajustar las cantidades autorizadas antes de confirmar:
+                  </p>
+                  <ul className="text-xs text-blue-700 space-y-0.5 mb-4">
+                    {itemsStockInsuficiente.map((d, i) => {
+                      const stock = d.stock_disponible ?? d.lote_stock ?? 0;
+                      return (
+                        <li key={i} className="flex items-center gap-1">
+                          <span className="text-red-500 font-bold">·</span>
+                          <strong>{d.producto_nombre || d.producto_clave}</strong>:
+                          solicitado <span className="font-semibold">{d.cantidad_solicitada}</span>,
+                          disponible <span className="font-semibold text-red-600">{stock}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      onClick={iniciarAutorizacion}
+                      disabled={procesando}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg disabled:opacity-50 font-medium transition-colors"
+                    >
+                      <FaEdit /> Revisar Cantidades
+                    </button>
+                    <span className="text-xs text-blue-600">· Para rechazar directamente usa el botón "Rechazar" al pie</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        // ── Caso normal: stock OK, usuario es receptor ────────────────────
+        return (
+          <div className="border border-gray-200 bg-white rounded-xl p-5 mb-6 shadow-sm">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="p-2 rounded-lg bg-green-50 shrink-0">
+                  <FaClipboardList className="text-xl text-green-600" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-800 text-sm">Requisición Pendiente de Revisión</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Stock disponible para todos los productos. Revisa, ajusta si es necesario y confirma.
+                    <span className="ml-2 text-gray-400">· Para rechazar directamente usa el botón "Rechazar" al pie.</span>
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={iniciarAutorizacion}
+                disabled={procesando}
+                className="shrink-0 inline-flex items-center gap-2 px-5 py-2.5 text-white rounded-lg disabled:opacity-50 font-semibold hover:opacity-90 transition-opacity bg-theme-primary text-sm"
+              >
+                <FaEdit /> Revisar Cantidades
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Banner informativo cuando la requisición ya está autorizada por otro */}
+      {otroAutorizo && requisicion?.estado === 'autorizada' && (
+        <div className="border border-amber-300 bg-amber-50 rounded-xl p-4 mb-6 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-amber-100 shrink-0">
+              <FaUserShield className="text-xl text-amber-600" />
+            </div>
+            <div>
+              <h3 className="font-bold text-amber-800 text-sm">
+                Autorizada por: <span>{autorizadorNombre || `Usuario #${autorizadorId}`}</span>
+              </h3>
+              <p className="text-xs text-amber-700 mt-0.5">
+                Cualquier usuario de farmacia puede proceder con el surtido.
+              </p>
+            </div>
           </div>
         </div>
       )}
