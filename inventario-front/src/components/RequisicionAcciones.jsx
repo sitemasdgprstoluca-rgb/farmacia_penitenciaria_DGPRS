@@ -118,17 +118,16 @@ export function RequisicionAcciones({
   const [modalData, setModalData] = useState(null); // Para modales de confirmación
   
   // ISS-FIX: Filtrar acciones según contexto
-  // En la lista NO mostrar autorizar_farmacia porque requiere revisar cantidades primero
+  // autorizar_farmacia requiere revisar cantidades (flujo propio en RequisicionDetalle)
+  // Se excluye tanto en lista como en detalle para evitar duplicación
   const acciones = useMemo(() => {
     let accionesDisponibles = getAccionesDisponibles(requisicion);
-    
-    // En contexto de lista, quitar acciones que requieren revisión previa de cantidades
-    if (contexto === 'lista') {
-      const accionesExcluidasEnLista = ['autorizar_farmacia'];
-      accionesDisponibles = accionesDisponibles.filter(
-        a => !accionesExcluidasEnLista.includes(a.key)
-      );
-    }
+
+    // Excluir autorizar_farmacia: el detalle tiene su propio flujo con revisión de cantidades
+    const accionesExcluidas = ['autorizar_farmacia'];
+    accionesDisponibles = accionesDisponibles.filter(
+      a => !accionesExcluidas.includes(a.key)
+    );
     
     // ISS-FIX: Ya NO filtramos 'reenviar' en devuelta - el médico solicitante lo necesita
     

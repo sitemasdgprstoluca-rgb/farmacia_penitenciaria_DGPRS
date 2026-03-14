@@ -1041,11 +1041,12 @@ def subir_evidencia_entrega(request, grupo_salida):
         # Guardar URL en todos los movimientos del grupo
         url = resultado['url']
         usuario_nombre = f"{request.user.first_name} {request.user.last_name}".strip() or request.user.username
+        nota_evidencia = f'\n[Evidencia subida por {usuario_nombre} el {now.strftime("%d/%m/%Y %H:%M")}]'
         updated = movimientos.update(
             documento_evidencia_url=url,
-            observaciones=Concat(
-                Coalesce(F('observaciones'), Value('')),
-                Value(f'\n[Evidencia subida por {usuario_nombre} el {now.strftime("%d/%m/%Y %H:%M")}]')
+            motivo=Concat(
+                Coalesce(F('motivo'), Value('')),
+                Value(nota_evidencia)
             )
         )
 

@@ -7669,28 +7669,36 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         
         try:
             from django.utils.dateparse import parse_datetime, parse_date
+            from datetime import time as dt_time
+
+            fecha_recoleccion_str = str(fecha_recoleccion_str).strip()
+            logger.info(f"AUTORIZAR: Parseando fecha_recoleccion_limite='{fecha_recoleccion_str}'")
+
             fecha_recoleccion = parse_datetime(fecha_recoleccion_str)
             if not fecha_recoleccion:
                 fecha_date = parse_date(fecha_recoleccion_str)
                 if fecha_date:
                     # Si solo es fecha, agregar hora 17:00
-                    from datetime import time
                     fecha_recoleccion = timezone.make_aware(
-                        datetime.combine(fecha_date, time(17, 0, 0))
+                        datetime.combine(fecha_date, dt_time(17, 0, 0))
                     )
-            # ISS-FIX: Asegurar que la fecha siempre sea timezone-aware
-            elif timezone.is_naive(fecha_recoleccion):
+
+            if fecha_recoleccion and timezone.is_naive(fecha_recoleccion):
                 fecha_recoleccion = timezone.make_aware(fecha_recoleccion)
-        except Exception:
+        except Exception as exc:
+            logger.error(f"AUTORIZAR: Error parseando fecha '{fecha_recoleccion_str}': {exc}", exc_info=True)
             return Response({
-                'error': 'Formato de fecha inválido. Use YYYY-MM-DD o YYYY-MM-DDTHH:MM:SS'
+                'error': f'Formato de fecha inválido. Use YYYY-MM-DD o YYYY-MM-DDTHH:MM:SS',
+                'detalle': str(exc),
+                'valor_recibido': str(fecha_recoleccion_str)
             }, status=status.HTTP_400_BAD_REQUEST)
-        
+
         if not fecha_recoleccion:
             return Response({
-                'error': 'No se pudo parsear la fecha límite de recolección'
+                'error': 'No se pudo parsear la fecha límite de recolección',
+                'valor_recibido': str(fecha_recoleccion_str)
             }, status=status.HTTP_400_BAD_REQUEST)
-        
+
         # Validar que la fecha sea futura
         if fecha_recoleccion <= timezone.now():
             return Response({
