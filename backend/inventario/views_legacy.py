@@ -7021,6 +7021,12 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         Almacena en bucket 'requisiciones-firmadas' de Supabase Storage.
         Guarda la URL en documento_entrega_url de la requisición.
         """
+        # Solo farmacia/admin pueden subir documentos de entrega
+        if not RoleHelper.is_farmacia(request.user):
+            return Response({
+                'error': 'Solo usuarios de farmacia pueden subir el documento de entrega.'
+            }, status=status.HTTP_403_FORBIDDEN)
+
         requisicion = self.get_object()
         estado_actual = (requisicion.estado or '').lower()
 

@@ -37,7 +37,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.db import transaction
-from django.db.models import F, Value
+from django.db.models import F, Value, TextField
 from django.db.models.functions import Coalesce, Concat
 from django.utils import timezone
 from django.http import HttpResponse
@@ -1045,8 +1045,9 @@ def subir_evidencia_entrega(request, grupo_salida):
         updated = movimientos.update(
             documento_evidencia_url=url,
             motivo=Concat(
-                Coalesce(F('motivo'), Value('')),
-                Value(nota_evidencia)
+                Coalesce(F('motivo'), Value(''), output_field=TextField()),
+                Value(nota_evidencia),
+                output_field=TextField()
             )
         )
 
