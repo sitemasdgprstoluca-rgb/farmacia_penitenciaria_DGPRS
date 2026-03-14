@@ -330,6 +330,9 @@ def auditar_cambios_requisicion(sender, instance, created, **kwargs):
     if instance.estado == 'pendiente_admin':
         es_reenvio = estado_anterior == 'devuelta'
         _notificar_admin_centro(instance, es_reenvio=es_reenvio)
+        # Si es reenvío, también notificar a farmacia para que sepan que el médico ya corrigió
+        if es_reenvio:
+            _notificar_farmacia_reenvio(instance)
         return
     
     # Caso 2: Admin envía a Director del Centro (o reenvía después de correcciones)
@@ -592,6 +595,53 @@ def _notificar_farmacia_nueva_requisicion(requisicion):
             logger.error(f"Error creando notificación para {usuario.username}: {exc}")
     
     logger.info(f"Notificaciones creadas: {notificaciones_creadas} de {usuarios_farmacia.count()} usuarios de Farmacia para requisición {requisicion.numero}")
+
+
+def _notificar_farmacia_reenvio(requisicion):
+    """
+    Notifica a Farmacia cuando un médico reenvía una requisición devuelta con correcciones.
+    Así farmacia sabe que la req está en camino de vuelta al proceso de autorización.
+    """
+    from .models import User, Notificacion
+    from django.db.models import Q
+
+    usuarios_farmacia = User.objects.filter(
+        Q(is_active=True) & (
+            Q(rol__in=['farmacia', 'admin', 'admin_sistema', 'admin_farmacia', 'superusuario']) |
+            Q(is_superuser=True) |
+            Q(is_staff=True)
+        )
+    )
+
+    centro_nombre = requisicion.centro_origen.nombre if requisicion.centro_origen else 'Centro'
+    solicitante_nombre = (
+        requisicion.solicitante.get_full_name() or requisicion.solicitante.username
+    ) if requisicion.solicitante else 'El médico'
+
+    for usuario in usuarios_farmacia:
+        try:
+            Notificacion.objects.create(
+                usuario=usuario,
+                tipo='info',
+                titulo='Requisición Reenviada con Correcciones',
+                mensaje=(
+                    f'{solicitante_nombre} ({centro_nombre}) ha reenviado la requisición '
+                    f'{requisicion.numero} con las correcciones solicitadas. '
+                    f'Está en proceso de autorización del centro.'
+                ),
+                datos={
+                    'requisicion_id': requisicion.pk,
+                    'numero': requisicion.numero,
+                    'centro_origen': centro_nombre,
+                    'estado': 'pendiente_admin',
+                    'es_reenvio': True,
+                },
+                url=f'/requisiciones/{requisicion.pk}'
+            )
+        except Exception as exc:
+            logger.error(f"Error notificando reenvío a farmacia {usuario.username}: {exc}")
+
+    logger.info(f"Farmacia notificada del reenvío de requisición {requisicion.numero}")
 
 
 def _notificar_solicitante(requisicion, tipo, titulo, mensaje):
