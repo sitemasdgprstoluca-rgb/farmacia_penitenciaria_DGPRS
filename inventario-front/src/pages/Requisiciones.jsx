@@ -1763,7 +1763,7 @@ const Requisiciones = () => {
       toast.loading("Subiendo documento de entrega...", { id: "subir-doc-entrega" });
       const response = await requisicionesAPI.subirDocumentoEntrega(reqId, file);
       toast.success(response.data?.mensaje || "Documento subido correctamente", { id: "subir-doc-entrega" });
-      fetchRequisiciones();
+      cargarRequisiciones();
     } catch (err) {
       const msg = err.response?.data?.error || "Error al subir documento";
       toast.error(msg, { id: "subir-doc-entrega" });
@@ -2220,8 +2220,8 @@ const Requisiciones = () => {
                     </button>
                   )}
 
-                  {/* Subir/reemplazar evidencia de entrega firmada - solo entregadas */}
-                  {req.estado === 'entregada' && (
+                  {/* Subir/reemplazar evidencia de entrega firmada - solo farmacia */}
+                  {req.estado === 'entregada' && esFarmacia && (
                     <label
                       className={`cursor-pointer px-3 py-1 rounded text-sm flex items-center gap-1 font-semibold transition-colors border ${
                         req.documento_entrega_url
