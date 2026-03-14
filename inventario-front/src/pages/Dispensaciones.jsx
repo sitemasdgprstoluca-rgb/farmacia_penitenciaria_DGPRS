@@ -356,8 +356,8 @@ const Dispensaciones = () => {
       
       const response = await lotesAPI.getAll(params);
       const lotesData = response.data?.results || response.data || [];
-      // Filtrar solo lotes con cantidad > 0
-      const lotesConStock = lotesData.filter(l => (l.cantidad_actual || 0) > 0);
+      // Filtrar solo lotes con stock disponible en unidades mínimas
+      const lotesConStock = lotesData.filter(l => (l.cantidad_actual_unidades || l.cantidad_actual || 0) > 0);
       setLotes(lotesConStock);
     } catch (error) {
       console.error('Error al cargar lotes:', error);
@@ -402,7 +402,7 @@ const Dispensaciones = () => {
 
   // Obtener info del lote seleccionado
   const loteSeleccionado = lotes.find(l => l.id == currentDetalle.lote);
-  const stockEnUnidadesMinimas = loteSeleccionado ? (loteSeleccionado.cantidad_actual || 0) : 0;
+  const stockEnUnidadesMinimas = loteSeleccionado ? (loteSeleccionado.cantidad_actual_unidades || loteSeleccionado.cantidad_actual || 0) : 0;
 
   const addDetalle = () => {
     if (!currentDetalle.producto) {
@@ -423,8 +423,8 @@ const Dispensaciones = () => {
     const producto = productos.find(p => p.id == currentDetalle.producto);
     const lote = lotes.find(l => l.id == currentDetalle.lote);
     
-    // Stock en unidades mínimas (cantidad_actual ya refleja unidades mínimas)
-    const stockDisponible = lote?.cantidad_actual || 0;
+    // Stock en unidades mínimas
+    const stockDisponible = lote?.cantidad_actual_unidades || lote?.cantidad_actual || 0;
     if (cantidadNum > stockDisponible) {
       toast.error(`Stock insuficiente. Disponible: ${stockDisponible} ${unidadMinima}(s)`);
       return;
@@ -1664,11 +1664,20 @@ const Dispensaciones = () => {
                         disabled={!currentDetalle.producto || lotes.length === 0}
                       >
                         <option value="">Seleccionar</option>
-                        {lotes.map(lote => (
-                          <option key={lote.id} value={lote.id}>
-                            {lote.numero_lote} (Disp: {lote.cantidad_actual || 0} {unidadMinima}s)
-                          </option>
-                        ))}
+                        {lotes.map(lote => {
+                          const fc = factorConversion || 1;
+                          const stockUn = lote.cantidad_actual_unidades || lote.cantidad_actual || 0;
+                          const cajasCompletas = Math.floor(stockUn / fc);
+                          const sueltas = stockUn % fc;
+                          const stockLabel = fc > 1
+                            ? `${cajasCompletas} ${presentacionProducto || 'pres.'}${sueltas > 0 ? ` + ${sueltas} ${unidadMinima}(s)` : ''}`
+                            : `${stockUn} ${unidadMinima}(s)`;
+                          return (
+                            <option key={lote.id} value={lote.id}>
+                              {lote.numero_lote} ({stockLabel})
+                            </option>
+                          );
+                        })}
                       </select>
                     </div>
                     <div>
@@ -1700,20 +1709,20 @@ const Dispensaciones = () => {
                   {currentDetalle.producto && factorConversion > 1 && (
                     <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700">
                       <strong>Conversión:</strong> 1 {presentacionProducto || 'presentación'} = {factorConversion} {unidadMinima}(s)
-                      {loteSeleccionado && (
-                        <span className="ml-3">
-                          | Stock: <strong>{stockEnUnidadesMinimas}</strong> {unidadMinima}(s)
-                          {factorConversion > 1 && (
-                            <span> ({Math.floor(stockEnUnidadesMinimas / factorConversion)} {presentacionProducto || 'presentaciones'} completas)</span>
-                          )}
-                        </span>
-                      )}
+                      {loteSeleccionado && (() => {
+                        const cajasCompletas = Math.floor(stockEnUnidadesMinimas / factorConversion);
+                        const sueltas = stockEnUnidadesMinimas % factorConversion;
+                        return (
+                          <span className="ml-3">
+                            | Stock: <strong>{stockEnUnidadesMinimas}</strong> {unidadMinima}(s)
+                            {' '}→ <strong>{cajasCompletas}</strong> {presentacionProducto || 'pres.'} completas
+                            {sueltas > 0 && <span className="text-orange-600 font-semibold"> + {sueltas} {unidadMinima}(s) sueltas</span>}
+                          </span>
+                        );
+                      })()}
                       {currentDetalle.cantidad_prescrita > 0 && (
                         <span className="ml-3">
                           | Prescrito: <strong>{currentDetalle.cantidad_prescrita}</strong> {unidadMinima}(s)
-                          {factorConversion > 1 && (
-                            <span> = {(currentDetalle.cantidad_prescrita / factorConversion).toFixed(1)} {presentacionProducto || 'presentaciones'}</span>
-                          )}
                         </span>
                       )}
                     </div>

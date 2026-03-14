@@ -886,6 +886,96 @@ const Productos = () => {
 
 
 
+  /**
+   * Detecta factor_conversion y unidad_minima desde el texto de presentación.
+   * Ejemplos:
+   *   "CAJA CON 20 TABLETAS"  → { factor: 20, unidad: 'tableta' }
+   *   "FRASCO 120 ML"         → { factor: 120, unidad: 'mililitro' }
+   *   "BLISTER 30 CAPSULAS"   → { factor: 30, unidad: 'cápsula' }
+   *   "AMPOLLETA 5MG/2ML"     → { factor: 1, unidad: 'ampolleta' }
+   *   "CAJA C/30 CAPSULAS"    → { factor: 30, unidad: 'cápsula' }
+   */
+  const detectarFactorPresentacion = (texto) => {
+    if (!texto || texto.trim().length < 3) return null;
+
+    // Normalizar: mayúsculas y sin acentos para matching consistente
+    const t = texto.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+    // Detectores ordenados por especificidad
+    const DETECTORS = [
+      { unidad: 'tableta',     pattern: /TABLET[AO]S?/ },
+      { unidad: 'cápsula',     pattern: /C[AÁ]PSULAS?|CAPSULE?S?/ },
+      { unidad: 'mililitro',   pattern: /MILILITROS?|ML(?![A-Z0-9])/ },
+      { unidad: 'gramo',       pattern: /GRAMOS?|GR(?![A-Z0-9])/ },
+      { unidad: 'ampolleta',   pattern: /AMPOLLETA/ },
+      { unidad: 'sobre',       pattern: /SOBRES?/ },
+      { unidad: 'dosis',       pattern: /DOSIS/ },
+      { unidad: 'parche',      pattern: /PARCHES?/ },
+      { unidad: 'supositorio', pattern: /SUPOSITORIOS?/ },
+      { unidad: 'óvulo',       pattern: /OVULOS?/ },
+      { unidad: 'gota',        pattern: /GOTAS?/ },
+    ];
+
+    for (const { unidad, pattern } of DETECTORS) {
+      if (!pattern.test(t)) continue;
+
+      const keyIdx = t.search(pattern);
+      let factor = null;
+
+      // Buscar número ANTES de la unidad (más confiable)
+      // Patrones: "20 TABLETAS", "CON 20 TABLETAS", "C/20 TABLETAS", "X20 TABLETAS"
+      const beforeUnit = t.slice(0, keyIdx);
+      const matchBefore = beforeUnit.match(/(\d+)\s*(?:X|C\/|\/|CON|DE)?\s*$/) ||
+                          beforeUnit.match(/(?:X|C\/|CON|DE|\s)(\d+)\s*$/);
+      if (matchBefore) {
+        factor = parseInt(matchBefore[1], 10);
+      }
+
+      // Si no hay número antes, buscar después: "TABLETAS 20" (raro pero posible)
+      if (!factor) {
+        const afterUnit = t.slice(keyIdx);
+        const matchAfter = afterUnit.match(/\D(\d+)/);
+        if (matchAfter) {
+          factor = parseInt(matchAfter[1], 10);
+        }
+      }
+
+      // Fallback: cualquier número en el texto que parezca factor (2-500, no concentración)
+      // Ignorar números seguidos de MG/MCG/G/% (son concentraciones, no factores)
+      if (!factor) {
+        const numsEnTexto = [...t.matchAll(/\b(\d+)\b(?!\s*(?:MG|MCG|G|%|ML(?=[A-Z])))/g)]
+          .map(m => parseInt(m[1], 10))
+          .filter(n => n >= 2 && n <= 1000);
+        if (numsEnTexto.length === 1) factor = numsEnTexto[0];
+      }
+
+      return { factor: (factor && factor >= 1) ? factor : 1, unidad };
+    }
+
+    // Sin unidad detectada, buscar patrón genérico de cantidad
+    const genericMatch = t.match(/(?:X|C\/|CON)\s*(\d+)/);
+    if (genericMatch) {
+      return { factor: parseInt(genericMatch[1], 10), unidad: null };
+    }
+
+    return null;
+  };
+
+  const handlePresentacionChange = (value) => {
+    const updates = { presentacion: value };
+    // Solo auto-detectar si el usuario no ha ajustado manualmente el factor
+    // (si factor es 1 o igual al anterior auto-detectado, sí actualizar)
+    const detected = detectarFactorPresentacion(value);
+    if (detected) {
+      // Solo sobrescribir factor si es el valor por defecto (1) para no pisar ediciones manuales
+      if (!formData._factorManual) {
+        updates.factor_conversion = detected.factor;
+        if (detected.unidad) updates.unidad_minima = detected.unidad;
+      }
+    }
+    setFormData(prev => ({ ...prev, ...updates }));
+  };
+
   // ISS-003 FIX: Validación alineada con el backend
   const validarFormulario = (data) => {
     // Si es edición y tiene lotes, los campos protegidos ya están validados por el backend
@@ -954,10 +1044,12 @@ const Productos = () => {
         imagenPreview: producto.imagen || null,
         unidad_minima: producto.unidad_minima || 'pieza',
         factor_conversion: producto.factor_conversion ?? 1,
+        // Al editar producto existente, respetar factor_conversion guardado
+        _factorManual: true,
       });
     } else {
       setEditingProduct(null);
-      setFormData(DEFAULT_FORM);
+      setFormData({ ...DEFAULT_FORM, _factorManual: false });
     }
     setFormErrors({});
     setShowModal(true);
@@ -2668,7 +2760,7 @@ const Productos = () => {
                   <input
                     type="text"
                     value={formData.presentacion}
-                    onChange={(e) => setFormData({ ...formData, presentacion: e.target.value })}
+                    onChange={(e) => handlePresentacionChange(e.target.value)}
                     maxLength={200}
                     placeholder="Ej: CAJA CON 10 TABLETAS, FRASCO 120ML"
                     disabled={editingProduct?.tiene_lotes}
@@ -2712,7 +2804,7 @@ const Productos = () => {
                     min="1"
                     step="1"
                     value={formData.factor_conversion}
-                    onChange={(e) => setFormData({ ...formData, factor_conversion: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, factor_conversion: e.target.value, _factorManual: true })}
                     className="input-elevated"
                   />
                   <p className="text-[11px] text-gray-500 mt-1">
@@ -2720,6 +2812,9 @@ const Productos = () => {
                       ? `1 ${formData.presentacion || 'presentación'} = ${formData.factor_conversion} ${formData.unidad_minima}(s)`
                       : 'Cuántas unidades mínimas tiene 1 presentación (ej: 1 caja = 22 tabletas → 22)'}
                   </p>
+                  {!formData._factorManual && detectarFactorPresentacion(formData.presentacion) && (
+                    <p className="text-[11px] text-indigo-600 mt-1">Auto-detectado desde la presentación</p>
+                  )}
                 </div>
               </div>
 

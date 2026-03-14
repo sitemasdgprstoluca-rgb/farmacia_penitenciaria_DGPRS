@@ -1115,6 +1115,13 @@ class Lote(models.Model):
         null=True, blank=True,
         help_text='Unidades en presentación comercial compradas. Ej: 3 cajas'
     )
+    # Stock en unidades mínimas dispensables (tabletas, cápsulas, ml)
+    # Ej: 21 cajas × 20 tabs = 420. Al dispensar 1 tab → 419.
+    cantidad_actual_unidades = models.IntegerField(
+        default=0,
+        help_text='Stock en unidades mínimas dispensables. '
+                  'Ej: 21 cajas × 20 tabs/caja = 420'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -1257,7 +1264,19 @@ class Lote(models.Model):
     @property
     def precio_compra(self):
         return self.precio_unitario
-    
+
+    @property
+    def presentaciones_completas(self):
+        """Número de presentaciones completas (cajas, frascos) disponibles."""
+        factor = getattr(self.producto, 'factor_conversion', 1) or 1
+        return (self.cantidad_actual_unidades or 0) // factor
+
+    @property
+    def unidades_sueltas(self):
+        """Unidades mínimas sueltas de una presentación abierta."""
+        factor = getattr(self.producto, 'factor_conversion', 1) or 1
+        return (self.cantidad_actual_unidades or 0) % factor
+
     @property
     def estado(self):
         """
@@ -1757,17 +1776,22 @@ class Movimiento(models.Model):
             # Esto previene race conditions en operaciones concurrentes
             from django.db.models import F
             
+            # Obtener factor de conversión para sincronizar unidades mínimas
+            factor = getattr(lote_bloqueado.producto, 'factor_conversion', 1) or 1
+            
             if tipo in self.TIPOS_RESTA_STOCK:
                 Lote.objects.filter(pk=lote_bloqueado.pk).update(
-                    cantidad_actual=F('cantidad_actual') - self.cantidad
+                    cantidad_actual=F('cantidad_actual') - self.cantidad,
+                    cantidad_actual_unidades=F('cantidad_actual_unidades') - (self.cantidad * factor)
                 )
             elif tipo in self.TIPOS_SUMA_STOCK:
                 Lote.objects.filter(pk=lote_bloqueado.pk).update(
-                    cantidad_actual=F('cantidad_actual') + self.cantidad
+                    cantidad_actual=F('cantidad_actual') + self.cantidad,
+                    cantidad_actual_unidades=F('cantidad_actual_unidades') + (self.cantidad * factor)
                 )
             
             # Refrescar instancia para obtener el valor actualizado
-            lote_bloqueado.refresh_from_db(fields=['cantidad_actual'])
+            lote_bloqueado.refresh_from_db(fields=['cantidad_actual', 'cantidad_actual_unidades'])
             
             # ISS-001 FIX: Validar que no quede negativo (doble check)
             if lote_bloqueado.cantidad_actual < 0:
@@ -1780,7 +1804,7 @@ class Movimiento(models.Model):
                 })
             
             # Guardar sin re-ejecutar validaciones completas del lote
-            lote_bloqueado.save(update_fields=['cantidad_actual', 'updated_at'])
+            lote_bloqueado.save(update_fields=['cantidad_actual', 'cantidad_actual_unidades', 'updated_at'])
             
             # Actualizar referencia local
             self.lote = lote_bloqueado
@@ -3225,6 +3249,19 @@ class Donacion(models.Model):
     )
     notas = models.TextField(blank=True, null=True)
     documento_donacion = models.CharField(max_length=255, blank=True, null=True)
+    # Documento de hoja de entrega (PDF subido por el usuario)
+    documento_entrega_url = models.TextField(blank=True, null=True)
+    documento_entrega_nombre = models.CharField(max_length=255, blank=True, null=True)
+    documento_entrega_fecha = models.DateTimeField(blank=True, null=True)
+    documento_entrega_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='documentos_donacion_subidos',
+        db_column='documento_entrega_por_id'
+    )
+    documento_entrega_tamano = models.IntegerField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

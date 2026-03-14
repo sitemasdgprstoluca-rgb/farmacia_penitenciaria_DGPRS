@@ -4233,6 +4233,190 @@ class DonacionViewSet(viewsets.ModelViewSet):
                 'mensaje': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    # =========================================================================
+    # Documento de Hoja de Entrega (PDF)
+    # =========================================================================
+
+    @action(detail=True, methods=['post'], url_path='subir-documento-entrega')
+    def subir_documento_entrega(self, request, pk=None):
+        """
+        Sube un PDF de hoja de entrega para la donación.
+        POST /api/donaciones/{id}/subir-documento-entrega/
+        Content-Type: multipart/form-data
+        Body: { 'archivo': <PDF file> }
+        """
+        donacion = self.get_object()
+
+        if 'archivo' not in request.FILES:
+            return Response(
+                {'error': 'Debe enviar un archivo PDF con el nombre "archivo"'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        archivo = request.FILES['archivo']
+
+        if not archivo.name.lower().endswith('.pdf'):
+            return Response(
+                {'error': 'Solo se permiten archivos PDF'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        max_size = 10 * 1024 * 1024  # 10MB
+        if archivo.size > max_size:
+            return Response(
+                {'error': 'El archivo es muy grande. Tamaño máximo: 10MB'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            from inventario.services.storage_service import StorageService
+            from datetime import datetime
+
+            storage = StorageService(bucket='donaciones-entregas')
+
+            fecha_str = datetime.now().strftime('%Y/%m')
+            file_path = f'{fecha_str}/{donacion.folio}_{archivo.name}'
+
+            resultado = storage.upload_file(
+                file_content=archivo.read(),
+                file_path=file_path,
+                content_type='application/pdf',
+                metadata={
+                    'donacion_id': donacion.id,
+                    'folio': donacion.folio,
+                    'usuario': request.user.username
+                }
+            )
+
+            if not resultado['success']:
+                return Response(
+                    {'error': resultado.get('error', 'Error al subir el archivo')},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
+            # Eliminar documento anterior si existe
+            if donacion.documento_entrega_url:
+                try:
+                    from inventario.services.storage_service import extract_storage_path
+                    old_path = extract_storage_path(donacion.documento_entrega_url, 'donaciones-entregas')
+                    storage.delete_file(old_path)
+                except Exception as e:
+                    logger.warning(f"No se pudo eliminar documento anterior: {e}")
+
+            donacion.documento_entrega_url = resultado['url']
+            donacion.documento_entrega_nombre = archivo.name
+            donacion.documento_entrega_fecha = timezone.now()
+            donacion.documento_entrega_por = request.user
+            donacion.documento_entrega_tamano = archivo.size
+            donacion.save()
+
+            logger.info(f"Documento de entrega subido para donación {donacion.folio} por {request.user.username}")
+
+            from core.serializers import DonacionSerializer
+            return Response({
+                'message': 'Documento de entrega subido exitosamente',
+                'donacion': DonacionSerializer(donacion).data
+            })
+
+        except ImportError as e:
+            logger.error(f"Error de importación: {e}")
+            return Response(
+                {'error': 'Servicio de almacenamiento no disponible'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        except Exception as e:
+            logger.error(f"Error subiendo documento de entrega: {e}")
+            return Response(
+                {'error': f'Error al subir el documento: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['get'], url_path='descargar-documento-entrega')
+    def descargar_documento_entrega(self, request, pk=None):
+        """Descarga el PDF de hoja de entrega de la donación."""
+        donacion = self.get_object()
+
+        if not donacion.documento_entrega_url:
+            return Response(
+                {'error': 'La donación no tiene documento de entrega'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        try:
+            from inventario.services.storage_service import StorageService, extract_storage_path
+
+            storage = StorageService(bucket='donaciones-entregas')
+            file_path = extract_storage_path(donacion.documento_entrega_url, 'donaciones-entregas')
+
+            resultado = storage.download_file(file_path)
+
+            if not resultado['success']:
+                return Response(
+                    {'error': 'No se pudo descargar el documento'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            response = HttpResponse(resultado['file_content'], content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="{donacion.documento_entrega_nombre}"'
+            return response
+
+        except ImportError:
+            return Response(
+                {'error': 'Servicio de almacenamiento no disponible'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        except Exception as e:
+            logger.error(f"Error descargando documento de entrega: {e}")
+            return Response(
+                {'error': f'Error al descargar: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['delete'], url_path='eliminar-documento-entrega')
+    def eliminar_documento_entrega(self, request, pk=None):
+        """Elimina el PDF de hoja de entrega de la donación."""
+        donacion = self.get_object()
+
+        if not donacion.documento_entrega_url:
+            return Response(
+                {'error': 'La donación no tiene documento de entrega'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        try:
+            from inventario.services.storage_service import StorageService, extract_storage_path
+
+            storage = StorageService(bucket='donaciones-entregas')
+            file_path = extract_storage_path(donacion.documento_entrega_url, 'donaciones-entregas')
+
+            try:
+                storage.delete_file(file_path)
+            except Exception as e:
+                logger.warning(f"No se pudo eliminar archivo de storage: {e}")
+
+            donacion.documento_entrega_url = None
+            donacion.documento_entrega_nombre = None
+            donacion.documento_entrega_fecha = None
+            donacion.documento_entrega_por = None
+            donacion.documento_entrega_tamano = None
+            donacion.save()
+
+            logger.info(f"Documento de entrega eliminado de donación {donacion.folio} por {request.user.username}")
+
+            return Response({'message': 'Documento de entrega eliminado correctamente'})
+
+        except ImportError:
+            return Response(
+                {'error': 'Servicio de almacenamiento no disponible'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        except Exception as e:
+            logger.error(f"Error eliminando documento de entrega: {e}")
+            return Response(
+                {'error': f'Error al eliminar: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 
 # =============================================================================
 # CATALOGO DE PRODUCTOS DONACIONES - COMPLETAMENTE INDEPENDIENTE
@@ -8381,7 +8565,7 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                             )
                             continue
                     
-                    stock_disponible = lote.cantidad_actual
+                    stock_disponible = lote.cantidad_actual_unidades
                     # ISS-SEC FIX (audit6): Usar remanente, NO cantidad_prescrita completa
                     cantidad_solicitada = remanente
                     
@@ -8449,8 +8633,8 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                     cantidad = item['cantidad']
                     
                     # Verificar de nuevo el stock (verificación redundante por seguridad)
-                    if lote.cantidad_actual < cantidad:
-                        cantidad = lote.cantidad_actual
+                    if lote.cantidad_actual_unidades < cantidad:
+                        cantidad = lote.cantidad_actual_unidades
                     
                     if cantidad <= 0:
                         continue
@@ -8458,11 +8642,19 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                     # Guardar stock antes de descontar para la validación del movimiento
                     stock_antes = lote.cantidad_actual
                     
-                    # ISS-SEC-006: Descontar del lote con F() atómico (defensa en profundidad)
+                    # ISS-SEC-006: Descontar del lote en unidades mínimas con F() atómico
+                    factor = getattr(detalle.producto, 'factor_conversion', 1) or 1
                     Lote.objects.filter(pk=lote.pk).update(
-                        cantidad_actual=F('cantidad_actual') - cantidad
+                        cantidad_actual_unidades=F('cantidad_actual_unidades') - cantidad
                     )
                     lote.refresh_from_db()
+                    # Recalcular presentaciones completas
+                    nueva_cantidad_actual = lote.cantidad_actual_unidades // factor
+                    if nueva_cantidad_actual != lote.cantidad_actual:
+                        Lote.objects.filter(pk=lote.pk).update(
+                            cantidad_actual=nueva_cantidad_actual
+                        )
+                        lote.refresh_from_db()
                     
                     # Crear movimiento de salida
                     # ISS-FIX: Establecer _stock_pre_movimiento para que el validador

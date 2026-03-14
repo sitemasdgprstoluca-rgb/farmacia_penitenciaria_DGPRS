@@ -1200,6 +1200,10 @@ class LoteSerializer(serializers.ModelSerializer):
     # Dispensación por unidad mínima: info del producto para conversión
     unidad_minima = serializers.CharField(source='producto.unidad_minima', read_only=True, default='pieza')
     factor_conversion = serializers.IntegerField(source='producto.factor_conversion', read_only=True, default=1)
+    # Tracking dual: presentaciones completas + unidades sueltas
+    presentaciones_completas = serializers.SerializerMethodField()
+    unidades_sueltas = serializers.SerializerMethodField()
+    presentacion_producto = serializers.CharField(source='producto.presentacion', read_only=True, default='')
     
     class Meta:
         model = Lote
@@ -1225,11 +1229,13 @@ class LoteSerializer(serializers.ModelSerializer):
             'parcialidades', 'total_parcialidades', 'num_entregas', 'ultima_fecha_entrega',
             # Dispensación: conversión de unidades
             'unidad_minima', 'factor_conversion',
+            'cantidad_actual_unidades', 'presentaciones_completas', 'unidades_sueltas',
+            'presentacion_producto',
             'created_at', 'updated_at',
             # AUDITORÍA
             'creado_por_nombre', 'modificado_por_nombre',
         ]
-        read_only_fields = ['created_at', 'updated_at', 'estado', 'documentos', 'tiene_documentos', 'tiene_movimientos', 'cantidad_pendiente', 'cantidad_pendiente_global', 'cantidad_recibido_global', 'total_inventario_global', 'parcialidades', 'total_parcialidades', 'num_entregas', 'ultima_fecha_entrega', 'creado_por_nombre', 'modificado_por_nombre', 'created_by']
+        read_only_fields = ['created_at', 'updated_at', 'estado', 'documentos', 'tiene_documentos', 'tiene_movimientos', 'cantidad_pendiente', 'cantidad_pendiente_global', 'cantidad_recibido_global', 'total_inventario_global', 'parcialidades', 'total_parcialidades', 'num_entregas', 'ultima_fecha_entrega', 'creado_por_nombre', 'modificado_por_nombre', 'created_by', 'cantidad_actual_unidades', 'presentaciones_completas', 'unidades_sueltas', 'presentacion_producto']
         extra_kwargs = {
             'cantidad_inicial': {'required': False},  # Requerido solo en creación (validate_cantidad_inicial)
             'cantidad_contrato': {'required': False, 'allow_null': True},
@@ -1269,6 +1275,16 @@ class LoteSerializer(serializers.ModelSerializer):
     def get_modificado_por_nombre(self, obj):
         """Lee nombre del último modificador desde anotación SQL (_modificado_por_nombre) inyectada por LoteViewSet."""
         return getattr(obj, '_modificado_por_nombre', None) or None
+
+    def get_presentaciones_completas(self, obj):
+        """Número de presentaciones completas (cajas/frascos) según stock en unidades mínimas."""
+        factor = getattr(obj.producto, 'factor_conversion', 1) or 1
+        return (obj.cantidad_actual_unidades or 0) // factor
+
+    def get_unidades_sueltas(self, obj):
+        """Unidades mínimas sueltas de una presentación abierta."""
+        factor = getattr(obj.producto, 'factor_conversion', 1) or 1
+        return (obj.cantidad_actual_unidades or 0) % factor
 
     def get_cantidad_pendiente(self, obj):
         """
@@ -1652,6 +1668,10 @@ class LoteSerializer(serializers.ModelSerializer):
         cantidad_inicial = validated_data.get('cantidad_inicial', 0)
         # cantidad_actual siempre = cantidad_inicial en la creación
         validated_data['cantidad_actual'] = cantidad_inicial
+        # Calcular stock en unidades mínimas: cantidad_inicial * factor_conversion
+        producto = validated_data.get('producto')
+        factor = getattr(producto, 'factor_conversion', 1) or 1 if producto else 1
+        validated_data['cantidad_actual_unidades'] = cantidad_inicial * factor
 
         # ─── CCG hard-block concurrent-safe ──────────────────────────────────
         # validate() ya rechaza el exceso, pero corre fuera de transacción y
@@ -1719,7 +1739,10 @@ class LoteSerializer(serializers.ModelSerializer):
             cantidad_agregar = cantidad_inicial
             lote_identico.cantidad_inicial = (lote_identico.cantidad_inicial or 0) + cantidad_agregar
             lote_identico.cantidad_actual = (lote_identico.cantidad_actual or 0) + cantidad_agregar
-            lote_identico.save(update_fields=['cantidad_inicial', 'cantidad_actual'])
+            # Sincronizar unidades mínimas
+            factor_merge = getattr(lote_identico.producto, 'factor_conversion', 1) or 1
+            lote_identico.cantidad_actual_unidades = (lote_identico.cantidad_actual_unidades or 0) + (cantidad_agregar * factor_merge)
+            lote_identico.save(update_fields=['cantidad_inicial', 'cantidad_actual', 'cantidad_actual_unidades'])
             
             # Crear parcialidad para registrar esta entrega adicional
             from .models import LoteParcialidad
@@ -3386,6 +3409,8 @@ class DonacionSerializer(serializers.ModelSerializer):
     total_productos = serializers.SerializerMethodField()
     total_unidades = serializers.SerializerMethodField()
     folio = serializers.SerializerMethodField()
+    documento_entrega_por_nombre = serializers.SerializerMethodField()
+    tiene_documento_entrega = serializers.SerializerMethodField()
     
     class Meta:
         model = Donacion
@@ -3397,10 +3422,18 @@ class DonacionSerializer(serializers.ModelSerializer):
             'centro_destino', 'centro_destino_nombre',
             'recibido_por', 'recibido_por_nombre',
             'estado', 'estado_display', 'notas', 'documento_donacion',
+            'documento_entrega_url', 'documento_entrega_nombre',
+            'documento_entrega_fecha', 'documento_entrega_por',
+            'documento_entrega_por_nombre', 'documento_entrega_tamano',
+            'tiene_documento_entrega',
             'detalles', 'total_productos', 'total_unidades',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['numero', 'folio', 'fecha_recepcion', 'created_at', 'updated_at']
+        read_only_fields = [
+            'numero', 'folio', 'fecha_recepcion', 'created_at', 'updated_at',
+            'documento_entrega_url', 'documento_entrega_nombre',
+            'documento_entrega_fecha', 'documento_entrega_por', 'documento_entrega_tamano',
+        ]
         extra_kwargs = {
             'donante_nombre': {'required': True},
             'fecha_donacion': {'required': True},
@@ -3429,6 +3462,14 @@ class DonacionSerializer(serializers.ModelSerializer):
     
     def get_folio(self, obj):
         return f"DON-{obj.numero}"
+    
+    def get_documento_entrega_por_nombre(self, obj):
+        if obj.documento_entrega_por:
+            return f"{obj.documento_entrega_por.first_name} {obj.documento_entrega_por.last_name}".strip() or obj.documento_entrega_por.username
+        return None
+    
+    def get_tiene_documento_entrega(self, obj):
+        return bool(obj.documento_entrega_url)
     
     def validate(self, data):
         """

@@ -343,25 +343,25 @@ const RequisicionDetalle = () => {
       return;
     }
     
-    // 🔒 VALIDACIÓN PRE-SUBMIT: Verificar que ninguna cantidad exceda el stock
-    // stock_disponible ya calcula: si hay lote asignado → su cantidad_actual,
-    // si no → suma de todos los lotes activos de farmacia central
+    // ⚠️ AVISO informativo: items que podrían exceder stock
+    // No se bloquea aquí — el backend valida el stock real en Supabase.
+    // El frontend puede tener datos de stock incompletos (lotes sin centro=NULL,
+    // columna activo aún no migrada, etc.). El backend rechaza con error claro.
     const itemsExcedenStock = detallesEditables.filter(d => {
       const stockDisponible = d.stock_disponible ?? d.lote_stock ?? 0;
+      // Solo avisar cuando tenemos dato de stock confiable (> 0)
+      if (!stockDisponible) return false;
       return (d.cantidad_autorizada || 0) > stockDisponible;
     });
 
     if (itemsExcedenStock.length > 0) {
-      const productos = itemsExcedenStock.map(d => {
+      const listaProd = itemsExcedenStock.map(d => {
         const stock = d.stock_disponible ?? d.lote_stock ?? 0;
-        return `${d.producto_nombre}: autorizado ${d.cantidad_autorizada}, disponible ${stock}`;
+        return `• ${d.producto_nombre || d.producto_clave}: autorizas ${d.cantidad_autorizada}, stock visible ${stock}`;
       }).join('\n');
-      
-      toast.error(
-        `❌ No puede autorizar más de lo disponible en stock:\n\n${productos}`,
-        { duration: 6000 }
-      );
-      return;
+      // Solo advertencia — continúa al modal de confirmación
+      toast(`⚠️ Aviso de stock:\n${listaProd}\n\nEl sistema verificará el stock real al confirmar.`,
+        { duration: 6000, icon: '⚠️' });
     }
     
     // Verificar si es autorización parcial (algún item con cantidad_autorizada < cantidad_solicitada)

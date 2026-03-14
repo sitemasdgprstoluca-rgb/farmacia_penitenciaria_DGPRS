@@ -1958,6 +1958,18 @@ export const donacionesAPI = {
   importarExcel: (formData) => apiClient.post('/donaciones/importar-excel/', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
+  // Documento de hoja de entrega (PDF)
+  subirDocumentoEntrega: (id, file) => {
+    const formData = new FormData();
+    formData.append('archivo', file);
+    return apiClient.post(`/donaciones/${id}/subir-documento-entrega/`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  descargarDocumentoEntrega: (id) => apiClient.get(`/donaciones/${id}/descargar-documento-entrega/`, {
+    responseType: 'blob'
+  }),
+  eliminarDocumentoEntrega: (id) => apiClient.delete(`/donaciones/${id}/eliminar-documento-entrega/`),
 };
 
 // ===========================================================================
