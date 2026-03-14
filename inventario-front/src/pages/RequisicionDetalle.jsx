@@ -273,7 +273,7 @@ const RequisicionDetalle = () => {
 
   const actualizarCantidadAutorizada = (idx, valor) => {
     const detalle = detallesEditables[idx];
-    const stockDisponible = detalle.lote_stock || detalle.stock_disponible || 0;
+    const stockDisponible = detalle.stock_disponible ?? detalle.lote_stock ?? 0;
     const cantidadSolicitada = detalle.cantidad_solicitada || 0;
     
     // ⚠️ VALIDACIÓN CRÍTICA: No permitir más de lo disponible en stock
@@ -319,14 +319,16 @@ const RequisicionDetalle = () => {
     }
     
     // 🔒 VALIDACIÓN PRE-SUBMIT: Verificar que ninguna cantidad exceda el stock
+    // stock_disponible ya calcula: si hay lote asignado → su cantidad_actual,
+    // si no → suma de todos los lotes activos de farmacia central
     const itemsExcedenStock = detallesEditables.filter(d => {
-      const stockDisponible = d.lote_stock || d.stock_disponible || 0;
+      const stockDisponible = d.stock_disponible ?? d.lote_stock ?? 0;
       return (d.cantidad_autorizada || 0) > stockDisponible;
     });
-    
+
     if (itemsExcedenStock.length > 0) {
       const productos = itemsExcedenStock.map(d => {
-        const stock = d.lote_stock || d.stock_disponible || 0;
+        const stock = d.stock_disponible ?? d.lote_stock ?? 0;
         return `${d.producto_nombre}: autorizado ${d.cantidad_autorizada}, disponible ${stock}`;
       }).join('\n');
       
@@ -405,9 +407,11 @@ const RequisicionDetalle = () => {
       const observacionesParaEnviar = observacionesParcialRef.current || autorizarObservaciones || '';
       
       // Usar endpoint correcto: autorizarFarmacia con fecha
-      await requisicionesAPI.autorizarFarmacia(id, { 
-        items, 
-        fecha_recoleccion_limite: fechaRecoleccion,
+      // Asegurar formato con segundos para compatibilidad con Django parse_datetime
+      const fechaConSegundos = fechaRecoleccion.length === 16 ? fechaRecoleccion + ':00' : fechaRecoleccion;
+      await requisicionesAPI.autorizarFarmacia(id, {
+        items,
+        fecha_recoleccion_limite: fechaConSegundos,
         observaciones: observacionesParaEnviar
       });
       
@@ -1046,7 +1050,10 @@ const RequisicionDetalle = () => {
   const otroGestiona = esFarmacia && receptorId && !esReceptor;
   const otroAutorizo = esFarmacia && autorizadorId && !esAutorizador;
 
-  const puedeAutorizar = requisicion?.estado === 'en_revision' && esFarmacia && permisos?.autorizarRequisicion && esReceptor;
+  // esReceptor no se verifica aquí: el backend lo valida en autorizar-farmacia
+  // y muestra el nombre del receptor si no coincide (403). Así cualquier farmacia
+  // puede entrar al modo revisión; el rechazo definitivo viene del servidor.
+  const puedeAutorizar = requisicion?.estado === 'en_revision' && esFarmacia && permisos?.autorizarRequisicion;
   const puedeRechazar = ['enviada', 'en_revision'].includes(requisicion?.estado) && esFarmacia && permisos?.rechazarRequisicion;
   // ISS-FIX-SURTIR: Solo desde 'autorizada' - surtir SIEMPRE termina en 'entregada'
   const puedeSurtir = requisicion?.estado === 'autorizada' && esFarmacia && permisos?.surtirRequisicion && esAutorizador;
@@ -1696,13 +1703,13 @@ const RequisicionDetalle = () => {
                       <>
                         <td className="px-2 py-2 text-center bg-blue-50">
                           <span className={`font-bold ${
-                            (detalle.lote_stock || detalle.stock_disponible || 0) < detalle.cantidad_solicitada 
-                              ? 'text-red-600' 
-                              : (detalle.lote_stock || detalle.stock_disponible || 0) === 0
+                            (detalle.stock_disponible ?? detalle.lote_stock ?? 0) < detalle.cantidad_solicitada
+                              ? 'text-red-600'
+                              : (detalle.stock_disponible ?? detalle.lote_stock ?? 0) === 0
                                 ? 'text-red-600'
                                 : 'text-green-600'
                           }`}>
-                            {detalle.lote_stock ?? detalle.stock_disponible ?? 0}
+                            {detalle.stock_disponible ?? detalle.lote_stock ?? 0}
                           </span>
                         </td>
                         <td className="px-2 py-2 text-center bg-purple-50">
@@ -1722,7 +1729,7 @@ const RequisicionDetalle = () => {
                         <input
                           type="number"
                           min="0"
-                          max={detalle.lote_stock || detalle.stock_disponible || detalle.cantidad_solicitada}
+                          max={detalle.stock_disponible ?? detalle.lote_stock ?? detalle.cantidad_solicitada}
                           value={detalle.cantidad_autorizada || 0}
                           onChange={(e) => actualizarCantidadAutorizada(idx, e.target.value)}
                           className="w-14 px-1 py-1 border border-gray-300 rounded text-center font-bold text-xs focus:ring-2 focus:outline-none focus:ring-green-400"

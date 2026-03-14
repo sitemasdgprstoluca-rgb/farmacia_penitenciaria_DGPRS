@@ -7680,6 +7680,10 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             fecha_recoleccion_str = str(fecha_recoleccion_str).strip()
             logger.info(f"AUTORIZAR: Parseando fecha_recoleccion_limite='{fecha_recoleccion_str}'")
 
+            # Manejar formato datetime-local sin segundos (YYYY-MM-DDTHH:MM)
+            if 'T' in fecha_recoleccion_str and fecha_recoleccion_str.count(':') == 1:
+                fecha_recoleccion_str += ':00'
+
             fecha_recoleccion = parse_datetime(fecha_recoleccion_str)
             if not fecha_recoleccion:
                 fecha_date = parse_date(fecha_recoleccion_str)
