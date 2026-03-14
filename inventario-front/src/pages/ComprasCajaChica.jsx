@@ -84,7 +84,6 @@ const ESTADOS_COMPRA = [
   { value: 'recibida', label: 'Recibida' },
   { value: 'cancelada', label: 'Cancelada' },
   { value: 'rechazada', label: 'Rechazada' },
-  { value: 'devuelta', label: 'Devuelta para corrección' },
 ];
 
 const ESTADO_COLORS = {

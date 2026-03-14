@@ -468,245 +468,265 @@ def generar_pdf_rechazo(requisicion):
     """
     Genera PDF para una requisicion en estado rechazado.
     Con fondo oficial del Gobierno del Estado de México.
-    Usa formato consistente con otros reportes del sistema.
     """
     buffer = BytesIO()
-    
-    # Obtener ruta del fondo institucional (compatible con desarrollo y producción)
+
     fondo_institucional = get_fondo_institucional_path()
     fondo_path = str(fondo_institucional) if fondo_institucional else None
-    
-    # Usar márgenes consistentes con otros reportes del sistema
+
+    margin_h = 0.6 * inch
+    content_width = letter[0] - 2 * margin_h  # ~7.3 pulgadas
+
     doc = SimpleDocTemplate(
-        buffer, 
+        buffer,
         pagesize=letter,
-        topMargin=1.5*inch,  # Más espacio para el encabezado del fondo
-        bottomMargin=0.8*inch,
-        leftMargin=0.6*inch,
-        rightMargin=0.6*inch
+        topMargin=1.5 * inch,
+        bottomMargin=0.8 * inch,
+        leftMargin=margin_h,
+        rightMargin=margin_h,
     )
     story = []
     styles = getSampleStyleSheet()
 
-    # Estilos actualizados con colores institucionales
+    # ── Estilos ──────────────────────────────────────────────────────────
     titulo_style = ParagraphStyle(
-        'RejectTitle',
-        parent=styles['Heading1'],
-        fontSize=16,
-        textColor=colors.HexColor('#dc2626'),
-        spaceAfter=16,
-        spaceBefore=0,
-        alignment=TA_CENTER,
-        fontName='Helvetica-Bold'
+        'RejectTitle', parent=styles['Normal'],
+        fontSize=16, textColor=colors.HexColor('#dc2626'),
+        spaceAfter=12, spaceBefore=0,
+        alignment=TA_CENTER, fontName='Helvetica-Bold',
+    )
+    label_style = ParagraphStyle(
+        'InfoLabel', parent=styles['Normal'],
+        fontSize=9, fontName='Helvetica-Bold', leading=12,
+    )
+    value_style = ParagraphStyle(
+        'InfoValue', parent=styles['Normal'],
+        fontSize=9, fontName='Helvetica', leading=12, wordWrap='CJK',
+    )
+    seccion_titulo_style = ParagraphStyle(
+        'SeccionTitulo', parent=styles['Normal'],
+        fontSize=11, textColor=colors.HexColor('#374151'),
+        spaceAfter=6, fontName='Helvetica-Bold',
+    )
+    motivo_banner_style = ParagraphStyle(
+        'MotivoBanner', parent=styles['Normal'],
+        fontSize=11, textColor=colors.HexColor('#7f1d1d'),
+        alignment=TA_CENTER, fontName='Helvetica-Bold',
+        borderColor=colors.HexColor('#dc2626'), borderWidth=1,
+        borderPadding=8, backColor=colors.HexColor('#fee2e2'),
+        spaceAfter=6,
+    )
+    motivo_texto_style = ParagraphStyle(
+        'MotivoTexto', parent=styles['Normal'],
+        fontSize=10, fontName='Helvetica', leading=14,
+        textColor=colors.HexColor('#1f2937'),
+    )
+    celda_desc_style = ParagraphStyle(
+        'CeldaDesc', parent=styles['Normal'],
+        fontSize=8, leading=10, wordWrap='CJK', alignment=TA_LEFT,
+    )
+    celda_centro_style = ParagraphStyle(
+        'CeldaUnidad', parent=styles['Normal'],
+        fontSize=8, leading=10, wordWrap='CJK', alignment=TA_CENTER,
+    )
+    pasos_style = ParagraphStyle(
+        'Pasos', parent=styles['Normal'],
+        fontSize=9, leading=14, fontName='Helvetica',
     )
 
-    motivo_style = ParagraphStyle(
-        'RejectReason',
-        parent=styles['Heading2'],
-        fontSize=13,
-        textColor=colors.HexColor('#7f1d1d'),
-        spaceAfter=16,
-        alignment=TA_CENTER,
-        fontName='Helvetica-Bold',
-        borderColor=colors.HexColor('#dc2626'),
-        borderWidth=2,
-        borderPadding=10,
-        backColor=colors.HexColor('#fee2e2')
-    )
+    # ── Título ───────────────────────────────────────────────────────────
+    story.append(Paragraph('REQUISICIÓN RECHAZADA', titulo_style))
+    story.append(Spacer(1, 0.15 * inch))
 
-    titulo = Paragraph('REQUISICION RECHAZADA', titulo_style)
-    story.append(titulo)
-    story.append(Spacer(1, 0.2 * inch))
-
-    # ISS-FIX-CENTRO: Usar centro_origen (el centro que SOLICITA)
-    # FALLBACK: si centro_origen es NULL (datos viejos), usar centro_destino
+    # ── Datos generales ──────────────────────────────────────────────────
     centro_obj = requisicion.centro_origen or requisicion.centro_destino
     centro_nombre = centro_obj.nombre if centro_obj else 'N/A'
-    solicitante_nombre = requisicion.solicitante.get_full_name() if requisicion.solicitante else 'N/A'
-    
+    solicitante_nombre = (
+        requisicion.solicitante.get_full_name() if requisicion.solicitante else 'N/A'
+    )
+
+    # Quién rechazó: recorrer actores del flujo V2 de más específico a más general
+    rechazado_por_obj = (
+        getattr(requisicion, 'autorizador_farmacia', None) or
+        getattr(requisicion, 'director_centro', None) or
+        getattr(requisicion, 'administrador_centro', None) or
+        getattr(requisicion, 'autorizador', None)
+    )
+    rechazado_nombre = (
+        rechazado_por_obj.get_full_name() if rechazado_por_obj else 'N/A'
+    )
+
+    # Fecha de rechazo: fecha_autorizacion si existe, si no updated_at
+    fecha_rechazo_dt = (
+        getattr(requisicion, 'fecha_autorizacion', None) or
+        getattr(requisicion, 'updated_at', None)
+    )
+    fecha_rechazo_str = (
+        fecha_rechazo_dt.strftime('%d/%m/%Y %H:%M') if fecha_rechazo_dt else 'N/A'
+    )
+    fecha_solicitud_str = (
+        requisicion.fecha_solicitud.strftime('%d/%m/%Y')
+        if requisicion.fecha_solicitud else 'N/A'
+    )
+    folio_str = requisicion.folio or f'REQ-{requisicion.id}'
+
+    # Anchos: etiqueta | valor | etiqueta | valor  → suma = content_width
+    col_lbl = 1.55 * inch
+    col_val1 = 2.30 * inch
+    col_lbl2 = 1.55 * inch
+    col_val2 = content_width - col_lbl - col_val1 - col_lbl2
+
+    def lbl(txt): return Paragraph(txt, label_style)
+    def val(txt): return Paragraph(str(txt), value_style)
+
     info_data = [
-        ['Folio:', requisicion.folio or f'REQ-{requisicion.id}', 'Fecha de Solicitud:', requisicion.fecha_solicitud.strftime('%d/%m/%Y') if requisicion.fecha_solicitud else 'N/A'],
-        ['Centro Solicitante:', centro_nombre, 'Estado:', 'RECHAZADA'],
-        ['Solicitante:', solicitante_nombre, 'Fecha de Rechazo:',
-         requisicion.fecha_autorizacion.strftime('%d/%m/%Y %H:%M') if requisicion.fecha_autorizacion else 'N/A'],
-        ['Rechazado por:', requisicion.autorizador.get_full_name() if requisicion.autorizador else 'N/A', '', ''],
+        [lbl('Folio:'),             val(folio_str),          lbl('Fecha de Solicitud:'), val(fecha_solicitud_str)],
+        [lbl('Centro Solicitante:'), val(centro_nombre),     lbl('Fecha de Rechazo:'),   val(fecha_rechazo_str)],
+        [lbl('Solicitante:'),        val(solicitante_nombre), lbl('Rechazado por:'),      val(rechazado_nombre)],
     ]
 
-    info_table = Table(info_data, colWidths=[1.5 * inch, 2.5 * inch, 1.5 * inch, 2 * inch])
+    info_table = Table(info_data, colWidths=[col_lbl, col_val1, col_lbl2, col_val2])
     info_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#e5e7eb')),
         ('BACKGROUND', (2, 0), (2, -1), colors.HexColor('#e5e7eb')),
-        ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#1f2937')),
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-        ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('VALIGN',     (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING',  (0, 0), (-1, -1), 6),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+        ('TOPPADDING',   (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING',(0, 0), (-1, -1), 6),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#d1d5db')),
     ]))
-
     story.append(info_table)
-    story.append(Spacer(1, 0.3 * inch))
+    story.append(Spacer(1, 0.22 * inch))
 
-    motivo_titulo = Paragraph('MOTIVO DEL RECHAZO', motivo_style)
-    story.append(motivo_titulo)
-    story.append(Spacer(1, 0.1 * inch))
+    # ── Motivo del rechazo ───────────────────────────────────────────────
+    story.append(Paragraph('MOTIVO DEL RECHAZO', motivo_banner_style))
+    motivo_raw = (requisicion.motivo_rechazo or '').strip()
+    story.append(Paragraph(
+        motivo_raw if motivo_raw else 'No se especificó motivo de rechazo.',
+        motivo_texto_style,
+    ))
+    story.append(Spacer(1, 0.22 * inch))
 
-    motivo_contenido_style = ParagraphStyle(
-        'MotivContent',
-        parent=styles['Normal'],
-        fontSize=12,
-        textColor=colors.HexColor('#1f2937'),
-        spaceAfter=15,
-        alignment=TA_LEFT,
-        fontName='Helvetica'
+    # ── Tabla de productos ───────────────────────────────────────────────
+    story.append(Paragraph('PRODUCTOS SOLICITADOS (NO PROCESADOS)', seccion_titulo_style))
+    story.append(Spacer(1, 0.06 * inch))
+
+    # Anchos: # | Clave | Descripción | Cant. | Unidad  → suma = content_width
+    cw_num  = 0.30 * inch
+    cw_clave = 0.75 * inch
+    cw_cant  = 0.90 * inch
+    cw_unid  = 1.35 * inch
+    cw_desc  = content_width - cw_num - cw_clave - cw_cant - cw_unid  # ~4.00"
+
+    hdr_style = ParagraphStyle(
+        'ProdHdr', parent=styles['Normal'],
+        fontSize=9, fontName='Helvetica-Bold',
+        alignment=TA_CENTER, textColor=colors.whitesmoke, leading=11,
     )
 
-    motivo_texto = Paragraph(
-        requisicion.motivo_rechazo if requisicion.motivo_rechazo else 'No se especifico motivo',
-        motivo_contenido_style
-    )
-    story.append(motivo_texto)
-    story.append(Spacer(1, 0.3 * inch))
-
-    productos_titulo_style = ParagraphStyle(
-        'ProductsTitle',
-        parent=styles['Heading2'],
-        fontSize=12,
-        textColor=colors.HexColor('#374151'),
-        spaceAfter=12,
-        fontName='Helvetica-Bold'
-    )
-
-    productos_titulo = Paragraph('PRODUCTOS SOLICITADOS (NO PROCESADOS)', productos_titulo_style)
-    story.append(productos_titulo)
-    story.append(Spacer(1, 0.1 * inch))
-
-    # Estilo para celdas con texto largo
-    celda_rechazo_style = ParagraphStyle(
-        'CeldaRechazo',
-        parent=styles['Normal'],
-        fontSize=8,
-        leading=10,
-        wordWrap='CJK',
-        alignment=TA_LEFT,
-    )
-    
-    # Estilo para celdas de unidad (texto largo)
-    celda_unidad_rechazo_style = ParagraphStyle(
-        'CeldaUnidadRechazo',
-        parent=styles['Normal'],
-        fontSize=7,
-        leading=9,
-        wordWrap='CJK',
-        alignment=TA_CENTER,
-    )
-
-    productos_data = [
-        ['#', 'Clave', 'Descripción', 'Cant. Solicitada', 'Unidad']
-    ]
+    productos_data = [[
+        Paragraph('#', hdr_style),
+        Paragraph('Clave', hdr_style),
+        Paragraph('Descripción', hdr_style),
+        Paragraph('Cant.\nSolicitada', hdr_style),
+        Paragraph('Unidad', hdr_style),
+    ]]
 
     for idx, detalle in enumerate(requisicion.detalles.all(), start=1):
-        # ISS-PDF FIX: Manejar descripcion None
-        descripcion_texto = detalle.producto.descripcion or detalle.producto.nombre or 'N/A'
-        descripcion_paragraph = Paragraph(descripcion_texto, celda_rechazo_style)
-        # ISS-PDF FIX: unidad_medida es CharField simple
+        descripcion_texto = (
+            detalle.producto.descripcion or
+            detalle.producto.nombre or 'N/A'
+        )
         unidad = getattr(detalle.producto, 'unidad_medida', None) or 'UND'
-        # Usar Paragraph para unidad - permite texto largo
-        unidad_paragraph = Paragraph(unidad, celda_unidad_rechazo_style)
         productos_data.append([
             str(idx),
             detalle.producto.clave or 'N/A',
-            descripcion_paragraph,
+            Paragraph(descripcion_texto, celda_desc_style),
             str(detalle.cantidad_solicitada or 0),
-            unidad_paragraph
+            Paragraph(unidad, celda_centro_style),
         ])
 
-    # Unidad ampliada de 0.6" a 1.4" para textos largos
+    # Alternar fondo en filas de datos (impares = blanco, pares = gris muy claro)
+    row_styles = []
+    for i in range(1, len(productos_data)):
+        bg = colors.white if i % 2 == 1 else colors.HexColor('#f9fafb')
+        row_styles.append(('BACKGROUND', (0, i), (-1, i), bg))
+
     productos_table = Table(
         productos_data,
-        colWidths=[0.3 * inch, 0.65 * inch, 2.5 * inch, 0.85 * inch, 1.4 * inch]
+        colWidths=[cw_num, cw_clave, cw_desc, cw_cant, cw_unid],
+        repeatRows=1,
     )
     productos_table.setStyle(TableStyle([
+        # Encabezado
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#dc2626')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 10),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
-        ('TOPPADDING', (0, 0), (-1, 0), 10),
-        ('TEXTCOLOR', (0, 1), (-1, -1), colors.HexColor('#374151')),
-        ('ALIGN', (0, 1), (0, -1), 'CENTER'),
-        ('ALIGN', (3, 1), (3, -1), 'CENTER'),
+        ('ALIGN',  (0, 0), (-1, 0), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
+        ('TOPPADDING',    (0, 0), (-1, 0), 7),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 7),
+        # Filas de datos
         ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
         ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ('VALIGN',   (0, 1), (-1, -1), 'TOP'),
+        ('ALIGN',    (0, 1), (0, -1), 'CENTER'),   # #
+        ('ALIGN',    (1, 1), (1, -1), 'CENTER'),   # Clave
+        ('ALIGN',    (3, 1), (3, -1), 'CENTER'),   # Cant
+        ('LEFTPADDING',   (0, 1), (-1, -1), 4),
+        ('RIGHTPADDING',  (0, 1), (-1, -1), 4),
+        ('TOPPADDING',    (0, 1), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 5),
+        # Bordes
         ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GUINDA),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 6),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-        ('TOPPADDING', (0, 1), (-1, -1), 6),
-        ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
+        *row_styles,
     ]))
-
     story.append(productos_table)
-    story.append(Spacer(1, 0.3 * inch))
+    story.append(Spacer(1, 0.25 * inch))
 
-    proximos_titulo = Paragraph('PROXIMOS PASOS', productos_titulo_style)
-    story.append(proximos_titulo)
+    # ── Próximos pasos ───────────────────────────────────────────────────
+    story.append(Paragraph('PRÓXIMOS PASOS', seccion_titulo_style))
+    story.append(Paragraph(
+        '1. Revise el motivo del rechazo especificado arriba.<br/>'
+        '2. Si desea reenviar la solicitud, corríjala y vuelva a enviarla en el sistema.<br/>'
+        '3. Contacte con el administrador de la farmacia si tiene dudas.',
+        pasos_style,
+    ))
 
-    proximos_texto = Paragraph(
-        '1. Revise el motivo del rechazo especificado arriba<br/>'
-        '2. Si desea reenviar la solicitud, modifique la requisicion en el sistema<br/>'
-        '3. Contacte con el administrador de la farmacia si tiene dudas',
-        styles['Normal']
-    )
-    story.append(proximos_texto)
-    story.append(Spacer(1, 0.2 * inch))
-
-    # Construir PDF con canvas de fondo oficial - Usar canvas simple como otros reportes
+    # ── Canvas con fondo institucional ───────────────────────────────────
     class FondoCanvas(canvas.Canvas):
-        """Canvas simple que dibuja el fondo institucional."""
         def __init__(self, *args, **kwargs):
             canvas.Canvas.__init__(self, *args, **kwargs)
-            self._draw_background()
-        
+            self._draw_bg()
+
         def showPage(self):
-            self._add_page_footer()
+            self._add_footer()
             canvas.Canvas.showPage(self)
-            self._draw_background()
-        
-        def _draw_background(self):
-            """Dibuja la imagen de fondo institucional"""
+            self._draw_bg()
+
+        def _draw_bg(self):
             if fondo_path and os.path.exists(fondo_path):
                 try:
-                    page_width, page_height = letter
-                    self.drawImage(
-                        str(fondo_path),
-                        0, 0,
-                        width=page_width,
-                        height=page_height,
-                        preserveAspectRatio=False,
-                        mask='auto'
-                    )
+                    pw, ph = letter
+                    self.drawImage(str(fondo_path), 0, 0,
+                                   width=pw, height=ph,
+                                   preserveAspectRatio=False, mask='auto')
                 except Exception as e:
-                    logger.warning(f"No se pudo cargar imagen de fondo: {e}")
-        
-        def _add_page_footer(self):
-            """Agrega pie de página con info de generación"""
+                    logger.warning(f"Fondo no cargado: {e}")
+
+        def _add_footer(self):
             self.saveState()
-            page_width = letter[0]
+            pw = letter[0]
             self.setFont('Helvetica', 7)
             self.setFillColor(colors.HexColor('#6b7280'))
-            self.drawString(0.6*inch, 0.5*inch, 
+            self.drawString(0.6 * inch, 0.45 * inch,
                             f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-            self.drawRightString(page_width - 0.6*inch, 0.5*inch, 
+            self.drawRightString(pw - 0.6 * inch, 0.45 * inch,
                                  "Sistema de Control de Abasto - Farmacia Penitenciaria")
             self.restoreState()
-    
+
     doc.build(story, canvasmaker=FondoCanvas)
     buffer.seek(0)
-    logger.info(f"PDF de rechazo generado para requisicion {requisicion.folio}")
+    logger.info(f"PDF de rechazo generado para requisición {requisicion.folio}")
     return buffer
 
 

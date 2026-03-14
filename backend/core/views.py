@@ -8233,7 +8233,33 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_403_FORBIDDEN
                 )
 
-        return super().update(request, *args, **kwargs)
+        # Manejar detalles manualmente (el serializer los tiene como read_only)
+        detalles_data = request.data.pop('detalles', None)
+
+        response = super().update(request, *args, **kwargs)
+
+        if detalles_data is not None and isinstance(detalles_data, list):
+            # Eliminar detalles anteriores y recrear
+            dispensacion.detalles.all().delete()
+            for detalle_data in detalles_data:
+                # Normalizar campo indicaciones del detalle
+                if 'indicaciones' in detalle_data and 'notas' not in detalle_data:
+                    detalle_data['notas'] = detalle_data.pop('indicaciones')
+                DetalleDispensacion.objects.create(
+                    dispensacion=dispensacion,
+                    producto_id=detalle_data.get('producto'),
+                    lote_id=detalle_data.get('lote'),
+                    cantidad_prescrita=detalle_data.get('cantidad_prescrita', 0),
+                    dosis=detalle_data.get('dosis'),
+                    frecuencia=detalle_data.get('frecuencia'),
+                    duracion_tratamiento=detalle_data.get('duracion_tratamiento'),
+                    notas=detalle_data.get('notas'),
+                    unidad_dispensada=detalle_data.get('unidad_dispensada'),
+                    via_administracion=detalle_data.get('via_administracion'),
+                    horarios=detalle_data.get('horarios'),
+                )
+
+        return response
     
     def create(self, request, *args, **kwargs):
         """
@@ -8335,6 +8361,8 @@ class DispensacionViewSet(viewsets.ModelViewSet):
                         duracion_tratamiento=detalle_data.get('duracion_tratamiento'),
                         notas=detalle_data.get('notas'),
                         unidad_dispensada=detalle_data.get('unidad_dispensada'),
+                        via_administracion=detalle_data.get('via_administracion'),
+                        horarios=detalle_data.get('horarios'),
                     )
                     detalles_creados.append(detalle.id)
                 
@@ -10097,6 +10125,8 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
         
         if compra.estado == 'enviada_farmacia':
             compra.estado = 'pendiente'
+        elif compra.estado == 'rechazada_farmacia':
+            compra.estado = 'pendiente'
         elif compra.estado == 'enviada_admin':
             compra.estado = 'sin_stock_farmacia'
         elif compra.estado == 'enviada_director':
@@ -10235,7 +10265,7 @@ class CompraCajaChicaViewSet(viewsets.ModelViewSet):
         """Registra que la compra fue realizada Y recibida (todo en un solo paso)"""
         compra = self.get_object()
         
-        if compra.estado not in ['pendiente', 'autorizada']:
+        if compra.estado != 'autorizada':
             return Response(
                 {'error': 'Esta compra no puede ser registrada'},
                 status=status.HTTP_400_BAD_REQUEST

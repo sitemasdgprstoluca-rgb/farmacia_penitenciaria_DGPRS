@@ -1772,7 +1772,7 @@ const Requisiciones = () => {
       toast.success(response.data?.mensaje || "Documento subido correctamente", { id: "subir-doc-entrega" });
       cargarRequisiciones();
     } catch (err) {
-      const msg = err.response?.data?.error || "Error al subir documento";
+      const msg = err.response?.data?.message || err.response?.data?.detail || (typeof err.response?.data?.error === 'string' ? err.response?.data?.error : null) || "Error al subir documento";
       toast.error(msg, { id: "subir-doc-entrega" });
       console.error("Error subiendo documento entrega:", err);
     }

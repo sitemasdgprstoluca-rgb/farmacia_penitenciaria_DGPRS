@@ -7129,7 +7129,13 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         # Registrar quién subió el documento
         obs_actual = requisicion.observaciones_farmacia or ''
         requisicion.observaciones_farmacia = f"{obs_actual}\n[Evidencia subida por {usuario_nombre} el {now.strftime('%d/%m/%Y %H:%M')}]".strip()
-        requisicion.save(update_fields=['documento_entrega_url', 'observaciones_farmacia'])
+        try:
+            requisicion.save(update_fields=['documento_entrega_url', 'observaciones_farmacia'])
+        except Exception as save_error:
+            logger.error(f'Error guardando URL de documento para {requisicion.folio}: {save_error}', exc_info=True)
+            return Response({
+                'error': 'El archivo se subió pero no se pudo guardar en la base de datos. Verifique que la migración 027 ha sido aplicada en Supabase.'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         logger.info(f'Documento de entrega subido para requisición {requisicion.folio} por {request.user.username}: {resultado["url"]}')
 

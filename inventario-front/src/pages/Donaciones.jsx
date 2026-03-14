@@ -2351,7 +2351,6 @@ const Donaciones = () => {
               </tbody>
             </table>
           </div>
-        )}
 
         {/* Paginación */}
         {totalPages > 1 && (

@@ -28,6 +28,8 @@ import {
   FaUpload,
   FaDownload,
   FaCheckCircle,
+  FaUser,
+  FaClock,
 } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import Pagination from '../components/Pagination';
@@ -142,6 +144,8 @@ const Dispensaciones = () => {
     dosis: '',
     frecuencia: '',
     duracion_tratamiento: '',
+    via_administracion: '',
+    horarios: '',
     indicaciones: '',
   });
   
@@ -277,9 +281,9 @@ const Dispensaciones = () => {
         search: searchTerm || undefined,
         centro: centroFiltro || undefined,
         estado: estadoFiltro || undefined,
-        tipo_dispensacion: tipoFiltro || undefined,
-        fecha_inicio: fechaInicio || undefined,
-        fecha_fin: fechaFin || undefined,
+        tipo: tipoFiltro || undefined,
+        fecha_desde: fechaInicio || undefined,
+        fecha_hasta: fechaFin || undefined,
       };
       
       const response = await dispensacionesAPI.getAll(params);
@@ -454,6 +458,8 @@ const Dispensaciones = () => {
       dosis: '',
       frecuencia: '',
       duracion_tratamiento: '',
+      via_administracion: '',
+      horarios: '',
       indicaciones: '',
     });
     setLotes([]);
@@ -491,6 +497,8 @@ const Dispensaciones = () => {
       dosis: '',
       frecuencia: '',
       duracion_tratamiento: '',
+      via_administracion: '',
+      horarios: '',
       indicaciones: '',
     });
     setEditingDispensacion(null);
@@ -570,37 +578,48 @@ const Dispensaciones = () => {
     }
   };
 
-  const handleOpenModal = (dispensacion = null) => {
+  const handleOpenModal = async (dispensacion = null) => {
     if (dispensacion) {
       // Editar (solo si está pendiente)
       if (dispensacion.estado !== 'pendiente') {
         toast.error('Solo se pueden editar dispensaciones pendientes');
         return;
       }
-      setEditingDispensacion(dispensacion);
-      setFormData({
-        paciente: dispensacion.paciente,
-        centro: dispensacion.centro,
-        tipo_dispensacion: dispensacion.tipo_dispensacion || 'normal',
-        fecha_prescripcion: dispensacion.fecha_prescripcion || '',
-        medico_prescriptor: dispensacion.medico_prescriptor || '',
-        diagnostico: dispensacion.diagnostico || '',
-        indicaciones_medicas: dispensacion.indicaciones_medicas || '',
-        observaciones: dispensacion.observaciones || '',
-        detalles: (dispensacion.detalles || []).map(d => ({
-          id: d.id,
-          producto: d.producto,
-          lote: d.lote,
-          cantidad_prescrita: d.cantidad_prescrita,
-          dosis: d.dosis || '',
-          frecuencia: d.frecuencia || '',
-          duracion_tratamiento: d.duracion_tratamiento || '',
-          indicaciones: d.indicaciones || '',
-          producto_nombre: d.producto_nombre,
-          lote_numero: d.lote_numero,
-        }))
-      });
-      setPacienteSearchTerm(dispensacion.paciente_nombre || '');
+      // Obtener datos completos de la dispensación (la lista no trae detalles ni campos médicos)
+      try {
+        const response = await dispensacionesAPI.getById(dispensacion.id);
+        const fullDisp = response.data;
+        setEditingDispensacion(fullDisp);
+        setFormData({
+          paciente: fullDisp.paciente,
+          centro: fullDisp.centro,
+          tipo_dispensacion: fullDisp.tipo_dispensacion || 'normal',
+          fecha_prescripcion: fullDisp.fecha_prescripcion || '',
+          medico_prescriptor: fullDisp.medico_prescriptor || '',
+          diagnostico: fullDisp.diagnostico || '',
+          indicaciones_medicas: fullDisp.indicaciones || '',
+          observaciones: fullDisp.observaciones || '',
+          detalles: (fullDisp.detalles || []).map(d => ({
+            id: d.id,
+            producto: d.producto,
+            lote: d.lote,
+            cantidad_prescrita: d.cantidad_prescrita,
+            dosis: d.dosis || '',
+            frecuencia: d.frecuencia || '',
+            duracion_tratamiento: d.duracion_tratamiento || '',
+            via_administracion: d.via_administracion || '',
+            horarios: d.horarios || '',
+            indicaciones: d.notas || '',
+            producto_nombre: d.producto_nombre,
+            lote_numero: d.lote_numero,
+          }))
+        });
+        setPacienteSearchTerm(fullDisp.paciente_nombre || '');
+      } catch (error) {
+        console.error('Error al cargar dispensación para editar:', error);
+        toast.error('Error al cargar datos de la dispensación');
+        return;
+      }
     } else {
       resetForm();
     }
@@ -682,6 +701,8 @@ const Dispensaciones = () => {
           dosis: d.dosis || null,
           frecuencia: d.frecuencia || null,
           duracion_tratamiento: d.duracion_tratamiento || null,
+          via_administracion: d.via_administracion || null,
+          horarios: d.horarios || null,
           notas: d.indicaciones || null,
           unidad_dispensada: d.unidad_dispensada || d.unidad_minima || null,
         }))
@@ -763,6 +784,7 @@ const Dispensaciones = () => {
           errorMsg = error.message;
         }
         toast.error(errorMsg, { duration: 5000 });
+        setDispensarModal(prev => ({ ...prev, loading: false }));
       }
     }
   };
@@ -1082,7 +1104,7 @@ const Dispensaciones = () => {
             <div className="flex items-end">
               <button
                 onClick={() => {
-                  setCentroFiltro('');
+                  setCentroFiltro(centroUsuario || '');
                   setEstadoFiltro('');
                   setTipoFiltro('');
                   setFechaInicio('');
@@ -1437,7 +1459,6 @@ const Dispensaciones = () => {
               </tbody>
             </table>
           </div>
-        )}
 
         {/* Paginación */}
         {totalPages > 1 && (
@@ -1764,13 +1785,48 @@ const Dispensaciones = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Indicaciones</label>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Indicaciones / Notas</label>
                       <input
                         type="text"
                         name="indicaciones"
                         value={currentDetalle.indicaciones}
                         onChange={handleDetalleChange}
                         placeholder="Opcional"
+                        className="w-full px-2 py-1.5 border rounded text-sm focus:ring-2 focus:ring-guinda"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Vía de Administración</label>
+                      <select
+                        name="via_administracion"
+                        value={currentDetalle.via_administracion}
+                        onChange={handleDetalleChange}
+                        className="w-full px-2 py-1.5 border rounded text-sm focus:ring-2 focus:ring-guinda"
+                      >
+                        <option value="">— Seleccionar (opcional) —</option>
+                        <option value="oral">Oral</option>
+                        <option value="intravenosa">Intravenosa</option>
+                        <option value="intramuscular">Intramuscular</option>
+                        <option value="subcutanea">Subcutánea</option>
+                        <option value="topica">Tópica</option>
+                        <option value="sublingual">Sublingual</option>
+                        <option value="inhalatoria">Inhalatoria</option>
+                        <option value="oftalmica">Oftálmica</option>
+                        <option value="otica">Ótica</option>
+                        <option value="rectal">Rectal</option>
+                        <option value="otra">Otra</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Horarios</label>
+                      <input
+                        type="text"
+                        name="horarios"
+                        value={currentDetalle.horarios}
+                        onChange={handleDetalleChange}
+                        placeholder="Ej: 8am, 2pm, 8pm"
                         className="w-full px-2 py-1.5 border rounded text-sm focus:ring-2 focus:ring-guinda"
                       />
                     </div>
@@ -2002,7 +2058,7 @@ const Dispensaciones = () => {
         itemInfo={dispensarModal.dispensacion ? {
           'Folio': dispensarModal.dispensacion.folio,
           'Paciente': dispensarModal.dispensacion.paciente_nombre || 'N/A',
-          'Tipo': dispensarModal.dispensacion.tipo || 'Normal'
+          'Tipo': dispensarModal.dispensacion.tipo_dispensacion_display || dispensarModal.dispensacion.tipo_dispensacion || 'Normal'
         } : null}
         confirmText={dispensarModal.loading ? 'Procesando...' : dispensarModal.stockErrors ? 'Reintentar' : 'Dispensar'}
         cancelText={dispensarModal.stockErrors ? 'Cerrar y Editar' : 'No, volver'}

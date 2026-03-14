@@ -273,6 +273,7 @@ class User(AbstractUser):
             'perm_crear_requisicion': True, 'perm_autorizar_admin': True,
             'perm_autorizar_director': True, 'perm_recibir_farmacia': True,
             'perm_autorizar_farmacia': True, 'perm_surtir': True, 'perm_confirmar_entrega': True,
+            'perm_dispensaciones': True, 'perm_compras_caja_chica': True,
         },
         'admin_sistema': {  # Legacy alias
             'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': True,
@@ -282,6 +283,7 @@ class User(AbstractUser):
             'perm_crear_requisicion': True, 'perm_autorizar_admin': True,
             'perm_autorizar_director': True, 'perm_recibir_farmacia': True,
             'perm_autorizar_farmacia': True, 'perm_surtir': True, 'perm_confirmar_entrega': True,
+            'perm_dispensaciones': True, 'perm_compras_caja_chica': True,
         },
         'farmacia': {
             'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': True,
@@ -292,6 +294,7 @@ class User(AbstractUser):
             'perm_crear_requisicion': False, 'perm_autorizar_admin': False,
             'perm_autorizar_director': False, 'perm_recibir_farmacia': True,
             'perm_autorizar_farmacia': True, 'perm_surtir': True, 'perm_confirmar_entrega': False,
+            'perm_dispensaciones': True, 'perm_compras_caja_chica': True,
         },
         'vista': {
             'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': True,
@@ -302,6 +305,7 @@ class User(AbstractUser):
             'perm_crear_requisicion': False, 'perm_autorizar_admin': False,
             'perm_autorizar_director': False, 'perm_recibir_farmacia': False,
             'perm_autorizar_farmacia': False, 'perm_surtir': False, 'perm_confirmar_entrega': False,
+            'perm_dispensaciones': True, 'perm_compras_caja_chica': True,
         },
         
         # Roles de Centro Penitenciario (FLUJO V2)
@@ -314,6 +318,7 @@ class User(AbstractUser):
             'perm_crear_requisicion': True, 'perm_autorizar_admin': False,
             'perm_autorizar_director': False, 'perm_recibir_farmacia': False,
             'perm_autorizar_farmacia': False, 'perm_surtir': False, 'perm_confirmar_entrega': False,
+            'perm_dispensaciones': True, 'perm_compras_caja_chica': True,
         },
         'administrador_centro': {
             'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': False,
@@ -324,6 +329,7 @@ class User(AbstractUser):
             'perm_crear_requisicion': False, 'perm_autorizar_admin': True,
             'perm_autorizar_director': False, 'perm_recibir_farmacia': False,
             'perm_autorizar_farmacia': False, 'perm_surtir': False, 'perm_confirmar_entrega': False,
+            'perm_dispensaciones': True, 'perm_compras_caja_chica': True,
         },
         'director_centro': {
             'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': False,
@@ -334,6 +340,7 @@ class User(AbstractUser):
             'perm_crear_requisicion': False, 'perm_autorizar_admin': False,
             'perm_autorizar_director': True, 'perm_recibir_farmacia': False,
             'perm_autorizar_farmacia': False, 'perm_surtir': False, 'perm_confirmar_entrega': False,
+            'perm_dispensaciones': True, 'perm_compras_caja_chica': True,
         },
         'centro': {
             'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': True,
@@ -344,6 +351,7 @@ class User(AbstractUser):
             'perm_crear_requisicion': False, 'perm_autorizar_admin': False,
             'perm_autorizar_director': False, 'perm_recibir_farmacia': False,
             'perm_autorizar_farmacia': False, 'perm_surtir': False, 'perm_confirmar_entrega': False,
+            'perm_dispensaciones': True, 'perm_compras_caja_chica': True,
         },
         
         # Legacy roles (compatibilidad)
@@ -356,6 +364,7 @@ class User(AbstractUser):
             'perm_crear_requisicion': True, 'perm_autorizar_admin': False,
             'perm_autorizar_director': False, 'perm_recibir_farmacia': False,
             'perm_autorizar_farmacia': False, 'perm_surtir': False, 'perm_confirmar_entrega': False,
+            'perm_dispensaciones': True, 'perm_compras_caja_chica': True,
         },
         'usuario_normal': {
             'perm_dashboard': True, 'perm_productos': True, 'perm_lotes': False,
@@ -366,6 +375,7 @@ class User(AbstractUser):
             'perm_crear_requisicion': True, 'perm_autorizar_admin': False,
             'perm_autorizar_director': False, 'perm_recibir_farmacia': False,
             'perm_autorizar_farmacia': False, 'perm_surtir': False, 'perm_confirmar_entrega': False,
+            'perm_dispensaciones': True, 'perm_compras_caja_chica': True,
         },
     }
     
@@ -422,6 +432,10 @@ class User(AbstractUser):
         help_text="Permiso para surtir requisiciones")
     perm_confirmar_entrega = models.BooleanField(null=True, blank=True, db_column='perm_confirmar_entrega',
         help_text="Permiso para confirmar entrega/recepción")
+    perm_dispensaciones = models.BooleanField(null=True, blank=True, db_column='perm_dispensaciones',
+        help_text="Permiso para gestionar dispensaciones a pacientes")
+    perm_compras_caja_chica = models.BooleanField(null=True, blank=True, db_column='perm_compras_caja_chica',
+        help_text="Permiso para gestionar compras de caja chica")
     
     class Meta:
         db_table = 'usuarios'
@@ -450,7 +464,8 @@ class User(AbstractUser):
             'perm_auditoria', 'perm_notificaciones', 'perm_movimientos', 'perm_donaciones',
             # FLUJO V2
             'perm_crear_requisicion', 'perm_autorizar_admin', 'perm_autorizar_director',
-            'perm_recibir_farmacia', 'perm_autorizar_farmacia', 'perm_surtir', 'perm_confirmar_entrega'
+            'perm_recibir_farmacia', 'perm_autorizar_farmacia', 'perm_surtir', 'perm_confirmar_entrega',
+            'perm_dispensaciones', 'perm_compras_caja_chica'
         ]
         
         errores = {}
@@ -487,7 +502,8 @@ class User(AbstractUser):
             'perm_auditoria', 'perm_notificaciones', 'perm_movimientos', 'perm_donaciones',
             # FLUJO V2
             'perm_crear_requisicion', 'perm_autorizar_admin', 'perm_autorizar_director',
-            'perm_recibir_farmacia', 'perm_autorizar_farmacia', 'perm_surtir', 'perm_confirmar_entrega'
+            'perm_recibir_farmacia', 'perm_autorizar_farmacia', 'perm_surtir', 'perm_confirmar_entrega',
+            'perm_dispensaciones', 'perm_compras_caja_chica'
         ]
         
         for campo in campos_permisos:
@@ -3794,6 +3810,7 @@ class Dispensacion(models.Model):
     )
     
     # Prescripción médica
+    fecha_prescripcion = models.DateField(blank=True, null=True)
     diagnostico = models.TextField(blank=True, null=True)
     indicaciones = models.TextField(blank=True, null=True)
     medico_prescriptor = models.CharField(max_length=200, blank=True, null=True)
@@ -4335,8 +4352,8 @@ class DetalleCompraCajaChica(models.Model):
         return f"{self.compra.folio} - {self.descripcion_producto}"
     
     def save(self, *args, **kwargs):
-        # Calcular importe
-        self.importe = self.precio_unitario * self.cantidad_comprada
+        # Calcular importe: usar cantidad_comprada si ya fue comprado, sino cantidad_solicitada
+        self.importe = self.precio_unitario * (self.cantidad_comprada or self.cantidad_solicitada)
         super().save(*args, **kwargs)
 
 

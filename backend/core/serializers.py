@@ -3889,7 +3889,7 @@ class DispensacionSerializer(serializers.ModelSerializer):
         model = Dispensacion
         fields = [
             'id', 'folio', 'paciente', 'paciente_nombre', 'paciente_expediente', 'paciente_ubicacion',
-            'centro', 'centro_nombre', 'fecha_dispensacion',
+            'centro', 'centro_nombre', 'fecha_dispensacion', 'fecha_prescripcion',
             'tipo_dispensacion', 'tipo_dispensacion_display',
             'diagnostico', 'indicaciones', 'medico_prescriptor', 'cedula_medico',
             'estado', 'estado_display',
@@ -3978,6 +3978,7 @@ class DispensacionListSerializer(serializers.ModelSerializer):
     total_items = serializers.SerializerMethodField()
     tipo_dispensacion_display = serializers.SerializerMethodField()
     estado_display = serializers.SerializerMethodField()
+    tiene_documento_firmado = serializers.SerializerMethodField()
     
     class Meta:
         model = Dispensacion
@@ -3986,7 +3987,8 @@ class DispensacionListSerializer(serializers.ModelSerializer):
             'centro', 'centro_nombre', 'fecha_dispensacion',
             'tipo_dispensacion', 'tipo_dispensacion_display',
             'estado', 'estado_display', 'total_items',
-            'created_by', 'created_by_nombre'
+            'created_by', 'created_by_nombre',
+            'tiene_documento_firmado', 'documento_firmado_nombre'
         ]
     
     def get_paciente_nombre(self, obj):
@@ -4011,6 +4013,9 @@ class DispensacionListSerializer(serializers.ModelSerializer):
     
     def get_estado_display(self, obj):
         return obj.get_estado_display()
+
+    def get_tiene_documento_firmado(self, obj):
+        return bool(obj.documento_firmado_url)
 
 
 class HistorialDispensacionSerializer(serializers.ModelSerializer):
@@ -4310,6 +4315,45 @@ class CompraCajaChicaSerializer(serializers.ModelSerializer):
         compra.calcular_totales()
         
         return compra
+
+    def update(self, instance, validated_data):
+        # Extraer detalles antes de actualizar la compra
+        detalles_data = validated_data.pop('detalles_write', None)
+        
+        # Actualizar campos escalares de la compra
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        
+        # Si se enviaron detalles, reemplazar los existentes
+        if detalles_data is not None:
+            from .models import DetalleCompraCajaChica, Producto
+            # Eliminar detalles anteriores
+            instance.detalles.all().delete()
+            # Crear los nuevos detalles
+            for detalle_data in detalles_data:
+                producto_id = detalle_data.pop('producto', None)
+                producto = None
+                if producto_id:
+                    try:
+                        producto = Producto.objects.get(id=producto_id)
+                    except Producto.DoesNotExist:
+                        pass
+                DetalleCompraCajaChica.objects.create(
+                    compra=instance,
+                    producto=producto,
+                    descripcion_producto=detalle_data.get('descripcion_producto', ''),
+                    cantidad_solicitada=detalle_data.get('cantidad', 1),
+                    unidad_medida=detalle_data.get('unidad') or 'PIEZA',
+                    precio_unitario=detalle_data.get('precio_unitario', 0),
+                    numero_lote=detalle_data.get('numero_lote') or None,
+                    fecha_caducidad=detalle_data.get('fecha_caducidad') or None,
+                )
+        
+        # Recalcular totales
+        instance.calcular_totales()
+        
+        return instance
 
 
 class CompraCajaChicaListSerializer(serializers.ModelSerializer):
