@@ -151,6 +151,7 @@ const Dispensaciones = () => {
   const [dispensarModal, setDispensarModal] = useState({ show: false, dispensacion: null, loading: false, stockErrors: null });
   const [detailModal, setDetailModal] = useState({ show: false, dispensacion: null, loading: false });
   const [historialModal, setHistorialModal] = useState({ show: false, dispensacion: null, historial: [] });
+  const [deleteDocModal, setDeleteDocModal] = useState({ show: false, dispensacion: null });
   
   // Modal para Control Mensual CPRS
   const [reporteModal, setReporteModal] = useState({ 
@@ -845,11 +846,14 @@ const Dispensaciones = () => {
     }
   };
 
-  const handleEliminarDocumentoFirmado = async (dispensacion) => {
-    if (!confirm('¿Está seguro de eliminar el documento firmado? Esta acción no se puede deshacer.')) {
-      return;
-    }
-    
+  const handleEliminarDocumentoFirmado = (dispensacion) => {
+    setDeleteDocModal({ show: true, dispensacion });
+  };
+
+  const handleConfirmarEliminarDoc = async () => {
+    const dispensacion = deleteDocModal.dispensacion;
+    if (!dispensacion) return;
+    setDeleteDocModal({ show: false, dispensacion: null });
     try {
       await dispensacionesAPI.eliminarDocumentoFirmado(dispensacion.id);
       toast.success('Documento firmado eliminado');
@@ -1164,11 +1168,11 @@ const Dispensaciones = () => {
                 >
                   <FaEye size={18} />
                 </button>
-                {disp.estado === 'pendiente' && puedeDispensar && (
+                {['pendiente', 'parcial'].includes(disp.estado) && puedeDispensar && (
                   <button
                     onClick={() => setDispensarModal({ show: true, dispensacion: disp, loading: false, stockErrors: null })}
                     className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
-                    title="Dispensar"
+                    title={disp.estado === 'parcial' ? 'Completar dispensación parcial' : 'Dispensar'}
                   >
                     <FaCheck size={18} />
                   </button>
@@ -1189,6 +1193,15 @@ const Dispensaciones = () => {
                     title="Cancelar"
                   >
                     <FaBan size={18} />
+                  </button>
+                )}
+                {disp.estado === 'pendiente' && puedeEditar && (disp.created_by === user?.id || esFarmaciaAdmin(user) || user?.is_superuser) && (
+                  <button
+                    onClick={() => setDeleteModal({ show: true, dispensacion: disp })}
+                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                    title="Eliminar"
+                  >
+                    <FaTrash size={18} />
                   </button>
                 )}
                 {/* Gestión de documentos firmados en móvil */}
@@ -1315,16 +1328,16 @@ const Dispensaciones = () => {
                           <FaEye />
                         </button>
                         
-                        {disp.estado === 'pendiente' && puedeDispensar && (
+                        {['pendiente', 'parcial'].includes(disp.estado) && puedeDispensar && (
                           <button
                             onClick={() => setDispensarModal({ show: true, dispensacion: disp, loading: false, stockErrors: null })}
                             className="text-green-600 hover:text-green-800 p-1"
-                            title="Dispensar"
+                            title={disp.estado === 'parcial' ? 'Completar dispensación parcial' : 'Dispensar'}
                           >
                             <FaCheck />
                           </button>
                         )}
-                        
+
                         {disp.estado === 'pendiente' && puedeEditar && (disp.created_by === user?.id || esFarmaciaAdmin(user) || user?.is_superuser) && (
                           <button
                             onClick={() => handleOpenModal(disp)}
@@ -1862,19 +1875,19 @@ const Dispensaciones = () => {
             <div className="p-6">
               <div className="grid grid-cols-2 gap-4 text-sm mb-6">
                 <div><span className="font-semibold">Folio:</span> {detailModal.dispensacion.folio}</div>
-                <div><span className="font-semibold">Estado:</span> 
+                <div><span className="font-semibold">Estado:</span>
                   <span className={`ml-2 px-2 py-1 text-xs rounded-full ${ESTADO_COLORS[detailModal.dispensacion.estado]}`}>
-                    {detailModal.dispensacion.estado}
+                    {detailModal.dispensacion.estado_display || detailModal.dispensacion.estado}
                   </span>
                 </div>
                 <div><span className="font-semibold">Paciente:</span> {detailModal.dispensacion.paciente_nombre}</div>
                 <div><span className="font-semibold">Expediente:</span> {detailModal.dispensacion.paciente_expediente}</div>
                 <div><span className="font-semibold">Centro:</span> {detailModal.dispensacion.centro_nombre}</div>
-                <div><span className="font-semibold">Tipo:</span> {detailModal.dispensacion.tipo_dispensacion}</div>
+                <div><span className="font-semibold">Tipo:</span> {detailModal.dispensacion.tipo_dispensacion_display || detailModal.dispensacion.tipo_dispensacion}</div>
                 <div><span className="font-semibold">Médico Prescriptor:</span> {detailModal.dispensacion.medico_prescriptor || '-'}</div>
                 <div><span className="font-semibold">Diagnóstico:</span> {detailModal.dispensacion.diagnostico || '-'}</div>
-                {detailModal.dispensacion.indicaciones_medicas && (
-                  <div className="col-span-2"><span className="font-semibold">Indicaciones:</span> {detailModal.dispensacion.indicaciones_medicas}</div>
+                {(detailModal.dispensacion.indicaciones || detailModal.dispensacion.indicaciones_medicas) && (
+                  <div className="col-span-2"><span className="font-semibold">Indicaciones:</span> {detailModal.dispensacion.indicaciones || detailModal.dispensacion.indicaciones_medicas}</div>
                 )}
                 <div className="col-span-2 pt-2 border-t border-gray-200 mt-2">
                   <span className="font-semibold text-guinda">👤 Registrado por:</span> {detailModal.dispensacion.created_by_nombre || '-'}
@@ -2372,13 +2385,24 @@ const Dispensaciones = () => {
         </div>
       )}
 
-      {/* Modal de confirmar eliminación */}
+      {/* Modal de confirmar eliminación de dispensación */}
       <ConfirmModal
         open={deleteModal.show}
         onCancel={() => setDeleteModal({ show: false, dispensacion: null })}
         onConfirm={handleDelete}
         title="Eliminar Dispensación"
         message={`¿Está seguro de eliminar la dispensación ${deleteModal.dispensacion?.folio}? Esta acción no se puede deshacer.`}
+        confirmText="Eliminar"
+        tone="danger"
+      />
+
+      {/* Modal de confirmar eliminación de documento firmado */}
+      <ConfirmModal
+        open={deleteDocModal.show}
+        onCancel={() => setDeleteDocModal({ show: false, dispensacion: null })}
+        onConfirm={handleConfirmarEliminarDoc}
+        title="Eliminar Documento Firmado"
+        message="¿Está seguro de eliminar el documento firmado? Esta acción no se puede deshacer."
         confirmText="Eliminar"
         tone="danger"
       />
