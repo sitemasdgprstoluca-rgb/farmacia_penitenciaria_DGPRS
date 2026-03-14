@@ -911,8 +911,8 @@ def registrar_movimiento_stock(*, lote, tipo, cantidad, usuario=None, centro=Non
             # MEJORA FLUJO 5: Campos de trazabilidad para pacientes
             subtipo_salida=subtipo_salida if tipo_normalizado == 'salida' else None,
             numero_expediente=numero_expediente if tipo_normalizado == 'salida' and subtipo_salida == 'receta' else None,
-            # MEJORA CONTROL MENSUAL: Folio documento para trazabilidad de entradas
-            folio_documento=folio_documento if tipo_normalizado == 'entrada' else None,
+            # FORMATO B: Folio/número de documento oficial
+            folio_documento=folio_documento or None,
             # Fecha de salida física (puede diferir de fecha de registro)
             fecha_salida=fecha_salida if tipo_normalizado == 'salida' else None
         )

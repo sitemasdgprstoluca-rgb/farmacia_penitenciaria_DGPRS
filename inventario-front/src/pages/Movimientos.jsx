@@ -1164,6 +1164,7 @@ const Movimientos = () => {
           observaciones: formData.observaciones || '',
           auto_confirmar: false, // PENDIENTE hasta confirmar entrega física
           fecha_salida: formData.fecha_salida || null,
+          folio_documento: formData.folio_documento?.trim() || null,
           items: [{
             lote_id: parseInt(formData.lote),
             cantidad: Number(formData.cantidad)

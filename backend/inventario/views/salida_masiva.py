@@ -88,6 +88,8 @@ def salida_masiva(request):
         auto_confirmar = request.data.get('auto_confirmar', True)
         # Fecha de salida física (puede diferir de la fecha de procesamiento en el sistema)
         fecha_salida_raw = request.data.get('fecha_salida', None)
+        # FORMATO B: Folio/número de documento oficial
+        folio_documento = request.data.get('folio_documento', None)
         # Idempotencia transversal
         idem_hit, idem_response = check_idempotency(request, 'salida_masiva')
         if idem_hit:
@@ -310,7 +312,8 @@ def salida_masiva(request):
                         motivo=motivo_entrada,
                         usuario=request.user,
                         subtipo_salida=None,
-                        referencia=grupo_salida
+                        referencia=grupo_salida,
+                        folio_documento=folio_documento
                     )
                     mov_entrada.save(skip_stock_update=True, skip_validation=True)
                     
@@ -340,7 +343,8 @@ def salida_masiva(request):
                     usuario=request.user,
                     subtipo_salida='transferencia',
                     referencia=grupo_salida,
-                    fecha_salida=fecha_salida
+                    fecha_salida=fecha_salida,
+                    folio_documento=folio_documento
                 )
                 movimiento._stock_pre_movimiento = stock_anterior
                 # HALLAZGO #1 FIX: Ya actualizamos stock arriba, usar skip_stock_update
@@ -722,7 +726,8 @@ def confirmar_entrega(request, grupo_salida):
                             motivo=motivo_entrada,
                             usuario=request.user,
                             subtipo_salida=None,
-                            referencia=grupo_salida
+                            referencia=grupo_salida,
+                            folio_documento=mov.folio_documento
                         )
                         mov_entrada.save(skip_stock_update=True, skip_validation=True)
                         
