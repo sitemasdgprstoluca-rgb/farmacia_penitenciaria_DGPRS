@@ -5379,6 +5379,14 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             ).annotate(
                 total_productos=Count('detalles')
             )
+        elif self.action in ('hoja_recoleccion', 'hoja_consulta', 'pdf_rechazo'):
+            # Para PDF: solo relaciones necesarias + prefetch con lote
+            from django.db.models import Prefetch
+            queryset = Requisicion.objects.select_related(
+                'centro_origen', 'centro_destino'
+            ).prefetch_related(
+                Prefetch('detalles', queryset=DetalleRequisicion.objects.select_related('producto', 'lote'))
+            )
         else:
             # Para detalle/acciones: queryset completo con prefetch
             queryset = Requisicion.objects.select_related(
@@ -7002,6 +7010,83 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
 
         return Response({
             'mensaje': 'Firma de recepción subida correctamente',
+            'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data
+        })
+
+    @action(detail=True, methods=['post'], url_path='subir-documento-entrega')
+    def subir_documento_entrega(self, request, pk=None):
+        """
+        Sube PDF/imagen escaneada de la hoja de entrega firmada para una requisición entregada.
+        Acepta: imagen (jpg, png) o PDF. Máximo 5MB.
+        Almacena en bucket 'requisiciones-firmadas' de Supabase Storage.
+        Guarda la URL en documento_entrega_url de la requisición.
+        """
+        requisicion = self.get_object()
+        estado_actual = (requisicion.estado or '').lower()
+
+        if estado_actual != 'entregada':
+            return Response({
+                'error': 'Solo se puede subir documento de entrega para requisiciones entregadas',
+                'estado_actual': requisicion.estado
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        archivo = request.FILES.get('documento_entrega')
+        if not archivo:
+            return Response({
+                'error': 'Debe adjuntar un archivo (PDF o imagen)'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        MAX_SIZE_MB = 5
+        if archivo.size > MAX_SIZE_MB * 1024 * 1024:
+            return Response({
+                'error': f'El archivo excede el tamaño máximo de {MAX_SIZE_MB}MB'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        ext = os.path.splitext(archivo.name)[1].lower()
+        TIPOS_PERMITIDOS = {
+            '.pdf': 'application/pdf',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.png': 'image/png',
+        }
+        if ext not in TIPOS_PERMITIDOS:
+            return Response({
+                'error': f'Tipo de archivo no permitido. Use: {", ".join(TIPOS_PERMITIDOS.keys())}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            from inventario.services.storage_service import get_storage_service
+            from datetime import datetime
+            storage = get_storage_service('requisiciones-firmadas')
+            fecha_str = datetime.now().strftime('%Y/%m')
+            folio_safe = (requisicion.folio or f'REQ-{requisicion.id}').replace('/', '-')
+            file_path = f'{fecha_str}/entrega_{folio_safe}{ext}'
+
+            archivo.seek(0)
+            resultado = storage.upload_file(
+                file_content=archivo.read(),
+                file_path=file_path,
+                content_type=TIPOS_PERMITIDOS.get(ext, 'application/octet-stream')
+            )
+
+            if not resultado.get('success'):
+                return Response({
+                    'error': f'Error al subir archivo: {resultado.get("error", "desconocido")}'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as e:
+            logger.error(f'Error subiendo documento entrega {requisicion.folio}: {e}', exc_info=True)
+            return Response({
+                'error': 'Error al subir el documento al almacenamiento'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        requisicion.documento_entrega_url = resultado['url']
+        requisicion.save(update_fields=['documento_entrega_url'])
+
+        logger.info(f'Documento de entrega subido para requisición {requisicion.folio}: {resultado["url"]}')
+
+        return Response({
+            'mensaje': 'Documento de entrega subido correctamente',
+            'url': resultado['url'],
             'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data
         })
 

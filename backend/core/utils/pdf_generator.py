@@ -56,6 +56,14 @@ class RequisicionCanvas(canvas.Canvas):
         self.fondo_path = kwargs.pop('fondo_path', None)
         canvas.Canvas.__init__(self, *args, **kwargs)
         self.pages = []
+        # Pre-cargar imagen una vez para reutilizar en todas las páginas
+        self._fondo_reader = None
+        if self.fondo_path and os.path.exists(self.fondo_path):
+            try:
+                from reportlab.lib.utils import ImageReader
+                self._fondo_reader = ImageReader(self.fondo_path)
+            except Exception as e:
+                logger.warning(f"No se pudo pre-cargar imagen de fondo: {e}")
         # Dibujar fondo en la primera página inmediatamente
         self._dibujar_fondo_oficial()
     
@@ -77,14 +85,14 @@ class RequisicionCanvas(canvas.Canvas):
     
     def _dibujar_fondo_oficial(self):
         """
-        Dibuja la imagen de fondo institucional ajustada a toda la página.
+        Dibuja la imagen de fondo institucional (pre-cargada).
         Se llama AL INICIO de cada página para que quede DEBAJO del contenido.
         """
-        if self.fondo_path and os.path.exists(self.fondo_path):
+        if self._fondo_reader:
             try:
                 page_width, page_height = letter
                 self.drawImage(
-                    str(self.fondo_path),
+                    self._fondo_reader,
                     0, 0,
                     width=page_width,
                     height=page_height,
@@ -254,30 +262,28 @@ def generar_hoja_recoleccion(requisicion):
     # El centro que aparece en el encabezado del documento
     centro_documento = requisicion.centro_origen or requisicion.centro_destino
     
-    # Pre-calcular existencias de TODOS los productos en una sola consulta
-    # Evita N+1 queries (antes: 1 query por producto, ahora: 1 query total)
+    # Cargar detalles UNA vez (usa prefetch cache si existe, o 1 query con JOINs)
     from core.models import Lote
     from django.db.models import Sum
 
-    existencias_por_producto = {}
-    if centro_documento:
-        producto_ids = list(
-            requisicion.detalles.values_list('producto_id', flat=True)
-        )
-        if producto_ids:
-            existencias_por_producto = {
-                row['producto_id']: row['total']
-                for row in Lote.objects.filter(
-                    producto_id__in=producto_ids,
-                    centro_id=centro_documento.id,
-                    activo=True,
-                    cantidad_actual__gt=0,
-                ).values('producto_id').annotate(total=Sum('cantidad_actual'))
-            }
+    detalles_list = list(requisicion.detalles.all())
 
-    # Procesar cada detalle de la requisición directamente
-    # Cada detalle tiene: producto, lote (opcional), cantidad_solicitada, cantidad_autorizada
-    for detalle in requisicion.detalles.all().select_related('producto', 'lote'):
+    # Pre-calcular existencias en una sola consulta (IDs extraídos en Python, sin query extra)
+    existencias_por_producto = {}
+    if centro_documento and detalles_list:
+        producto_ids = [d.producto_id for d in detalles_list]
+        existencias_por_producto = {
+            row['producto_id']: row['total']
+            for row in Lote.objects.filter(
+                producto_id__in=producto_ids,
+                centro_id=centro_documento.id,
+                activo=True,
+                cantidad_actual__gt=0,
+            ).values('producto_id').annotate(total=Sum('cantidad_actual'))
+        }
+
+    # Procesar cada detalle (usa lista ya cargada, sin queries adicionales)
+    for detalle in detalles_list:
         producto = detalle.producto
         clave = str(producto.clave or '')
         # USAR NOMBRE DEL PRODUCTO, NO DESCRIPCIÓN
@@ -301,13 +307,13 @@ def generar_hoja_recoleccion(requisicion):
         cantidad_autorizada = str(detalle.cantidad_autorizada) if detalle.cantidad_autorizada else ''
         
         productos_data.append([
-            Paragraph(clave, celda_center),
+            clave,
             Paragraph(nombre, celda_texto),
             Paragraph(presentacion, celda_texto),
-            Paragraph(lote_numero, celda_center),
-            Paragraph(existencia, celda_center),
-            Paragraph(cantidad_solicitada, celda_center),
-            Paragraph(cantidad_autorizada, celda_center),
+            lote_numero,
+            existencia,
+            cantidad_solicitada,
+            cantidad_autorizada,
         ])
     
     # Filas vacías para completar formato (mínimo 15 filas de datos)
@@ -326,6 +332,10 @@ def generar_hoja_recoleccion(requisicion):
         # Datos
         ('FONTSIZE', (0, 1), (-1, -1), 6),
         ('VALIGN', (0, 1), (-1, -1), 'TOP'),
+        # Centrar columnas de texto plano (Clave, Lote, Existencia, Cantidades)
+        ('ALIGN', (0, 1), (0, -1), 'CENTER'),   # Clave
+        ('ALIGN', (3, 1), (3, -1), 'CENTER'),   # Lote
+        ('ALIGN', (4, 1), (-1, -1), 'CENTER'),  # Existencia, Solicitada, Aprobada
         # Bordes
         ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
         ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
@@ -400,6 +410,14 @@ class RequisicionCanvasControlMensual(canvas.Canvas):
         self.fondo_path = kwargs.pop('fondo_path', None)
         canvas.Canvas.__init__(self, *args, **kwargs)
         self.pages = []
+        # Pre-cargar imagen una vez para reutilizar en todas las páginas
+        self._fondo_reader = None
+        if self.fondo_path and os.path.exists(self.fondo_path):
+            try:
+                from reportlab.lib.utils import ImageReader
+                self._fondo_reader = ImageReader(self.fondo_path)
+            except Exception as e:
+                logger.warning(f"No se pudo pre-cargar imagen de fondo: {e}")
         self._dibujar_fondo()
     
     def showPage(self):
@@ -416,12 +434,12 @@ class RequisicionCanvasControlMensual(canvas.Canvas):
         canvas.Canvas.save(self)
     
     def _dibujar_fondo(self):
-        """Dibuja el fondo del Control Mensual."""
-        if self.fondo_path and os.path.exists(self.fondo_path):
+        """Dibuja el fondo del Control Mensual (imagen pre-cargada)."""
+        if self._fondo_reader:
             try:
                 page_width, page_height = letter
                 self.drawImage(
-                    str(self.fondo_path),
+                    self._fondo_reader,
                     0, 0,
                     width=page_width,
                     height=page_height,

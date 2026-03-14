@@ -9,7 +9,7 @@ import { usePermissions } from "../hooks/usePermissions";
 import { useSubmitGuard } from "../hooks/useSubmitGuard";
 import { useRealtimeSync } from "../hooks/useRealtimeSync";
 import useEscapeToClose from "../hooks/useEscapeToClose";
-import { FaFilter, FaChevronDown, FaChevronRight, FaExchangeAlt, FaFileExcel, FaFilePdf, FaSpinner, FaInfoCircle, FaExclamationTriangle, FaTruck, FaLayerGroup, FaList, FaFileDownload, FaCheckCircle, FaClipboardCheck, FaTrash, FaBoxes, FaHistory, FaClock } from "react-icons/fa";
+import { FaFilter, FaChevronDown, FaChevronRight, FaExchangeAlt, FaFileExcel, FaFilePdf, FaSpinner, FaInfoCircle, FaExclamationTriangle, FaTruck, FaLayerGroup, FaList, FaFileDownload, FaCheckCircle, FaClipboardCheck, FaTrash, FaBoxes, FaHistory, FaClock, FaUpload } from "react-icons/fa";
 import { COLORS } from "../constants/theme";
 
 // ISS-FIX: Constantes de paginación
@@ -1513,6 +1513,20 @@ const Movimientos = () => {
     }
   };
   
+  // Subir evidencia de entrega firmada (PDF/imagen escaneada)
+  const subirEvidenciaEntrega = async (grupoId, file) => {
+    try {
+      toast.loading("Subiendo evidencia de entrega...", { id: "subir-evidencia" });
+      const response = await salidaMasivaAPI.subirEvidencia(grupoId, file);
+      toast.success(response.data?.message || "Evidencia subida correctamente", { id: "subir-evidencia" });
+      cargarMovimientos();
+    } catch (err) {
+      const msg = err.response?.data?.message || "Error al subir evidencia";
+      toast.error(msg, { id: "subir-evidencia" });
+      console.error("Error subiendo evidencia:", err);
+    }
+  };
+
   // Confirmar entrega individual de un movimiento
   const confirmarEntregaIndividual = async (movimientoId) => {
     setConfirmandoMovimiento(movimientoId);
@@ -2800,13 +2814,51 @@ const Movimientos = () => {
                                             )}
                                           </div>
                                         ) : grupo.confirmado ? (
-                                          <button
-                                            onClick={(e) => { e.stopPropagation(); descargarComprobanteGrupo(grupo.id); }}
-                                            className="p-1.5 bg-gradient-to-b from-emerald-500 to-emerald-600 text-white rounded hover:from-emerald-600 hover:to-emerald-700 transition-all duration-200 shadow-sm hover:shadow-md"
-                                            title="Descargar comprobante"
-                                          >
-                                            <FaFileDownload className="text-xs" />
-                                          </button>
+                                          <div className="flex gap-1">
+                                            <button
+                                              onClick={(e) => { e.stopPropagation(); descargarComprobanteGrupo(grupo.id); }}
+                                              className="p-1.5 bg-gradient-to-b from-emerald-500 to-emerald-600 text-white rounded hover:from-emerald-600 hover:to-emerald-700 transition-all duration-200 shadow-sm hover:shadow-md"
+                                              title="Descargar comprobante"
+                                            >
+                                              <FaFileDownload className="text-xs" />
+                                            </button>
+                                            {/* Subir evidencia de entrega firmada */}
+                                            <label
+                                              onClick={(e) => e.stopPropagation()}
+                                              className={`p-1.5 cursor-pointer rounded transition-all duration-200 shadow-sm hover:shadow-md ${
+                                                allItems[0]?.documento_evidencia_url
+                                                  ? 'bg-gradient-to-b from-blue-400 to-blue-500 text-white hover:from-blue-500 hover:to-blue-600'
+                                                  : 'bg-gradient-to-b from-amber-500 to-amber-600 text-white hover:from-amber-600 hover:to-amber-700'
+                                              }`}
+                                              title={allItems[0]?.documento_evidencia_url ? 'Reemplazar evidencia firmada' : 'Subir hoja de entrega firmada'}
+                                            >
+                                              <FaUpload className="text-xs" />
+                                              <input
+                                                type="file"
+                                                className="hidden"
+                                                accept=".pdf,.jpg,.jpeg,.png"
+                                                onChange={(e) => {
+                                                  const file = e.target.files[0];
+                                                  if (file) {
+                                                    subirEvidenciaEntrega(grupo.id, file);
+                                                    e.target.value = '';
+                                                  }
+                                                }}
+                                              />
+                                            </label>
+                                            {allItems[0]?.documento_evidencia_url && (
+                                              <a
+                                                href={allItems[0].documento_evidencia_url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="p-1.5 bg-gradient-to-b from-blue-500 to-blue-600 text-white rounded hover:from-blue-600 hover:to-blue-700 transition-all duration-200 shadow-sm hover:shadow-md"
+                                                title="Ver evidencia firmada"
+                                              >
+                                                <FaFilePdf className="text-xs" />
+                                              </a>
+                                            )}
+                                          </div>
                                         ) : (
                                           <span className="text-[10px] text-gray-400">Sin acciones</span>
                                         )}

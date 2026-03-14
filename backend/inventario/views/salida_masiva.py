@@ -491,6 +491,12 @@ def hoja_entrega_pdf(request, grupo_salida):
             'administrador_centro': 'centro',
             'director_centro': 'centro',
             'medico': 'centro',
+            'usuario_farmacia': 'farmacia',
+            'admin_farmacia': 'farmacia',
+            'farmaceutico': 'farmacia',
+            'administrador': 'admin',
+            'admin_sistema': 'admin',
+            'superusuario': 'admin',
         }
         rol_normalizado = ROLE_ALIASES.get(rol, rol)
         
@@ -632,7 +638,7 @@ def confirmar_entrega(request, grupo_salida):
         
         # SEGURIDAD: Solo el usuario que creó la salida (o admin) puede confirmarla
         rol_actual = (getattr(request.user, 'rol_efectivo', None) or getattr(request.user, 'rol', '') or '').lower()
-        es_admin = rol_actual == 'admin' or request.user.is_superuser
+        es_admin = rol_actual in ('admin', 'admin_sistema', 'superusuario', 'administrador') or request.user.is_superuser
         if not es_admin and primer_mov.usuario_id and primer_mov.usuario_id != request.user.id:
             return Response({
                 'error': True,
@@ -794,6 +800,12 @@ def estado_entrega(request, grupo_salida):
             'administrador_centro': 'centro',
             'director_centro': 'centro',
             'medico': 'centro',
+            'usuario_farmacia': 'farmacia',
+            'admin_farmacia': 'farmacia',
+            'farmaceutico': 'farmacia',
+            'administrador': 'admin',
+            'admin_sistema': 'admin',
+            'superusuario': 'admin',
         }
         rol_normalizado = ROLE_ALIASES.get(rol, rol)
         
@@ -890,7 +902,7 @@ def cancelar_salida(request, grupo_salida):
         
         # SEGURIDAD: Solo el usuario que creó la salida (o admin) puede cancelarla
         rol_actual = (getattr(request.user, 'rol_efectivo', None) or getattr(request.user, 'rol', '') or '').lower()
-        es_admin = rol_actual == 'admin' or request.user.is_superuser
+        es_admin = rol_actual in ('admin', 'admin_sistema', 'superusuario', 'administrador') or request.user.is_superuser
         if not es_admin and primer_mov.usuario_id and primer_mov.usuario_id != request.user.id:
             return Response({
                 'error': True,
@@ -929,6 +941,102 @@ def cancelar_salida(request, grupo_salida):
         return Response({
             'error': True,
             'message': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsFarmaciaRole])
+def subir_evidencia_entrega(request, grupo_salida):
+    """
+    Sube PDF/imagen escaneada de la hoja de entrega firmada para una salida masiva.
+
+    Acepta: imagen (jpg, png) o PDF. Máximo 5MB.
+    Almacena en bucket 'requisiciones-firmadas' de Supabase Storage.
+    Guarda la URL en documento_evidencia_url de todos los movimientos del grupo.
+    """
+    import os
+
+    try:
+        archivo = request.FILES.get('documento_evidencia')
+        if not archivo:
+            return Response({
+                'error': True,
+                'message': 'Debe adjuntar un archivo (PDF o imagen)'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validar tipo y tamaño
+        MAX_SIZE_MB = 5
+        if archivo.size > MAX_SIZE_MB * 1024 * 1024:
+            return Response({
+                'error': True,
+                'message': f'El archivo excede el tamaño máximo de {MAX_SIZE_MB}MB'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        ext = os.path.splitext(archivo.name)[1].lower()
+        TIPOS_PERMITIDOS = {
+            '.pdf': 'application/pdf',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.png': 'image/png',
+        }
+        if ext not in TIPOS_PERMITIDOS:
+            return Response({
+                'error': True,
+                'message': f'Tipo de archivo no permitido. Use: {", ".join(TIPOS_PERMITIDOS.keys())}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Verificar que el grupo existe
+        movimientos = Movimiento.objects.filter(
+            motivo__contains=f'[{grupo_salida}]',
+            tipo='salida'
+        )
+        if not movimientos.exists():
+            return Response({
+                'error': True,
+                'message': 'No se encontraron movimientos para este grupo de salida'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        # Subir a Supabase Storage
+        from inventario.services.storage_service import get_storage_service
+        from datetime import datetime
+
+        storage = get_storage_service('requisiciones-firmadas')
+        fecha_str = datetime.now().strftime('%Y/%m')
+        folio_safe = grupo_salida.replace('/', '-')
+        file_path = f'{fecha_str}/evidencia_{folio_safe}{ext}'
+
+        archivo.seek(0)
+        resultado = storage.upload_file(
+            file_content=archivo.read(),
+            file_path=file_path,
+            content_type=TIPOS_PERMITIDOS.get(ext, 'application/octet-stream')
+        )
+
+        if not resultado.get('success'):
+            return Response({
+                'error': True,
+                'message': f'Error al subir archivo: {resultado.get("error", "desconocido")}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Guardar URL en todos los movimientos del grupo
+        url = resultado['url']
+        updated = movimientos.update(documento_evidencia_url=url)
+
+        logger.info(f'Evidencia de entrega subida para {grupo_salida}: {url} ({updated} movimientos actualizados)')
+
+        return Response({
+            'success': True,
+            'message': 'Evidencia de entrega subida correctamente',
+            'url': url,
+            'grupo_salida': grupo_salida,
+            'movimientos_actualizados': updated,
+        })
+
+    except Exception as e:
+        logger.error(f'Error subiendo evidencia para {grupo_salida}: {e}')
+        return Response({
+            'error': True,
+            'message': f'Error al subir evidencia: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 

@@ -1537,6 +1537,7 @@ class Movimiento(models.Model):
     # Fecha de salida física: permite registrar la fecha real de salida del medicamento
     # (puede diferir de la fecha de procesamiento en el sistema)
     fecha_salida = models.DateTimeField(blank=True, null=True, db_column='fecha_salida')
+    documento_evidencia_url = models.CharField(max_length=500, blank=True, null=True)
     fecha = models.DateTimeField(auto_now_add=True)  # BD default: now()
     created_at = models.DateTimeField(auto_now_add=True)  # BD default: now()
 
@@ -1844,6 +1845,7 @@ class Requisicion(models.Model):
     fecha_entrega = models.DateTimeField(null=True, blank=True)
     foto_firma_surtido = models.CharField(max_length=500, blank=True, null=True)
     foto_firma_recepcion = models.CharField(max_length=500, blank=True, null=True)
+    documento_entrega_url = models.CharField(max_length=500, blank=True, null=True)
     usuario_firma_surtido = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='firmas_surtido', db_column='usuario_firma_surtido_id')
     usuario_firma_recepcion = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='firmas_recepcion', db_column='usuario_firma_recepcion_id')
     fecha_firma_surtido = models.DateTimeField(null=True, blank=True)

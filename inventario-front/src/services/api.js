@@ -1449,7 +1449,15 @@ export const requisicionesAPI = {
   subirFirmaRecepcion: (id, formData) => apiClient.post(`/requisiciones/${id}/subir-firma-recepcion/`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
-  
+  // Subir documento de entrega firmado (PDF/imagen escaneada)
+  subirDocumentoEntrega: (id, file) => {
+    const formData = new FormData();
+    formData.append('documento_entrega', file);
+    return apiClient.post(`/requisiciones/${id}/subir-documento-entrega/`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+
   // Descarga de PDFs (timeout extendido a 90s para generación con ReportLab)
   downloadPDFAceptacion: (id) => apiClient.get(`/requisiciones/${id}/hoja-recoleccion/`, {
     responseType: 'blob', timeout: 90000
@@ -1666,6 +1674,14 @@ export const salidaMasivaAPI = {
   cancelar: (grupoSalida) => apiClient.delete(`/salida-masiva/cancelar/${grupoSalida}/`),
   // Consultar estado de entrega
   estadoEntrega: (grupoSalida) => apiClient.get(`/salida-masiva/estado-entrega/${grupoSalida}/`),
+  // Subir evidencia de entrega firmada (PDF/imagen escaneada)
+  subirEvidencia: (grupoSalida, file) => {
+    const formData = new FormData();
+    formData.append('documento_evidencia', file);
+    return apiClient.post(`/salida-masiva/subir-evidencia/${grupoSalida}/`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
 };
 
 // Trazabilidad -  NUEVO

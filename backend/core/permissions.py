@@ -28,8 +28,8 @@ class RoleHelper:
     """
     
     ROLE_ALIASES = {
-        'admin': {'admin', 'admin_sistema', 'superusuario'},
-        'farmacia': {'farmacia', 'admin_farmacia', 'farmaceutico'},
+        'admin': {'admin', 'admin_sistema', 'superusuario', 'administrador'},
+        'farmacia': {'farmacia', 'admin_farmacia', 'farmaceutico', 'usuario_farmacia'},
         # FLUJO V2: Incluir roles jerárquicos del centro
         'centro': {'centro', 'usuario_normal', 'solicitante', 'medico', 'administrador_centro', 'director_centro', 'usuario_centro'},
         'vista': {'vista', 'usuario_vista'},

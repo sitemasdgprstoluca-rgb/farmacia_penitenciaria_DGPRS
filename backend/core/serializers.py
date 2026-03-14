@@ -2325,7 +2325,7 @@ class RequisicionSerializer(serializers.ModelSerializer):
             'autorizador', 'autorizador_nombre', 'usuario_autoriza_nombre',
             'fecha_solicitud', 'fecha_autorizacion', 'fecha_surtido', 'fecha_entrega',
             'estado', 'tipo', 'prioridad', 'notas', 'observaciones', 'motivo_rechazo', 'lugar_entrega',
-            'foto_firma_surtido', 'foto_firma_recepcion',
+            'foto_firma_surtido', 'foto_firma_recepcion', 'documento_entrega_url',
             'usuario_firma_surtido', 'usuario_firma_recepcion',
             'fecha_firma_surtido', 'fecha_firma_recepcion',
             # Campos para formato de requisicion del centro (firmas)
@@ -2570,7 +2570,7 @@ class MovimientoSerializer(serializers.ModelSerializer):
             'centro_origen', 'centro_origen_nombre', 'centro_destino', 'centro_destino_nombre', 'centro_nombre',
             'cantidad', 'usuario', 'usuario_nombre', 'requisicion', 'requisicion_folio',
             'motivo', 'observaciones', 'referencia', 'subtipo_salida', 'numero_expediente', 'folio_documento',
-            'fecha_salida', 'fecha', 'fecha_movimiento', 'created_at'
+            'fecha_salida', 'documento_evidencia_url', 'fecha', 'fecha_movimiento', 'created_at'
         ]
         read_only_fields = ['fecha', 'created_at']
         extra_kwargs = {

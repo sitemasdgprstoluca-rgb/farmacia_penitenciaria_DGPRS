@@ -6192,13 +6192,68 @@ class CatalogosView(APIView):
 # ADMIN: LIMPIEZA DE DATOS PARA REINICIO COMPLETO
 # =============================================================================
 
+def _limpiar_storage_bucket(bucket_name, file_paths, logger_ref=None):
+    """
+    Elimina archivos de un bucket de Supabase Storage.
+
+    Args:
+        bucket_name: Nombre del bucket (ej: 'productos-imagenes')
+        file_paths: Lista de URLs completas o paths relativos
+        logger_ref: Logger para registrar resultados
+
+    Returns:
+        dict con 'eliminados' y 'errores'
+    """
+    _logger = logger_ref or logging.getLogger(__name__)
+    resultado = {'eliminados': 0, 'errores': 0, 'total': len(file_paths)}
+
+    if not file_paths:
+        return resultado
+
+    try:
+        from inventario.services.storage_service import StorageService, extract_storage_path
+        storage = StorageService(bucket_name)
+
+        if not storage._use_supabase or not storage._client:
+            _logger.warning(f"Storage no disponible para bucket '{bucket_name}', solo se limpiarán registros de BD")
+            return resultado
+
+        # Extraer paths relativos y eliminar en lotes de 100
+        paths_relativos = []
+        for url in file_paths:
+            if url:
+                path = extract_storage_path(url, bucket_name)
+                if path:
+                    paths_relativos.append(path)
+
+        # Supabase Storage remove acepta lista de paths
+        batch_size = 100
+        for i in range(0, len(paths_relativos), batch_size):
+            batch = paths_relativos[i:i + batch_size]
+            try:
+                storage._client.storage.from_(bucket_name).remove(batch)
+                resultado['eliminados'] += len(batch)
+            except Exception as e:
+                _logger.warning(f"Error eliminando batch de {bucket_name}: {e}")
+                resultado['errores'] += len(batch)
+
+        _logger.info(f"Storage cleanup '{bucket_name}': {resultado['eliminados']} eliminados, {resultado['errores']} errores")
+
+    except ImportError:
+        _logger.warning(f"StorageService no disponible, archivos de '{bucket_name}' quedan huérfanos")
+    except Exception as e:
+        _logger.error(f"Error limpiando storage '{bucket_name}': {e}")
+
+    return resultado
+
+
 class AdminLimpiarDatosView(APIView):
     """
     Vista EXCLUSIVA para SUPERUSUARIOS para limpiar datos operativos del sistema.
-    
+
     Permite dejar el sistema "en blanco" para que farmacia y centros puedan
     empezar a usar el sistema desde cero después de capacitación.
-    
+
     SOPORTA ELIMINACIÓN SELECTIVA:
     - productos: Elimina productos, imágenes, lotes, parcialidades, documentos, movimientos
     - lotes: Elimina lotes, documentos, parcialidades, hojas recolección (no productos)
@@ -6210,7 +6265,7 @@ class AdminLimpiarDatosView(APIView):
     - pacientes: Elimina pacientes/internos
     - caja_chica: Elimina módulo de caja chica
     - todos: Elimina todo lo anterior
-    
+
     NO ELIMINA (configuración del sistema):
     - Usuarios y sus perfiles
     - Centros
@@ -6219,12 +6274,12 @@ class AdminLimpiarDatosView(APIView):
     - Logs de auditoría (para mantener trazabilidad)
     - Permisos de Django
     - Grupos de Django
-    
+
     Endpoints:
     - GET /api/admin/limpiar-datos/ - Obtener estadísticas detalladas
     - POST /api/admin/limpiar-datos/ - Ejecutar limpieza (requiere confirmación y categoría)
-    
-    Versión: 2.1 - Incluye parcialidades de lotes, dispensaciones, pacientes y caja chica
+
+    Versión: 2.2 - Incluye limpieza de Supabase Storage, realtime_events e idempotency_keys
     """
     permission_classes = [IsAuthenticated, IsSuperuserOnly]
     
@@ -6297,7 +6352,28 @@ class AdminLimpiarDatosView(APIView):
                 fingerprints_count = cursor.fetchone()[0]
             except Exception:
                 fingerprints_count = 0
-        
+            # Eventos realtime
+            try:
+                cursor.execute("SELECT COUNT(*) FROM realtime_events")
+                realtime_events_count = cursor.fetchone()[0]
+            except Exception:
+                realtime_events_count = 0
+            # Claves de idempotencia
+            try:
+                cursor.execute("SELECT COUNT(*) FROM idempotency_keys")
+                idempotency_keys_count = cursor.fetchone()[0]
+            except Exception:
+                idempotency_keys_count = 0
+            # Archivos en Supabase Storage (conteos)
+            cursor.execute("SELECT COUNT(*) FROM producto_imagenes WHERE imagen IS NOT NULL AND imagen != ''")
+            storage_imagenes_count = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM lote_documentos WHERE archivo IS NOT NULL AND archivo != ''")
+            storage_lote_docs_count = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM requisiciones WHERE (foto_firma_surtido IS NOT NULL AND foto_firma_surtido != '') OR (foto_firma_recepcion IS NOT NULL AND foto_firma_recepcion != '')")
+            storage_firmas_count = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM dispensaciones WHERE documento_firmado_url IS NOT NULL AND documento_firmado_url != ''")
+            storage_disp_docs_count = cursor.fetchone()[0]
+
         # Verificar si hay donaciones con productos
         productos_con_donaciones = DetalleDonacion.objects.values('producto_id').distinct().count()
         
@@ -6399,10 +6475,12 @@ class AdminLimpiarDatosView(APIView):
                 },
                 'notificaciones': {
                     'nombre': 'Notificaciones',
-                    'descripcion': 'Elimina todas las notificaciones de usuarios',
-                    'total': notificaciones_count,
+                    'descripcion': 'Elimina notificaciones, eventos realtime y claves de idempotencia',
+                    'total': notificaciones_count + realtime_events_count + idempotency_keys_count,
                     'detalle': {
                         'notificaciones': notificaciones_count,
+                        'realtime_events': realtime_events_count,
+                        'idempotency_keys': idempotency_keys_count,
                     },
                     'dependencias': [],
                 },
@@ -6489,6 +6567,18 @@ class AdminLimpiarDatosView(APIView):
                 'dispensaciones': dispensaciones_count,
                 'pacientes': pacientes_count,
                 'caja_chica': compras_caja_chica_count,
+            },
+            'storage_supabase': {
+                'descripcion': 'Archivos en Supabase Storage que se eliminarán junto con sus registros',
+                'imagenes_productos': storage_imagenes_count,
+                'documentos_lotes': storage_lote_docs_count,
+                'firmas_requisiciones': storage_firmas_count,
+                'documentos_dispensaciones': storage_disp_docs_count,
+                'total_archivos': storage_imagenes_count + storage_lote_docs_count + storage_firmas_count + storage_disp_docs_count,
+            },
+            'tablas_auxiliares': {
+                'realtime_events': realtime_events_count,
+                'idempotency_keys': idempotency_keys_count,
             },
             'no_se_eliminara': [
                 'Usuarios y perfiles',
@@ -6616,12 +6706,35 @@ class AdminLimpiarDatosView(APIView):
                         eliminados['productos_donacion'] = cursor.rowcount
                 
                 elif categoria == 'notificaciones':
-                    # Solo notificaciones
+                    # Notificaciones y tablas auxiliares de realtime
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM notificaciones")
                         eliminados['notificaciones'] = cursor.rowcount
+                    # Limpiar eventos realtime (metadata de Supabase Realtime)
+                    with connection.cursor() as cursor:
+                        try:
+                            cursor.execute("DELETE FROM realtime_events")
+                            eliminados['realtime_events'] = cursor.rowcount
+                        except Exception:
+                            pass  # Tabla puede no existir
+                    # Limpiar claves de idempotencia
+                    with connection.cursor() as cursor:
+                        try:
+                            cursor.execute("DELETE FROM idempotency_keys")
+                            eliminados['idempotency_keys'] = cursor.rowcount
+                        except Exception:
+                            pass  # Tabla puede no existir
                 
                 elif categoria == 'dispensaciones':
+                    # STORAGE: Recopilar URLs de documentos firmados ANTES de borrar
+                    with connection.cursor() as cursor:
+                        cursor.execute("SELECT documento_firmado_url FROM dispensaciones WHERE documento_firmado_url IS NOT NULL AND documento_firmado_url != ''")
+                        urls_disp_firmados = [row[0] for row in cursor.fetchall()]
+                    if urls_disp_firmados:
+                        eliminados['storage_archivos'] = {
+                            'dispensaciones_firmadas': _limpiar_storage_bucket('dispensaciones-firmadas', urls_disp_firmados, logger)
+                        }
+
                     # Eliminar dispensaciones en orden de dependencias FK
                     # 1. Historial de dispensaciones
                     with connection.cursor() as cursor:
@@ -6637,6 +6750,15 @@ class AdminLimpiarDatosView(APIView):
                         eliminados['dispensaciones'] = cursor.rowcount
                 
                 elif categoria == 'pacientes':
+                    # STORAGE: Recopilar URLs de documentos firmados de dispensaciones ANTES de borrar
+                    with connection.cursor() as cursor:
+                        cursor.execute("SELECT documento_firmado_url FROM dispensaciones WHERE documento_firmado_url IS NOT NULL AND documento_firmado_url != ''")
+                        urls_disp_firmados = [row[0] for row in cursor.fetchall()]
+                    if urls_disp_firmados:
+                        eliminados['storage_archivos'] = {
+                            'dispensaciones_firmadas': _limpiar_storage_bucket('dispensaciones-firmadas', urls_disp_firmados, logger)
+                        }
+
                     # Eliminar pacientes (y sus dispensaciones por cascada FK)
                     # 1. Primero historial de dispensaciones
                     with connection.cursor() as cursor:
@@ -6679,6 +6801,18 @@ class AdminLimpiarDatosView(APIView):
                         eliminados['inventario_caja_chica'] = cursor.rowcount
                 
                 elif categoria == 'requisiciones':
+                    # STORAGE: Recopilar URLs de firmas/fotos ANTES de borrar
+                    with connection.cursor() as cursor:
+                        cursor.execute("SELECT foto_firma_surtido FROM requisiciones WHERE foto_firma_surtido IS NOT NULL AND foto_firma_surtido != ''")
+                        urls_firma_surtido = [row[0] for row in cursor.fetchall()]
+                        cursor.execute("SELECT foto_firma_recepcion FROM requisiciones WHERE foto_firma_recepcion IS NOT NULL AND foto_firma_recepcion != ''")
+                        urls_firma_recepcion = [row[0] for row in cursor.fetchall()]
+                    all_firma_urls = urls_firma_surtido + urls_firma_recepcion
+                    if all_firma_urls:
+                        eliminados['storage_archivos'] = {
+                            'requisiciones_firmadas': _limpiar_storage_bucket('requisiciones-firmadas', all_firma_urls, logger)
+                        }
+
                     # 1. Detalles de hojas de recolección (pueden tener FK a requisiciones)
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM detalle_hojas_recoleccion")
@@ -6720,11 +6854,20 @@ class AdminLimpiarDatosView(APIView):
                         eliminados['requisiciones'] = cursor.rowcount
                 
                 elif categoria == 'lotes':
+                    # STORAGE: Recopilar URLs de documentos de lotes ANTES de borrar
+                    with connection.cursor() as cursor:
+                        cursor.execute("SELECT archivo FROM lote_documentos WHERE archivo IS NOT NULL AND archivo != ''")
+                        urls_lote_docs = [row[0] for row in cursor.fetchall()]
+                    if urls_lote_docs:
+                        eliminados['storage_archivos'] = {
+                            'lotes_documentos': _limpiar_storage_bucket('lotes-documentos', urls_lote_docs, logger)
+                        }
+
                     # 1. Movimientos - TODOS porque sin lotes no tienen sentido
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM movimientos")
                         eliminados['movimientos'] = cursor.rowcount
-                    
+
                     # 2. Detalles de hojas de recolección
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM detalle_hojas_recoleccion")
@@ -6790,7 +6933,33 @@ class AdminLimpiarDatosView(APIView):
                 elif categoria == 'productos':
                     # Elimina productos Y todo lo que depende de ellos
                     # ORDEN FK-SAFE: primero eliminar tablas hijas que referencian productos
-                    
+
+                    # ====== STORAGE: Recopilar URLs ANTES de borrar registros ======
+                    with connection.cursor() as cursor:
+                        cursor.execute("SELECT imagen FROM producto_imagenes WHERE imagen IS NOT NULL AND imagen != ''")
+                        urls_imagenes = [row[0] for row in cursor.fetchall()]
+                        cursor.execute("SELECT archivo FROM lote_documentos WHERE archivo IS NOT NULL AND archivo != ''")
+                        urls_lote_docs = [row[0] for row in cursor.fetchall()]
+                        cursor.execute("SELECT foto_firma_surtido FROM requisiciones WHERE foto_firma_surtido IS NOT NULL AND foto_firma_surtido != ''")
+                        urls_firma_surtido = [row[0] for row in cursor.fetchall()]
+                        cursor.execute("SELECT foto_firma_recepcion FROM requisiciones WHERE foto_firma_recepcion IS NOT NULL AND foto_firma_recepcion != ''")
+                        urls_firma_recepcion = [row[0] for row in cursor.fetchall()]
+                        cursor.execute("SELECT documento_firmado_url FROM dispensaciones WHERE documento_firmado_url IS NOT NULL AND documento_firmado_url != ''")
+                        urls_disp_firmados = [row[0] for row in cursor.fetchall()]
+
+                    # Eliminar archivos de Supabase Storage
+                    storage_resultado = {}
+                    if urls_imagenes:
+                        storage_resultado['productos_imagenes'] = _limpiar_storage_bucket('productos-imagenes', urls_imagenes, logger)
+                    if urls_lote_docs:
+                        storage_resultado['lotes_documentos'] = _limpiar_storage_bucket('lotes-documentos', urls_lote_docs, logger)
+                    if urls_firma_surtido or urls_firma_recepcion:
+                        storage_resultado['requisiciones_firmadas'] = _limpiar_storage_bucket('requisiciones-firmadas', urls_firma_surtido + urls_firma_recepcion, logger)
+                    if urls_disp_firmados:
+                        storage_resultado['dispensaciones_firmadas'] = _limpiar_storage_bucket('dispensaciones-firmadas', urls_disp_firmados, logger)
+                    if storage_resultado:
+                        eliminados['storage_archivos'] = storage_resultado
+
                     # ====== CAJA CHICA (detalle_compras_caja_chica.producto_id → productos) ======
                     # 0. Historial de compras caja chica
                     with connection.cursor() as cursor:
@@ -6915,7 +7084,32 @@ class AdminLimpiarDatosView(APIView):
                     # LIMPIEZA COMPLETA - Orden FK-safe: tablas hijas ANTES que padres
                     # CRÍTICO: detalle_dispensaciones, detalle_donaciones y detalle_compras_caja_chica tienen
                     # producto_id con ON DELETE RESTRICT → deben eliminarse ANTES de productos
-                    
+
+                    # ====== STORAGE: Recopilar TODAS las URLs ANTES de borrar registros ======
+                    storage_resultado = {}
+                    with connection.cursor() as cursor:
+                        cursor.execute("SELECT imagen FROM producto_imagenes WHERE imagen IS NOT NULL AND imagen != ''")
+                        urls_imagenes = [row[0] for row in cursor.fetchall()]
+                        cursor.execute("SELECT archivo FROM lote_documentos WHERE archivo IS NOT NULL AND archivo != ''")
+                        urls_lote_docs = [row[0] for row in cursor.fetchall()]
+                        cursor.execute("SELECT foto_firma_surtido FROM requisiciones WHERE foto_firma_surtido IS NOT NULL AND foto_firma_surtido != ''")
+                        urls_firma_surtido = [row[0] for row in cursor.fetchall()]
+                        cursor.execute("SELECT foto_firma_recepcion FROM requisiciones WHERE foto_firma_recepcion IS NOT NULL AND foto_firma_recepcion != ''")
+                        urls_firma_recepcion = [row[0] for row in cursor.fetchall()]
+                        cursor.execute("SELECT documento_firmado_url FROM dispensaciones WHERE documento_firmado_url IS NOT NULL AND documento_firmado_url != ''")
+                        urls_disp_firmados = [row[0] for row in cursor.fetchall()]
+
+                    if urls_imagenes:
+                        storage_resultado['productos_imagenes'] = _limpiar_storage_bucket('productos-imagenes', urls_imagenes, logger)
+                    if urls_lote_docs:
+                        storage_resultado['lotes_documentos'] = _limpiar_storage_bucket('lotes-documentos', urls_lote_docs, logger)
+                    if urls_firma_surtido or urls_firma_recepcion:
+                        storage_resultado['requisiciones_firmadas'] = _limpiar_storage_bucket('requisiciones-firmadas', urls_firma_surtido + urls_firma_recepcion, logger)
+                    if urls_disp_firmados:
+                        storage_resultado['dispensaciones_firmadas'] = _limpiar_storage_bucket('dispensaciones-firmadas', urls_disp_firmados, logger)
+                    if storage_resultado:
+                        eliminados['storage_archivos'] = storage_resultado
+
                     # 0. Limpiar FKs que referencian lotes antes de eliminarlos
                     with connection.cursor() as cursor:
                         cursor.execute("UPDATE detalle_dispensaciones SET lote_id = NULL WHERE lote_id IS NOT NULL")
@@ -7086,9 +7280,25 @@ class AdminLimpiarDatosView(APIView):
                     with connection.cursor() as cursor:
                         cursor.execute("DELETE FROM importacion_logs")
                         eliminados['importacion_logs'] = cursor.rowcount
-                
-                # Calcular totales
-                total_eliminados = sum(eliminados.values())
+
+                    # 22. Eventos realtime (metadata de Supabase Realtime)
+                    with connection.cursor() as cursor:
+                        try:
+                            cursor.execute("DELETE FROM realtime_events")
+                            eliminados['realtime_events'] = cursor.rowcount
+                        except Exception:
+                            pass
+
+                    # 23. Claves de idempotencia
+                    with connection.cursor() as cursor:
+                        try:
+                            cursor.execute("DELETE FROM idempotency_keys")
+                            eliminados['idempotency_keys'] = cursor.rowcount
+                        except Exception:
+                            pass
+
+                # Calcular totales (excluir storage_archivos que es un dict, no un int)
+                total_eliminados = sum(v for v in eliminados.values() if isinstance(v, int))
                 
                 # ISS-FIX: INVALIDAR CACHÉ DEL DASHBOARD después de limpiar datos
                 # Esto asegura que el dashboard se actualice inmediatamente

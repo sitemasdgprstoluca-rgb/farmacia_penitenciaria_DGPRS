@@ -1757,6 +1757,20 @@ const Requisiciones = () => {
     }
   };
 
+  // Subir documento de entrega firmado (PDF/imagen escaneada) para requisición entregada
+  const handleSubirDocumentoEntrega = async (reqId, file) => {
+    try {
+      toast.loading("Subiendo documento de entrega...", { id: "subir-doc-entrega" });
+      const response = await requisicionesAPI.subirDocumentoEntrega(reqId, file);
+      toast.success(response.data?.mensaje || "Documento subido correctamente", { id: "subir-doc-entrega" });
+      fetchRequisiciones();
+    } catch (err) {
+      const msg = err.response?.data?.error || "Error al subir documento";
+      toast.error(msg, { id: "subir-doc-entrega" });
+      console.error("Error subiendo documento entrega:", err);
+    }
+  };
+
   const headerActions = (
     <ProtectedButton
       permission="crearRequisicion"
@@ -2191,6 +2205,46 @@ const Requisiciones = () => {
                         <><FaDownload /> 📄 Notificación</>
                       )}
                     </button>
+                  )}
+
+                  {/* Subir evidencia de entrega firmada - solo entregadas */}
+                  {req.estado === 'entregada' && (
+                    <div className="flex items-center gap-1">
+                      <label
+                        className={`cursor-pointer px-3 py-1 rounded text-sm flex items-center gap-1 font-semibold transition-colors border ${
+                          req.documento_entrega_url
+                            ? 'bg-blue-100 text-blue-700 hover:bg-blue-200 border-blue-300'
+                            : 'bg-amber-100 text-amber-700 hover:bg-amber-200 border-amber-300'
+                        }`}
+                        title={req.documento_entrega_url ? 'Reemplazar documento firmado' : 'Subir hoja de entrega firmada'}
+                      >
+                        <FaFileUpload />
+                        {req.documento_entrega_url ? 'Reemplazar' : 'Subir firmada'}
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept=".pdf,.jpg,.jpeg,.png"
+                          onChange={(e) => {
+                            const file = e.target.files[0];
+                            if (file) {
+                              handleSubirDocumentoEntrega(req.id, file);
+                              e.target.value = '';
+                            }
+                          }}
+                        />
+                      </label>
+                      {req.documento_entrega_url && (
+                        <a
+                          href={req.documento_entrega_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-sm flex items-center gap-1 hover:bg-blue-200 border border-blue-300 font-semibold"
+                          title="Ver documento firmado"
+                        >
+                          <FaEye /> Ver
+                        </a>
+                      )}
+                    </div>
                   )}
 
                   {/* Eliminar solo en borrador */}
