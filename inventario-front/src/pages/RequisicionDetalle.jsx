@@ -256,6 +256,31 @@ const RequisicionDetalle = () => {
       toast.error('No tienes permisos para autorizar requisiciones');
       return;
     }
+    // ISS-OWNERSHIP: Solo el receptor puede entrar en modo autorización
+    if (otroGestiona) {
+      toast.error(`Solo ${receptorNombre || 'el receptor'} puede autorizar esta requisición`);
+      return;
+    }
+    // Reinicializar cantidades clampeadas al stock disponible.
+    // Si stock < solicitada → se autoriza el stock máximo (requiere motivo_ajuste).
+    // Si stock >= solicitada → se autoriza la cantidad solicitada completa.
+    // Si ya existe cantidad_autorizada guardada → se respeta.
+    const detallesBase = requisicion?.detalles || [];
+    setDetallesEditables(detallesBase.map(d => {
+      const stockDisponible = d.stock_disponible ?? d.lote_stock ?? 0;
+      const cantidadSolicitada = d.cantidad_solicitada || 0;
+      const yaAutorizada = d.cantidad_autorizada !== null && d.cantidad_autorizada !== undefined;
+      const cantidadInicial = yaAutorizada
+        ? d.cantidad_autorizada
+        : (stockDisponible > 0 && stockDisponible < cantidadSolicitada
+            ? stockDisponible
+            : cantidadSolicitada);
+      return {
+        ...d,
+        cantidad_autorizada: cantidadInicial,
+        motivo_ajuste: d.motivo_ajuste || '',
+      };
+    }));
     setModoAutorizar(true);
   };
 
@@ -1054,9 +1079,9 @@ const RequisicionDetalle = () => {
   const otroGestiona = esFarmacia && receptorId && !esReceptor;
   const otroAutorizo = esFarmacia && autorizadorId && !esAutorizador;
 
-  // esReceptor no se verifica aquí: el backend lo valida en autorizar-farmacia
-  // y muestra el nombre del receptor si no coincide (403). Así cualquier farmacia
-  // puede entrar al modo revisión; el rechazo definitivo viene del servidor.
+  // puedeAutorizar controla si SE MUESTRA el banner de autorización.
+  // La restricción de receptor se aplica en iniciarAutorizacion() (bloquea al no-receptor)
+  // y en el backend (403 si receptor_farmacia_id != request.user.id).
   const puedeAutorizar = requisicion?.estado === 'en_revision' && esFarmacia && permisos?.autorizarRequisicion;
   // En enviada: cualquier farmacia puede rechazar (nadie ha tomado posesión aún).
   // En en_revision: solo el receptor puede rechazar (mismo criterio que autorizar).
@@ -1326,18 +1351,11 @@ const RequisicionDetalle = () => {
                   <p className="text-xs text-amber-700 mb-3">
                     Solo el usuario receptor puede confirmar la autorización. Tu rol en esta etapa:
                   </p>
-                  <ul className="text-xs text-amber-700 space-y-1 mb-4">
-                    <li className="flex items-center gap-1.5"><FaCheck className="text-green-600 shrink-0" /> Puedes revisar las cantidades (solo lectura)</li>
-                    <li className="flex items-center gap-1.5"><FaTimes className="text-red-500 shrink-0" /> No puedes rechazarla — esa acción también es exclusiva del receptor</li>
+                  <ul className="text-xs text-amber-700 space-y-1">
+                    <li className="flex items-center gap-1.5"><FaCheck className="text-green-600 shrink-0" /> Puedes ver las cantidades solicitadas en la tabla de abajo</li>
+                    <li className="flex items-center gap-1.5"><FaTimes className="text-red-500 shrink-0" /> No puedes rechazarla — acción exclusiva del receptor</li>
                     <li className="flex items-center gap-1.5"><FaTimes className="text-red-500 shrink-0" /> No puedes autorizarla — la confirma {receptorNombre || 'el receptor'}</li>
                   </ul>
-                  <button
-                    onClick={iniciarAutorizacion}
-                    disabled={procesando}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm rounded-lg disabled:opacity-50 font-medium transition-colors"
-                  >
-                    <FaEdit /> Revisar Cantidades
-                  </button>
                 </div>
               </div>
             </div>
