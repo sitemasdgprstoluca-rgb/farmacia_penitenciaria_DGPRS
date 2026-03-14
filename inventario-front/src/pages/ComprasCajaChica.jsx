@@ -76,7 +76,6 @@ const ESTADOS_COMPRA = [
   { value: 'enviada_farmacia', label: 'En Farmacia' },
   { value: 'sin_stock_farmacia', label: 'Sin Stock (Farmacia)' },
   { value: 'rechazada_farmacia', label: 'Hay Stock (Farmacia)' },
-  { value: 'devuelta', label: 'Devuelta para corrección' },
   { value: 'enviada_admin', label: 'Enviada a Admin' },
   { value: 'autorizada_admin', label: 'Autorizada Admin' },
   { value: 'enviada_director', label: 'Enviada a Director' },
@@ -85,6 +84,7 @@ const ESTADOS_COMPRA = [
   { value: 'recibida', label: 'Recibida' },
   { value: 'cancelada', label: 'Cancelada' },
   { value: 'rechazada', label: 'Rechazada' },
+  { value: 'devuelta', label: 'Devuelta para corrección' },
 ];
 
 const ESTADO_COLORS = {
@@ -201,7 +201,6 @@ const ComprasCajaChica = () => {
   const [deleteModal, setDeleteModal] = useState({ show: false, compra: null });
   const [cancelModal, setCancelModal] = useState({ show: false, compra: null, motivo: '' });
   const [detailModal, setDetailModal] = useState({ show: false, compra: null });
-  const [autorizarModal, setAutorizarModal] = useState({ show: false, compra: null, observaciones: '' });
   const [registrarCompraModal, setRegistrarCompraModal] = useState({ 
     show: false, 
     compra: null, 
@@ -233,12 +232,6 @@ const ComprasCajaChica = () => {
     isOpen: cancelModal.show,
     onClose: () => setCancelModal({ show: false, compra: null, motivo: '' }),
     modalId: 'compras-caja-chica-cancel-modal',
-  });
-
-  useEscapeToClose({
-    isOpen: autorizarModal.show,
-    onClose: () => setAutorizarModal({ show: false, compra: null, observaciones: '' }),
-    modalId: 'compras-caja-chica-autorizar-modal',
   });
 
   useEscapeToClose({
@@ -511,7 +504,7 @@ const ComprasCajaChica = () => {
           cantidad_solicitada: d.cantidad_solicitada || 0,
           precio_unitario: d.precio_unitario || 0,
           importe: (d.precio_unitario || 0) * (d.cantidad_solicitada || 0),
-          presentacion: d.presentacion || '',
+          presentacion: d.unidad_medida || '',
           numero_lote: d.numero_lote || '',
           fecha_caducidad: d.fecha_caducidad || '',
         })),
@@ -541,7 +534,7 @@ const ComprasCajaChica = () => {
       }
       
       // ISS-SEC: Solo el creador puede editar (a menos que sea admin/superuser)
-      if (editingCompra.solicitante_id !== user?.id && !user?.is_superuser && !esAdmin) {
+      if (editingCompra.solicitante !== user?.id && !user?.is_superuser && !esAdmin) {
         toast.error('Solo quien creó la compra puede editarla');
         return;
       }
@@ -639,6 +632,7 @@ const ComprasCajaChica = () => {
         centro: formData.centro || undefined,
         motivo_compra: formData.motivo_compra,
         proveedor_nombre: formData.proveedor_nombre || undefined,
+        proveedor_contacto: formData.proveedor_contacto || undefined,
         observaciones: formData.observaciones,
         requisicion_origen: formData.requisicion_origen || undefined,
         // El backend espera 'detalles_write' para crear detalles anidados
@@ -715,21 +709,6 @@ const ComprasCajaChica = () => {
     }
   };
 
-  // Autorizar compra
-  const handleAutorizar = async () => {
-    if (!autorizarModal.compra) return;
-    
-    try {
-      await comprasCajaChicaAPI.autorizar(autorizarModal.compra.id, autorizarModal.observaciones);
-      toast.success('Compra autorizada correctamente');
-      setAutorizarModal({ show: false, compra: null, observaciones: '' });
-      fetchCompras();
-      fetchResumen();
-    } catch (error) {
-      toast.error(error.response?.data?.error || 'Error al autorizar la compra');
-    }
-  };
-
   // ========== FLUJO MULTINIVEL: ACCIONES ==========
   
   // Validar que la compra tenga todos los datos necesarios
@@ -778,7 +757,7 @@ const ComprasCajaChica = () => {
   // Confirmar que no hay stock (Farmacia)
   const handleConfirmarSinStock = async (compra, observaciones = '') => {
     try {
-      await comprasCajaChicaAPI.confirmarSinStock(compra.id, { observaciones });
+      await comprasCajaChicaAPI.confirmarSinStock(compra.id, { respuesta: observaciones, stock_verificado: 0 });
       toast.success('Stock verificado - No disponible. Solicitud enviada a administrador');
       fetchCompras();
       fetchResumen();
@@ -794,7 +773,7 @@ const ComprasCajaChica = () => {
       return;
     }
     try {
-      await comprasCajaChicaAPI.rechazarTieneStock(compra.id, { observaciones });
+      await comprasCajaChicaAPI.rechazarTieneStock(compra.id, { respuesta: observaciones, stock_disponible: 0 });
       toast.success('Solicitud rechazada - Producto disponible en farmacia');
       fetchCompras();
       fetchResumen();
@@ -940,7 +919,7 @@ const ComprasCajaChica = () => {
     }
   };
 
-  const handleRegistrarCompra = async () => {
+  const handleRegistrarCompra = async (detallesOverride) => {
     if (!registrarCompraModal.compra) return;
     
     if (!registrarCompraModal.fecha_compra) {
@@ -948,8 +927,10 @@ const ComprasCajaChica = () => {
       return;
     }
     
+    const detallesActuales = detallesOverride || registrarCompraModal.detalles;
+    
     // ISS-SEC FIX: Validar que todas las cantidades compradas sean > 0
-    const detallesInvalidos = registrarCompraModal.detalles.filter(d => {
+    const detallesInvalidos = detallesActuales.filter(d => {
       const cantidad = parseInt(d.cantidad_comprada);
       return isNaN(cantidad) || cantidad <= 0;
     });
@@ -965,7 +946,7 @@ const ComprasCajaChica = () => {
         numero_factura: registrarCompraModal.numero_factura,
         proveedor_nombre: registrarCompraModal.proveedor_nombre,
         proveedor_contacto: registrarCompraModal.proveedor_contacto,
-        detalles: registrarCompraModal.detalles.map(d => ({
+        detalles: detallesActuales.map(d => ({
           id: d.id,
           cantidad_comprada: parseInt(d.cantidad_comprada) || 0,
           precio_unitario: parseFloat(d.precio_unitario) || 0,
@@ -1166,7 +1147,7 @@ const ComprasCajaChica = () => {
 
             <select
               value={estadoFiltro}
-              onChange={(e) => setEstadoFiltro(e.target.value)}
+              onChange={(e) => { setEstadoFiltro(e.target.value); setCurrentPage(1); }}
               className="cc-filter-select"
             >
               {ESTADOS_COMPRA.map(estado => (
@@ -1230,7 +1211,7 @@ const ComprasCajaChica = () => {
               type="text"
               placeholder="Buscar por folio, proveedor..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
               className="w-full pl-10 pr-4 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
             />
           </div>
@@ -1259,7 +1240,7 @@ const ComprasCajaChica = () => {
                 <label className="cc-filter-label">Centro</label>
                 <select
                   value={centroFiltro}
-                  onChange={(e) => setCentroFiltro(e.target.value)}
+                  onChange={(e) => { setCentroFiltro(e.target.value); setCurrentPage(1); }}
                   className="cc-filter-select-full"
                 >
                   <option value="">Todos los centros</option>
@@ -1275,7 +1256,7 @@ const ComprasCajaChica = () => {
               <label className="cc-filter-label">Estado</label>
               <select
                 value={estadoFiltro}
-                onChange={(e) => setEstadoFiltro(e.target.value)}
+                onChange={(e) => { setEstadoFiltro(e.target.value); setCurrentPage(1); }}
                 className="cc-filter-select-full"
               >
                 {ESTADOS_COMPRA.map(estado => (
@@ -1290,7 +1271,7 @@ const ComprasCajaChica = () => {
               <input
                 type="date"
                 value={fechaDesde}
-                onChange={(e) => setFechaDesde(e.target.value)}
+                onChange={(e) => { setFechaDesde(e.target.value); setCurrentPage(1); }}
                 className="cc-filter-select-full"
               />
             </div>
@@ -1301,7 +1282,7 @@ const ComprasCajaChica = () => {
               <input
                 type="date"
                 value={fechaHasta}
-                onChange={(e) => setFechaHasta(e.target.value)}
+                onChange={(e) => { setFechaHasta(e.target.value); setCurrentPage(1); }}
                 className="cc-filter-select-full"
               />
             </div>
@@ -1836,6 +1817,7 @@ const ComprasCajaChica = () => {
                     value={formData.proveedor_nombre}
                     onChange={handleInputChange}
                     placeholder="Nombre del proveedor"
+                    required
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"
                   />
                   <input
@@ -2473,7 +2455,7 @@ const ComprasCajaChica = () => {
                               };
                             });
                             setRegistrarCompraModal(prev => ({ ...prev, detalles: detallesCompletos }));
-                            setTimeout(() => handleRegistrarCompra(), 100);
+                            handleRegistrarCompra(detallesCompletos);
                           }}
                           disabled={!registrarCompraModal.fecha_compra}
                           className="px-6 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-medium"
@@ -2572,46 +2554,6 @@ const ComprasCajaChica = () => {
         cancelText="No, volver"
         tone="danger"
       />
-
-      {/* Modal de autorizar */}
-      {autorizarModal.show && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
-            <div className="px-6 py-4 border-b">
-              <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                <FaCheck className="text-green-600" />
-                Autorizar Compra
-              </h2>
-            </div>
-            <div className="p-6 space-y-4">
-              <p>¿Está seguro de autorizar la compra <strong>{autorizarModal.compra?.folio}</strong>?</p>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Observaciones (opcional)</label>
-                <textarea
-                  value={autorizarModal.observaciones}
-                  onChange={(e) => setAutorizarModal(prev => ({ ...prev, observaciones: e.target.value }))}
-                  rows={3}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"
-                />
-              </div>
-            </div>
-            <div className="px-6 py-4 border-t flex justify-end gap-3">
-              <button
-                onClick={() => setAutorizarModal({ show: false, compra: null, observaciones: '' })}
-                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleAutorizar}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-              >
-                Autorizar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Modal de cancelar */}
       {cancelModal.show && (
