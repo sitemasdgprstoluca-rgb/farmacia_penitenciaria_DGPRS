@@ -888,12 +888,21 @@ const Productos = () => {
 
   /**
    * Detecta factor_conversion y unidad_minima desde el texto de presentación.
+   *
+   * REGLAS:
+   * - Solo usa números que aparecen ANTES del keyword de unidad (son cantidades)
+   * - Ignora números DESPUÉS del keyword (son concentraciones: "TABLETA 500MG")
+   * - Si la unidad es la primera palabra, factor = 1 (la unidad ES el envase)
+   *
    * Ejemplos:
    *   "CAJA CON 20 TABLETAS"  → { factor: 20, unidad: 'tableta' }
+   *   "BLISTER 30 COMPRIMIDOS"→ { factor: 30, unidad: 'tableta' }
    *   "FRASCO 120 ML"         → { factor: 120, unidad: 'mililitro' }
-   *   "BLISTER 30 CAPSULAS"   → { factor: 30, unidad: 'cápsula' }
-   *   "AMPOLLETA 5MG/2ML"     → { factor: 1, unidad: 'ampolleta' }
-   *   "CAJA C/30 CAPSULAS"    → { factor: 30, unidad: 'cápsula' }
+   *   "CAJA C/10 CAPSULAS"    → { factor: 10, unidad: 'cápsula' }
+   *   "AMPOLLETA 5MG/2ML"     → { factor: 1,  unidad: 'ampolleta' }  ← concentración ignorada
+   *   "TABLETA 500MG"         → { factor: 1,  unidad: 'tableta' }    ← concentración ignorada
+   *   "CAPSULA 250MG"         → { factor: 1,  unidad: 'cápsula' }    ← concentración ignorada
+   *   "CAJA CON 5 AMPOLLETAS" → { factor: 5,  unidad: 'ampolleta' }
    */
   const detectarFactorPresentacion = (texto) => {
     if (!texto || texto.trim().length < 3) return null;
@@ -901,13 +910,22 @@ const Productos = () => {
     // Normalizar: mayúsculas y sin acentos para matching consistente
     const t = texto.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-    // Detectores ordenados por especificidad
+    // ORDEN IMPORTA: keywords más específicos primero para evitar falsos positivos
+    // Ej: AMPOLLETA antes de MILILITRO para que "AMPOLLETA 5MG/2ML" no se registre
+    // como mililitro por el "ML" al final de la concentración
     const DETECTORS = [
-      { unidad: 'tableta',     pattern: /TABLET[AO]S?/ },
-      { unidad: 'cápsula',     pattern: /C[AÁ]PSULAS?|CAPSULE?S?/ },
+      // Formas sólidas orales (todas mapean a 'tableta')
+      { unidad: 'tableta',     pattern: /COMPRIMIDOS?|TABLETAS?|TABLET[AO]S?|PASTILLAS?|GRAGEAS?|PILDORAS?/ },
+      // Cápsulas
+      { unidad: 'cápsula',     pattern: /CAPSULAS?|CAPSULE?S?/ },
+      // Ampolletas y viales (unidad antes que mililitro para evitar capturar "2ML" de "5MG/2ML")
+      { unidad: 'ampolleta',   pattern: /AMPOLLETAS?|VIALES?|VIAL/ },
+      // Jeringas
+      { unidad: 'dosis',       pattern: /JERINGAS?|JERINGILLAS?/ },
+      // Líquidos (detectar DESPUÉS de ampolleta/vial para no capturar concentraciones)
       { unidad: 'mililitro',   pattern: /MILILITROS?|ML(?![A-Z0-9])/ },
-      { unidad: 'gramo',       pattern: /GRAMOS?|GR(?![A-Z0-9])/ },
-      { unidad: 'ampolleta',   pattern: /AMPOLLETA/ },
+      { unidad: 'gramo',       pattern: /GRAMOS?(?![A-Z])/ },
+      // Otras formas
       { unidad: 'sobre',       pattern: /SOBRES?/ },
       { unidad: 'dosis',       pattern: /DOSIS/ },
       { unidad: 'parche',      pattern: /PARCHES?/ },
@@ -920,42 +938,18 @@ const Productos = () => {
       if (!pattern.test(t)) continue;
 
       const keyIdx = t.search(pattern);
-      let factor = null;
 
-      // Buscar número ANTES de la unidad (más confiable)
-      // Patrones: "20 TABLETAS", "CON 20 TABLETAS", "C/20 TABLETAS", "X20 TABLETAS"
+      // Buscar número ANTES del keyword de unidad (números antes = cantidades)
+      // Números DESPUÉS del keyword = concentraciones ("TABLETA 500MG") → ignorar
+      // Patrones válidos: "20 TABLETAS", "CON 20 TABLETAS", "C/20 TABLETAS", "X 20 TABLETAS"
       const beforeUnit = t.slice(0, keyIdx);
-      const matchBefore = beforeUnit.match(/(\d+)\s*(?:X|C\/|\/|CON|DE)?\s*$/) ||
-                          beforeUnit.match(/(?:X|C\/|CON|DE|\s)(\d+)\s*$/);
-      if (matchBefore) {
-        factor = parseInt(matchBefore[1], 10);
-      }
+      const matchBefore = beforeUnit.match(/(\d+)\s*(?:X\s*|C\/\s*|\/\s*|CON\s+|DE\s+)?\s*$/) ||
+                          beforeUnit.match(/(?:X|C\/|CON|DE)[^\d]*(\d+)\s*$/);
 
-      // Si no hay número antes, buscar después: "TABLETAS 20" (raro pero posible)
-      if (!factor) {
-        const afterUnit = t.slice(keyIdx);
-        const matchAfter = afterUnit.match(/\D(\d+)/);
-        if (matchAfter) {
-          factor = parseInt(matchAfter[1], 10);
-        }
-      }
+      const factor = matchBefore ? parseInt(matchBefore[1], 10) : 1;
 
-      // Fallback: cualquier número en el texto que parezca factor (2-500, no concentración)
-      // Ignorar números seguidos de MG/MCG/G/% (son concentraciones, no factores)
-      if (!factor) {
-        const numsEnTexto = [...t.matchAll(/\b(\d+)\b(?!\s*(?:MG|MCG|G|%|ML(?=[A-Z])))/g)]
-          .map(m => parseInt(m[1], 10))
-          .filter(n => n >= 2 && n <= 1000);
-        if (numsEnTexto.length === 1) factor = numsEnTexto[0];
-      }
-
-      return { factor: (factor && factor >= 1) ? factor : 1, unidad };
-    }
-
-    // Sin unidad detectada, buscar patrón genérico de cantidad
-    const genericMatch = t.match(/(?:X|C\/|CON)\s*(\d+)/);
-    if (genericMatch) {
-      return { factor: parseInt(genericMatch[1], 10), unidad: null };
+      // Validar factor razonable (1-9999)
+      return { factor: (factor >= 1 && factor <= 9999) ? factor : 1, unidad };
     }
 
     return null;
