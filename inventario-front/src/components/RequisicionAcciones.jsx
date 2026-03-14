@@ -184,8 +184,18 @@ export function RequisicionAcciones({
         onAccionCompletada(resultado);
       }
     } catch (error) {
-      const errorMsg = error.response?.data?.error || error.message || 'Error al ejecutar acción';
-      toast.error(errorMsg);
+      const errorData = error.response?.data;
+      const errorMsg = errorData?.error || error.message || 'Error al ejecutar acción';
+
+      // Mostrar detalles de stock insuficiente si existen
+      if (errorData?.detalles_stock && Array.isArray(errorData.detalles_stock)) {
+        const lineas = errorData.detalles_stock.map(d =>
+          `• ${d.producto || 'Producto'}: disponible ${d.disponible ?? d.stock_disponible ?? '?'}, requerido ${d.requerido ?? d.cantidad_autorizada ?? '?'}`
+        ).join('\n');
+        toast.error(`${errorMsg}\n\n${lineas}`, { duration: 10000 });
+      } else {
+        toast.error(errorMsg);
+      }
     } finally {
       setLoadingAccion(null);
       setModalData(null);

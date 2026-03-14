@@ -6600,7 +6600,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             return Response({
                 'error': str(e),
                 'codigo': e.code,
-                'detalles': e.detalles_stock
+                'detalles_stock': e.detalles_stock
             }, status=status.HTTP_400_BAD_REQUEST)
             
         except Exception as e:
@@ -7647,30 +7647,11 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                     'detalle': f'El rol "{rol_efectivo}" no tiene el permiso puede_autorizar_farmacia'
                 }, status=status.HTTP_403_FORBIDDEN)
         
-        # ISS-AUDIT-002 FIX: Validar stock disponible ANTES de autorizar
-        # Esto previene sobre-autorización de stock comprometido por otras requisiciones
-        # ACTUALIZACIÓN: Validación reforzada - NO permitir autorización si hay stock insuficiente
-        try:
-            from inventario.services.requisicion_service import RequisicionService, StockInsuficienteError
-            service = RequisicionService(requisicion, request.user)
-            # Usar bloqueo para validación precisa del stock disponible
-            service.validar_stock_disponible(usar_bloqueo=True)
-        except StockInsuficienteError as e:
-            logger.error(f"STOCK INSUFICIENTE al autorizar requisición {requisicion.numero}: {e}")
-            return Response({
-                'error': 'Stock insuficiente para autorizar la requisición',
-                'detalles_stock': e.detalles_stock,
-                'mensaje': str(e)
-            }, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            logger.error(f"ISS-AUDIT-002: Error CRÍTICO al validar stock para requisición {requisicion.numero}: {e}", exc_info=True)
-            # NO continuar si hay error en la validación - es crítico
-            return Response({
-                'error': 'Error al validar disponibilidad de stock',
-                'detalle': 'No se puede autorizar sin verificar stock disponible. Contacte al administrador.',
-                'error_tecnico': str(e)
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
+        # ISS-AUDIT-002 FIX: La validación de stock se hace PER-ITEM más abajo (líneas 7746+),
+        # donde ya se conocen las cantidades autorizadas del request.
+        # Antes se validaba aquí con los detalles de BD (cantidad_autorizada=NULL),
+        # lo que causaba que se validara contra cantidad_solicitada y fallaba incorrectamente.
+
         # CRÍTICO: Validar fecha límite de recolección
         fecha_recoleccion_str = request.data.get('fecha_recoleccion_limite')
         if not fecha_recoleccion_str:
@@ -7794,7 +7775,27 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             requisicion.detalles.filter(cantidad_autorizada__isnull=True).update(
                 cantidad_autorizada=F('cantidad_solicitada')
             )
-        
+
+        # ISS-AUDIT-002 FIX: Validar stock DESPUÉS de guardar cantidades autorizadas
+        # Ahora los detalles en BD tienen las cantidades correctas del request
+        try:
+            from inventario.services.requisicion_service import RequisicionService, StockInsuficienteError
+            service = RequisicionService(requisicion, request.user)
+            service.validar_stock_disponible(usar_bloqueo=True)
+        except StockInsuficienteError as e:
+            logger.error(f"STOCK INSUFICIENTE al autorizar requisición {requisicion.numero}: {e}")
+            return Response({
+                'error': 'Stock insuficiente para autorizar la requisición',
+                'detalles_stock': e.detalles_stock,
+                'mensaje': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            logger.error(f"ISS-AUDIT-002: Error al validar stock para requisición {requisicion.numero}: {e}", exc_info=True)
+            return Response({
+                'error': 'Error al validar disponibilidad de stock',
+                'detalle': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
         estado_anterior = requisicion.estado
         
         # ISS-NOTIF-FIX: Usar save() en lugar de update() para disparar signals

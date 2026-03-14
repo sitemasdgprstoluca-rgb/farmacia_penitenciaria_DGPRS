@@ -426,8 +426,8 @@ const RequisicionDetalle = () => {
         
         // Si hay detalles de stock insuficiente con lista de productos
         if (errorData.detalles_stock && Array.isArray(errorData.detalles_stock)) {
-          const lineas = errorData.detalles_stock.map(d => 
-            `• ${d.producto || d.producto_clave || 'Producto'}: disponible ${d.stock_disponible ?? '?'}, solicitado ${d.cantidad_solicitada ?? d.cantidad_autorizada ?? '?'}`
+          const lineas = errorData.detalles_stock.map(d =>
+            `• ${d.producto || d.producto_clave || 'Producto'}: disponible ${d.disponible ?? d.stock_disponible ?? '?'}, requerido ${d.requerido ?? d.cantidad_autorizada ?? d.cantidad_solicitada ?? '?'}`
           ).join('\n');
           toast.error(`❌ ${errorData.error || 'Stock insuficiente'}\n\n${lineas}`, { duration: 10000 });
         } else if (errorData.stock_disponible !== undefined || errorData.detalle) {
@@ -508,7 +508,7 @@ const RequisicionDetalle = () => {
       cargarRequisicion();
     } catch (error) {
       const errorMsg = error.response?.data?.error || 'Error al surtir';
-      const detalles = error.response?.data?.detalles;
+      const detalles = error.response?.data?.detalles_stock || error.response?.data?.detalles;
       if (detalles && Array.isArray(detalles)) {
         const mensaje = detalles.map(d => `${d.producto}: Requiere ${d.requerido}, Disponible: ${d.disponible}`).join('\n');
         toast.error(`${errorMsg}\n${mensaje}`, { duration: 6000 });
