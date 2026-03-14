@@ -2815,22 +2815,36 @@ const Movimientos = () => {
                                           </div>
                                         ) : grupo.confirmado ? (
                                           <div className="flex gap-1">
-                                            <button
-                                              onClick={(e) => { e.stopPropagation(); descargarComprobanteGrupo(grupo.id); }}
-                                              className="p-1.5 bg-gradient-to-b from-emerald-500 to-emerald-600 text-white rounded hover:from-emerald-600 hover:to-emerald-700 transition-all duration-200 shadow-sm hover:shadow-md"
-                                              title="Descargar comprobante"
-                                            >
-                                              <FaFileDownload className="text-xs" />
-                                            </button>
-                                            {/* Subir evidencia de entrega firmada */}
+                                            {/* Ver documento: si hay evidencia firmada abre esa, si no descarga comprobante del sistema */}
+                                            {allItems[0]?.documento_evidencia_url ? (
+                                              <a
+                                                href={allItems[0].documento_evidencia_url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="p-1.5 bg-gradient-to-b from-emerald-500 to-emerald-600 text-white rounded hover:from-emerald-600 hover:to-emerald-700 transition-all duration-200 shadow-sm hover:shadow-md"
+                                                title="Ver hoja de entrega firmada"
+                                              >
+                                                <FaFilePdf className="text-xs" />
+                                              </a>
+                                            ) : (
+                                              <button
+                                                onClick={(e) => { e.stopPropagation(); descargarComprobanteGrupo(grupo.id); }}
+                                                className="p-1.5 bg-gradient-to-b from-gray-400 to-gray-500 text-white rounded hover:from-gray-500 hover:to-gray-600 transition-all duration-200 shadow-sm hover:shadow-md"
+                                                title="Descargar comprobante del sistema (sin firma escaneada)"
+                                              >
+                                                <FaFileDownload className="text-xs" />
+                                              </button>
+                                            )}
+                                            {/* Subir/reemplazar evidencia de entrega firmada */}
                                             <label
                                               onClick={(e) => e.stopPropagation()}
                                               className={`p-1.5 cursor-pointer rounded transition-all duration-200 shadow-sm hover:shadow-md ${
                                                 allItems[0]?.documento_evidencia_url
                                                   ? 'bg-gradient-to-b from-blue-400 to-blue-500 text-white hover:from-blue-500 hover:to-blue-600'
-                                                  : 'bg-gradient-to-b from-amber-500 to-amber-600 text-white hover:from-amber-600 hover:to-amber-700'
+                                                  : 'bg-gradient-to-b from-amber-500 to-amber-600 text-white hover:from-amber-600 hover:to-amber-700 animate-pulse'
                                               }`}
-                                              title={allItems[0]?.documento_evidencia_url ? 'Reemplazar evidencia firmada' : 'Subir hoja de entrega firmada'}
+                                              title={allItems[0]?.documento_evidencia_url ? 'Reemplazar hoja firmada' : 'Subir hoja de entrega firmada (PDF/imagen)'}
                                             >
                                               <FaUpload className="text-xs" />
                                               <input
@@ -2846,18 +2860,6 @@ const Movimientos = () => {
                                                 }}
                                               />
                                             </label>
-                                            {allItems[0]?.documento_evidencia_url && (
-                                              <a
-                                                href={allItems[0].documento_evidencia_url}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                onClick={(e) => e.stopPropagation()}
-                                                className="p-1.5 bg-gradient-to-b from-blue-500 to-blue-600 text-white rounded hover:from-blue-600 hover:to-blue-700 transition-all duration-200 shadow-sm hover:shadow-md"
-                                                title="Ver evidencia firmada"
-                                              >
-                                                <FaFilePdf className="text-xs" />
-                                              </a>
-                                            )}
                                           </div>
                                         ) : (
                                           <span className="text-[10px] text-gray-400">Sin acciones</span>

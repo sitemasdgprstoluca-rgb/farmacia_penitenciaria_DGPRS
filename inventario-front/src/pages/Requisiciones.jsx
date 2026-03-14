@@ -2180,17 +2180,30 @@ const Requisiciones = () => {
                   {/* Botones de descarga PDF */}
                   {['autorizada', 'en_surtido', 'parcial', 'surtida', 'entregada'].includes(req.estado) &&
                     puedeDescargarPDF(req) && (
-                      <button
-                        onClick={() => handleDescargarPDF(req.id, 'aceptacion', req.folio, req.estado)}
-                        disabled={actionLoading === `pdf-${req.id}`}
-                        className="bg-green-100 text-green-700 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-green-200 border border-green-300 font-semibold disabled:opacity-50"
-                      >
-                        {actionLoading === `pdf-${req.id}` ? (
-                          <div className="animate-spin rounded-full h-4 w-4 border-2 border-green-700 border-t-transparent" />
-                        ) : (
-                          <><FaDownload /> 📄 Hoja Oficial</>
-                        )}
-                      </button>
+                      req.estado === 'entregada' && req.documento_entrega_url ? (
+                        /* Si está entregada Y tiene documento firmado escaneado → abrir ese */
+                        <a
+                          href={req.documento_entrega_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="bg-green-100 text-green-700 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-green-200 border border-green-300 font-semibold"
+                        >
+                          <FaEye /> Hoja Firmada
+                        </a>
+                      ) : (
+                        /* Si no tiene documento firmado → descargar PDF del sistema */
+                        <button
+                          onClick={() => handleDescargarPDF(req.id, 'aceptacion', req.folio, req.estado)}
+                          disabled={actionLoading === `pdf-${req.id}`}
+                          className="bg-green-100 text-green-700 px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-green-200 border border-green-300 font-semibold disabled:opacity-50"
+                        >
+                          {actionLoading === `pdf-${req.id}` ? (
+                            <div className="animate-spin rounded-full h-4 w-4 border-2 border-green-700 border-t-transparent" />
+                          ) : (
+                            <><FaDownload /> Hoja Oficial</>
+                          )}
+                        </button>
+                      )
                     )}
 
                   {req.estado === 'rechazada' && puedeDescargarPDF(req) && (
@@ -2202,49 +2215,36 @@ const Requisiciones = () => {
                       {actionLoading === `pdf-${req.id}` ? (
                         <div className="animate-spin rounded-full h-4 w-4 border-2 border-red-700 border-t-transparent" />
                       ) : (
-                        <><FaDownload /> 📄 Notificación</>
+                        <><FaDownload /> Notificación</>
                       )}
                     </button>
                   )}
 
-                  {/* Subir evidencia de entrega firmada - solo entregadas */}
+                  {/* Subir/reemplazar evidencia de entrega firmada - solo entregadas */}
                   {req.estado === 'entregada' && (
-                    <div className="flex items-center gap-1">
-                      <label
-                        className={`cursor-pointer px-3 py-1 rounded text-sm flex items-center gap-1 font-semibold transition-colors border ${
-                          req.documento_entrega_url
-                            ? 'bg-blue-100 text-blue-700 hover:bg-blue-200 border-blue-300'
-                            : 'bg-amber-100 text-amber-700 hover:bg-amber-200 border-amber-300'
-                        }`}
-                        title={req.documento_entrega_url ? 'Reemplazar documento firmado' : 'Subir hoja de entrega firmada'}
-                      >
-                        <FaFileUpload />
-                        {req.documento_entrega_url ? 'Reemplazar' : 'Subir firmada'}
-                        <input
-                          type="file"
-                          className="hidden"
-                          accept=".pdf,.jpg,.jpeg,.png"
-                          onChange={(e) => {
-                            const file = e.target.files[0];
-                            if (file) {
-                              handleSubirDocumentoEntrega(req.id, file);
-                              e.target.value = '';
-                            }
-                          }}
-                        />
-                      </label>
-                      {req.documento_entrega_url && (
-                        <a
-                          href={req.documento_entrega_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-sm flex items-center gap-1 hover:bg-blue-200 border border-blue-300 font-semibold"
-                          title="Ver documento firmado"
-                        >
-                          <FaEye /> Ver
-                        </a>
-                      )}
-                    </div>
+                    <label
+                      className={`cursor-pointer px-3 py-1 rounded text-sm flex items-center gap-1 font-semibold transition-colors border ${
+                        req.documento_entrega_url
+                          ? 'bg-blue-100 text-blue-700 hover:bg-blue-200 border-blue-300'
+                          : 'bg-amber-100 text-amber-700 hover:bg-amber-200 border-amber-300 animate-pulse'
+                      }`}
+                      title={req.documento_entrega_url ? 'Reemplazar hoja firmada' : 'Subir hoja de entrega firmada (PDF/imagen)'}
+                    >
+                      <FaFileUpload />
+                      {req.documento_entrega_url ? 'Reemplazar' : 'Subir firmada'}
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept=".pdf,.jpg,.jpeg,.png"
+                        onChange={(e) => {
+                          const file = e.target.files[0];
+                          if (file) {
+                            handleSubirDocumentoEntrega(req.id, file);
+                            e.target.value = '';
+                          }
+                        }}
+                      />
+                    </label>
                   )}
 
                   {/* Eliminar solo en borrador */}
