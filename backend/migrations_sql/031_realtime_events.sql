@@ -18,9 +18,11 @@ CREATE TABLE IF NOT EXISTS realtime_events (
   entity      varchar(50)  NOT NULL,
   entity_id   integer,
   scope_id    integer,
-  actor_id    integer,
   created_at  timestamptz  NOT NULL DEFAULT now()
 );
+
+-- Agregar columnas opcionales que pueden no existir si la tabla ya existia
+ALTER TABLE realtime_events ADD COLUMN IF NOT EXISTS actor_id integer;
 
 COMMENT ON TABLE realtime_events IS
   'Tabla de notificaciones para Supabase Realtime. Solo contiene metadatos '
