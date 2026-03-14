@@ -8267,6 +8267,97 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             'requisiciones': vencidas
         })
 
+    @action(detail=False, methods=['get'], url_path='alertas-vencimiento')
+    def alertas_vencimiento(self, request):
+        """
+        FLUJO V2: Retorna requisiciones próximas a vencer (< 24h, estado='autorizada')
+        y crea notificaciones para el usuario si aún no existen.
+        Accesible por todos los roles (filtrado por centro para usuarios de centro).
+        """
+        from core.models import Notificacion
+        from datetime import timedelta
+
+        user = request.user
+        ahora = timezone.now()
+        limite_24h = ahora + timedelta(hours=24)
+
+        # Requisiciones autorizadas con fecha límite dentro de las próximas 24 horas
+        qs = Requisicion.objects.filter(
+            estado='autorizada',
+            fecha_recoleccion_limite__gte=ahora,
+            fecha_recoleccion_limite__lte=limite_24h,
+        ).select_related('centro_origen', 'solicitante')
+
+        # Usuarios de centro solo ven sus propias requisiciones
+        rol = (getattr(user, 'rol', '') or '').lower()
+        es_centro = rol in ('medico', 'centro', 'administrador_centro', 'director_centro', 'usuario_centro')
+        if es_centro:
+            centro_id = getattr(user, 'centro_id', None)
+            if hasattr(centro_id, 'id'):
+                centro_id = centro_id.id
+            if centro_id:
+                qs = qs.filter(centro_origen_id=centro_id)
+
+        proximas = list(qs.order_by('fecha_recoleccion_limite'))
+        notificaciones_creadas = 0
+
+        for req in proximas:
+            horas_restantes = (req.fecha_recoleccion_limite - ahora).total_seconds() / 3600
+            horas_texto = (
+                f'{int(horas_restantes)}h {int((horas_restantes % 1) * 60)}min'
+                if horas_restantes >= 1 else
+                f'{int(horas_restantes * 60)} minutos'
+            )
+            centro_nombre = req.centro_origen.nombre if req.centro_origen else '—'
+
+            # Notificar al usuario actual si no tiene ya una alerta reciente (< 2h) para esta req
+            ya_notificado = Notificacion.objects.filter(
+                usuario=user,
+                datos__requisicion_id=req.id,
+                created_at__gte=ahora - timedelta(hours=2),
+            ).filter(tipo='alerta_vencimiento').exists()
+
+            if not ya_notificado:
+                try:
+                    Notificacion.objects.create(
+                        usuario=user,
+                        tipo='alerta_vencimiento',
+                        titulo='Requisición próxima a vencer',
+                        mensaje=(
+                            f'La requisición {req.folio} del centro {centro_nombre} '
+                            f'vence en {horas_texto}. Asegúrate de recoger los medicamentos.'
+                        ),
+                        datos={
+                            'requisicion_id': req.id,
+                            'folio': req.folio,
+                            'horas_restantes': round(horas_restantes, 1),
+                            'fecha_limite': req.fecha_recoleccion_limite.isoformat(),
+                            'centro': centro_nombre,
+                        },
+                        url=f'/requisiciones/{req.id}',
+                    )
+                    notificaciones_creadas += 1
+                except Exception as e:
+                    logger.warning(f"No se pudo crear alerta de vencimiento para {req.folio}: {e}")
+
+        return Response({
+            'total_proximas': len(proximas),
+            'notificaciones_creadas': notificaciones_creadas,
+            'proximas': [
+                {
+                    'id': req.id,
+                    'folio': req.folio,
+                    'estado': req.estado,
+                    'fecha_recoleccion_limite': req.fecha_recoleccion_limite.isoformat(),
+                    'horas_restantes': round(
+                        (req.fecha_recoleccion_limite - ahora).total_seconds() / 3600, 1
+                    ),
+                    'centro': req.centro_origen.nombre if req.centro_origen else None,
+                }
+                for req in proximas
+            ],
+        })
+
     @action(detail=False, methods=['get'], url_path='transiciones-disponibles')
     def transiciones_disponibles(self, request):
         """

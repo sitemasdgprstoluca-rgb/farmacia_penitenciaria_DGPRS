@@ -1274,10 +1274,14 @@ const RequisicionDetalle = () => {
                 <p className="font-semibold text-orange-600">
                   {formatFecha(requisicion.fecha_recoleccion_limite)}
                 </p>
-                <p className="text-xs text-gray-400">
-                  {new Date(requisicion.fecha_recoleccion_limite) < new Date() 
-                    ? '⚠️ Plazo vencido' 
-                    : '✓ Dentro del plazo'}
+                <p className="text-xs">
+                  {(() => {
+                    const horas = (new Date(requisicion.fecha_recoleccion_limite) - Date.now()) / 3600000;
+                    if (horas <= 0) return <span className="text-red-600 font-semibold">Plazo vencido</span>;
+                    if (horas <= 4) return <span className="text-red-600 font-semibold animate-pulse">Vence en {horas < 1 ? `${Math.round(horas * 60)} min` : `${Math.floor(horas)}h ${Math.round((horas % 1) * 60)}min`} — urgente</span>;
+                    if (horas <= 24) return <span className="text-amber-600 font-semibold">Vence en {Math.floor(horas)}h {Math.round((horas % 1) * 60)}min</span>;
+                    return <span className="text-green-600">Dentro del plazo</span>;
+                  })()}
                 </p>
               </div>
             </div>

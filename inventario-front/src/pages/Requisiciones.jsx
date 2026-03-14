@@ -39,6 +39,7 @@ import {
   FaChevronDown,
   FaCamera,
   FaFileUpload,
+  FaClock,
   FaSpinner,
   FaUserCheck,
 } from 'react-icons/fa';
@@ -674,6 +675,12 @@ const Requisiciones = () => {
 
     return () => clearTimeout(timeoutId);
   }, [cargarRequisiciones, cargarResumenEstados, centroResuelto, filtroCentro]);
+
+  // Verificar requisiciones próximas a vencer al cargar la página
+  useEffect(() => {
+    if (!centroResuelto) return;
+    requisicionesAPI.alertasVencimiento().catch(() => {});
+  }, [centroResuelto]);
 
   useEffect(() => {
     cargarCatalogos();
@@ -1823,13 +1830,17 @@ const Requisiciones = () => {
                 <option value="pendiente_director">Pend. Director</option>
                 <option value="devuelta">Devuelta</option>
               </optgroup>
-              <optgroup label="En Farmacia">
-                <option value="enviada">Enviada</option>
-                <option value="en_revision">En Revisión</option>
+              {!esUsuarioCentro && (
+                <optgroup label="En Farmacia">
+                  <option value="enviada">Enviada</option>
+                  <option value="en_revision">En Revisión</option>
+                  <option value="en_surtido">En Surtido</option>
+                  <option value="parcial">Parcial</option>
+                  <option value="surtida">Surtida</option>
+                </optgroup>
+              )}
+              <optgroup label="En Proceso">
                 <option value="autorizada">Autorizada</option>
-                <option value="en_surtido">En Surtido</option>
-                <option value="parcial">Parcial</option>
-                <option value="surtida">Surtida</option>
               </optgroup>
               <optgroup label="Finalizados">
                 <option value="entregada">Entregada</option>
@@ -1906,13 +1917,17 @@ const Requisiciones = () => {
                   <option value="pendiente_director">Pendiente Director</option>
                   <option value="devuelta">Devuelta</option>
                 </optgroup>
-                <optgroup label="En Farmacia">
-                  <option value="enviada">Enviada</option>
-                  <option value="en_revision">En Revisión</option>
+                {!esUsuarioCentro && (
+                  <optgroup label="En Farmacia">
+                    <option value="enviada">Enviada</option>
+                    <option value="en_revision">En Revisión</option>
+                    <option value="en_surtido">En Surtido</option>
+                    <option value="parcial">Parcialmente Surtida</option>
+                    <option value="surtida">Surtida</option>
+                  </optgroup>
+                )}
+                <optgroup label="En Proceso">
                   <option value="autorizada">Autorizada</option>
-                  <option value="en_surtido">En Surtido</option>
-                  <option value="parcial">Parcialmente Surtida</option>
-                  <option value="surtida">Surtida</option>
                 </optgroup>
                 <optgroup label="Finalizados">
                   <option value="entregada">Entregada</option>
@@ -2114,9 +2129,23 @@ const Requisiciones = () => {
                       </p>
                     )}
                   </div>
-                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${getEstadoBadge(req.estado)}`}>
-                    {getEstadoLabel(req.estado)}
-                  </span>
+                  <div className="flex flex-col items-end gap-1">
+                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${getEstadoBadge(req.estado)}`}>
+                      {getEstadoLabel(req.estado)}
+                    </span>
+                    {/* Alerta de vencimiento próximo */}
+                    {req.estado === 'autorizada' && req.fecha_recoleccion_limite && (() => {
+                      const horas = (new Date(req.fecha_recoleccion_limite) - Date.now()) / 3600000;
+                      if (horas <= 0 || horas > 24) return null;
+                      const esUrgente = horas <= 4;
+                      return (
+                        <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold animate-pulse ${esUrgente ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                          <FaClock className="text-[10px]" />
+                          Vence en {horas < 1 ? `${Math.round(horas * 60)}min` : `${Math.floor(horas)}h`}
+                        </span>
+                      );
+                    })()}
+                  </div>
                 </div>
 
                 <div className="mb-4">

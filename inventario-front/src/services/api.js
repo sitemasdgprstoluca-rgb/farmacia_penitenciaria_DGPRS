@@ -1441,6 +1441,7 @@ export const requisicionesAPI = {
   // Historial y transiciones
   getHistorial: (id) => apiClient.get(`/requisiciones/${id}/historial/`),
   verificarVencidas: () => apiClient.post('/requisiciones/verificar-vencidas/'),
+  alertasVencimiento: () => apiClient.get('/requisiciones/alertas-vencimiento/', { _background: true }),
   getTransicionesDisponibles: () => apiClient.get('/requisiciones/transiciones-disponibles/'),
   
   // Subir fotos de firma
