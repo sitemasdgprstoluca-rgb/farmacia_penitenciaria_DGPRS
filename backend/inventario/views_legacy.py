@@ -1812,6 +1812,16 @@ class ProductoViewSet(viewsets.ModelViewSet):
                         if not nombre:
                             errores.append({'fila': row_idx, 'error': 'Nombre es obligatorio'})
                             continue
+                        # Presentación es obligatoria y debe contener texto descriptivo
+                        # (el importer bypassa el serializer → validar aquí explícitamente)
+                        if not presentacion or not str(presentacion).strip():
+                            errores.append({'fila': row_idx, 'error': 'Presentación es obligatoria (ej: CAJA CON 10 TABLETAS). Agrega una columna "Presentación" en el Excel.'})
+                            continue
+                        import re as _re_pres
+                        presentacion_norm = str(presentacion).strip().upper()[:200]
+                        if not _re_pres.search(r'[A-ZÁÉÍÓÚÜÑ]', presentacion_norm):
+                            errores.append({'fila': row_idx, 'error': f'Presentación "{presentacion_norm}" debe contener texto (no solo números/símbolos)'})
+                            continue
                         
                         # ISS-FIX: Permitir texto libre en unidad de medida para mejor manejo de farmacia
                         # Ejemplos: "CAJA CON 7 OVULOS", "GOTERO CON 15 MILILITROS"
@@ -1844,15 +1854,13 @@ class ProductoViewSet(viewsets.ModelViewSet):
                             'stock_minimo': stock_min,
                             'categoria': categoria_limpia,
                             'sustancia_activa': str(sustancia_activa).strip()[:200] if sustancia_activa else '',
-                            'presentacion': str(presentacion).strip()[:200] if presentacion else '',
+                            'presentacion': presentacion_norm,  # Ya validado y normalizado a MAYÚSCULAS
                             'concentracion': str(concentracion).strip()[:100] if concentracion else '',
                             'via_administracion': str(via_administracion).strip()[:50] if via_administracion else '',
                             'requiere_receta': parse_bool(requiere_receta),
                             'es_controlado': parse_bool(es_controlado),
                             'activo': str(estado).lower() in ['activo', 'sí', 'si', 'true', '1', 'yes', 's'] if estado else True
                         }
-                        
-                        # Ya no es necesario guardar en presentación porque unidad_medida acepta texto completo
                         
                         # Crear o actualizar producto
                         clave_limpia = str(clave).strip()[:50].upper()
