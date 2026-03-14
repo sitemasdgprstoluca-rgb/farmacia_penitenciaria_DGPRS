@@ -528,7 +528,8 @@ apiClient.interceptors.request.use(
     // ISS-003 FIX: Fail-fast si la API no está configurada correctamente
     assertApiConfigured();
     
-    if (activityCallback) {
+    // No resetear el timer de inactividad para peticiones de fondo (polling silencioso)
+    if (activityCallback && !config._background) {
       activityCallback();
     }
     // Obtener token desde memoria (no localStorage)
@@ -1859,7 +1860,7 @@ export const notificacionesAPI = {
   marcarTodasLeidas: (params) => apiClient.post('/notificaciones/marcar-todas-leidas/', null, { params }),
   // ISS-SEC: DELETE con confirmación obligatoria
   delete: (id, options = {}) => deleteWithConfirmation(`/notificaciones/${id}/`, options),
-  noLeidasCount: () => apiClient.get('/notificaciones/no-leidas-count/'),
+  noLeidasCount: () => apiClient.get('/notificaciones/no-leidas-count/', { _background: true }),
 };
 
 // Configuración del Sistema (tema/colores)
