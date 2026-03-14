@@ -37,6 +37,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.db import transaction
+from django.db.models import F, Value
+from django.db.models.functions import Coalesce, Concat
 from django.utils import timezone
 from django.http import HttpResponse
 import logging
@@ -1016,9 +1018,12 @@ def subir_evidencia_entrega(request, grupo_salida):
         from datetime import datetime
 
         storage = get_storage_service('requisiciones-firmadas')
-        fecha_str = datetime.now().strftime('%Y/%m')
+        now = datetime.now()
+        fecha_str = now.strftime('%Y/%m')
         folio_safe = grupo_salida.replace('/', '-')
-        file_path = f'{fecha_str}/evidencia_{folio_safe}{ext}'
+        # Timestamp único para permitir re-subidas sin caché
+        ts = int(now.timestamp())
+        file_path = f'{fecha_str}/evidencia_{folio_safe}_{ts}{ext}'
 
         archivo.seek(0)
         resultado = storage.upload_file(
@@ -1035,9 +1040,16 @@ def subir_evidencia_entrega(request, grupo_salida):
 
         # Guardar URL en todos los movimientos del grupo
         url = resultado['url']
-        updated = movimientos.update(documento_evidencia_url=url)
+        usuario_nombre = f"{request.user.first_name} {request.user.last_name}".strip() or request.user.username
+        updated = movimientos.update(
+            documento_evidencia_url=url,
+            observaciones=Concat(
+                Coalesce(F('observaciones'), Value('')),
+                Value(f'\n[Evidencia subida por {usuario_nombre} el {now.strftime("%d/%m/%Y %H:%M")}]')
+            )
+        )
 
-        logger.info(f'Evidencia de entrega subida para {grupo_salida}: {url} ({updated} movimientos actualizados)')
+        logger.info(f'Evidencia de entrega subida para {grupo_salida} por {request.user.username}: {url} ({updated} movimientos actualizados)')
 
         return Response({
             'success': True,

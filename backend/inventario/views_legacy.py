@@ -7071,9 +7071,12 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             from inventario.services.storage_service import get_storage_service
             from datetime import datetime
             storage = get_storage_service('requisiciones-firmadas')
-            fecha_str = datetime.now().strftime('%Y/%m')
+            now = datetime.now()
+            fecha_str = now.strftime('%Y/%m')
             folio_safe = (requisicion.folio or f'REQ-{requisicion.id}').replace('/', '-')
-            file_path = f'{fecha_str}/entrega_{folio_safe}{ext}'
+            # Timestamp único para permitir re-subidas sin caché
+            ts = int(now.timestamp())
+            file_path = f'{fecha_str}/entrega_{folio_safe}_{ts}{ext}'
 
             archivo.seek(0)
             resultado = storage.upload_file(
@@ -7092,10 +7095,14 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 'error': 'Error al subir el documento al almacenamiento'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+        usuario_nombre = f"{request.user.first_name} {request.user.last_name}".strip() or request.user.username
         requisicion.documento_entrega_url = resultado['url']
-        requisicion.save(update_fields=['documento_entrega_url'])
+        # Registrar quién subió el documento
+        obs_actual = requisicion.observaciones_farmacia or ''
+        requisicion.observaciones_farmacia = f"{obs_actual}\n[Evidencia subida por {usuario_nombre} el {now.strftime('%d/%m/%Y %H:%M')}]".strip()
+        requisicion.save(update_fields=['documento_entrega_url', 'observaciones_farmacia'])
 
-        logger.info(f'Documento de entrega subido para requisición {requisicion.folio}: {resultado["url"]}')
+        logger.info(f'Documento de entrega subido para requisición {requisicion.folio} por {request.user.username}: {resultado["url"]}')
 
         return Response({
             'mensaje': 'Documento de entrega subido correctamente',
