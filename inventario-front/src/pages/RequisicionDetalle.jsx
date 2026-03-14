@@ -800,7 +800,7 @@ const RequisicionDetalle = () => {
         producto_nombre: d.producto?.nombre || d.producto_nombre || d.producto_descripcion,
         numero_lote: d.lote?.numero_lote || d.lote_numero,
         cantidad_solicitada: d.cantidad_solicitada,
-        stock_disponible: d.stock_disponible || d.lote?.cantidad_actual || d.lote_stock || 0,
+        stock_disponible: d.stock_disponible ?? d.lote?.cantidad_actual ?? d.lote_stock ?? 0,
         esNuevo: false
       };
     }));
@@ -1494,7 +1494,7 @@ const RequisicionDetalle = () => {
                       <div>
                         <span className="text-gray-500">Stock:</span>
                         <span className={`ml-1 font-semibold ${prod.stock_disponible < prod.cantidad_solicitada ? 'text-red-600' : 'text-green-600'}`}>
-                          {prod.stock_disponible || 0}
+                          {prod.stock_disponible ?? 0}
                         </span>
                       </div>
                     )}
@@ -1559,7 +1559,7 @@ const RequisicionDetalle = () => {
                       {esAdminOFarmacia && (
                         <td className="px-2 py-2 text-center">
                           <span className={`font-semibold text-sm ${prod.stock_disponible < prod.cantidad_solicitada ? 'text-red-600' : 'text-green-600'}`}>
-                            {prod.stock_disponible || 0}
+                            {prod.stock_disponible ?? 0}
                           </span>
                         </td>
                       )}

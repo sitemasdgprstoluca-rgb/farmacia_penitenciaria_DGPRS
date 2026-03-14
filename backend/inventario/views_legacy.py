@@ -7688,10 +7688,14 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 'campo_requerido': 'fecha_recoleccion_limite'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        try:
-            from django.utils.dateparse import parse_datetime, parse_date
-            from datetime import time as dt_time
+        # ISS-FIX: Importar ANTES del try para evitar UnboundLocalError
+        # (importar dentro del loop más abajo hace que Python trate timezone como local)
+        from django.utils.dateparse import parse_datetime, parse_date
+        from django.utils import timezone as tz_util
+        from django.db.models import Sum as _Sum
+        from datetime import time as dt_time
 
+        try:
             fecha_recoleccion_str = str(fecha_recoleccion_str).strip()
             logger.info(f"AUTORIZAR: Parseando fecha_recoleccion_limite='{fecha_recoleccion_str}'")
 
@@ -7704,12 +7708,12 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 fecha_date = parse_date(fecha_recoleccion_str)
                 if fecha_date:
                     # Si solo es fecha, agregar hora 17:00
-                    fecha_recoleccion = timezone.make_aware(
+                    fecha_recoleccion = tz_util.make_aware(
                         datetime.combine(fecha_date, dt_time(17, 0, 0))
                     )
 
-            if fecha_recoleccion and timezone.is_naive(fecha_recoleccion):
-                fecha_recoleccion = timezone.make_aware(fecha_recoleccion)
+            if fecha_recoleccion and tz_util.is_naive(fecha_recoleccion):
+                fecha_recoleccion = tz_util.make_aware(fecha_recoleccion)
         except Exception as exc:
             logger.error(f"AUTORIZAR: Error parseando fecha '{fecha_recoleccion_str}': {exc}", exc_info=True)
             return Response({
@@ -7725,7 +7729,7 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             }, status=status.HTTP_400_BAD_REQUEST)
 
         # Validar que la fecha sea futura
-        if fecha_recoleccion <= timezone.now():
+        if fecha_recoleccion <= tz_util.now():
             return Response({
                 'error': 'La fecha límite de recolección debe ser futura'
             }, status=status.HTTP_400_BAD_REQUEST)
@@ -7761,19 +7765,16 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 
                 # 🔒 VALIDACIÓN CRÍTICA: No permitir autorizar más de lo disponible en farmacia
                 # Las requisiciones se surten desde FARMACIA CENTRAL (lotes sin centro asignado)
-                from django.db.models import Sum
-                from django.utils import timezone
-                
                 if item.producto:
                     # Calcular stock disponible en FARMACIA CENTRAL (centro = NULL)
                     # Solo considerar lotes activos y NO vencidos
-                    today = timezone.now().date()
+                    today = tz_util.now().date()
                     stock_farmacia = Lote.objects.filter(
                         producto=item.producto,
                         centro__isnull=True,  # Farmacia Central
                         activo=True,
                         fecha_caducidad__gte=today  # No vencidos
-                    ).aggregate(total=Sum('cantidad_actual'))['total'] or 0
+                    ).aggregate(total=_Sum('cantidad_actual'))['total'] or 0
                     
                     producto_clave = item.producto.clave if item.producto else f'ID {item_id}'
                     
@@ -7841,8 +7842,8 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         # ISS-NOTIF-FIX: Usar save() en lugar de update() para disparar signals
         # Los signals post_save crean notificaciones automáticamente
         requisicion.estado = 'autorizada'
-        requisicion.fecha_autorizacion = timezone.now()
-        requisicion.fecha_autorizacion_farmacia = timezone.now()
+        requisicion.fecha_autorizacion = tz_util.now()
+        requisicion.fecha_autorizacion_farmacia = tz_util.now()
         requisicion.fecha_recoleccion_limite = fecha_recoleccion
         requisicion.autorizador_farmacia = request.user
         requisicion.autorizador = request.user
