@@ -465,9 +465,21 @@ export const PRODUCTO_CAMPOS_OBLIGATORIOS = ['clave', 'descripcion', 'unidad_med
  * @param {boolean} esEdicion - Si es edición (algunos campos opcionales)
  * @returns {Object} { valido: boolean, errores: Object, primerError: string|null }
  */
+// Unidades mínimas de dispensación autorizadas (deben coincidir con backend y select del formulario)
+export const UNIDADES_MINIMAS_VALIDAS = [
+  'pieza', 'tableta', 'cápsula', 'mililitro', 'sobre',
+  'ampolleta', 'gramo', 'dosis', 'parche', 'supositorio', 'óvulo', 'gota',
+];
+
+// Mapa de normalización: variante sin acento → forma canónica con acento
+const _UNIDAD_NORMALIZACION = {
+  'capsula': 'cápsula',
+  'ovulo': 'óvulo',
+};
+
 export const validarProducto = (producto, esEdicion = false) => {
   const errores = {};
-  
+
   // Campos obligatorios
   if (!producto.clave?.trim()) {
     errores.clave = 'La clave del producto es obligatoria';
@@ -476,23 +488,48 @@ export const validarProducto = (producto, esEdicion = false) => {
   } else if (!/^[A-Za-z0-9\-_]+$/.test(producto.clave)) {
     errores.clave = 'La clave solo puede contener letras, números, guiones y guiones bajos';
   }
-  
+
   // Nombre es obligatorio (descripcion es opcional)
   if (!producto.nombre?.trim()) {
     errores.nombre = 'El nombre del producto es obligatorio';
   } else if (producto.nombre.length < 3) {
     errores.nombre = 'El nombre debe tener al menos 3 caracteres';
   }
-  
+
   if (!producto.unidad_medida?.trim()) {
     errores.unidad_medida = 'La unidad de medida es obligatoria';
   }
-  
-  // Presentación es obligatoria siempre (creación y edición)
+
+  // Presentación: obligatoria, debe contener al menos una letra
   if (!producto.presentacion?.trim()) {
-    errores.presentacion = 'La presentación es obligatoria';
+    errores.presentacion = 'La presentación es obligatoria (ej: CAJA CON 10 TABLETAS)';
+  } else if (producto.presentacion.trim().length < 2) {
+    errores.presentacion = 'La presentación debe tener al menos 2 caracteres';
+  } else if (!/[a-zA-ZÀ-ÿ]/.test(producto.presentacion)) {
+    errores.presentacion = 'La presentación debe contener texto descriptivo, no solo números o símbolos';
   }
-  
+
+  // factor_conversion: entero entre 1 y 9999
+  if (producto.factor_conversion !== undefined && producto.factor_conversion !== null && producto.factor_conversion !== '') {
+    const factor = parseInt(producto.factor_conversion, 10);
+    if (isNaN(factor) || String(producto.factor_conversion).includes('.')) {
+      errores.factor_conversion = 'El factor de conversión debe ser un número entero';
+    } else if (factor < 1) {
+      errores.factor_conversion = 'El factor de conversión debe ser al menos 1';
+    } else if (factor > 9999) {
+      errores.factor_conversion = 'El factor de conversión no puede exceder 9999';
+    }
+  }
+
+  // unidad_minima: debe ser de la lista autorizada (si se proporciona)
+  if (producto.unidad_minima) {
+    const norm = producto.unidad_minima.trim().toLowerCase();
+    const canonico = _UNIDAD_NORMALIZACION[norm] || norm;
+    if (!UNIDADES_MINIMAS_VALIDAS.includes(canonico)) {
+      errores.unidad_minima = `Unidad no válida. Opciones: ${UNIDADES_MINIMAS_VALIDAS.join(', ')}`;
+    }
+  }
+
   // Validar stock_minimo si se proporciona (debe ser >= 0)
   if (producto.stock_minimo !== undefined && producto.stock_minimo !== null && producto.stock_minimo !== '') {
     const minimo = Number(producto.stock_minimo);
@@ -504,18 +541,18 @@ export const validarProducto = (producto, esEdicion = false) => {
       errores.stock_minimo = 'El stock mínimo debe ser un número entero';
     }
   }
-  
+
   // Validar categoría si se proporciona
   const categoriasValidas = ['medicamento', 'material_curacion', 'insumo', 'equipo', 'otro'];
   if (producto.categoria && !categoriasValidas.includes(producto.categoria)) {
     errores.categoria = `Categoría inválida. Opciones: ${categoriasValidas.join(', ')}`;
   }
-  
+
   // es_controlado es obligatorio (debe ser boolean explícito)
   if (producto.es_controlado === undefined || producto.es_controlado === null || producto.es_controlado === '') {
     errores.es_controlado = 'Debe indicar si el medicamento es controlado';
   }
-  
+
   const valido = Object.keys(errores).length === 0;
   return {
     valido,

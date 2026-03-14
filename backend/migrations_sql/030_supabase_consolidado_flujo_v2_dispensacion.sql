@@ -28,19 +28,55 @@ ALTER TABLE productos
 ALTER TABLE productos
   ADD COLUMN IF NOT EXISTS factor_conversion integer DEFAULT 1;
 
+-- Constraint factor_conversion: >= 1 (evita división por cero) y <= 9999
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'chk_productos_factor_conversion_positivo'
+    SELECT 1 FROM pg_constraint WHERE conname = 'chk_productos_factor_conversion_rango'
   ) THEN
     ALTER TABLE productos
-      ADD CONSTRAINT chk_productos_factor_conversion_positivo
-      CHECK (factor_conversion >= 1);
+      ADD CONSTRAINT chk_productos_factor_conversion_rango
+      CHECK (factor_conversion >= 1 AND factor_conversion <= 9999);
+  END IF;
+  -- Eliminar constraint antiguo si existe
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'chk_productos_factor_conversion_positivo'
+  ) THEN
+    ALTER TABLE productos DROP CONSTRAINT chk_productos_factor_conversion_positivo;
   END IF;
 END $$;
 
-COMMENT ON COLUMN productos.unidad_minima IS 'Unidad real de dispensación: tableta, capsula, ml, ampolleta, dosis, sobre, pieza';
-COMMENT ON COLUMN productos.factor_conversion IS 'Cantidad de unidades mínimas por presentación comercial. Ej: caja de 22 tabletas = 22';
+-- Constraint unidad_minima: solo valores autorizados
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'chk_productos_unidad_minima_valida'
+  ) THEN
+    ALTER TABLE productos
+      ADD CONSTRAINT chk_productos_unidad_minima_valida
+      CHECK (unidad_minima IN (
+        'pieza', 'tableta', 'cápsula', 'mililitro', 'sobre',
+        'ampolleta', 'gramo', 'dosis', 'parche', 'supositorio', 'óvulo', 'gota'
+      ));
+  END IF;
+END $$;
+
+-- Constraint presentacion: no puede ser solo números/símbolos (debe tener texto)
+-- Nota: PostgreSQL no tiene regexp CHECK nativo antes de pg12, pero sí en pg12+
+-- Supabase usa PostgreSQL 15+ así que esto es seguro
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'chk_productos_presentacion_tiene_texto'
+  ) THEN
+    ALTER TABLE productos
+      ADD CONSTRAINT chk_productos_presentacion_tiene_texto
+      CHECK (presentacion IS NULL OR presentacion ~ '[A-Za-záéíóúüñÁÉÍÓÚÜÑ]');
+  END IF;
+END $$;
+
+COMMENT ON COLUMN productos.unidad_minima IS 'Unidad real de dispensación: pieza, tableta, cápsula, mililitro, sobre, ampolleta, gramo, dosis, parche, supositorio, óvulo, gota';
+COMMENT ON COLUMN productos.factor_conversion IS 'Cantidad de unidades mínimas por presentación comercial (1-9999). Ej: caja de 22 tabletas = 22. NUNCA 0 (causaría división por cero)';
 
 -- ============================================================================
 -- SECCIÓN 2: LOTES - Tracking dual de stock

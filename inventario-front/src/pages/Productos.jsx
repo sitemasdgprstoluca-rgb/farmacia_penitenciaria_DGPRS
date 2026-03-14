@@ -1197,7 +1197,8 @@ const Productos = () => {
         es_controlado: formData.es_controlado,
         activo: formData.activo,
         unidad_minima: formData.unidad_minima || 'pieza',
-        factor_conversion: parseInt(formData.factor_conversion, 10) || 1,
+        // Sanitizar: asegurar entero 1-9999, nunca 0 ni NaN (evitar división por cero en backend)
+        factor_conversion: Math.min(9999, Math.max(1, parseInt(formData.factor_conversion, 10) || 1)),
       };
       
       // Campos protegidos: solo incluir si NO tiene lotes
@@ -2790,16 +2791,18 @@ const Productos = () => {
                     <option value="gota">Gota</option>
                   </select>
                   <p className="text-[11px] text-gray-500 mt-1">La unidad más pequeña que se entrega al paciente</p>
+                  {formErrors.unidad_minima && <p className="text-[11px] text-red-600">{formErrors.unidad_minima}</p>}
                 </div>
                 <div>
                   <label className="label-elevated">Factor de conversión</label>
                   <input
                     type="number"
                     min="1"
+                    max="9999"
                     step="1"
                     value={formData.factor_conversion}
                     onChange={(e) => setFormData({ ...formData, factor_conversion: e.target.value, _factorManual: true })}
-                    className="input-elevated"
+                    className={`input-elevated ${formErrors.factor_conversion ? '!border-red-500' : ''}`}
                   />
                   <p className="text-[11px] text-gray-500 mt-1">
                     {parseInt(formData.factor_conversion) > 1
@@ -2809,6 +2812,7 @@ const Productos = () => {
                   {!formData._factorManual && detectarFactorPresentacion(formData.presentacion) && (
                     <p className="text-[11px] text-indigo-600 mt-1">Auto-detectado desde la presentación</p>
                   )}
+                  {formErrors.factor_conversion && <p className="text-[11px] text-red-600">{formErrors.factor_conversion}</p>}
                 </div>
               </div>
 

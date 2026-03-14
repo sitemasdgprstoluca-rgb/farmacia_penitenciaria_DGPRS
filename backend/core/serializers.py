@@ -786,8 +786,8 @@ class ProductoSerializer(serializers.ModelSerializer):
             'es_controlado': {'required': True},
             'descripcion': {'required': False, 'allow_null': True, 'allow_blank': True},
             'nombre_comercial': {'required': False, 'allow_null': True, 'allow_blank': True},
-            'unidad_minima': {'required': False},
-            'factor_conversion': {'required': False, 'min_value': 1},
+            'unidad_minima': {'required': False, 'allow_blank': False, 'default': 'pieza'},
+            'factor_conversion': {'required': False, 'min_value': 1, 'max_value': 9999},
         }
     
     def get_unidad_base(self, obj):
@@ -924,16 +924,82 @@ class ProductoSerializer(serializers.ModelSerializer):
         return valor_normalizado
     
     def validate_presentacion(self, value):
-        """Presentación es requerida y debe tener contenido válido."""
-        if not value or value.strip() == '':
-            raise serializers.ValidationError('La presentación es requerida')
-        presentacion_limpia = value.strip().upper()
+        """
+        Presentación robusta: obligatoria, normalizada, debe tener letras.
+        Peor caso: usuario manda solo números, solo símbolos, espacios, cadena gigante.
+        """
+        import re
+        if not value or not str(value).strip():
+            raise serializers.ValidationError(
+                'La presentación es obligatoria (ej: CAJA CON 10 TABLETAS, TABLETA 500MG)'
+            )
+        presentacion_limpia = str(value).strip().upper()
         if len(presentacion_limpia) < 2:
-            raise serializers.ValidationError('La presentación debe tener al menos 2 caracteres')
+            raise serializers.ValidationError(
+                'La presentación debe tener al menos 2 caracteres'
+            )
         if len(presentacion_limpia) > 200:
-            raise serializers.ValidationError('La presentación no puede exceder 200 caracteres')
+            raise serializers.ValidationError(
+                'La presentación no puede exceder 200 caracteres'
+            )
+        # Debe contener al menos una letra — no solo números/símbolos
+        if not re.search(r'[A-ZÁÉÍÓÚÜÑ]', presentacion_limpia):
+            raise serializers.ValidationError(
+                'La presentación debe contener texto descriptivo, no solo números o símbolos '
+                '(ej: CAJA CON 10 TABLETAS, FRASCO 120 ML, TABLETA 500MG)'
+            )
         return presentacion_limpia
-    
+
+    def validate_factor_conversion(self, value):
+        """
+        Factor de conversión robusto: entero 1-9999.
+        Peor caso: 0 (división por cero), negativo, texto, float, None.
+        """
+        if value is None:
+            return 1  # Default seguro
+        try:
+            factor = int(value)
+        except (TypeError, ValueError):
+            raise serializers.ValidationError(
+                'El factor de conversión debe ser un número entero (ej: 20 para una caja de 20 tabletas)'
+            )
+        if factor < 1:
+            raise serializers.ValidationError(
+                'El factor de conversión debe ser al menos 1 '
+                '(un valor de 0 causaría división por cero en los cálculos de stock)'
+            )
+        if factor > 9999:
+            raise serializers.ValidationError(
+                'El factor de conversión no puede exceder 9999'
+            )
+        return factor
+
+    def validate_unidad_minima(self, value):
+        """
+        Unidad mínima robusta: debe ser uno de los valores autorizados.
+        Normaliza variantes sin acento a la forma canónica.
+        Peor caso: cadena vacía, valor inventado, con acento o sin acento.
+        """
+        VALIDAS = [
+            'pieza', 'tableta', 'cápsula', 'mililitro', 'sobre',
+            'ampolleta', 'gramo', 'dosis', 'parche', 'supositorio', 'óvulo', 'gota',
+        ]
+        NORMALIZACION = {
+            'capsula': 'cápsula',
+            'ovulo': 'óvulo',
+        }
+        if not value or not str(value).strip():
+            return 'pieza'  # Default seguro
+        valor_norm = str(value).strip().lower()
+        # Aplicar normalización de acentos
+        valor_canonico = NORMALIZACION.get(valor_norm, valor_norm)
+        if valor_canonico not in VALIDAS:
+            raise serializers.ValidationError(
+                f'Unidad mínima no válida: "{value}". '
+                f'Valores aceptados: {", ".join(VALIDAS)}'
+            )
+        return valor_canonico
+
     def validate_stock_minimo(self, value):
         """Stock mínimo debe ser un número no negativo."""
         if value is None:
