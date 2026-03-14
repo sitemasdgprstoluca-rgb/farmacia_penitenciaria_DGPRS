@@ -2814,12 +2814,14 @@ const Movimientos = () => {
                                               </span>
                                             )}
                                           </div>
-                                        ) : grupo.confirmado ? (
+                                        ) : grupo.confirmado ? (() => {
+                                          const evidenciaUrl = grupo.documento_evidencia_url || allItems[0]?.documento_evidencia_url;
+                                          return (
                                           <div className="flex gap-1">
                                             {/* Ver documento: si hay evidencia firmada abre esa, si no descarga comprobante del sistema */}
-                                            {allItems[0]?.documento_evidencia_url ? (
+                                            {evidenciaUrl ? (
                                               <a
-                                                href={allItems[0].documento_evidencia_url}
+                                                href={evidenciaUrl}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 onClick={(e) => e.stopPropagation()}
@@ -2841,11 +2843,11 @@ const Movimientos = () => {
                                             <label
                                               onClick={(e) => e.stopPropagation()}
                                               className={`p-1.5 cursor-pointer rounded transition-all duration-200 shadow-sm hover:shadow-md ${
-                                                allItems[0]?.documento_evidencia_url
+                                                evidenciaUrl
                                                   ? 'bg-gradient-to-b from-blue-400 to-blue-500 text-white hover:from-blue-500 hover:to-blue-600'
                                                   : 'bg-gradient-to-b from-amber-500 to-amber-600 text-white hover:from-amber-600 hover:to-amber-700 animate-pulse'
                                               }`}
-                                              title={allItems[0]?.documento_evidencia_url ? 'Reemplazar hoja firmada' : 'Subir hoja de entrega firmada (PDF/imagen)'}
+                                              title={evidenciaUrl ? 'Reemplazar hoja firmada' : 'Subir hoja de entrega firmada (PDF/imagen)'}
                                             >
                                               <FaUpload className="text-xs" />
                                               <input
@@ -2862,7 +2864,8 @@ const Movimientos = () => {
                                               />
                                             </label>
                                           </div>
-                                        ) : (
+                                          );
+                                        })() : (
                                           <span className="text-[10px] text-gray-400">Sin acciones</span>
                                         )}
                                       </div>

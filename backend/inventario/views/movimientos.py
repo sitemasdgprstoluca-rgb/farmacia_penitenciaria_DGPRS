@@ -989,7 +989,7 @@ class MovimientoViewSet(
             queryset.select_related(
                 'lote__producto', 'centro_origen', 'centro_destino', 'usuario'
             ).only(
-                'id', 'tipo', 'subtipo_salida', 'cantidad', 'fecha', 'fecha_salida', 'motivo', 'referencia',
+                'id', 'tipo', 'subtipo_salida', 'cantidad', 'fecha', 'fecha_salida', 'motivo', 'referencia', 'documento_evidencia_url',
                 'lote__id', 'lote__numero_lote', 'lote__producto__id', 'lote__producto__clave', 'lote__producto__nombre',
                 'lote__centro_id',
                 'centro_origen__id', 'centro_origen__nombre',
@@ -1088,6 +1088,10 @@ class MovimientoViewSet(
                         grupo['usuario_nombre'] = mov.usuario.get_full_name() or mov.usuario.username
                         grupo['usuario_id'] = mov.usuario.id
                 
+                # Capturar documento_evidencia_url del primer movimiento que lo tenga
+                if not grupo.get('documento_evidencia_url') and getattr(mov, 'documento_evidencia_url', None):
+                    grupo['documento_evidencia_url'] = mov.documento_evidencia_url
+
                 # ISS-FIX: Actualizar estados pendiente/confirmado con CUALQUIER movimiento del grupo
                 # Un grupo está confirmado si ALGÚN movimiento tiene [CONFIRMADO]
                 # Un grupo está pendiente si ALGÚN movimiento tiene [PENDIENTE] y NINGUNO tiene [CONFIRMADO]
@@ -1154,6 +1158,7 @@ class MovimientoViewSet(
                     'producto_clave': mov.lote.producto.clave if mov.lote and mov.lote.producto else None,
                     'producto_nombre': mov.lote.producto.nombre if mov.lote and mov.lote.producto else None,
                     'centro_nombre': item_centro,
+                    'documento_evidencia_url': getattr(mov, 'documento_evidencia_url', None),
                 }
                 grupo['items'].append(item_data)
                 
