@@ -1500,6 +1500,62 @@ const Donaciones = () => {
     }
   };
 
+  // =====================================================
+  // Documento de Hoja de Entrega (PDF)
+  // =====================================================
+
+  const handleSubirDocumentoEntrega = async (donacion, file) => {
+    if (!file) return;
+    const toastId = toast.loading('Subiendo hoja de entrega...');
+    try {
+      await donacionesAPI.subirDocumentoEntrega(donacion.id, file);
+      toast.success('Hoja de entrega subida correctamente', { id: toastId });
+      cargarDonaciones();
+      // Actualizar modal de detalle si está abierto
+      if (viewingDonacion && viewingDonacion.id === donacion.id) {
+        const res = await donacionesAPI.getById(donacion.id);
+        setViewingDonacion(res.data);
+      }
+    } catch (error) {
+      console.error('Error al subir hoja de entrega:', error);
+      const errorMsg = error.response?.data?.error || 'Error al subir el documento';
+      toast.error(errorMsg, { id: toastId });
+    }
+  };
+
+  const handleDescargarDocumentoEntrega = async (donacion) => {
+    const win = abrirPdfEnNavegador();
+    if (!win) return;
+    try {
+      const response = await donacionesAPI.descargarDocumentoEntrega(donacion.id);
+      if (abrirPdfEnNavegador(response.data, win)) {
+        toast.success('Documento descargado correctamente');
+      }
+    } catch (error) {
+      try { if (win && !win._fallback && !win.closed) win.close(); } catch { /* */ }
+      console.error('Error al descargar hoja de entrega:', error);
+      toast.error('Error al descargar la hoja de entrega');
+    }
+  };
+
+  const handleEliminarDocumentoEntrega = async (donacion) => {
+    if (!confirm('¿Está seguro de eliminar la hoja de entrega? Esta acción no se puede deshacer.')) {
+      return;
+    }
+    try {
+      await donacionesAPI.eliminarDocumentoEntrega(donacion.id);
+      toast.success('Hoja de entrega eliminada');
+      cargarDonaciones();
+      if (viewingDonacion && viewingDonacion.id === donacion.id) {
+        const res = await donacionesAPI.getById(donacion.id);
+        setViewingDonacion(res.data);
+      }
+    } catch (error) {
+      console.error('Error al eliminar hoja de entrega:', error);
+      toast.error('Error al eliminar la hoja de entrega');
+    }
+  };
+
   // Limpiar filtros
   const limpiarFiltros = () => {
     setSearchTerm('');
@@ -2050,6 +2106,52 @@ const Donaciones = () => {
                     </button>
                   )}
                 </div>
+                {/* Hoja de entrega - Seccion visible */}
+                <div className="mt-3 pt-3 border-t border-gray-100">
+                  {donacion.tiene_documento_entrega ? (
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-green-50 text-green-700 rounded-lg text-xs font-medium">
+                        <FaFilePdf className="text-red-500" /> {donacion.documento_entrega_nombre}
+                      </span>
+                      <button
+                        onClick={() => handleDescargarDocumentoEntrega(donacion)}
+                        className="px-2.5 py-1 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 transition-colors flex items-center gap-1"
+                      >
+                        <FaDownload size={10} /> Ver
+                      </button>
+                      {puede.editar && (
+                        <button
+                          onClick={() => handleEliminarDocumentoEntrega(donacion)}
+                          className="px-2 py-1 text-red-500 hover:bg-red-50 text-xs rounded-lg transition-colors flex items-center gap-1"
+                        >
+                          <FaTrash size={10} />
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400 flex items-center gap-1">
+                        <FaFilePdf className="text-gray-300" /> Sin hoja de entrega
+                      </span>
+                      {puede.editar && (
+                        <label className="px-2.5 py-1 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 cursor-pointer transition-colors flex items-center gap-1">
+                          <FaUpload size={10} /> Subir PDF
+                          <input
+                            type="file"
+                            accept="application/pdf"
+                            className="hidden"
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                handleSubirDocumentoEntrega(donacion, e.target.files[0]);
+                                e.target.value = '';
+                              }
+                            }}
+                          />
+                        </label>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -2067,6 +2169,7 @@ const Donaciones = () => {
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Fecha</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Items</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Estado</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Hoja Entrega</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white whitespace-nowrap">Acciones</th>
                 </tr>
               </thead>
@@ -2108,6 +2211,48 @@ const Donaciones = () => {
                         <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${estado.color}`}>
                           {estado.icon} {estado.label}
                         </span>
+                      </td>
+                      {/* Columna Hoja de Entrega */}
+                      <td className="px-4 py-3 text-center">
+                        {donacion.tiene_documento_entrega ? (
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => handleDescargarDocumentoEntrega(donacion)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 rounded-lg text-xs font-medium transition-colors"
+                              title={`Descargar: ${donacion.documento_entrega_nombre}`}
+                            >
+                              <FaFilePdf className="text-red-500" /> Ver PDF
+                            </button>
+                            {puede.editar && (
+                              <button
+                                onClick={() => handleEliminarDocumentoEntrega(donacion)}
+                                className="p-1.5 text-red-400 hover:bg-red-50 rounded-lg transition-colors"
+                                title="Eliminar hoja de entrega"
+                              >
+                                <FaTrash size={12} />
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          puede.editar ? (
+                            <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white hover:bg-blue-700 rounded-lg text-xs font-medium cursor-pointer transition-colors">
+                              <FaUpload size={12} /> Subir PDF
+                              <input
+                                type="file"
+                                accept="application/pdf"
+                                className="hidden"
+                                onChange={(e) => {
+                                  if (e.target.files && e.target.files[0]) {
+                                    handleSubirDocumentoEntrega(donacion, e.target.files[0]);
+                                    e.target.value = '';
+                                  }
+                                }}
+                              />
+                            </label>
+                          ) : (
+                            <span className="text-xs text-gray-400">Sin documento</span>
+                          )
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-center gap-1">
@@ -2197,6 +2342,7 @@ const Donaciones = () => {
                               <FaTrash />
                             </button>
                           )}
+
                         </div>
                       </td>
                     </tr>
@@ -3502,6 +3648,65 @@ const Donaciones = () => {
                   <div className="col-span-2">
                     <span className="text-sm text-gray-500">Notas</span>
                     <p className="font-medium text-sm">{viewingDonacion.notas}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Hoja de Entrega */}
+              <div className="mb-6 bg-gray-50 p-4 rounded-lg">
+                <h3 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                  <FaFilePdf className="text-red-500" /> Hoja de Entrega
+                </h3>
+                {viewingDonacion.tiene_documento_entrega ? (
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span className="text-sm text-gray-600">
+                      {viewingDonacion.documento_entrega_nombre}
+                      {viewingDonacion.documento_entrega_tamano && (
+                        <span className="text-gray-400 ml-1">
+                          ({(viewingDonacion.documento_entrega_tamano / 1024).toFixed(0)} KB)
+                        </span>
+                      )}
+                    </span>
+                    <button
+                      onClick={() => handleDescargarDocumentoEntrega(viewingDonacion)}
+                      className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors flex items-center gap-1"
+                    >
+                      <FaDownload size={12} /> Descargar
+                    </button>
+                    {puede.editar && (
+                      <button
+                        onClick={() => handleEliminarDocumentoEntrega(viewingDonacion)}
+                        className="px-3 py-1.5 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600 transition-colors flex items-center gap-1"
+                      >
+                        <FaTrash size={12} /> Eliminar
+                      </button>
+                    )}
+                    {viewingDonacion.documento_entrega_por_nombre && (
+                      <span className="text-xs text-gray-400">
+                        Subido por {viewingDonacion.documento_entrega_por_nombre}
+                        {viewingDonacion.documento_entrega_fecha && ` el ${formatFecha(viewingDonacion.documento_entrega_fecha)}`}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-gray-400">Sin documento adjunto</span>
+                    {puede.editar && (
+                      <label className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors cursor-pointer flex items-center gap-1">
+                        <FaUpload size={12} /> Subir PDF
+                        <input
+                          type="file"
+                          accept="application/pdf"
+                          className="hidden"
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files[0]) {
+                              handleSubirDocumentoEntrega(viewingDonacion, e.target.files[0]);
+                              e.target.value = '';
+                            }
+                          }}
+                        />
+                      </label>
+                    )}
                   </div>
                 )}
               </div>

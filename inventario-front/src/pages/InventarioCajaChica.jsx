@@ -124,14 +124,19 @@ const InventarioCajaChica = () => {
     }
   }, [esUsuarioFarmacia]);
 
+  // Hidratar centroFiltro cuando el usuario carga (puede ser undefined en el primer render)
+  useEffect(() => {
+    if (esUsuarioCentro && centroUsuario && !centroFiltro) {
+      setCentroFiltro(centroUsuario);
+    }
+  }, [centroUsuario, esUsuarioCentro]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Cargar centros
   useEffect(() => {
     const fetchCentros = async () => {
       try {
-        console.log('Cargando centros para usuario farmacia...');
         const response = await centrosAPI.getAll({ activo: true, page_size: 100 });
         const data = response.data?.results || response.data || [];
-        console.log('Centros cargados:', data.length);
         setCentros(data);
       } catch (error) {
         console.error('Error al cargar centros:', error);

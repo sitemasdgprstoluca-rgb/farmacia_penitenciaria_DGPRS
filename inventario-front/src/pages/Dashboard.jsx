@@ -65,20 +65,20 @@ import './Dashboard.css';
 // ============================================================================
 
 const COLORES_ESTADO_REQUISICION = {
-  'BORRADOR': '#9CA3AF',
+  'BORRADOR': '#94A3B8',
   'PENDIENTE_ADMIN': '#F59E0B',
-  'PENDIENTE_DIRECTOR': '#F97316',
+  'PENDIENTE_DIRECTOR': '#D97706',
   'ENVIADA': '#3B82F6',
-  'EN_REVISION': '#6366F1',
+  'EN_REVISION': '#8B5CF6',
   'AUTORIZADA': '#06B6D4',
-  'EN_SURTIDO': '#14B8A6',
+  'EN_SURTIDO': '#0EA5E9',
   'PARCIAL': '#A855F7',
   'SURTIDA': '#22C55E',
   'ENTREGADA': '#10B981',
   'RECHAZADA': '#EF4444',
-  'CANCELADA': '#DC2626',
-  'VENCIDA': '#B91C1C',
-  'DEVUELTA': '#F87171',
+  'CANCELADA': '#78716C',
+  'VENCIDA': '#EA580C',
+  'DEVUELTA': '#EC4899',
   'DEFAULT': '#9F2241',
 };
 

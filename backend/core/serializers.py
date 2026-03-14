@@ -3801,6 +3801,7 @@ class DetalleDispensacionSerializer(serializers.ModelSerializer):
     producto_clave = serializers.SerializerMethodField()
     lote_numero = serializers.SerializerMethodField()
     lote_caducidad = serializers.SerializerMethodField()
+    lote_stock = serializers.SerializerMethodField()
     completo = serializers.BooleanField(read_only=True)
     producto_sustituto_nombre = serializers.SerializerMethodField()
     unidad_minima = serializers.SerializerMethodField()
@@ -3811,7 +3812,7 @@ class DetalleDispensacionSerializer(serializers.ModelSerializer):
         model = DetalleDispensacion
         fields = [
             'id', 'dispensacion', 'producto', 'producto_nombre', 'producto_clave',
-            'lote', 'lote_numero', 'lote_caducidad',
+            'lote', 'lote_numero', 'lote_caducidad', 'lote_stock',
             'cantidad_prescrita', 'cantidad_dispensada', 'completo',
             'dosis', 'frecuencia', 'duracion_tratamiento', 'via_administracion', 'horarios',
             'estado', 'producto_sustituto', 'producto_sustituto_nombre', 'motivo_sustitucion',
@@ -3831,6 +3832,12 @@ class DetalleDispensacionSerializer(serializers.ModelSerializer):
     
     def get_lote_caducidad(self, obj):
         return obj.lote.fecha_caducidad if obj.lote else None
+
+    def get_lote_stock(self, obj):
+        """Stock actual del lote en unidades mínimas (para mostrar en UI de dispensación)"""
+        if obj.lote:
+            return obj.lote.cantidad_actual_unidades
+        return None
     
     def get_producto_sustituto_nombre(self, obj):
         return obj.producto_sustituto.nombre if obj.producto_sustituto else None

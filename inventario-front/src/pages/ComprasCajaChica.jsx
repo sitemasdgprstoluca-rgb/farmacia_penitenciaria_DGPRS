@@ -57,6 +57,7 @@ import {
   FaCheckCircle,
   FaWarehouse,
   FaChevronDown,
+  FaUndo,
 } from 'react-icons/fa';
 import PageHeader from '../components/PageHeader';
 import Pagination from '../components/Pagination';
@@ -75,6 +76,7 @@ const ESTADOS_COMPRA = [
   { value: 'enviada_farmacia', label: 'En Farmacia' },
   { value: 'sin_stock_farmacia', label: 'Sin Stock (Farmacia)' },
   { value: 'rechazada_farmacia', label: 'Hay Stock (Farmacia)' },
+  { value: 'devuelta', label: 'Devuelta para corrección' },
   { value: 'enviada_admin', label: 'Enviada a Admin' },
   { value: 'autorizada_admin', label: 'Autorizada Admin' },
   { value: 'enviada_director', label: 'Enviada a Director' },
@@ -90,6 +92,7 @@ const ESTADO_COLORS = {
   enviada_farmacia: 'bg-amber-100 text-amber-800 border-amber-300',
   sin_stock_farmacia: 'bg-teal-100 text-teal-800 border-teal-300',
   rechazada_farmacia: 'bg-rose-100 text-rose-800 border-rose-300',
+  devuelta: 'bg-orange-100 text-orange-800 border-orange-300',
   enviada_admin: 'bg-orange-100 text-orange-800 border-orange-300',
   autorizada_admin: 'bg-cyan-100 text-cyan-800 border-cyan-300',
   enviada_director: 'bg-indigo-100 text-indigo-800 border-indigo-300',
@@ -105,6 +108,7 @@ const ESTADO_ICONS = {
   enviada_farmacia: FaSearch,
   sin_stock_farmacia: FaCheck,
   rechazada_farmacia: FaExclamationTriangle,
+  devuelta: FaExclamationTriangle,
   enviada_admin: FaClipboardList,
   autorizada_admin: FaUserCheck,
   enviada_director: FaClipboardList,
@@ -277,10 +281,8 @@ const ComprasCajaChica = () => {
   useEffect(() => {
     const fetchCentros = async () => {
       try {
-        console.log('Cargando centros para usuario farmacia...');
         const response = await centrosAPI.getAll({ activo: true, page_size: 100 });
         const data = response.data?.results || response.data || [];
-        console.log('Centros cargados:', data.length);
         setCentros(data);
       } catch (error) {
         console.error('Error al cargar centros:', error);
@@ -1084,17 +1086,6 @@ const ComprasCajaChica = () => {
       const response = await comprasCajaChicaAPI.getById(compra.id);
       const compraCompleta = response.data;
       
-      // DEBUG: Log para verificar condiciones
-      console.log('=== DEBUG COMPRA AUTORIZADA ===');
-      console.log('Usuario actual:', user);
-      console.log('esUsuarioCentro:', esUsuarioCentro);
-      console.log('Compra completa:', compraCompleta);
-      console.log('Estado compra:', compraCompleta.estado);
-      console.log('Solicitante compra:', compraCompleta.solicitante);
-      console.log('esSolicitante result:', esSolicitante(compraCompleta));
-      console.log('Tiene detalles:', compraCompleta.detalles?.length);
-      console.log('================================');
-      
       setDetailModal({ show: true, compra: compraCompleta });
       
       // Si está autorizada, inicializar formulario de captura (SOLO SOLICITANTE)
@@ -1381,7 +1372,7 @@ const ComprasCajaChica = () => {
                   </div>
                   
                   {/* Acciones */}
-                  <div className="flex items-center justify-end gap-3 mt-3 pt-2">
+                  <div className="flex items-center justify-end gap-3 mt-3 pt-2 flex-wrap">
                     <button
                       onClick={() => handleViewDetails(compra)}
                       className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
@@ -1389,7 +1380,7 @@ const ComprasCajaChica = () => {
                     >
                       <FaEye size={18} />
                     </button>
-                    {puedeEditar && ['pendiente', 'rechazada'].includes(compra.estado) && esSolicitante(compra) && (
+                    {puedeEditar && ['pendiente', 'rechazada', 'rechazada_farmacia', 'devuelta'].includes(compra.estado) && esSolicitante(compra) && (
                       <button
                         onClick={() => handleEdit(compra)}
                         className="p-2 text-yellow-600 hover:bg-yellow-50 rounded-lg"
@@ -1398,8 +1389,108 @@ const ComprasCajaChica = () => {
                         <FaEdit size={18} />
                       </button>
                     )}
-                    {((puedeEditar && compra.estado === 'pendiente') || 
-                      ((esUsuarioFarmacia || user?.is_superuser) && 
+                    {/* REGISTRAR COMPRA REALIZADA */}
+                    {esUsuarioCentro && compra.estado === 'autorizada' && esSolicitante(compra) && (
+                      <button
+                        onClick={() => handleOpenRegistrarCompra(compra)}
+                        className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg"
+                        title="Registrar Compra Realizada"
+                      >
+                        <FaShoppingCart size={18} />
+                      </button>
+                    )}
+                    {/* REGISTRAR RECEPCIÓN */}
+                    {esUsuarioCentro && compra.estado === 'comprada' && esSolicitante(compra) && (
+                      <button
+                        onClick={() => handleOpenRecibir(compra)}
+                        className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
+                        title="Registrar Recepción de Productos"
+                      >
+                        <FaTruck size={18} />
+                      </button>
+                    )}
+                    {/* ENVIAR A FARMACIA */}
+                    {esMedico && compra.estado === 'pendiente' && (compra.total_productos > 0 || compra.detalles?.length > 0) && esSolicitante(compra) && (
+                      <button
+                        onClick={() => handleEnviarFarmacia(compra)}
+                        className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg"
+                        title="Enviar a Farmacia (verificar stock)"
+                      >
+                        <FaSearch size={18} />
+                      </button>
+                    )}
+                    {/* CONFIRMAR SIN STOCK */}
+                    {puedeVerificarStock && compra.estado === 'enviada_farmacia' && (
+                      <button
+                        onClick={() => handleConfirmarSinStock(compra, 'Verificado - No hay stock disponible')}
+                        className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
+                        title="Confirmar: No hay stock disponible"
+                      >
+                        <FaCheckCircle size={18} />
+                      </button>
+                    )}
+                    {/* RECHAZAR HAY STOCK */}
+                    {puedeVerificarStock && compra.estado === 'enviada_farmacia' && (
+                      <button
+                        onClick={() => setStockRechazoModal({ show: true, compra, observaciones: '' })}
+                        className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg"
+                        title="Rechazar: Hay stock disponible"
+                      >
+                        <FaWarehouse size={18} />
+                      </button>
+                    )}
+                    {/* DEVOLVER PARA CORRECCIÓN */}
+                    {esMedico && ['rechazada_farmacia', 'devuelta'].includes(compra.estado) && esSolicitante(compra) && (
+                      <button
+                        onClick={() => handleDevolver(compra, 'Devuelta para corrección')}
+                        className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg"
+                        title="Devolver para corrección"
+                      >
+                        <FaUndo size={18} />
+                      </button>
+                    )}
+                    {/* ENVIAR A ADMIN */}
+                    {esMedico && compra.estado === 'sin_stock_farmacia' && esSolicitante(compra) && (
+                      <button
+                        onClick={() => handleEnviarAdmin(compra)}
+                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                        title="Enviar a Admin"
+                      >
+                        <FaCheck size={18} />
+                      </button>
+                    )}
+                    {/* AUTORIZAR ADMIN */}
+                    {esAdmin && compra.estado === 'enviada_admin' && (
+                      <button
+                        onClick={() => handleAutorizarAdmin(compra)}
+                        className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
+                        title="Autorizar como Admin"
+                      >
+                        <FaUserCheck size={18} />
+                      </button>
+                    )}
+                    {/* ENVIAR A DIRECTOR */}
+                    {esAdmin && compra.estado === 'autorizada_admin' && (
+                      <button
+                        onClick={() => handleEnviarDirector(compra)}
+                        className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg"
+                        title="Enviar a Director"
+                      >
+                        <FaCheck size={18} />
+                      </button>
+                    )}
+                    {/* AUTORIZAR DIRECTOR */}
+                    {esDirector && compra.estado === 'enviada_director' && (
+                      <button
+                        onClick={() => handleAutorizarDirector(compra)}
+                        className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
+                        title="Autorizar (Final)"
+                      >
+                        <FaUserCheck size={18} />
+                      </button>
+                    )}
+                    {((puedeEditar && compra.estado === 'pendiente') ||
+                      ((esUsuarioFarmacia || user?.is_superuser) &&
                        !['cancelada', 'rechazada', 'rechazada_farmacia'].includes(compra.estado))) && (
                       <button
                         onClick={() => setDeleteModal({ show: true, compra })}
@@ -1534,8 +1625,8 @@ const ComprasCajaChica = () => {
                             <FaEye className="text-xs" />
                           </button>
                           
-                          {/* Editar (solo pendientes o rechazadas y solo el solicitante) */}
-                          {puedeEditar && ['pendiente', 'rechazada'].includes(compra.estado) && esSolicitante(compra) && (
+                          {/* Editar (pendiente / rechazada / rechazada_farmacia / devuelta — solo solicitante) */}
+                          {puedeEditar && ['pendiente', 'rechazada', 'rechazada_farmacia', 'devuelta'].includes(compra.estado) && esSolicitante(compra) && (
                             <button
                               onClick={() => handleEdit(compra)}
                               className="p-1.5 text-yellow-600 hover:bg-yellow-50 rounded-lg"
@@ -1599,6 +1690,17 @@ const ComprasCajaChica = () => {
                             </button>
                           )}
                           
+                          {/* DEVOLVER para corrección (solicitante cuando farmacia rechazó por hay-stock o fue devuelta) */}
+                          {esMedico && ['rechazada_farmacia', 'devuelta'].includes(compra.estado) && esSolicitante(compra) && (
+                            <button
+                              onClick={() => handleDevolver(compra, 'Devuelta para corrección')}
+                              className="p-1.5 text-orange-600 hover:bg-orange-50 rounded-lg"
+                              title="Devolver para corrección (regresa a Pendiente)"
+                            >
+                              <FaUndo className="text-xs" />
+                            </button>
+                          )}
+
                           {/* FLUJO MULTINIVEL: Enviar a Admin (tras confirmación de Farmacia - solo solicitante) */}
                           {esMedico && compra.estado === 'sin_stock_farmacia' && esSolicitante(compra) && (
                             <button
@@ -2094,6 +2196,19 @@ const ComprasCajaChica = () => {
                     </>
                   )}
 
+                  {/* Devolver para corrección (solicitante cuando farmacia rechazó por hay-stock o fue devuelta) */}
+                  {esMedico && ['rechazada_farmacia', 'devuelta'].includes(detailModal.compra.estado) && esSolicitante(detailModal.compra) && (
+                    <button
+                      onClick={() => {
+                        handleDevolver(detailModal.compra, 'Devuelta para corrección');
+                        setDetailModal({ show: false, compra: null });
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+                    >
+                      <FaUndo /> Devolver para corrección
+                    </button>
+                  )}
+
                   {/* Enviar a Admin (Médico después de confirmación de Farmacia - solo solicitante) */}
                   {esMedico && detailModal.compra.estado === 'sin_stock_farmacia' && esSolicitante(detailModal.compra) && (
                     <button
@@ -2155,14 +2270,6 @@ const ComprasCajaChica = () => {
                     const condicion2 = detailModal.compra.estado === 'autorizada';
                     const condicion3 = esSolicitante(detailModal.compra); // SOLO SOLICITANTE ORIGINAL
                     const condicion4 = detailModal.compra.detalles && detailModal.compra.detalles.length > 0;
-                    
-                    console.log('=== EVALUACIÓN FORMULARIO ===');
-                    console.log('esUsuarioCentro:', condicion1);
-                    console.log('estado === autorizada:', condicion2, '- Estado real:', detailModal.compra.estado);
-                    console.log('esSolicitante (SOLO SOLICITANTE ORIGINAL):', condicion3);
-                    console.log('tiene detalles:', condicion4, '- Detalles:', detailModal.compra.detalles?.length);
-                    console.log('TODAS las condiciones:', condicion1 && condicion2 && condicion3 && condicion4);
-                    console.log('============================');
                     
                     return condicion1 && condicion2 && condicion3 && condicion4;
                   })() && (
@@ -2392,8 +2499,8 @@ const ComprasCajaChica = () => {
                     </button>
                   )}
 
-                  {/* Editar (solo pendientes o rechazadas - solo solicitante) */}
-                  {puedeEditar && ['pendiente', 'rechazada'].includes(detailModal.compra.estado) && esSolicitante(detailModal.compra) && (
+                  {/* Editar (pendiente / rechazada / rechazada_farmacia / devuelta — solo solicitante) */}
+                  {puedeEditar && ['pendiente', 'rechazada', 'rechazada_farmacia', 'devuelta'].includes(detailModal.compra.estado) && esSolicitante(detailModal.compra) && (
                     <button
                       onClick={() => {
                         handleEdit(detailModal.compra);

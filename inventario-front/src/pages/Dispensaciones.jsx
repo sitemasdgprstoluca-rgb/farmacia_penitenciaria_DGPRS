@@ -148,7 +148,7 @@ const Dispensaciones = () => {
   // Modales
   const [deleteModal, setDeleteModal] = useState({ show: false, dispensacion: null });
   const [cancelModal, setCancelModal] = useState({ show: false, dispensacion: null, motivo: '' });
-  const [dispensarModal, setDispensarModal] = useState({ show: false, dispensacion: null, loading: false });
+  const [dispensarModal, setDispensarModal] = useState({ show: false, dispensacion: null, loading: false, stockErrors: null });
   const [detailModal, setDetailModal] = useState({ show: false, dispensacion: null, loading: false });
   const [historialModal, setHistorialModal] = useState({ show: false, dispensacion: null, historial: [] });
   
@@ -733,35 +733,17 @@ const Dispensaciones = () => {
         toast.success(mensaje);
       }
       
-      setDispensarModal({ show: false, dispensacion: null, loading: false });
+      setDispensarModal({ show: false, dispensacion: null, loading: false, stockErrors: null });
       fetchDispensaciones();
     } catch (error) {
       console.error('Error al dispensar:', error);
-      setDispensarModal(prev => ({ ...prev, loading: false }));
       
       // Manejar diferentes tipos de errores
       const responseData = error.response?.data;
       
       if (responseData?.detalles_error && Array.isArray(responseData.detalles_error)) {
-        // Mostrar errores de stock detallados
-        const errorPrincipal = responseData.error || 'Stock insuficiente';
-        toast.error(
-          <div>
-            <strong>{errorPrincipal}</strong>
-            <ul className="mt-2 text-sm list-disc list-inside">
-              {responseData.detalles_error.slice(0, 3).map((err, i) => (
-                <li key={i}>{err}</li>
-              ))}
-              {responseData.detalles_error.length > 3 && (
-                <li>...y {responseData.detalles_error.length - 3} más</li>
-              )}
-            </ul>
-            {responseData.sugerencia && (
-              <p className="mt-2 text-xs italic">{responseData.sugerencia}</p>
-            )}
-          </div>,
-          { duration: 8000 }
-        );
+        // Mostrar errores de stock en el propio modal (inline) — no cerramos el modal
+        setDispensarModal(prev => ({ ...prev, loading: false, stockErrors: responseData }));
       } else {
         // Error simple
         let errorMsg = 'Error al procesar dispensación';
@@ -1184,7 +1166,7 @@ const Dispensaciones = () => {
                 </button>
                 {disp.estado === 'pendiente' && puedeDispensar && (
                   <button
-                    onClick={() => setDispensarModal({ show: true, dispensacion: disp, loading: false })}
+                    onClick={() => setDispensarModal({ show: true, dispensacion: disp, loading: false, stockErrors: null })}
                     className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
                     title="Dispensar"
                   >
@@ -1335,7 +1317,7 @@ const Dispensaciones = () => {
                         
                         {disp.estado === 'pendiente' && puedeDispensar && (
                           <button
-                            onClick={() => setDispensarModal({ show: true, dispensacion: disp, loading: false })}
+                            onClick={() => setDispensarModal({ show: true, dispensacion: disp, loading: false, stockErrors: null })}
                             className="text-green-600 hover:text-green-800 p-1"
                             title="Dispensar"
                           >
@@ -1903,6 +1885,30 @@ const Dispensaciones = () => {
               </div>
 
               <h4 className="font-semibold mb-3">Medicamentos</h4>
+
+              {/* Banner de disponibilidad de stock para dispensaciones pendientes */}
+              {detailModal.dispensacion.estado === 'pendiente' && (() => {
+                const detalles = detailModal.dispensacion.detalles || [];
+                const sinStock = detalles.filter(d => d.lote_stock !== null && d.lote_stock !== undefined && d.lote_stock < d.cantidad_prescrita);
+                if (sinStock.length === 0 && detalles.length === 0) return null;
+                const listoParaDispensar = sinStock.length === 0;
+                return (
+                  <div className={`mb-3 p-3 rounded-lg border flex items-start gap-2 text-sm ${listoParaDispensar ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
+                    <span className="text-base">{listoParaDispensar ? '✅' : '⚠️'}</span>
+                    <div>
+                      <p className="font-semibold">{listoParaDispensar ? 'Stock suficiente — lista para dispensar' : 'Stock insuficiente para uno o más medicamentos'}</p>
+                      {!listoParaDispensar && (
+                        <ul className="mt-1 list-disc list-inside text-xs">
+                          {sinStock.map((d, i) => (
+                            <li key={i}>{d.producto_nombre} (Lote {d.lote_numero || '?'}): disponible {d.lote_stock}, prescrito {d.cantidad_prescrita}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
               {detailModal.loading ? (
                 <div className="text-center py-8 text-gray-500">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-guinda mx-auto mb-2"></div>
@@ -1917,6 +1923,7 @@ const Dispensaciones = () => {
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Lote</th>
                         <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Prescrita</th>
                         <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Dispensada</th>
+                        <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Stock Act.</th>
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Unidad</th>
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Dosis</th>
                       </tr>
@@ -1928,6 +1935,17 @@ const Dispensaciones = () => {
                           <td className="px-3 py-2 text-sm font-mono">{det.lote_numero || '-'}</td>
                           <td className="px-3 py-2 text-sm text-center">{det.cantidad_prescrita}</td>
                           <td className="px-3 py-2 text-sm text-center">{det.cantidad_dispensada || 0}</td>
+                          <td className="px-3 py-2 text-sm text-center">
+                            {det.lote_stock !== null && det.lote_stock !== undefined ? (
+                              <span className={`font-semibold ${
+                                det.lote_stock <= 0 ? 'text-red-600' :
+                                det.lote_stock < det.cantidad_prescrita ? 'text-amber-600' :
+                                'text-green-600'
+                              }`}>
+                                {det.lote_stock}
+                              </span>
+                            ) : <span className="text-gray-400">–</span>}
+                          </td>
                           <td className="px-3 py-2 text-sm text-gray-600">{det.unidad_dispensada || det.unidad_minima || 'pieza'}</td>
                           <td className="px-3 py-2 text-sm">
                             {det.dosis} {det.frecuencia && `- ${det.frecuencia}`}
@@ -1951,24 +1969,32 @@ const Dispensaciones = () => {
       {/* ISS-SEC: Modal de confirmación de 2 pasos para dispensar */}
       <TwoStepConfirmModal
         open={dispensarModal.show}
-        onCancel={() => !dispensarModal.loading && setDispensarModal({ show: false, dispensacion: null, loading: false })}
+        onCancel={() => !dispensarModal.loading && setDispensarModal({ show: false, dispensacion: null, loading: false, stockErrors: null })}
         onConfirm={handleDispensar}
-        title="Confirmar Dispensación"
-        message={`¿Está seguro de procesar la dispensación ${dispensarModal.dispensacion?.folio}?`}
-        warnings={[
-          'Se descontarán los medicamentos del inventario',
-          'Se actualizará el registro del paciente',
-          'Esta operación no se puede deshacer'
-        ]}
+        title={dispensarModal.stockErrors ? 'Stock Insuficiente' : 'Confirmar Dispensación'}
+        message={
+          dispensarModal.stockErrors
+            ? (dispensarModal.stockErrors.error || 'No hay stock suficiente para procesar esta dispensación. Edite el lote o cancele la dispensación.')
+            : `¿Está seguro de procesar la dispensación ${dispensarModal.dispensacion?.folio}?`
+        }
+        warnings={
+          dispensarModal.stockErrors?.detalles_error?.length > 0
+            ? dispensarModal.stockErrors.detalles_error
+            : [
+                'Se descontarán los medicamentos del inventario',
+                'Se actualizará el registro del paciente',
+                'Esta operación no se puede deshacer'
+              ]
+        }
         itemInfo={dispensarModal.dispensacion ? {
           'Folio': dispensarModal.dispensacion.folio,
           'Paciente': dispensarModal.dispensacion.paciente_nombre || 'N/A',
           'Tipo': dispensarModal.dispensacion.tipo || 'Normal'
         } : null}
-        confirmText={dispensarModal.loading ? "Procesando..." : "Dispensar"}
-        cancelText="No, volver"
+        confirmText={dispensarModal.loading ? 'Procesando...' : dispensarModal.stockErrors ? 'Reintentar' : 'Dispensar'}
+        cancelText={dispensarModal.stockErrors ? 'Cerrar y Editar' : 'No, volver'}
         loading={dispensarModal.loading}
-        tone="info"
+        tone={dispensarModal.stockErrors ? 'danger' : 'info'}
       />
 
       {/* Modal de cancelar */}
