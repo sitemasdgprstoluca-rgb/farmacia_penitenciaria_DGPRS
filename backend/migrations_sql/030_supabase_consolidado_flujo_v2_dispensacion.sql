@@ -1,7 +1,7 @@
 -- ============================================================================
 -- 030_supabase_consolidado_flujo_v2_dispensacion.sql
--- Migración consolidada para Supabase
--- Incluye: FLUJO V2 requisiciones + Tracking dual dispensación
+-- Migracion consolidada para Supabase
+-- Incluye: FLUJO V2 requisiciones + Tracking dual dispensacion
 -- Fecha: 2026-03-14
 -- ============================================================================
 -- INSTRUCCIONES: Ejecutar en Supabase Dashboard > SQL Editor
@@ -9,111 +9,112 @@
 -- ============================================================================
 
 -- ============================================================================
--- SECCIÓN 1: PRODUCTOS - Campos de dispensación por unidad mínima
+-- SECCION 1: PRODUCTOS - Campos de dispensacion por unidad minima
 -- ============================================================================
 
--- Presentación comercial (ya debe existir, pero aseguramos NOT NULL)
 ALTER TABLE productos
   ADD COLUMN IF NOT EXISTS presentacion varchar(200);
 
--- Unidad mínima real de dispensación al paciente
--- Ej: 'tableta', 'cápsula', 'mililitro', 'ampolleta', 'dosis', 'sobre', 'pieza'
 ALTER TABLE productos
   ADD COLUMN IF NOT EXISTS unidad_minima varchar(50) DEFAULT 'pieza';
 
--- Factor de conversión: cuántas unidades mínimas tiene 1 presentación comercial
--- Ej: 1 caja de 22 tabletas → factor_conversion = 22
--- Ej: 1 frasco de 120 ml → factor_conversion = 120
--- Si la presentación ya ES la unidad mínima → factor_conversion = 1
 ALTER TABLE productos
   ADD COLUMN IF NOT EXISTS factor_conversion integer DEFAULT 1;
 
--- Constraint factor_conversion: >= 1 (evita división por cero) y <= 9999
+-- CHECK: factor_conversion en rango 1-9999 (busca ANY check sobre esa columna)
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'chk_productos_factor_conversion_rango'
+    SELECT 1 FROM pg_constraint c
+    JOIN pg_namespace n ON n.oid = c.connamespace
+    WHERE c.conrelid = 'productos'::regclass
+      AND c.contype = 'c'
+      AND pg_get_constraintdef(c.oid) LIKE '%factor_conversion%'
   ) THEN
     ALTER TABLE productos
       ADD CONSTRAINT chk_productos_factor_conversion_rango
       CHECK (factor_conversion >= 1 AND factor_conversion <= 9999);
   END IF;
-  -- Eliminar constraint antiguo si existe
-  IF EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'chk_productos_factor_conversion_positivo'
-  ) THEN
-    ALTER TABLE productos DROP CONSTRAINT chk_productos_factor_conversion_positivo;
-  END IF;
 END $$;
 
--- Constraint unidad_minima: solo valores autorizados
+-- CHECK: unidad_minima debe ser un valor de la lista permitida
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'chk_productos_unidad_minima_valida'
+    SELECT 1 FROM pg_constraint c
+    WHERE c.conrelid = 'productos'::regclass
+      AND c.contype = 'c'
+      AND pg_get_constraintdef(c.oid) LIKE '%unidad_minima%'
   ) THEN
     ALTER TABLE productos
       ADD CONSTRAINT chk_productos_unidad_minima_valida
       CHECK (unidad_minima IN (
-        'pieza', 'tableta', 'cápsula', 'mililitro', 'sobre',
-        'ampolleta', 'gramo', 'dosis', 'parche', 'supositorio', 'óvulo', 'gota'
+        'pieza','tableta','cápsula','mililitro','sobre',
+        'ampolleta','gramo','dosis','parche','supositorio','óvulo','gota'
       ));
   END IF;
 END $$;
 
--- Constraint presentacion: no puede ser solo números/símbolos (debe tener texto)
--- Nota: PostgreSQL no tiene regexp CHECK nativo antes de pg12, pero sí en pg12+
--- Supabase usa PostgreSQL 15+ así que esto es seguro
+-- CHECK: presentacion debe contener al menos una letra (evita "123", "---", "")
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'chk_productos_presentacion_tiene_texto'
+    SELECT 1 FROM pg_constraint c
+    WHERE c.conrelid = 'productos'::regclass
+      AND c.contype = 'c'
+      AND pg_get_constraintdef(c.oid) LIKE '%presentacion%'
   ) THEN
     ALTER TABLE productos
       ADD CONSTRAINT chk_productos_presentacion_tiene_texto
-      CHECK (presentacion IS NULL OR presentacion ~ '[A-Za-záéíóúüñÁÉÍÓÚÜÑ]');
+      CHECK (presentacion IS NULL OR presentacion ~ '[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]');
   END IF;
 END $$;
 
-COMMENT ON COLUMN productos.unidad_minima IS 'Unidad real de dispensación: pieza, tableta, cápsula, mililitro, sobre, ampolleta, gramo, dosis, parche, supositorio, óvulo, gota';
-COMMENT ON COLUMN productos.factor_conversion IS 'Cantidad de unidades mínimas por presentación comercial (1-9999). Ej: caja de 22 tabletas = 22. NUNCA 0 (causaría división por cero)';
+COMMENT ON COLUMN productos.presentacion IS 'Descripcion comercial de la presentacion. Ej: CAJA CON 22 TABLETAS, FRASCO 500ML';
+COMMENT ON COLUMN productos.unidad_minima IS 'Unidad real de dispensacion: tableta, capsula, ml, ampolleta, dosis, sobre, pieza';
+COMMENT ON COLUMN productos.factor_conversion IS 'Cantidad de unidades minimas por presentacion comercial. Ej: caja de 22 tabletas = 22';
 
 -- ============================================================================
--- SECCIÓN 2: LOTES - Tracking dual de stock
+-- SECCION 2: LOTES - Tracking dual de stock
 -- ============================================================================
 
--- Cantidad en presentaciones originales compradas
 ALTER TABLE lotes
   ADD COLUMN IF NOT EXISTS cantidad_presentaciones_inicial integer;
 
 COMMENT ON COLUMN lotes.cantidad_presentaciones_inicial IS
-  'Unidades en presentación comercial compradas. Ej: 3 cajas. NULL = dato anterior al cambio';
+  'Unidades en presentacion comercial compradas. Ej: 3 cajas. NULL = dato anterior al cambio';
 
--- Stock en unidades mínimas dispensables (NUEVO - tracking granular)
 ALTER TABLE lotes
   ADD COLUMN IF NOT EXISTS cantidad_actual_unidades integer;
 
--- Backfill: convertir cantidad_actual × factor_conversion para lotes existentes
+-- Backfill: convertir cantidad_actual x factor_conversion para lotes existentes
+-- COALESCE garantiza NULL-safety en ambos lados
 UPDATE lotes l
-SET cantidad_actual_unidades = l.cantidad_actual * COALESCE(p.factor_conversion, 1)
+SET cantidad_actual_unidades = COALESCE(l.cantidad_actual, 0) * COALESCE(p.factor_conversion, 1)
 FROM productos p
 WHERE l.producto_id = p.id
   AND l.cantidad_actual_unidades IS NULL;
 
--- Para lotes sin producto (no debería ocurrir, pero seguridad)
+-- Seguridad: cubrir lotes huerfanos o con producto sin factor_conversion
 UPDATE lotes
-SET cantidad_actual_unidades = cantidad_actual
+SET cantidad_actual_unidades = COALESCE(cantidad_actual, 0)
 WHERE cantidad_actual_unidades IS NULL;
 
--- Aplicar NOT NULL y default
+-- Aplicar DEFAULT primero, luego NOT NULL (orden seguro en Postgres)
 ALTER TABLE lotes
-  ALTER COLUMN cantidad_actual_unidades SET NOT NULL,
   ALTER COLUMN cantidad_actual_unidades SET DEFAULT 0;
 
+ALTER TABLE lotes
+  ALTER COLUMN cantidad_actual_unidades SET NOT NULL;
+
+-- CHECK constraint: busca ANY check sobre cantidad_actual_unidades (evita duplicado)
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'chk_lotes_cantidad_unidades_no_negativa'
+    SELECT 1 FROM pg_constraint c
+    WHERE c.conrelid = 'lotes'::regclass
+      AND c.contype = 'c'
+      AND pg_get_constraintdef(c.oid) LIKE '%cantidad_actual_unidades%'
   ) THEN
     ALTER TABLE lotes
       ADD CONSTRAINT chk_lotes_cantidad_unidades_no_negativa
@@ -122,17 +123,13 @@ BEGIN
 END $$;
 
 COMMENT ON COLUMN lotes.cantidad_actual_unidades IS
-  'Stock en unidades mínimas dispensables (tabletas, cápsulas, ml, etc.). '
-  'Ej: 21 cajas × 20 tabs/caja = 420. Al dispensar 1 tab → 419. '
-  'Presentaciones completas = cantidad_actual_unidades / factor_conversion. '
-  'Unidades sueltas = cantidad_actual_unidades % factor_conversion.';
+  'Stock en unidades minimas dispensables (tabletas, capsulas, ml, etc.)';
 
--- Campo activo (necesario para filtros de lotes vigentes)
 ALTER TABLE lotes
   ADD COLUMN IF NOT EXISTS activo boolean DEFAULT true;
 
 -- ============================================================================
--- SECCIÓN 3: DETALLES REQUISICIÓN - Campos FLUJO V2
+-- SECCION 3: DETALLES REQUISICION - Campos FLUJO V2
 -- ============================================================================
 
 ALTER TABLE detalles_requisicion
@@ -142,22 +139,22 @@ ALTER TABLE detalles_requisicion
   ADD COLUMN IF NOT EXISTS motivo_ajuste varchar(255);
 
 COMMENT ON COLUMN detalles_requisicion.cantidad_autorizada IS
-  'Cantidad aprobada por Farmacia. NULL = aún no autorizado. Puede ser menor a cantidad_solicitada (autorización parcial)';
+  'Cantidad aprobada por Farmacia. NULL = aun no autorizado';
 COMMENT ON COLUMN detalles_requisicion.motivo_ajuste IS
-  'Obligatorio cuando cantidad_autorizada < cantidad_solicitada. Explica al Centro por qué se redujo';
+  'Obligatorio cuando cantidad_autorizada < cantidad_solicitada';
 
 -- ============================================================================
--- SECCIÓN 4: DISPENSACIONES - Unidad dispensada
+-- SECCION 4: DISPENSACIONES - Unidad dispensada
 -- ============================================================================
 
 ALTER TABLE detalle_dispensaciones
   ADD COLUMN IF NOT EXISTS unidad_dispensada varchar(50);
 
 COMMENT ON COLUMN detalle_dispensaciones.unidad_dispensada IS
-  'Unidad real en que se entregó al paciente: tableta, capsula, ml, etc.';
+  'Unidad real en que se entrego al paciente: tableta, capsula, ml, etc.';
 
 -- ============================================================================
--- SECCIÓN 5: REQUISICIONES - Campos FLUJO V2 (jerarquía y trazabilidad)
+-- SECCION 5: REQUISICIONES - Campos FLUJO V2 (jerarquia y trazabilidad)
 -- ============================================================================
 
 -- Urgencia
@@ -198,7 +195,7 @@ ALTER TABLE requisiciones
 ALTER TABLE requisiciones
   ADD COLUMN IF NOT EXISTS cargo_director varchar(100);
 
--- Fechas del flujo jerárquico
+-- Fechas del flujo jerarquico
 ALTER TABLE requisiciones
   ADD COLUMN IF NOT EXISTS fecha_envio_admin timestamptz;
 
@@ -226,33 +223,63 @@ ALTER TABLE requisiciones
 ALTER TABLE requisiciones
   ADD COLUMN IF NOT EXISTS fecha_vencimiento timestamptz;
 
--- Actores del flujo (trazabilidad anti-fraude)
--- administrador_centro: quién autorizó a nivel admin del centro
-ALTER TABLE requisiciones
-  ADD COLUMN IF NOT EXISTS administrador_centro_id integer
-  REFERENCES usuarios(id) ON DELETE SET NULL;
+-- Actores del flujo (trazabilidad) - DO blocks para FK columns (idempotente y seguro)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'requisiciones' AND column_name = 'administrador_centro_id'
+  ) THEN
+    ALTER TABLE requisiciones
+      ADD COLUMN administrador_centro_id integer REFERENCES usuarios(id) ON DELETE SET NULL;
+  END IF;
+END $$;
 
--- director_centro: quién autorizó a nivel director
-ALTER TABLE requisiciones
-  ADD COLUMN IF NOT EXISTS director_centro_id integer
-  REFERENCES usuarios(id) ON DELETE SET NULL;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'requisiciones' AND column_name = 'director_centro_id'
+  ) THEN
+    ALTER TABLE requisiciones
+      ADD COLUMN director_centro_id integer REFERENCES usuarios(id) ON DELETE SET NULL;
+  END IF;
+END $$;
 
--- receptor_farmacia: quién recibió físicamente en farmacia
-ALTER TABLE requisiciones
-  ADD COLUMN IF NOT EXISTS receptor_farmacia_id integer
-  REFERENCES usuarios(id) ON DELETE SET NULL;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'requisiciones' AND column_name = 'receptor_farmacia_id'
+  ) THEN
+    ALTER TABLE requisiciones
+      ADD COLUMN receptor_farmacia_id integer REFERENCES usuarios(id) ON DELETE SET NULL;
+  END IF;
+END $$;
 
--- autorizador_farmacia: quién autorizó la cantidad final en farmacia
-ALTER TABLE requisiciones
-  ADD COLUMN IF NOT EXISTS autorizador_farmacia_id integer
-  REFERENCES usuarios(id) ON DELETE SET NULL;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'requisiciones' AND column_name = 'autorizador_farmacia_id'
+  ) THEN
+    ALTER TABLE requisiciones
+      ADD COLUMN autorizador_farmacia_id integer REFERENCES usuarios(id) ON DELETE SET NULL;
+  END IF;
+END $$;
 
--- surtidor: quién físicamente surtió y entregó
-ALTER TABLE requisiciones
-  ADD COLUMN IF NOT EXISTS surtidor_id integer
-  REFERENCES usuarios(id) ON DELETE SET NULL;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'requisiciones' AND column_name = 'surtidor_id'
+  ) THEN
+    ALTER TABLE requisiciones
+      ADD COLUMN surtidor_id integer REFERENCES usuarios(id) ON DELETE SET NULL;
+  END IF;
+END $$;
 
--- Motivos de rechazo/devolución
+-- Motivos de rechazo/devolucion
 ALTER TABLE requisiciones
   ADD COLUMN IF NOT EXISTS motivo_rechazo text;
 
@@ -265,7 +292,7 @@ ALTER TABLE requisiciones
 ALTER TABLE requisiciones
   ADD COLUMN IF NOT EXISTS observaciones_farmacia text;
 
--- Índices para consultas frecuentes del flujo
+-- Indices para consultas frecuentes del flujo
 CREATE INDEX IF NOT EXISTS idx_requisiciones_receptor_farmacia
   ON requisiciones(receptor_farmacia_id) WHERE receptor_farmacia_id IS NOT NULL;
 
@@ -276,8 +303,8 @@ CREATE INDEX IF NOT EXISTS idx_requisiciones_director_centro
   ON requisiciones(director_centro_id) WHERE director_centro_id IS NOT NULL;
 
 -- ============================================================================
--- SECCIÓN 6: TABLA requisicion_historial_estados (nueva)
--- Historial inmutable de cambios de estado para auditoría completa
+-- SECCION 6: TABLA requisicion_historial_estados (nueva)
+-- Historial inmutable de cambios de estado para auditoria completa
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS requisicion_historial_estados (
@@ -306,11 +333,10 @@ CREATE INDEX IF NOT EXISTS idx_historial_req_usuario
   ON requisicion_historial_estados(usuario_id) WHERE usuario_id IS NOT NULL;
 
 COMMENT ON TABLE requisicion_historial_estados IS
-  'FLUJO V2: Historial inmutable de cambios de estado de requisiciones. '
-  'Cada transición se registra con fecha, usuario, motivo y hash de integridad.';
+  'FLUJO V2: Historial inmutable de cambios de estado de requisiciones';
 
 -- ============================================================================
--- SECCIÓN 7: TABLA requisicion_ajustes_cantidad (nueva)
+-- SECCION 7: TABLA requisicion_ajustes_cantidad (nueva)
 -- Registro de ajustes de cantidad por Farmacia al autorizar
 -- ============================================================================
 
@@ -328,11 +354,14 @@ CREATE TABLE IF NOT EXISTS requisicion_ajustes_cantidad (
   created_at              timestamptz NOT NULL DEFAULT now()
 );
 
--- Constraint: tipo_ajuste debe ser uno de los valores válidos
+-- Constraint: tipo_ajuste valido (busca ANY check sobre tipo_ajuste, evita duplicado)
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'chk_ajuste_tipo_valido'
+    SELECT 1 FROM pg_constraint c
+    WHERE c.conrelid = 'requisicion_ajustes_cantidad'::regclass
+      AND c.contype = 'c'
+      AND pg_get_constraintdef(c.oid) LIKE '%tipo_ajuste%'
   ) THEN
     ALTER TABLE requisicion_ajustes_cantidad
       ADD CONSTRAINT chk_ajuste_tipo_valido
@@ -347,11 +376,10 @@ CREATE INDEX IF NOT EXISTS idx_ajustes_detalle_requisicion
   ON requisicion_ajustes_cantidad(detalle_requisicion_id);
 
 COMMENT ON TABLE requisicion_ajustes_cantidad IS
-  'FLUJO V2: Registro de ajustes de cantidad cuando Farmacia autoriza menos de lo solicitado. '
-  'Obligatorio para trazabilidad de decisiones de farmacia.';
+  'FLUJO V2: Registro de ajustes de cantidad cuando Farmacia autoriza menos de lo solicitado';
 
 -- ============================================================================
--- VERIFICACIÓN FINAL
+-- VERIFICACION FINAL
 -- ============================================================================
 SELECT
   table_name,

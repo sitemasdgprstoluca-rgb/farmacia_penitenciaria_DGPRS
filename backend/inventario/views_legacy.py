@@ -7337,16 +7337,20 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         Permiso requerido: puede_enviar_admin (rol: medico)
         """
         try:
-            requisicion = self.get_object()
+            # ISS-CONCURRENCY: Bloquear fila para prevenir doble envío concurrente
+            try:
+                requisicion = Requisicion.objects.select_for_update(nowait=False).get(pk=pk)
+            except Requisicion.DoesNotExist:
+                return Response({'error': 'Requisición no encontrada'}, status=status.HTTP_404_NOT_FOUND)
             estado_actual = (requisicion.estado or '').lower()
-            
-            # Validar estado
+
+            # Validar estado (post-lock: refleja estado real incluso bajo carga concurrente)
             if estado_actual != 'borrador':
                 return Response({
                     'error': 'Solo se pueden enviar a administrador las requisiciones en BORRADOR',
                     'estado_actual': requisicion.estado
                 }, status=status.HTTP_400_BAD_REQUEST)
-            
+
             # Validar transición
             if not self._validar_transicion(estado_actual, 'pendiente_admin'):
                 return Response({
@@ -7419,15 +7423,19 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         Transición: pendiente_admin → pendiente_director
         Permiso requerido: puede_autorizar_admin (rol: administrador_centro)
         """
-        requisicion = self.get_object()
+        # ISS-CONCURRENCY: Bloquear fila para prevenir doble autorización concurrente
+        try:
+            requisicion = Requisicion.objects.select_for_update(nowait=False).get(pk=pk)
+        except Requisicion.DoesNotExist:
+            return Response({'error': 'Requisición no encontrada'}, status=status.HTTP_404_NOT_FOUND)
         estado_actual = (requisicion.estado or '').lower()
-        
+
         if estado_actual != 'pendiente_admin':
             return Response({
                 'error': 'Solo se pueden autorizar requisiciones en PENDIENTE_ADMIN',
                 'estado_actual': requisicion.estado
             }, status=status.HTTP_400_BAD_REQUEST)
-        
+
         if not self._validar_transicion(estado_actual, 'pendiente_director'):
             return Response({
                 'error': 'Transición de estado no permitida'
@@ -7483,15 +7491,19 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         Transición: pendiente_director → enviada (a farmacia central)
         Permiso requerido: puede_autorizar_director (rol: director_centro)
         """
-        requisicion = self.get_object()
+        # ISS-CONCURRENCY: Bloquear fila para prevenir doble autorización concurrente
+        try:
+            requisicion = Requisicion.objects.select_for_update(nowait=False).get(pk=pk)
+        except Requisicion.DoesNotExist:
+            return Response({'error': 'Requisición no encontrada'}, status=status.HTTP_404_NOT_FOUND)
         estado_actual = (requisicion.estado or '').lower()
-        
+
         if estado_actual != 'pendiente_director':
             return Response({
                 'error': 'Solo se pueden autorizar requisiciones en PENDIENTE_DIRECTOR',
                 'estado_actual': requisicion.estado
             }, status=status.HTTP_400_BAD_REQUEST)
-        
+
         if not self._validar_transicion(estado_actual, 'enviada'):
             return Response({
                 'error': 'Transición de estado no permitida'

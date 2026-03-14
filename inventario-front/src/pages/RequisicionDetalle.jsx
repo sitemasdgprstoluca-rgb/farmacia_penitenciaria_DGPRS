@@ -39,6 +39,8 @@ import {
   FaSave,
   FaMinus,
   FaUserShield,
+  FaUpload,
+  FaFilePdf,
 } from 'react-icons/fa';
 import { COLORS } from '../constants/theme';
 
@@ -51,7 +53,9 @@ const RequisicionDetalle = () => {
   const [requisicion, setRequisicion] = useState(null);
   const [loading, setLoading] = useState(true);
   const [procesando, setProcesando] = useState(false);
-  
+  const [subiendoDocumento, setSubiendoDocumento] = useState(false);
+  const fileInputValidacionRef = useRef(null);
+
   // Modales para acciones con validación de permisos
   const [showEnviarModal, setShowEnviarModal] = useState(false);
   const [showAutorizarModal, setShowAutorizarModal] = useState(false);
@@ -702,6 +706,36 @@ const RequisicionDetalle = () => {
       toast.error('Error al descargar recibo de salida');
     } finally {
       setProcesando(false);
+    }
+  };
+
+  // Subir hoja de recolección ya firmada (PDF validado por farmacia)
+  const handleSubirHojaFirmada = async (e) => {
+    const archivo = e.target.files?.[0];
+    if (!archivo) return;
+    // Limpiar el input para permitir re-selección del mismo archivo
+    e.target.value = '';
+
+    const ext = archivo.name.split('.').pop()?.toLowerCase();
+    if (!['pdf', 'jpg', 'jpeg', 'png'].includes(ext)) {
+      toast.error('Solo se permiten archivos PDF, JPG o PNG');
+      return;
+    }
+    if (archivo.size > 5 * 1024 * 1024) {
+      toast.error('El archivo no puede superar 5 MB');
+      return;
+    }
+
+    try {
+      setSubiendoDocumento(true);
+      await requisicionesAPI.subirDocumentoEntrega(id, archivo);
+      toast.success('Hoja firmada cargada correctamente');
+      cargarRequisicion();
+    } catch (error) {
+      const msg = error.response?.data?.error || 'Error al subir el documento';
+      toast.error(msg);
+    } finally {
+      setSubiendoDocumento(false);
     }
   };
 
@@ -1986,18 +2020,32 @@ const RequisicionDetalle = () => {
             </div>
           )}
 
-          {/* Botón de descarga - Solo si tiene permiso y acceso por centro */}
-          {/* FLUJO V2: Texto diferente según estado */}
+          {/* Documento de validación / Descarga de hoja */}
+          {/* FLUJO V2: para 'entregada' se muestra el documento firmado subido; para otros estados se descarga la hoja generada */}
           {puedeDescargarHoja && (
-            <div className="mt-4 flex justify-end">
-              <button
-                onClick={() => handleDescargarPDF('aceptacion')}
-                disabled={procesando}
-                className={`flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity ${requisicion?.estado === 'entregada' ? 'bg-green-600' : 'bg-theme-primary'}`}
-              >
-                <FaFileDownload />
-                {requisicion?.estado === 'entregada' ? 'Recibo de Salida' : 'Descargar PDF de Recolección'}
-              </button>
+            <div className="mt-4 flex justify-end gap-2">
+              {requisicion?.estado === 'entregada' ? (
+                requisicion?.documento_entrega_url ? (
+                  <a
+                    href={requisicion.documento_entrega_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-4 py-2 text-white bg-green-600 rounded-lg hover:bg-green-700 transition-opacity"
+                  >
+                    <FaFilePdf /> Ver hoja firmada
+                  </a>
+                ) : (
+                  <span className="text-sm text-gray-400 italic">Pendiente: hoja firmada no cargada aún</span>
+                )
+              ) : (
+                <button
+                  onClick={() => handleDescargarPDF('aceptacion')}
+                  disabled={procesando}
+                  className="flex items-center gap-2 px-4 py-2 text-white bg-theme-primary rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity"
+                >
+                  <FaFileDownload /> Descargar PDF de Recolección
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -2078,14 +2126,54 @@ const RequisicionDetalle = () => {
               />
 
               {/* Acciones adicionales que no están en el flujo V2 */}
-              {/* FLUJO V2: Botón con texto según estado */}
-              {puedeDescargarHoja && (
+              {/* ENTREGADA: cargar / ver hoja firmada en lugar de generar recibo */}
+              {requisicion?.estado === 'entregada' && (
+                <>
+                  {/* Ver hoja firmada (si ya fue subida) - visible para farmacia y centro */}
+                  {requisicion?.documento_entrega_url && (esFarmacia || tieneAccesoPorCentro) && (
+                    <a
+                      href={requisicion.documento_entrega_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 px-4 py-2 border border-green-500 text-green-600 rounded-lg hover:bg-green-50 transition-colors"
+                    >
+                      <FaFilePdf /> Ver hoja firmada
+                    </a>
+                  )}
+                  {/* Cargar hoja firmada - solo farmacia */}
+                  {esFarmacia && (
+                    <>
+                      <button
+                        onClick={() => fileInputValidacionRef.current?.click()}
+                        disabled={procesando || subiendoDocumento}
+                        className="flex items-center gap-2 px-4 py-2 border border-blue-500 text-blue-600 rounded-lg hover:bg-blue-50 disabled:opacity-50 transition-colors"
+                      >
+                        <FaUpload />
+                        {subiendoDocumento
+                          ? 'Subiendo...'
+                          : requisicion?.documento_entrega_url
+                          ? 'Reemplazar hoja firmada'
+                          : 'Cargar hoja firmada'}
+                      </button>
+                      <input
+                        ref={fileInputValidacionRef}
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png"
+                        className="hidden"
+                        onChange={handleSubirHojaFirmada}
+                      />
+                    </>
+                  )}
+                </>
+              )}
+              {/* Estados != entregada: descarga hoja de recolección generada */}
+              {puedeDescargarHoja && requisicion?.estado !== 'entregada' && (
                 <button
                   onClick={() => handleDescargarPDF('aceptacion')}
                   disabled={procesando}
-                  className={`flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors ${requisicion?.estado === 'entregada' ? 'border-green-500 text-green-600' : 'border-theme-primary text-theme-primary'}`}
+                  className="flex items-center gap-2 px-4 py-2 border border-theme-primary text-theme-primary rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
                 >
-                  <FaDownload /> {requisicion?.estado === 'entregada' ? 'Recibo de Entrega' : 'Hoja de recolección'}
+                  <FaDownload /> Hoja de recolección
                 </button>
               )}
 
