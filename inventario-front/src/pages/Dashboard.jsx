@@ -681,15 +681,20 @@ const Dashboard = () => {
       }
 
       const centroEfectivo = esCentroRestringido ? centroUsuario : centroId;
-      // ISS-FIX: Agregar refresh=true para forzar recarga sin caché cuando el usuario hace click en actualizar
-      // ISS-FIX: 'todos' significa global (sin filtro de centro), 'central' significa Farmacia Central
-      const params = { 
+      // ISS-FIX: 'todos' = global (sin filtro), 'central' = Farmacia Central
+      const params = {
         ...(centroEfectivo && centroEfectivo !== 'todos' ? { centro: centroEfectivo } : {}),
         ...(isRefresh ? { refresh: 'true' } : {})
       };
+      // Farmacia: KPIs filtrados por el centro seleccionado,
+      // pero gráficas (Inventario por Centro, Consumo Mensual) siempre globales
+      // para que farmacia pueda ver todos los centros a la vez.
+      const graficasParams = esFarmacia
+        ? { ...(isRefresh ? { refresh: 'true' } : {}) }
+        : params;
 
       const response = await dashboardAPI.getResumen(params);
-      
+
       if (!isMountedRef.current) return;
 
       const nextKpis = response.data.kpi || {
@@ -708,7 +713,7 @@ const Dashboard = () => {
 
       // Cargar gráficas
       try {
-        const graficasResponse = await dashboardAPI.getGraficas(params);
+        const graficasResponse = await dashboardAPI.getGraficas(graficasParams);
         if (!isMountedRef.current) return;
         setGraficas({
           consumo_mensual: graficasResponse.data.consumo_mensual || [],
@@ -753,7 +758,7 @@ const Dashboard = () => {
         setRefreshing(false);
       }
     }
-  }, [esVista, esCentroRestringido, centroUsuario]);
+  }, [esVista, esCentroRestringido, centroUsuario, esFarmacia]);
 
   // Cargar analytics avanzados (solo para Farmacia y Admin)
   const loadAnalytics = useCallback(async (centroId = null) => {
@@ -791,7 +796,12 @@ const Dashboard = () => {
       setSelectedCentro('todos');
       setCentroNombre('Todos los centros');
     }
-  }, [cargandoPermisos, permisosEnValidacion, esCentroRestringido, centroUsuario, selectedCentro]);
+    // Farmacia: default siempre Farmacia Central (KPIs del almacén central)
+    if (!cargandoPermisos && !permisosEnValidacion && esFarmacia && selectedCentro === 'todos') {
+      setSelectedCentro('central');
+      setCentroNombre('Farmacia Central');
+    }
+  }, [cargandoPermisos, permisosEnValidacion, esCentroRestringido, centroUsuario, selectedCentro, esFarmacia]);
 
   // Cargar datos
   useEffect(() => {
