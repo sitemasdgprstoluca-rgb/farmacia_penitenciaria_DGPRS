@@ -2140,8 +2140,11 @@ const RequisicionDetalle = () => {
                       <FaFilePdf /> Ver hoja firmada
                     </a>
                   )}
-                  {/* Cargar hoja firmada - solo farmacia */}
-                  {esFarmacia && (
+                  {/* Cargar hoja firmada - solo farmacia responsable de la requisición */}
+                  {esFarmacia && (() => {
+                    const ownerId = requisicion?.autorizador_farmacia || requisicion?.receptor_farmacia || requisicion?.surtidor;
+                    return user?.is_superuser || (ownerId && String(ownerId) === String(user?.id));
+                  })() && (
                     <>
                       <button
                         onClick={() => fileInputValidacionRef.current?.click()}

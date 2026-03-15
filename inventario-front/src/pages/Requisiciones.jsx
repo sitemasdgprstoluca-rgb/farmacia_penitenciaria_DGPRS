@@ -2249,8 +2249,11 @@ const Requisiciones = () => {
                     </button>
                   )}
 
-                  {/* Subir/reemplazar evidencia de entrega firmada - solo farmacia */}
-                  {req.estado === 'entregada' && esFarmacia && (
+                  {/* Subir/reemplazar evidencia de entrega firmada - solo farmacia responsable */}
+                  {req.estado === 'entregada' && esFarmacia && (() => {
+                    const ownerId = req.autorizador_farmacia || req.receptor_farmacia || req.surtidor;
+                    return user?.is_superuser || (ownerId && String(ownerId) === String(user?.id));
+                  })() && (
                     <label
                       className={`cursor-pointer px-3 py-1 rounded text-sm flex items-center gap-1 font-semibold transition-colors border ${
                         req.documento_entrega_url

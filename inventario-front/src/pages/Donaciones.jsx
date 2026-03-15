@@ -1844,158 +1844,42 @@ const Donaciones = () => {
       {/* ========== TAB: DONACIONES ========== */}
       {activeTab === 'donaciones' && (
         <>
-          {/* ===== BANNER INTERACTIVO - FLUJO DE DONACIONES ===== */}
-          {(() => {
-            const totalDons = resumen.pendientes + resumen.recibidas + resumen.procesadas + resumen.rechazadas;
-            const pasosFlujo = [
-              {
-                id: 'pendiente', label: 'Pendiente', icon: FaClock,
-                count: resumen.pendientes,
-                colorBg: 'bg-yellow-400/25', colorIcon: 'text-yellow-300',
-                desc: 'Registradas, esperando confirmación de recepción física',
-                alerta: resumen.pendientes > 0,
-                action: () => { setFiltroEstado('pendiente'); setCurrentPage(1); },
-              },
-              {
-                id: 'recibida', label: 'Recibida', icon: FaBox,
-                count: resumen.recibidas,
-                colorBg: 'bg-blue-400/25', colorIcon: 'text-blue-300',
-                desc: 'Físicamente en farmacia, listas para ingresar al sistema',
-                alerta: resumen.recibidas > 0,
-                action: () => { setFiltroEstado('recibida'); setCurrentPage(1); },
-              },
-              {
-                id: 'procesada', label: 'Procesada', icon: FaCheckCircle,
-                count: resumen.procesadas,
-                colorBg: 'bg-emerald-400/25', colorIcon: 'text-emerald-300',
-                desc: 'Productos ingresados al inventario de donaciones',
-                alerta: false,
-                action: () => { setFiltroEstado('procesada'); setCurrentPage(1); },
-              },
-              {
-                id: 'inventario', label: 'En Almacén', icon: FaWarehouse,
-                count: estadisticas.totalProductos,
-                sub: `${estadisticas.totalUnidades.toLocaleString('es-MX')} uds`,
-                colorBg: 'bg-teal-400/25', colorIcon: 'text-teal-300',
-                desc: `${estadisticas.totalUnidades.toLocaleString('es-MX')} unidades disponibles para entrega`,
-                alerta: estadisticas.productosPorCaducar > 0,
-                action: () => setActiveTab('inventario'),
-              },
-              {
-                id: 'entregado', label: 'Entregado', icon: FaHandHoldingMedical,
-                count: resumen.totalEntregas,
-                colorBg: 'bg-violet-400/25', colorIcon: 'text-violet-300',
-                desc: 'Salidas registradas hacia centros penitenciarios',
-                alerta: false,
-                action: () => setActiveTab('entregas'),
-              },
-            ];
-            const alertasActivas = [
-              resumen.rechazadas > 0 && { icono: FaTimes, color: 'text-red-300 hover:text-red-200', msg: `${resumen.rechazadas} donación${resumen.rechazadas > 1 ? 'es' : ''} rechazada${resumen.rechazadas > 1 ? 's' : ''}`, action: () => { setFiltroEstado('rechazada'); setCurrentPage(1); } },
-              estadisticas.productosPorCaducar > 0 && { icono: FaExclamationTriangle, color: 'text-yellow-300 hover:text-yellow-200', msg: `${estadisticas.productosPorCaducar} producto${estadisticas.productosPorCaducar > 1 ? 's' : ''} por caducar en 30 días`, action: () => { setActiveTab('inventario'); setFiltroCaducidadInv('critico'); } },
-              estadisticas.productosAgotados > 0 && { icono: FaExclamationTriangle, color: 'text-orange-300 hover:text-orange-200', msg: `${estadisticas.productosAgotados} producto${estadisticas.productosAgotados > 1 ? 's' : ''} agotado${estadisticas.productosAgotados > 1 ? 's' : ''} en almacén`, action: () => { setActiveTab('inventario'); setFiltroDisponibilidad('agotado'); } },
-            ].filter(Boolean);
-
-            return (
-              <div className="relative bg-gradient-to-br from-purple-700 via-purple-600 to-pink-600 rounded-2xl p-5 mb-6 shadow-xl overflow-hidden">
-                {/* Decoración de fondo */}
-                <div className="absolute -top-10 -right-10 w-44 h-44 bg-white/10 rounded-full pointer-events-none" />
-                <div className="absolute -bottom-8 -left-8 w-32 h-32 bg-white/10 rounded-full pointer-events-none" />
-
-                <div className="relative z-10">
-                  {/* Cabecera */}
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2.5 bg-white/20 rounded-xl">
-                        <FaGift className="text-white text-xl" />
-                      </div>
-                      <div>
-                        <h2 className="text-white font-bold text-base leading-tight">Flujo de Donaciones</h2>
-                        <p className="text-purple-200 text-[11px]">Toca cada etapa para filtrar o navegar directamente</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-3xl font-black text-white tabular-nums leading-none">
-                        {resumen.loading ? <FaSpinner className="animate-spin text-xl" /> : totalDons.toLocaleString('es-MX')}
-                      </div>
-                      <div className="text-[10px] text-purple-200 uppercase tracking-wider mt-0.5">donaciones totales</div>
-                    </div>
-                  </div>
-
-                  {/* Pasos del flujo */}
-                  <div className="flex items-stretch gap-1.5 overflow-x-auto pb-1">
-                    {pasosFlujo.map((paso, idx) => (
-                      <React.Fragment key={paso.id}>
-                        <button
-                          onClick={paso.action}
-                          onMouseEnter={() => setHoveredStep(paso.id)}
-                          onMouseLeave={() => setHoveredStep(null)}
-                          title={paso.desc}
-                          className={`relative flex-1 min-w-[90px] border border-white/20 rounded-xl p-3 text-left transition-all duration-200 cursor-pointer ${
-                            hoveredStep === paso.id
-                              ? 'bg-white/30 shadow-lg scale-105 border-white/40'
-                              : filtroEstado === paso.id
-                              ? 'bg-white/30 border-white/50 ring-2 ring-white/40'
-                              : 'bg-white/10 hover:bg-white/20'
-                          }`}
-                        >
-                          {/* Punto de alerta */}
-                          {paso.alerta && (
-                            <span className="absolute top-2 right-2 flex h-2 w-2">
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75" />
-                              <span className="relative inline-flex rounded-full h-2 w-2 bg-yellow-400" />
-                            </span>
-                          )}
-                          {/* Icono */}
-                          <div className={`inline-flex p-1.5 rounded-lg mb-2 ${paso.colorBg}`}>
-                            <paso.icon className={`text-sm ${paso.colorIcon}`} />
-                          </div>
-                          {/* Número */}
-                          <div className="text-xl font-black text-white tabular-nums leading-none mb-0.5">
-                            {resumen.loading ? '—' : paso.count.toLocaleString('es-MX')}
-                          </div>
-                          {/* Etiqueta */}
-                          <div className="text-[11px] text-purple-200 font-medium leading-tight">{paso.label}</div>
-                          {paso.sub && <div className="text-[10px] text-purple-300 mt-0.5">{paso.sub}</div>}
-
-                          {/* Tooltip flotante */}
-                          {hoveredStep === paso.id && (
-                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-gray-900/95 text-white text-[11px] rounded-xl px-3 py-2 z-30 shadow-2xl border border-white/10 whitespace-nowrap pointer-events-none">
-                              {paso.desc}
-                              <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900/95" />
-                            </div>
-                          )}
-                        </button>
-
-                        {/* Flecha separadora */}
-                        {idx < pasosFlujo.length - 1 && (
-                          <div className="flex-shrink-0 flex items-center self-stretch">
-                            <FaArrowRight className="text-white/30 text-xs" />
-                          </div>
-                        )}
-                      </React.Fragment>
-                    ))}
-                  </div>
-
-                  {/* Barra de alertas */}
-                  {alertasActivas.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3 pt-3 border-t border-white/20">
-                      {alertasActivas.map((alerta, i) => (
-                        <button
-                          key={i}
-                          onClick={alerta.action}
-                          className={`flex items-center gap-1.5 text-[11px] font-medium transition-colors ${alerta.color}`}
-                        >
-                          <alerta.icono className="flex-shrink-0" />
-                          <span>{alerta.msg} <span className="underline underline-offset-2 opacity-70">ver →</span></span>
-                        </button>
-                      ))}
+          {/* ===== BANNER FLUJO DE DONACIONES ===== */}
+          <div className="bg-white border border-purple-100 rounded-xl p-4 mb-6 shadow-sm">
+            <div className="flex items-center gap-2 mb-3">
+              <FaGift className="text-purple-600 text-sm" />
+              <span className="text-sm font-semibold text-purple-700">Flujo de Donaciones</span>
+            </div>
+            <div className="flex items-start gap-1 overflow-x-auto pb-1">
+              {[
+                { id: 'pendiente',  Icon: FaClock,              label: 'Pendiente',  desc: 'Registrada, esperando confirmación de recepción física',     color: 'text-yellow-600 bg-yellow-50 border-yellow-200', action: () => { setFiltroEstado('pendiente');  setCurrentPage(1); } },
+                { id: 'recibida',   Icon: FaBox,                label: 'Recibida',   desc: 'Físicamente en farmacia, lista para ingresar al sistema',     color: 'text-blue-600   bg-blue-50   border-blue-200',   action: () => { setFiltroEstado('recibida');   setCurrentPage(1); } },
+                { id: 'procesada',  Icon: FaCheckCircle,        label: 'Procesada',  desc: 'Productos ingresados al inventario de donaciones',            color: 'text-green-600  bg-green-50  border-green-200',  action: () => { setFiltroEstado('procesada');  setCurrentPage(1); } },
+                { id: 'inventario', Icon: FaWarehouse,          label: 'En Almacén', desc: 'Stock disponible para entrega a los centros penitenciarios',  color: 'text-teal-600   bg-teal-50   border-teal-200',   action: () => setActiveTab('inventario') },
+                { id: 'entregado',  Icon: FaHandHoldingMedical, label: 'Entregado',  desc: 'Salidas registradas y entregadas a los centros',             color: 'text-purple-600 bg-purple-50 border-purple-200', action: () => setActiveTab('entregas') },
+              ].map((paso, idx, arr) => (
+                <React.Fragment key={paso.id}>
+                  <button
+                    onClick={paso.action}
+                    className={`flex-1 min-w-[110px] flex flex-col items-center gap-1.5 px-3 py-3 rounded-lg border text-center transition-colors ${
+                      filtroEstado === paso.id
+                        ? paso.color + ' shadow-sm'
+                        : 'text-gray-500 bg-gray-50 border-gray-200 hover:border-gray-300 hover:bg-gray-100'
+                    }`}
+                  >
+                    <paso.Icon className="text-base opacity-80" />
+                    <span className="text-xs font-semibold leading-tight">{paso.label}</span>
+                    <span className="text-[10px] leading-tight opacity-70">{paso.desc}</span>
+                  </button>
+                  {idx < arr.length - 1 && (
+                    <div className="flex-shrink-0 self-center px-0.5">
+                      <FaArrowRight className="text-gray-300 text-xs" />
                     </div>
                   )}
-                </div>
-              </div>
-            );
-          })()}
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
 
           {/* Barra de acciones */}
           <div className="bg-white rounded-xl shadow-sm border p-4 mb-6">

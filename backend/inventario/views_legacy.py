@@ -7072,6 +7072,33 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 'estado_actual': requisicion.estado
             }, status=status.HTTP_400_BAD_REQUEST)
 
+        # Solo el usuario de farmacia que gestionó la requisición puede subir/reemplazar evidencia.
+        # La prioridad de responsable es: autorizador_farmacia > receptor_farmacia > surtidor
+        # (autorizador_farmacia siempre queda registrado en confirmar_entrega si no estaba)
+        if not request.user.is_superuser:
+            owner_id = (
+                requisicion.autorizador_farmacia_id
+                or requisicion.receptor_farmacia_id
+                or requisicion.surtidor_id
+            )
+            if not owner_id:
+                return Response({
+                    'error': 'Esta requisición no tiene un responsable de farmacia registrado. Contacte al administrador.'
+                }, status=status.HTTP_403_FORBIDDEN)
+            if owner_id != request.user.id:
+                try:
+                    owner = (
+                        requisicion.autorizador_farmacia
+                        or requisicion.receptor_farmacia
+                        or requisicion.surtidor
+                    )
+                    owner_nombre = f"{owner.first_name} {owner.last_name}".strip() or owner.username
+                except Exception:
+                    owner_nombre = f'Usuario #{owner_id}'
+                return Response({
+                    'error': f'Esta requisición fue gestionada por {owner_nombre}. Solo esa persona puede subir la evidencia.'
+                }, status=status.HTTP_403_FORBIDDEN)
+
         archivo = request.FILES.get('documento_entrega')
         if not archivo:
             return Response({
@@ -7146,6 +7173,28 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         logger.info(f'Documento de entrega subido para requisición {requisicion.folio} por {request.user.username}: {resultado["url"]}')
+
+        # Registro explícito en auditoria_logs: el middleware no captura objeto_id en rutas de acción anidadas
+        try:
+            from core.models import AuditoriaLogs
+            AuditoriaLogs.objects.create(
+                usuario_id=request.user.id,
+                accion='SUBIR_EVIDENCIA',
+                modelo='Requisicion',
+                objeto_id=str(requisicion.pk),
+                datos_nuevos={
+                    'folio': requisicion.folio,
+                    'documento_entrega_url': resultado['url'],
+                    'subido_por': usuario_nombre,
+                },
+                rol_usuario=getattr(request.user, 'rol', None),
+                resultado='success',
+                status_code=200,
+                endpoint=request.path[:255],
+                metodo_http='POST',
+            )
+        except Exception as audit_err:
+            logger.warning(f'No se pudo registrar auditoría de evidencia: {audit_err}')
 
         return Response({
             'mensaje': 'Documento de entrega subido correctamente',
@@ -8090,10 +8139,17 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
         requisicion.lugar_entrega = lugar_entrega
         if observaciones:
             requisicion.notas = f"{requisicion.notas or ''}\n[Recepción] {observaciones}".strip()
-        
+
+        # INVARIANTE: autorizador_farmacia SIEMPRE debe quedar registrado.
+        # Si no fue asignado en el paso de autorización (datos legacy o flujo atípico),
+        # se asigna aquí al usuario que confirma la entrega.
+        update_fields = ['estado', 'fecha_entrega', 'lugar_entrega', 'notas']
+        if not requisicion.autorizador_farmacia_id:
+            requisicion.autorizador_farmacia = request.user
+            update_fields.append('autorizador_farmacia')
+
         # ISS-004 FIX (audit21): Validar imagen completa (MIME, magic bytes, extensión)
         foto_firma = request.FILES.get('foto_firma_recepcion') or request.FILES.get('foto_firma')
-        update_fields = ['estado', 'fecha_entrega', 'lugar_entrega', 'notas']
 
         if foto_firma:
             es_valido, error_msg = validar_archivo_imagen(foto_firma, max_size_mb=2)
