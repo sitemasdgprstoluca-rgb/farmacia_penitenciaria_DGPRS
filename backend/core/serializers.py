@@ -2308,6 +2308,8 @@ class RequisicionListSerializer(serializers.ModelSerializer):
             'fecha_autorizacion', 'fecha_surtido', 'fecha_entrega',
             # AUDITORÍA: actores del flujo
             'usuario_autoriza_nombre', 'surtidor_nombre', 'rechazado_por_nombre', 'motivo_rechazo',
+            # Documento de entrega firmada
+            'documento_entrega_url',
         ]
         read_only_fields = fields
     

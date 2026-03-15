@@ -1376,8 +1376,8 @@ const Dashboard = () => {
                 expandable
                 action={
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">+ {totalEntradas.toLocaleString('es-MX')}</span>
-                    <span className="text-[10px] font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded-md">+ {totalSalidas.toLocaleString('es-MX')}</span>
+                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">↑ {totalEntradas.toLocaleString('es-MX')}</span>
+                    <span className="text-[10px] font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded-md">↓ {totalSalidas.toLocaleString('es-MX')}</span>
                   </div>
                 }
               >
@@ -1387,7 +1387,7 @@ const Dashboard = () => {
                     <div className="grid grid-cols-3 gap-3 mb-6">
                       <div className="rounded-xl border-2 border-emerald-100 bg-gradient-to-br from-emerald-50/80 to-white p-4">
                         <div className="flex items-center gap-1.5 mb-2">
-                          <FaArrowDown className="text-emerald-500" size={10} />
+                          <FaArrowUp className="text-emerald-500" size={10} />
                           <span className="text-[10px] font-extrabold text-emerald-600 uppercase tracking-wider">Entradas</span>
                         </div>
                         <div className="flex items-baseline justify-between">
@@ -1401,7 +1401,7 @@ const Dashboard = () => {
                       </div>
                       <div className="rounded-xl border-2 border-red-100 bg-gradient-to-br from-red-50/80 to-white p-4">
                         <div className="flex items-center gap-1.5 mb-2">
-                          <FaArrowUp className="text-red-500" size={10} />
+                          <FaArrowDown className="text-red-500" size={10} />
                           <span className="text-[10px] font-extrabold text-red-600 uppercase tracking-wider">Salidas</span>
                         </div>
                         <div className="flex items-baseline justify-between">

@@ -8749,9 +8749,13 @@ def dashboard_resumen(request):
                 cantidad_actual__gt=0
             )
             
-            # ISS-FIX: Filtrar por Farmacia Central (centro=null) o por centro específico
+            # ISS-FIX: Filtrar por Farmacia Central (centro=null + almacén central) o por centro específico
             if filtrar_por_centro == 'central':
-                lotes_query = lotes_query.filter(centro__isnull=True)
+                lotes_query = lotes_query.filter(
+                    Q(centro__isnull=True) |
+                    Q(centro__nombre__icontains='almacén central') |
+                    Q(centro__nombre__icontains='almacen central')
+                )
             elif filtrar_por_centro and user_centro:
                 lotes_query = lotes_query.filter(centro=user_centro)
             
@@ -8910,14 +8914,24 @@ def dashboard_graficas(request):
         centro_param = request.query_params.get('centro')
         if centro_param and centro_param not in ['', 'null', 'undefined', 'todos']:
             if tiene_acceso_global:
-                try:
-                    user_centro = Centro.objects.get(pk=int(centro_param))
-                    filtrar_por_centro = True
-                except (Centro.DoesNotExist, ValueError, TypeError):
-                    pass
-        
+                # ISS-FIX: Manejar 'central' igual que dashboard_resumen
+                if centro_param.lower() == 'central':
+                    user_centro = None
+                    filtrar_por_centro = 'central'
+                else:
+                    try:
+                        user_centro = Centro.objects.get(pk=int(centro_param))
+                        filtrar_por_centro = True
+                    except (Centro.DoesNotExist, ValueError, TypeError):
+                        pass
+
         # ISS-005: Generar clave de caché única por centro
-        centro_id = user_centro.id if user_centro else 'global'
+        if filtrar_por_centro == 'central':
+            centro_id = 'central'
+        elif user_centro:
+            centro_id = user_centro.id
+        else:
+            centro_id = 'global'
         cache_key = f'dashboard_graficas_{centro_id}'
         
         # ISS-FIX: Parámetro refresh para forzar recarga sin caché
@@ -8952,7 +8966,14 @@ def dashboard_graficas(request):
                 fecha__date__lt=mes_fin
             )
             
-            if filtrar_por_centro and user_centro:
+            if filtrar_por_centro == 'central':
+                # ISS-FIX: Farmacia Central = lotes sin centro asignado
+                mov_mes = mov_mes.filter(
+                    Q(lote__centro__isnull=True) |
+                    Q(lote__centro__nombre__icontains='almacén central') |
+                    Q(lote__centro__nombre__icontains='almacen central')
+                )
+            elif filtrar_por_centro and user_centro:
                 # ISS-CENTRO FIX v2: Solo movimientos donde el lote pertenece al centro
                 # o donde el centro es el origen (no incluir salidas de otros centros hacia este)
                 mov_mes = mov_mes.filter(
@@ -8966,20 +8987,43 @@ def dashboard_graficas(request):
             # ISS-FIX: Excluir movimientos PENDIENTES (salidas masivas no confirmadas)
             # Solo contar movimientos CONFIRMADOS o sin marca de estado
             mov_mes_confirmados = mov_mes.exclude(motivo__icontains='[PENDIENTE]')
-            
-            # ISS-FIX: Incluir TODOS los tipos que suman stock (entrada, ajuste_positivo, devolucion)
-            entradas = mov_mes_confirmados.filter(
-                tipo__in=['entrada', 'ajuste_positivo', 'devolucion']
-            ).aggregate(
-                total=Coalesce(Sum('cantidad'), 0, output_field=IntegerField())
-            )['total']
-            
-            # ISS-FIX: Incluir TODOS los tipos que restan stock (salida, ajuste_negativo, merma, caducidad, transferencia)
-            salidas = mov_mes_confirmados.filter(
-                tipo__in=['salida', 'ajuste_negativo', 'merma', 'caducidad', 'transferencia']
-            ).aggregate(
-                total=Coalesce(Sum('cantidad'), 0, output_field=IntegerField())
-            )['total']
+
+            if not filtrar_por_centro:
+                # VISTA GLOBAL: eliminar doble conteo de transferencias internas.
+                # Cada transferencia crea DOS registros:
+                #   1. tipo='transferencia' en Farmacia  → se contaría como salida
+                #   2. tipo='entrada' con centro_origen≠NULL en Centro → se contaría como entrada
+                # Si ambos se cuentan, entradas ≈ salidas siempre y el balance es +0.
+                # Solución: sólo contar stock que ENTRÓ al sistema desde el exterior
+                # (tipo='entrada' SIN centro_origen) y stock que SALIÓ del sistema
+                # (tipo='salida', 'merma', 'caducidad' — excluir 'transferencia' que es movimiento interno).
+                entradas = mov_mes_confirmados.filter(
+                    tipo__in=['entrada', 'ajuste_positivo', 'devolucion'],
+                    centro_origen__isnull=True   # excluir recepciones de transferencias internas
+                ).aggregate(
+                    total=Coalesce(Sum('cantidad'), 0, output_field=IntegerField())
+                )['total']
+
+                salidas = mov_mes_confirmados.filter(
+                    tipo__in=['salida', 'ajuste_negativo', 'merma', 'caducidad']
+                    # 'transferencia' excluida: es movimiento interno, no sale del sistema
+                ).aggregate(
+                    total=Coalesce(Sum('cantidad'), 0, output_field=IntegerField())
+                )['total']
+            else:
+                # VISTA POR CENTRO o FARMACIA CENTRAL: perspectiva local, sin doble conteo
+                # porque los filtros ya limitan los movimientos a un solo lado del par.
+                entradas = mov_mes_confirmados.filter(
+                    tipo__in=['entrada', 'ajuste_positivo', 'devolucion']
+                ).aggregate(
+                    total=Coalesce(Sum('cantidad'), 0, output_field=IntegerField())
+                )['total']
+
+                salidas = mov_mes_confirmados.filter(
+                    tipo__in=['salida', 'ajuste_negativo', 'merma', 'caducidad', 'transferencia']
+                ).aggregate(
+                    total=Coalesce(Sum('cantidad'), 0, output_field=IntegerField())
+                )['total']
             
             consumo_mensual.append({
                 'mes': mes_inicio.strftime('%b'),
@@ -8994,12 +9038,23 @@ def dashboard_graficas(request):
         consumo_por_producto = []
         try:
             # Top 5 productos con más movimientos de salida en los últimos 6 meses
+            # En vista global excluir transferencias (consumo real = salida/merma/caducidad)
             fecha_6_meses = (hoy - relativedelta(months=6)).replace(day=1)
+            tipos_consumo_global = ['salida', 'ajuste_negativo', 'merma', 'caducidad']
+            tipos_consumo_centro = ['salida', 'ajuste_negativo', 'merma', 'caducidad', 'transferencia']
+            tipos_consumo = tipos_consumo_centro if filtrar_por_centro else tipos_consumo_global
+
             mov_base = Movimiento.objects.filter(
                 fecha__date__gte=fecha_6_meses,
-                tipo__in=['salida', 'ajuste_negativo', 'merma', 'caducidad', 'transferencia']
+                tipo__in=tipos_consumo
             ).exclude(motivo__icontains='[PENDIENTE]')
-            if filtrar_por_centro and user_centro:
+            if filtrar_por_centro == 'central':
+                mov_base = mov_base.filter(
+                    Q(lote__centro__isnull=True) |
+                    Q(lote__centro__nombre__icontains='almacén central') |
+                    Q(lote__centro__nombre__icontains='almacen central')
+                )
+            elif filtrar_por_centro and user_centro:
                 mov_base = mov_base.filter(
                     Q(lote__centro=user_centro) | Q(centro_origen=user_centro)
                 )
@@ -9022,7 +9077,7 @@ def dashboard_graficas(request):
                         producto__id=prod['producto__id'],
                         fecha__date__gte=mes_inicio,
                         fecha__date__lt=mes_fin,
-                        tipo__in=['salida', 'ajuste_negativo', 'merma', 'caducidad', 'transferencia']
+                        tipo__in=tipos_consumo
                     ).exclude(motivo__icontains='[PENDIENTE]').aggregate(
                         total=Coalesce(Sum('cantidad'), 0, output_field=IntegerField())
                     )['total']
@@ -9080,6 +9135,23 @@ def dashboard_graficas(request):
                         'centro_id': centro.id,
                         'stock': stock
                     })
+        elif filtrar_por_centro == 'central':
+            # ISS-FIX: Farmacia Central seleccionada — misma consolidación que la vista global
+            stock_farmacia = Lote.objects.filter(
+                Q(centro__isnull=True) |
+                Q(centro__nombre__icontains='almacén central') |
+                Q(centro__nombre__icontains='almacen central'),
+                activo=True,
+                cantidad_actual__gt=0
+            ).aggregate(
+                total=Coalesce(Sum('cantidad_actual'), 0, output_field=IntegerField())
+            )['total']
+            if stock_farmacia > 0:
+                stock_por_centro.append({
+                    'centro': 'Farmacia Central',
+                    'centro_id': 'central',
+                    'stock': stock_farmacia
+                })
         else:
             # Usuario de centro: solo su stock
             if user_centro:
@@ -9090,20 +9162,40 @@ def dashboard_graficas(request):
                 ).aggregate(
                     total=Coalesce(Sum('cantidad_actual'), 0, output_field=IntegerField())
                 )['total']
-                
+
                 stock_por_centro.append({
                     'centro': user_centro.nombre,
                     'centro_id': user_centro.id,
                     'stock': max(0, stock)
                 })
-        
+
         # =========================================
         # 2b. STOCK POR PRODUCTO (solo para usuarios de centro)
         # Permite al frontend mostrar desglose por producto
         # cuando solo hay un centro visible.
         # =========================================
         stock_por_producto = []
-        if filtrar_por_centro and user_centro:
+        if filtrar_por_centro == 'central':
+            # ISS-FIX: Farmacia Central — desglose por producto de lotes sin centro
+            lotes_agrupados = (
+                Lote.objects.filter(
+                    Q(centro__isnull=True) |
+                    Q(centro__nombre__icontains='almacén central') |
+                    Q(centro__nombre__icontains='almacen central'),
+                    activo=True,
+                    cantidad_actual__gt=0
+                )
+                .values('producto__nombre', 'producto__id')
+                .annotate(total=Coalesce(Sum('cantidad_actual'), 0, output_field=IntegerField()))
+                .order_by('-total')
+            )
+            for lp in lotes_agrupados:
+                stock_por_producto.append({
+                    'producto': lp['producto__nombre'],
+                    'producto_id': lp['producto__id'],
+                    'stock': lp['total'],
+                })
+        elif filtrar_por_centro and user_centro:
             lotes_agrupados = (
                 Lote.objects.filter(
                     centro=user_centro,
