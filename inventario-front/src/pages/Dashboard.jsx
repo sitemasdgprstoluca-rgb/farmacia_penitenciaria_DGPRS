@@ -1551,11 +1551,11 @@ const Dashboard = () => {
           {(() => {
             const stockCentro = graficas.stock_por_centro || [];
             const stockProducto = graficas.stock_por_producto || [];
-            const esCentroUnico = stockCentro.length <= 1 && stockProducto.length > 0;
-            const chartTitle = esCentroUnico ? 'Inventario por Producto' : 'Inventario por Centro';
-            const chartIcon = esCentroUnico ? FaCubes : FaWarehouse;
-            const items = esCentroUnico ? stockProducto : stockCentro;
-            const labelKey = esCentroUnico ? 'producto' : 'centro';
+            const mostrarPorProducto = esCentroRestringido;
+            const chartTitle = mostrarPorProducto ? 'Inventario por Producto' : 'Inventario por Centro';
+            const chartIcon = mostrarPorProducto ? FaCubes : FaWarehouse;
+            const items = mostrarPorProducto ? stockProducto : stockCentro;
+            const labelKey = mostrarPorProducto ? 'producto' : 'centro';
             const COLORS_BAR = ['#932043', '#0EA5E9', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316', '#6366F1', '#EF4444', '#0D9488', '#7C3AED', '#DB2777', '#EA580C', '#2563EB', '#059669', '#D97706', '#4F46E5', '#E11D48', '#0891B2', '#65A30D', '#9333EA'];
 
             const puedeNavegar = permisos?.verReportes;
@@ -1581,7 +1581,7 @@ const Dashboard = () => {
                 icon={chartIcon} 
                 expandable
                 action={
-                  puedeNavegar && !esCentroUnico ? (
+                  puedeNavegar && !mostrarPorProducto ? (
                     <button
                       onClick={() => navigate('/reportes', { state: { tipo: 'inventario' } })}
                       className="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors hover:bg-gray-100"
@@ -1595,7 +1595,7 @@ const Dashboard = () => {
                 {/* Mini KPIs */}
                 <div className="grid grid-cols-3 gap-2 mb-4">
                   <div className="dash-stat-mini dash-stat-primary">
-                    <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">{esCentroUnico ? 'Productos' : 'Centros'}</span>
+                    <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">{mostrarPorProducto ? 'Productos' : 'Centros'}</span>
                     <p className="text-lg font-black text-gray-800 mt-0.5">{sorted.length}</p>
                   </div>
                   <div className="dash-stat-mini dash-stat-success">
@@ -1617,8 +1617,8 @@ const Dashboard = () => {
                     return (
                       <div
                         key={item.centro_id || item.producto_id || idx}
-                        className={`group flex items-center gap-2.5 px-2.5 py-2 rounded-lg border border-transparent hover:border-gray-100 hover:bg-gray-50/70 transition-all ${puedeNavegar && !esCentroUnico ? 'cursor-pointer' : ''}`}
-                        onClick={() => puedeNavegar && !esCentroUnico && item.centro_id && navigate('/reportes', { state: { tipo: 'inventario', centro: item.centro_id } })}
+                        className={`group flex items-center gap-2.5 px-2.5 py-2 rounded-lg border border-transparent hover:border-gray-100 hover:bg-gray-50/70 transition-all ${puedeNavegar && !mostrarPorProducto ? 'cursor-pointer' : ''}`}
+                        onClick={() => puedeNavegar && !mostrarPorProducto && item.centro_id && navigate('/reportes', { state: { tipo: 'inventario', centro: item.centro_id } })}
                         title={nombre}
                       >
                         <span className="w-5 h-5 rounded-md flex items-center justify-center text-[9px] font-black text-white flex-shrink-0" style={{ backgroundColor: color }}>{idx + 1}</span>
@@ -1639,7 +1639,7 @@ const Dashboard = () => {
                   })}
                 </div>
                 {sorted.length > 8 && (
-                  <p className="text-[9px] text-gray-400 text-center mt-2 italic">Mostrando {sorted.length} {esCentroUnico ? 'productos' : 'centros'} · Scroll para ver todos</p>
+                  <p className="text-[9px] text-gray-400 text-center mt-2 italic">Mostrando {sorted.length} {mostrarPorProducto ? 'productos' : 'centros'} · Scroll para ver todos</p>
                 )}
               </ChartCard>
             );
