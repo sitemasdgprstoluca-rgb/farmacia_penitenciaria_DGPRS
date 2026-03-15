@@ -652,9 +652,9 @@ const Dashboard = () => {
   // Analytics avanzados
   const [analytics, setAnalytics] = useState(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
-  // ISS-FIX: Default a 'central' (Farmacia Central) para usuarios con acceso global
-  const [selectedCentro, setSelectedCentro] = useState(esCentroRestringido ? centroUsuario : 'central');
-  const [centroNombre, setCentroNombre] = useState(esCentroRestringido ? '' : 'Farmacia Central');
+  // Farmacia/Admin: vista global por defecto (todos los centros)
+  const [selectedCentro, setSelectedCentro] = useState(esCentroRestringido ? centroUsuario : 'todos');
+  const [centroNombre, setCentroNombre] = useState(esCentroRestringido ? '' : 'Todos los centros');
   const [lastUpdate, setLastUpdate] = useState(null);
   
   const isMountedRef = useRef(true);
@@ -788,8 +788,8 @@ const Dashboard = () => {
     }
     // ISS-FIX: Garantizar que usuarios con acceso global siempre tengan un valor válido
     if (!cargandoPermisos && !permisosEnValidacion && !esCentroRestringido && !selectedCentro) {
-      setSelectedCentro('central');
-      setCentroNombre('Farmacia Central');
+      setSelectedCentro('todos');
+      setCentroNombre('Todos los centros');
     }
   }, [cargandoPermisos, permisosEnValidacion, esCentroRestringido, centroUsuario, selectedCentro]);
 
@@ -917,10 +917,17 @@ const Dashboard = () => {
     return graficas.consumo_mensual.map(m => m.entradas || 0);
   }, [graficas.consumo_mensual]);
 
+  // Sparkline para Inventario Total: consumo mensual de salidas (tasa de consumo)
   const stockSparkline = useMemo(() => {
-    if (!graficas.stock_por_centro || graficas.stock_por_centro.length < 2) return null;
-    return graficas.stock_por_centro.map(c => c.stock || 0);
-  }, [graficas.stock_por_centro]);
+    if (!graficas.consumo_mensual || graficas.consumo_mensual.length < 2) return null;
+    return graficas.consumo_mensual.map(m => m.salidas || 0);
+  }, [graficas.consumo_mensual]);
+
+  // Sparkline para Lotes Activos: actividad total mensual (entradas + salidas)
+  const lotesSparkline = useMemo(() => {
+    if (!graficas.consumo_mensual || graficas.consumo_mensual.length < 2) return null;
+    return graficas.consumo_mensual.map(m => (m.entradas || 0) + (m.salidas || 0));
+  }, [graficas.consumo_mensual]);
 
   // Tendencias calculadas desde consumo mensual (mes actual vs anterior)
   const trends = useMemo(() => {
@@ -947,7 +954,9 @@ const Dashboard = () => {
     {
       title: 'Productos',
       value: kpis.total_productos || 0,
-      subtext: selectedCentro && selectedCentro !== 'central' ? `En ${centroNombre || 'centro'}` : 'Catálogo activo',
+      subtext: (!selectedCentro || selectedCentro === 'todos')
+        ? 'Catálogo activo'
+        : `En ${centroNombre || 'centro'}`,
       icon: FaBox,
       colorType: 'primary',
       show: permisos?.verDashboard && permisos?.verProductos,
@@ -961,24 +970,29 @@ const Dashboard = () => {
     {
       title: 'Inventario Total',
       value: kpis.stock_total || 0,
-      subtext: selectedCentro ? `En ${centroNombre || 'centro'}` : 'Unidades en existencia',
+      subtext: (!selectedCentro || selectedCentro === 'todos')
+        ? 'Inventario global'
+        : `En ${centroNombre || 'centro'}`,
       icon: FaCubes,
       colorType: 'success',
       show: permisos?.verDashboard,
       onClick: () => permisos?.verLotes && navigate('/lotes'),
       sparklineData: stockSparkline,
-      trend: trends.entradas?.dir === 'up' ? 'up' : trends.salidas?.dir === 'up' ? 'down' : null,
-      trendValue: trends.entradas?.val || trends.salidas?.val,
+      trend: trends.salidas?.dir === 'up' ? 'down' : trends.salidas?.dir === 'down' ? 'up' : null,
+      trendValue: trends.salidas?.val,
       suffix: 'uds',
     },
     {
       title: 'Lotes Activos',
       value: kpis.lotes_activos || 0,
-      subtext: 'Con existencias disponibles',
+      subtext: (!selectedCentro || selectedCentro === 'todos')
+        ? 'En todos los centros'
+        : `En ${centroNombre || 'centro'}`,
       icon: FaWarehouse,
       colorType: 'info',
       show: permisos?.verDashboard && permisos?.verLotes,
       onClick: () => permisos?.verLotes && navigate('/lotes'),
+      sparklineData: lotesSparkline,
       secondaryLabel: analytics?.caducidades?.vencen_30_dias > 0 ? '⚠ Por vencer (30d):' : null,
       secondaryValue: analytics?.caducidades?.vencen_30_dias > 0 ? String(analytics.caducidades.vencen_30_dias) : null,
     },
@@ -994,7 +1008,7 @@ const Dashboard = () => {
       trend: trends.movimientos?.dir,
       trendValue: trends.movimientos?.val,
     },
-  ], [kpis, permisos, navigate, selectedCentro, centroNombre, consumoSparkline, entradasSparkline, stockSparkline, analytics, trends]);
+  ], [kpis, permisos, navigate, selectedCentro, centroNombre, consumoSparkline, entradasSparkline, stockSparkline, lotesSparkline, analytics, trends]);
 
   // Quick access items - Usando CSS variables y permisos granulares
   const quickAccessItems = useMemo(() => [
@@ -1212,8 +1226,8 @@ const Dashboard = () => {
         }
       />
 
-      {/* Indicador de filtro activo - solo mostrar cuando NO es Farmacia Central (el default) */}
-      {selectedCentro && selectedCentro !== 'central' && puedeFiltrarPorCentro && (
+      {/* Indicador de filtro activo - solo mostrar cuando hay un centro específico seleccionado */}
+      {selectedCentro && selectedCentro !== 'todos' && puedeFiltrarPorCentro && (
         <div 
           className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border text-sm"
           style={{ 
@@ -1226,11 +1240,11 @@ const Dashboard = () => {
             <span className="truncate">Filtrado por: <strong>{centroNombre}</strong></span>
           </span>
           <button 
-            onClick={() => handleCentroChange('central', 'Farmacia Central')}
+            onClick={() => handleCentroChange('todos', 'Todos los centros')}
             className="font-medium underline hover:no-underline whitespace-nowrap"
             style={{ color: 'var(--color-warning-hover, #D97706)' }}
           >
-            Volver a Farmacia Central
+            Ver todos los centros
           </button>
         </div>
       )}
