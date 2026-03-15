@@ -6600,6 +6600,19 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                     logger.warning(f"ISS-004: Firma rechazada en surtir {requisicion.folio}: {error_msg}")
             
             on_commit_publish('surtido', 'requisicion', requisicion.id)
+
+            # Invalidar caché del dashboard para que el nuevo stock en centros se vea de inmediato
+            try:
+                from django.core.cache import cache
+                cache.delete('dashboard_graficas_global')
+                cache.delete('dashboard_resumen_global')
+                centro_req = getattr(requisicion, 'centro_origen', None) or getattr(requisicion, 'centro_destino', None)
+                if centro_req:
+                    cache.delete(f'dashboard_graficas_{centro_req.id}')
+                    cache.delete(f'dashboard_resumen_{centro_req.id}')
+            except Exception:
+                pass  # Cache no crítico
+
             return Response({
                 'mensaje': 'Requisición surtida exitosamente',
                 'requisicion': RequisicionSerializer(requisicion, context={'request': request}).data,
@@ -7059,19 +7072,6 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
                 'estado_actual': requisicion.estado
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        # ISS-OWNERSHIP: Solo el usuario de farmacia que gestionó la req puede subir evidencia
-        if not request.user.is_superuser:
-            owner_id = requisicion.autorizador_farmacia_id or requisicion.receptor_farmacia_id
-            if owner_id and owner_id != request.user.id:
-                try:
-                    owner = requisicion.autorizador_farmacia or requisicion.receptor_farmacia
-                    owner_nombre = f"{owner.first_name} {owner.last_name}".strip() or owner.username
-                except Exception:
-                    owner_nombre = f'Usuario #{owner_id}'
-                return Response({
-                    'error': f'Esta requisición fue gestionada por {owner_nombre}. Solo esa persona puede subir la evidencia.',
-                }, status=status.HTTP_403_FORBIDDEN)
-
         archivo = request.FILES.get('documento_entrega')
         if not archivo:
             return Response({
@@ -7125,16 +7125,24 @@ class RequisicionViewSet(CentroPermissionMixin, viewsets.ModelViewSet):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         usuario_nombre = f"{request.user.first_name} {request.user.last_name}".strip() or request.user.username
-        requisicion.documento_entrega_url = resultado['url']
-        # Registrar quién subió el documento
         obs_actual = requisicion.observaciones_farmacia or ''
-        requisicion.observaciones_farmacia = f"{obs_actual}\n[Evidencia subida por {usuario_nombre} el {now.strftime('%d/%m/%Y %H:%M')}]".strip()
+        nueva_obs = f"{obs_actual}\n[Evidencia subida por {usuario_nombre} el {now.strftime('%d/%m/%Y %H:%M')}]".strip()
+
+        # UPDATE directo por PK — más seguro que .save() con managed=False
         try:
-            requisicion.save(update_fields=['documento_entrega_url', 'observaciones_farmacia'])
+            filas = Requisicion.objects.filter(pk=requisicion.pk).update(
+                documento_entrega_url=resultado['url'],
+                observaciones_farmacia=nueva_obs,
+            )
+            if filas == 0:
+                raise Exception(f'No se encontró la requisición pk={requisicion.pk} en la base de datos')
+            # Reflejar cambios en el objeto en memoria para la respuesta
+            requisicion.documento_entrega_url = resultado['url']
+            requisicion.observaciones_farmacia = nueva_obs
         except Exception as save_error:
             logger.error(f'Error guardando URL de documento para {requisicion.folio}: {save_error}', exc_info=True)
             return Response({
-                'error': 'El archivo se subió pero no se pudo guardar en la base de datos. Verifique que la migración 027 ha sido aplicada en Supabase.'
+                'error': f'El archivo se subió pero no se pudo guardar en la base de datos: {save_error}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         logger.info(f'Documento de entrega subido para requisición {requisicion.folio} por {request.user.username}: {resultado["url"]}')
@@ -9114,26 +9122,63 @@ def dashboard_graficas(request):
                     'stock': stock_farmacia
                 })
             
-            # Todos los centros activos CON STOCK (excluyendo Almacén Central que ya está consolidado)
-            for centro in Centro.objects.filter(activo=True).exclude(
-                Q(nombre__icontains='almacén central') | Q(nombre__icontains='almacen central')
-            ).order_by('nombre'):
-                stock = Lote.objects.filter(
-                    centro=centro,
+            # Todos los centros CON STOCK — GROUP BY directo en Lotes.
+            # Usa una sola query en lugar de N queries; no depende de Centro.activo
+            # para no dejar fuera centros desactivados que aún tengan inventario.
+            lotes_centros_qs = (
+                Lote.objects.filter(
+                    centro__isnull=False,
                     activo=True,
                     cantidad_actual__gt=0
+                )
+                .exclude(
+                    Q(centro__nombre__icontains='almacén central') |
+                    Q(centro__nombre__icontains='almacen central')
+                )
+                .values('centro_id', 'centro__nombre')
+                .annotate(total=Coalesce(Sum('cantidad_actual'), 0, output_field=IntegerField()))
+                .filter(total__gt=0)
+                .order_by('-total')
+            )
+            centros_con_lote_ids = set()
+            for lc in lotes_centros_qs:
+                centros_con_lote_ids.add(lc['centro_id'])
+                stock_por_centro.append({
+                    'centro': lc['centro__nombre'],
+                    'centro_id': lc['centro_id'],
+                    'stock': lc['total'],
+                })
+
+            # Fallback: centros con movimientos 'entrada' pero sin lote espejo.
+            # Cubre transferencias antiguas o manuales donde no se creó lote en el destino.
+            entradas_directas = (
+                Movimiento.objects.filter(
+                    tipo='entrada',
+                    centro_destino__isnull=False,
+                )
+                .exclude(centro_destino_id__in=centros_con_lote_ids)
+                .exclude(
+                    Q(centro_destino__nombre__icontains='almacén central') |
+                    Q(centro_destino__nombre__icontains='almacen central')
+                )
+                .values('centro_destino_id', 'centro_destino__nombre')
+                .annotate(total_in=Coalesce(Sum('cantidad'), 0, output_field=IntegerField()))
+                .filter(total_in__gt=0)
+            )
+            for ed in entradas_directas:
+                cid = ed['centro_destino_id']
+                salidas = Movimiento.objects.filter(
+                    tipo__in=Movimiento.TIPOS_RESTA_STOCK,
+                    centro_origen_id=cid
                 ).aggregate(
-                    total=Coalesce(Sum('cantidad_actual'), 0, output_field=IntegerField())
+                    total=Coalesce(Sum('cantidad'), 0, output_field=IntegerField())
                 )['total']
-                
-                # Solo agregar centros con stock > 0
-                if stock > 0:
-                    # ISS-FIX: Enviar nombre completo para el tooltip
-                    # El truncado se hace en el frontend solo para el eje Y
+                neto = max(0, ed['total_in'] - salidas)
+                if neto > 0:
                     stock_por_centro.append({
-                        'centro': centro.nombre,
-                        'centro_id': centro.id,
-                        'stock': stock
+                        'centro': ed['centro_destino__nombre'],
+                        'centro_id': cid,
+                        'stock': neto,
                     })
         elif filtrar_por_centro == 'central':
             # ISS-FIX: Farmacia Central seleccionada — misma consolidación que la vista global
