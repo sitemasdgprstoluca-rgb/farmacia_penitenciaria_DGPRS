@@ -1763,45 +1763,43 @@ const RequisicionDetalle = () => {
         ) : detalles.length === 0 ? (
           <p className="text-center text-gray-500 py-8">No hay productos en esta requisición</p>
         ) : (
-          <div className="w-full overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
-            <div className="inline-block min-w-full align-middle">
-              <div className="overflow-hidden table-soft">
-                <table className="min-w-full border-collapse text-xs">
+          <div className="w-full overflow-hidden table-soft rounded-lg">
+                <table className="w-full border-collapse text-xs table-fixed">
                   <thead className="thead-soft">
                     <tr>
-                      <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase text-white whitespace-nowrap">Clave</th>
-                      <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase text-white">Producto</th>
-                      <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase text-white">Presentación</th>
-                      <th className="px-2 py-2 text-center text-[10px] font-semibold uppercase text-white whitespace-nowrap">Lote</th>
-                      <th className="px-2 py-2 text-center text-[10px] font-semibold uppercase text-white whitespace-nowrap">Unidad</th>
+                      <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase text-white whitespace-nowrap" style={{width:'62px'}}>Clave</th>
+                      <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase text-white" style={{width:'22%'}}>Producto</th>
+                      <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase text-white" style={{width:'18%'}}>Presentación</th>
+                      <th className="px-2 py-2 text-center text-[10px] font-semibold uppercase text-white whitespace-nowrap" style={{width:'88px'}}>Lote</th>
+                      <th className="px-2 py-2 text-center text-[10px] font-semibold uppercase text-white whitespace-nowrap" style={{width:'58px'}}>Unidad</th>
                       {/* EXISTENCIAS CENTRO: Solo visible para usuarios del centro (no farmacia) */}
                       {esCentro && (
-                        <th className="px-2 py-2 text-center text-[10px] font-semibold uppercase text-white bg-emerald-600 whitespace-nowrap">
+                        <th className="px-2 py-2 text-center text-[10px] font-semibold uppercase text-white bg-emerald-600 whitespace-nowrap" style={{width:'62px'}}>
                           Exist. Centro
                         </th>
                       )}
                       {/* ISS-UI-FIX: Mostrar Inventario Almacén y Centro para tomar decisiones */}
                       {(modoAutorizar || esFarmacia) && (
                         <>
-                          <th className="px-1 py-2 text-center text-[10px] font-semibold uppercase text-white bg-blue-600 whitespace-nowrap">
+                          <th className="px-1 py-2 text-center text-[10px] font-semibold uppercase text-white bg-blue-600 whitespace-nowrap" style={{width:'52px'}}>
                             Inv. Alm.
                           </th>
-                          <th className="px-1 py-2 text-center text-[10px] font-semibold uppercase text-white bg-purple-600 whitespace-nowrap">
+                          <th className="px-1 py-2 text-center text-[10px] font-semibold uppercase text-white bg-purple-600 whitespace-nowrap" style={{width:'52px'}}>
                             Inv. Cen.
                           </th>
                         </>
                       )}
-                      <th className="px-1 py-2 text-center text-[10px] font-semibold uppercase text-white whitespace-nowrap">Solic.</th>
-                      <th className={`px-1 py-2 text-center text-[10px] font-semibold uppercase whitespace-nowrap ${modoAutorizar ? 'bg-green-600 text-white' : 'text-white'}`}>
+                      <th className="px-1 py-2 text-center text-[10px] font-semibold uppercase text-white whitespace-nowrap" style={{width:'48px'}}>Solic.</th>
+                      <th className={`px-1 py-2 text-center text-[10px] font-semibold uppercase whitespace-nowrap ${modoAutorizar ? 'bg-green-600 text-white' : 'text-white'}`} style={{width:'58px'}}>
                         Autoriz.
                       </th>
                       {/* MEJORA FLUJO 3: Columna para motivo de ajuste - visible también cuando hay ajustes */}
                       {(modoAutorizar || detalles.some(d => d.cantidad_autorizada < d.cantidad_solicitada && d.motivo_ajuste)) && (
-                        <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase bg-amber-500 text-white">
+                        <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase bg-amber-500 text-white" style={{width:'13%'}}>
                           Motivo Ajuste
                         </th>
                       )}
-                      <th className="px-1 py-2 text-center text-[10px] font-semibold uppercase text-white whitespace-nowrap">Surtido</th>
+                      <th className="px-1 py-2 text-center text-[10px] font-semibold uppercase text-white whitespace-nowrap" style={{width:'52px'}}>Surtido</th>
                     </tr>
                   </thead>
               <tbody>
@@ -1810,10 +1808,10 @@ const RequisicionDetalle = () => {
                     <td className="px-2 py-2 text-xs font-mono font-semibold text-gray-800">
                       {detalle.producto_clave || detalle.producto?.clave || '-'}
                     </td>
-                    <td className="px-2 py-2 text-xs text-gray-800">
+                    <td className="px-2 py-2 text-xs text-gray-800" style={{wordBreak:'break-word', overflowWrap:'break-word'}}>
                       {detalle.producto_nombre || detalle.producto?.nombre || detalle.nombre || '-'}
                     </td>
-                    <td className="px-2 py-2 text-xs text-gray-600">
+                    <td className="px-2 py-2 text-xs text-gray-600" style={{wordBreak:'break-word', overflowWrap:'break-word'}}>
                       {detalle.producto_presentacion || detalle.producto?.presentacion || '—'}
                     </td>
                     <td className="px-2 py-2 text-center text-xs">
@@ -1926,8 +1924,6 @@ const RequisicionDetalle = () => {
                 ))}
               </tbody>
             </table>
-              </div>
-            </div>
           </div>
         )}
 
