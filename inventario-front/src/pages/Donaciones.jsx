@@ -1813,6 +1813,8 @@ const Donaciones = () => {
               <div>
                 <h3 className="font-semibold text-purple-800">Flujo de Donaciones</h3>
                 <div className="flex flex-wrap items-center gap-2 text-sm text-purple-700 mt-1">
+                  <span className="flex items-center gap-1"><FaClipboardList className="text-purple-500" /> Catálogo de Productos</span>
+                  <FaArrowRight className="text-purple-400" />
                   <span className="flex items-center gap-1"><FaPlus className="text-purple-500" /> Registrar</span>
                   <FaArrowRight className="text-purple-400" />
                   <span className="flex items-center gap-1"><FaCheck className="text-purple-500" /> Procesar</span>
@@ -1822,7 +1824,7 @@ const Donaciones = () => {
                   <span className="flex items-center gap-1"><FaHandHoldingMedical className="text-purple-500" /> Entregar</span>
                 </div>
                 <p className="text-xs text-purple-600 mt-2">
-                  Las donaciones procesadas aparecen en "Inventario" donde puedes dar salida a los productos.
+                  Primero agrega productos en "Catálogo de Productos", luego regístralos en una donación. Las donaciones procesadas aparecen en "Inventario" para dar salida a los productos.
                 </p>
               </div>
             </div>
@@ -2380,11 +2382,11 @@ const Donaciones = () => {
                 <FaClipboardList className="text-blue-600 text-xl" />
               </div>
               <div>
-                <h3 className="font-semibold text-blue-800">Catálogo Independiente de Productos de Donaciones</h3>
+                <h3 className="font-semibold text-blue-800">Paso 1: Catálogo de Productos de Donaciones</h3>
                 <p className="text-sm text-blue-700 mt-1">
-                  Este catálogo es <strong>completamente separado</strong> del catálogo principal de la farmacia.
-                  Los productos de donaciones pueden tener <strong>claves y nombres diferentes</strong> a los del inventario ordinario.
-                  El inventario de donaciones <strong>NO se mezcla</strong> con el inventario principal.
+                  <strong>Comienza aquí.</strong> Debes registrar los productos en este catálogo antes de poder registrar una donación.
+                  Este catálogo es <strong>completamente separado</strong> del catálogo principal de la farmacia —
+                  los productos de donaciones pueden tener claves y nombres diferentes y su inventario <strong>NO se mezcla</strong> con el inventario ordinario.
                 </p>
               </div>
             </div>
